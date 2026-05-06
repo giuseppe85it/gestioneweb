@@ -15,16 +15,18 @@ function getRuntimePlate(records: RawRecord[]): string {
 }
 
 async function getRuntimeDriverNameWithRelation(): Promise<string> {
-  const [drivers, vehicles] = await Promise.all([
+  const [drivers, sessions] = await Promise.all([
     readStorageDataset("@colleghi"),
-    readStorageDataset("@mezzi_aziendali"),
+    readStorageDataset("@autisti_sessione_attive"),
   ]);
-  const driverIdsWithVehicle = new Set(
-    vehicles
-      .filter((entry) => normalizePlate(entry.targa) && text(entry.autistaId))
-      .map((entry) => text(entry.autistaId)),
+  const sessionBadgesWithVehicle = new Set(
+    sessions
+      .filter((entry) => normalizePlate(entry.targaMotrice) && text(entry.badgeAutista))
+      .map((entry) => text(entry.badgeAutista).replace(/\s+/g, "").toLowerCase()),
   );
-  const driver = drivers.find((entry) => driverIdsWithVehicle.has(text(entry.id)) && text(entry.nome));
+  const driver = drivers.find(
+    (entry) => sessionBadgesWithVehicle.has(text(entry.badge).replace(/\s+/g, "").toLowerCase()) && text(entry.nome),
+  );
   return text(driver?.nome);
 }
 

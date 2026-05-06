@@ -52,7 +52,7 @@ Prima di eseguire BLOCCO 1, Codex deve verificare la coerenza interna del piano.
 - Dispatcher rendering messaggi: `src/next/chat-ia/components/ChatIaMessageItem.tsx`.
 - Vista certificata operativa: `src/next/chat-ia/views/Driver360.tsx` + `src/next/chat-ia/views/driver360.css` (CHIUSO 2026-05-06: il file CSS esiste nel repo ed e' importato da `Driver360.tsx`).
 - Pannello prove riusabile: `src/next/chat-ia/components/CollapsibleProof.tsx`.
-- Resolver relazioni autista-mezzo (frontend): `src/next/chat-ia/relations/driverRelationResolver.ts`.
+- Resolver relazioni autista-mezzo frontend legacy: CHIUSO 2026-05-06. `src/next/chat-ia/relations/driverRelationResolver.ts` rimosso dopo zero chiamanti runtime; `Driver360.tsx` consuma `resolvedFilters.v2` con relationProof prodotte dal backend via `query-engine.js` / `relation-resolver.js`.
 - Tipi pubblici chat: `src/next/chat-ia/core/chatIaTypes.ts` (`ChatZeroInvenzioniMessage`, `ViewEnum`, `RelationProof`, `DriverVehicleCertifiedRelation`).
 - Catalog validator frontend: `src/next/chat-ia/core/catalogValidator.ts`.
 - Launcher home: `src/next/components/HomeInternalAiLauncher.tsx` (apre `/next/chat`).
@@ -860,7 +860,7 @@ BLOCCO 7 = PASS.
 - `src/next/chat-ia/core/chatIaTypes.ts` — Modificabile SOLO se servono nuovi enum per intent routing (CANCELLO 0). Nessun refactor funzionale autorizzato.
 - `backend/internal-ai/server/lib/post-llm-resolver.js` — Aggiungere commento `@deprecated` nel header del file. Loggare warning SOLO se il vecchio resolver viene effettivamente invocato tramite fallback automatico o env `CHAT_IA_LEGACY_RESOLVER=1`, non all'import. NON rimosso (cf. `SPEC_MOTORE_GENERICO_NEXT.md` §10.1 fase E: "rimozione solo dopo zero chiamanti"). Lo switch in `internal-ai-adapter.js` resta: il default Universale per Driver360 esiste gia' dal lavoro precedente (PROMPT 28); le viste non-Driver360 vengono instradate dal `resolveByViewBinding` introdotto in BLOCCO 3.
 - `backend/internal-ai/server/lib/shadow-comparator.js` — Aggiungere commento `@deprecated` nel header del file. Loggare warning SOLO se invocato tramite env `CHAT_IA_SHADOW_RESOLVER=1`, non all'import. Resta come strumento diagnostico.
-- `src/next/chat-ia/relations/driverRelationResolver.ts` — Aggiungere commento `@deprecated` nel header del file. Loggare warning SOLO se la funzione viene effettivamente chiamata, non all'import. Redirige al nuovo backend `relation-resolver.js` per coerenza (DA VERIFICARE: la deprecation richiede che tutte le chiamate frontend al vecchio file siano gia state spostate su `CertifiedView.tsx` in BLOCCO 6).
+- `src/next/chat-ia/relations/driverRelationResolver.ts` — CHIUSO 2026-05-06 in chiusura #10: file eliminato dopo verifica zero chiamanti runtime; `Driver360.tsx` non legge piu' snapshot dominio frontend e mostra relazioni solo quando presenti nel payload certificato backend.
 - `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` — promozione a v1.0 STABLE: aggiornare header, rimuovere "BOZZA", aggiungere annotazione di promozione 2026-05-XX (sostituire con la data reale di esecuzione).
 - `docs/product/SPEC_MOTORE_GENERICO_NEXT.md` — promozione a v1.0 STABLE.
 - `package.json` — script `chat-ia:diagnostics` presente e funzionante: `"chat-ia:diagnostics": "node backend/internal-ai/server/lib/__diagnostics__/zero-invenzioni-tests.mjs"` (CHIUSO 2026-05-06).

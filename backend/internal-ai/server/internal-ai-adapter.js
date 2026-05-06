@@ -1161,7 +1161,6 @@ function logChatToolUseRaw(event, payload = {}) {
 }
 
 const CHAT_IA_DRIVER360_ENTRY_CONFIG_KEY = "driver360.colleghi";
-
 function buildUniversalDriver360Input(message, options = {}) {
   const filters = isPlainObject(message?.filters) ? message.filters : null;
   if (message?.view !== "Driver360" || filters?.entityKind !== "driver") {
@@ -1213,13 +1212,86 @@ function readUniversalDriverId(candidateResult) {
   return typeof fieldDriverId === "string" && fieldDriverId.trim() ? fieldDriverId.trim() : null;
 }
 
-function buildUniversalDriver360Message(message, driverId) {
+function readCertifiedText(record, fieldName) {
+  const value = record?.fields?.[fieldName]?.value;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function recordMatchesDriver360(record, entry, driverId, driverBadge) {
+  if (entry?.boundaryEntryId === "firestore-storage-mezzi-aziendali-doc") {
+    return normalizeCertifiedSearchValue(readCertifiedText(record, "autistaId")) === normalizeCertifiedSearchValue(driverId);
+  }
+  if (entry?.boundaryEntryId === "firestore-storage-autisti-sessioni-attive-doc") {
+    const recordBadge = readCertifiedText(record, "badgeAutista") || readCertifiedText(record, "badge");
+    return Boolean(driverBadge) && normalizeCertifiedSearchValue(recordBadge) === normalizeCertifiedSearchValue(driverBadge);
+  }
+  return false;
+}
+
+function filterDriver360RelationEntries(result, driverContext) {
+  if (!Array.isArray(result?.entries)) return [];
+  return result.entries
+    .map((entry) => {
+      const records = (Array.isArray(entry?.records) ? entry.records : [])
+        .filter((record) => recordMatchesDriver360(record, entry, driverContext.driverId, driverContext.driverBadge))
+        .map((record) => ({
+          ...record,
+          relations: (Array.isArray(record.relations) ? record.relations : []).filter(
+            (relation) => relation?.relationKind === "driver_vehicle" && relation?.relationProof,
+          ),
+        }))
+        .filter((record) => record.relations.length > 0);
+      return records.length ? { ...entry, records, status: "ok" } : null;
+    })
+    .filter(Boolean);
+}
+
+async function resolveDriver360RelationEntries(message, options, candidateResult, driverId) {
+  const driverEntry = Array.isArray(candidateResult?.entries) ? candidateResult.entries[0] : null;
+  const driverRecord = Array.isArray(driverEntry?.records) ? driverEntry.records[0] : null;
+  const driverBadge = readCertifiedText(driverRecord, "badge") || readCertifiedText(driverRecord, "codice");
+  const searchText =
+    normalizeToolUseText(message?.filters?.searchText) ||
+    normalizeToolUseText(options?.preflightContext?.searchText) ||
+    normalizeToolUseText(options?.prompt);
+  const relationEntries = [];
+
+  for (const entryConfigKey of ["vehicles.mezziAziendali", "sessions.autistiSessioneAttive"]) {
+    const result = await runQueryEngine({
+      entryConfigKey,
+      matchInput: { searchText: null },
+      query: {
+        action: message?.action ?? null,
+        view: "Driver360",
+        entityKind: "driver",
+        searchText,
+        periodPreset: message?.filters?.periodPreset ?? null,
+      },
+    });
+    relationEntries.push(...filterDriver360RelationEntries(result, { driverId, driverBadge }));
+  }
+
+  return relationEntries;
+}
+
+function buildUniversalDriver360Message(message, candidateResult, driverId, relationEntries = []) {
   return {
     ...message,
     action: "view_open",
     resolvedFilters: {
-      ...(isPlainObject(message?.resolvedFilters) ? message.resolvedFilters : {}),
-      driverId,
+      version: "resolvedFilters.v2",
+      legacyDriver360: { driverId },
+      query: {
+        action: message?.action ?? null,
+        view: "Driver360",
+        entityKind: message?.filters?.entityKind ?? "driver",
+        searchText: candidateResult?.query?.searchText ?? message?.filters?.searchText ?? null,
+        periodPreset: message?.filters?.periodPreset ?? null,
+      },
+      entries: [...(Array.isArray(candidateResult?.entries) ? candidateResult.entries : []), ...relationEntries],
+      disambiguation: null,
+      errors: [],
+      unresolvedReason: null,
     },
     disambiguation: null,
     accompaniment: { kind: "view_opened", params: null },
@@ -1525,8 +1597,9 @@ async function resolveWithUniversalResolverFaseA(message, options = {}) {
       return resolvePostLlmMessage(message, options);
     }
 
+    const relationEntries = await resolveDriver360RelationEntries(message, options, candidateResult, driverId);
     return {
-      finalMessage: buildUniversalDriver360Message(message, driverId),
+      finalMessage: buildUniversalDriver360Message(message, candidateResult, driverId, relationEntries),
       resolutionApplied: true,
       reason: "universal_fase_a_resolved",
     };

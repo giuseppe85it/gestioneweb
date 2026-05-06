@@ -1,13 +1,4 @@
-import { useEffect, useState } from "react";
-import {
-  readNextAnagraficheFlottaSnapshot,
-  type NextAnagraficheFlottaMezzoItem,
-} from "../../nextAnagraficheFlottaDomain";
-import {
-  readNextAutistiReadOnlySnapshot,
-  type NextAutistiCanonicalAssignment,
-} from "../../domain/nextAutistiDomain";
-import { readNextColleghiSnapshot, type NextCollegaReadOnlyItem } from "../../domain/nextColleghiDomain";
+import { useState } from "react";
 import type {
   ChatZeroInvenzioniMessage,
   DisambiguationShape,
@@ -21,122 +12,188 @@ type Driver360Props = {
   message: ChatZeroInvenzioniMessage;
 };
 
-type Driver360State =
-  | { status: "idle" | "loading"; driver: null; relations: DriverVehicleCertifiedRelation[]; error: null }
-  | { status: "ready"; driver: NextCollegaReadOnlyItem; relations: DriverVehicleCertifiedRelation[]; error: null }
-  | { status: "missing"; driver: null; relations: DriverVehicleCertifiedRelation[]; error: string };
+type CertifiedField = {
+  value: unknown;
+  sourceField: string;
+  sourceValueType?: string;
+};
 
-function getDriverId(message: ChatZeroInvenzioniMessage): string | null {
-  const value = message.resolvedFilters && "driverId" in message.resolvedFilters
-    ? message.resolvedFilters.driverId
-    : null;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+type CertifiedRelationProof = {
+  relationKind: string;
+  sourceCollection: string;
+  sourceRecordId: string;
+  sourceField: string;
+  rule: string;
+  certainty: string;
+};
+
+type CertifiedRelation = {
+  relationKind: string;
+  targetLabel?: string;
+  relationProof?: CertifiedRelationProof;
+};
+
+type CertifiedRecord = {
+  sourceRecordId: string;
+  fields: Record<string, CertifiedField>;
+  provenance?: {
+    sourceCollection: string;
+    sourceRecordId: string;
+    sourceFields: string[];
+    accessModeUsed: string;
+    boundaryEntryId: string;
+    confidence?: string;
+  };
+  relations?: CertifiedRelation[];
+};
+
+type ResolvedFiltersV2Entry = {
+  boundaryEntryId: string;
+  sourceCollection: string;
+  accessModeUsed: string;
+  records: CertifiedRecord[];
+  status: string;
+};
+
+type ResolvedFiltersV2 = {
+  version: "resolvedFilters.v2";
+  legacyDriver360?: { driverId?: string | null } | null;
+  entries: ResolvedFiltersV2Entry[];
+};
+
+type Driver360State =
+  | { status: "ready"; driver: { id: string; nome: string; badge: string | null }; relations: DriverVehicleCertifiedRelation[] }
+  | { status: "missing"; error: string; relations: DriverVehicleCertifiedRelation[] };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function getCandidateDriverId(candidate: NonNullable<DisambiguationShape["candidates"]>[number]): string | null {
-  return typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim() : null;
+function text(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 function normalizeId(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeBadge(value: unknown): string {
-  return typeof value === "string" ? value.trim().replace(/\s+/g, "").toLowerCase() : "";
+  return text(value);
 }
 
 function normalizePlate(value: unknown): string {
   return typeof value === "string" ? value.trim().toUpperCase().replace(/\s+/g, "") : "";
 }
 
-function buildVehicleRelationProof(vehicle: NextAnagraficheFlottaMezzoItem): RelationProof {
-  return {
-    relationKind: "driver_vehicle",
-    sourceCollection: "storage/@mezzi_aziendali",
-    sourceRecordId: vehicle.id || vehicle.targa,
-    sourceField: "autistaId",
-    rule: "autistaId_explicit",
-    certainty: "explicit_assignment",
-  };
+function readResolvedFiltersV2(message: ChatZeroInvenzioniMessage): ResolvedFiltersV2 | null {
+  const resolvedFilters = message.resolvedFilters as unknown;
+  if (!isRecord(resolvedFilters) || resolvedFilters.version !== "resolvedFilters.v2") return null;
+  if (!Array.isArray(resolvedFilters.entries)) return null;
+  return resolvedFilters as ResolvedFiltersV2;
 }
 
-function buildAssignmentRelationProof(assignment: NextAutistiCanonicalAssignment): RelationProof {
-  return {
-    relationKind: "driver_vehicle",
-    sourceCollection: `storage/${assignment.sourceDataset}`,
-    sourceRecordId: assignment.id,
-    sourceField: "badgeAutista+mezzoTarga",
-    rule:
-      assignment.sourceKind === "sessione_attiva"
-        ? "active_assignment_badge_exact"
-        : "confirmed_vehicle_change_badge_exact",
-    certainty: "explicit_assignment",
-  };
-}
-
-function relationFromVehicle(vehicle: NextAnagraficheFlottaMezzoItem): DriverVehicleCertifiedRelation | null {
-  const vehiclePlate = normalizePlate(vehicle.targa);
-  if (!vehiclePlate) return null;
-  return {
-    relationKind: "driver_vehicle",
-    vehiclePlate,
-    relationProof: buildVehicleRelationProof(vehicle),
-  };
-}
-
-function relationFromAssignment(
-  assignment: NextAutistiCanonicalAssignment,
-): DriverVehicleCertifiedRelation | null {
-  const vehiclePlate = normalizePlate(assignment.mezzoTarga);
-  if (!vehiclePlate) return null;
-  return {
-    relationKind: "driver_vehicle",
-    vehiclePlate,
-    relationProof: buildAssignmentRelationProof(assignment),
-  };
-}
-
-function addRelationIfCertified(
-  target: Map<string, DriverVehicleCertifiedRelation>,
-  relation: DriverVehicleCertifiedRelation | null,
-): void {
-  if (!relation?.relationProof) return;
-  if (!target.has(relation.vehiclePlate)) {
-    target.set(relation.vehiclePlate, relation);
+function readFieldText(record: CertifiedRecord | null, fields: string[]): string {
+  if (!record) return "";
+  for (const field of fields) {
+    const value = text(record.fields[field]?.value);
+    if (value) return value;
   }
+  return "";
 }
 
-async function resolveDriverVehicleRelationsForDriver(
-  driver: NextCollegaReadOnlyItem,
-): Promise<DriverVehicleCertifiedRelation[]> {
-  const driverId = normalizeId(driver.id);
-  const driverBadge = normalizeBadge(driver.badge);
+function getDriverId(message: ChatZeroInvenzioniMessage, selectedDriverId: string | null): string | null {
+  if (selectedDriverId) return selectedDriverId;
+  const resolved = readResolvedFiltersV2(message);
+  const v2DriverId = text(resolved?.legacyDriver360?.driverId);
+  if (v2DriverId) return v2DriverId;
+  const legacy = message.resolvedFilters as { driverId?: unknown } | null | undefined;
+  const legacyDriverId = text(legacy?.driverId);
+  return legacyDriverId || null;
+}
+
+function getCandidateDriverId(candidate: NonNullable<DisambiguationShape["candidates"]>[number]): string | null {
+  return typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim() : null;
+}
+
+function findDriverRecord(resolved: ResolvedFiltersV2 | null, driverId: string): CertifiedRecord | null {
+  const driverEntry = resolved?.entries.find(
+    (entry) => entry.boundaryEntryId === "firestore-storage-colleghi-doc",
+  );
+  const records = driverEntry?.records ?? [];
+  return (
+    records.find((record) => normalizeId(record.fields.id?.value) === driverId) ??
+    records[0] ??
+    null
+  );
+}
+
+function asDriverVehicleRelation(relation: CertifiedRelation, record: CertifiedRecord): DriverVehicleCertifiedRelation | null {
+  const proof = relation.relationProof;
+  if (relation.relationKind !== "driver_vehicle" || !proof) return null;
+  const vehiclePlate =
+    normalizePlate(relation.targetLabel) ||
+    normalizePlate(record.fields.targa?.value) ||
+    normalizePlate(record.fields.targaMotrice?.value) ||
+    normalizePlate(record.fields.mezzoTarga?.value) ||
+    normalizePlate(record.fields.targaRimorchio?.value);
+  if (!vehiclePlate) return null;
+
+  return {
+    relationKind: "driver_vehicle",
+    vehiclePlate,
+    relationProof: {
+      relationKind: "driver_vehicle",
+      sourceCollection: proof.sourceCollection,
+      sourceRecordId: proof.sourceRecordId,
+      sourceField: proof.sourceField,
+      rule: proof.rule,
+      certainty: proof.certainty === "exact" ? "exact" : "explicit_assignment",
+    },
+  };
+}
+
+function readDriverRelations(resolved: ResolvedFiltersV2 | null): DriverVehicleCertifiedRelation[] {
   const relations = new Map<string, DriverVehicleCertifiedRelation>();
-
-  if (!driverId) return [];
-
-  const [flottaSnapshot, autistiSnapshot] = await Promise.all([
-    readNextAnagraficheFlottaSnapshot({ includeClonePatches: false }),
-    readNextAutistiReadOnlySnapshot(Date.now(), {
-      includeLocalClone: false,
-      includeStorageOverlay: false,
-    }),
-  ]);
-
-  flottaSnapshot.items
-    .filter((vehicle) => normalizeId(vehicle.autistaId) === driverId)
-    .forEach((vehicle) => addRelationIfCertified(relations, relationFromVehicle(vehicle)));
-
-  if (driverBadge) {
-    autistiSnapshot.assignments
-      .filter((assignment) => assignment.linkReliability === "forte")
-      .filter((assignment) => normalizeBadge(assignment.badgeAutista) === driverBadge)
-      .forEach((assignment) => addRelationIfCertified(relations, relationFromAssignment(assignment)));
+  for (const entry of resolved?.entries ?? []) {
+    for (const record of entry.records ?? []) {
+      for (const relation of record.relations ?? []) {
+        const nextRelation = asDriverVehicleRelation(relation, record);
+        if (nextRelation && !relations.has(nextRelation.vehiclePlate)) {
+          relations.set(nextRelation.vehiclePlate, nextRelation);
+        }
+      }
+    }
   }
-
   return Array.from(relations.values()).sort((left, right) =>
     left.vehiclePlate.localeCompare(right.vehiclePlate, "it", { sensitivity: "base" }),
   );
+}
+
+function buildDriver360State(message: ChatZeroInvenzioniMessage, selectedDriverId: string | null): Driver360State {
+  const resolved = readResolvedFiltersV2(message);
+  const driverId = getDriverId(message, selectedDriverId);
+  if (!driverId) {
+    return {
+      status: "missing",
+      error: "Profilo autista non risolto dal backend.",
+      relations: [],
+    };
+  }
+
+  const driverRecord = findDriverRecord(resolved, driverId);
+  if (!driverRecord) {
+    return {
+      status: "missing",
+      error: "Autista certificato non trovato nel payload backend.",
+      relations: [],
+    };
+  }
+
+  return {
+    status: "ready",
+    driver: {
+      id: driverId,
+      nome: readFieldText(driverRecord, ["nome", "nomeCompleto", "label"]) || "dato non trovato nelle fonti autorizzate",
+      badge: readFieldText(driverRecord, ["badge", "codice"]) || null,
+    },
+    relations: readDriverRelations(resolved),
+  };
 }
 
 function renderDisambiguation(
@@ -198,7 +255,7 @@ function getBoundaryEntryIdForRelation(relation: DriverVehicleCertifiedRelation)
 }
 
 function renderRelationProof(relation: DriverVehicleCertifiedRelation) {
-  const proof = relation.relationProof;
+  const proof: RelationProof = relation.relationProof;
   return (
     <ProofPanel
       provenance={[
@@ -226,86 +283,11 @@ function renderRelationProof(relation: DriverVehicleCertifiedRelation) {
 
 export default function Driver360({ message }: Driver360Props) {
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
-  const driverId = selectedDriverId ?? getDriverId(message);
-  const [state, setState] = useState<Driver360State>({
-    status: driverId ? "loading" : "idle",
-    driver: null,
-    relations: [],
-    error: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!driverId) {
-      setState({ status: "idle", driver: null, relations: [], error: null });
-      return;
-    }
-
-    setState({ status: "loading", driver: null, relations: [], error: null });
-    void (async () => {
-      try {
-        const snapshot = await readNextColleghiSnapshot({ includeCloneOverlays: false });
-        const driver = snapshot.items.find((item) => item.id === driverId) ?? null;
-        if (!driver) {
-          if (!cancelled) {
-            setState({
-              status: "missing",
-              driver: null,
-              relations: [],
-              error: "Autista certificato non trovato.",
-            });
-          }
-          return;
-        }
-
-        const relations = await resolveDriverVehicleRelationsForDriver(driver);
-        if (!cancelled) {
-          setState({ status: "ready", driver, relations, error: null });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setState({
-            status: "missing",
-            driver: null,
-            relations: [],
-            error: error instanceof Error ? error.message : "Driver360 non disponibile.",
-          });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [driverId]);
 
   const disambiguation = selectedDriverId ? null : renderDisambiguation(message, setSelectedDriverId);
   if (disambiguation) return disambiguation;
 
-  if (!driverId) {
-    return (
-      <section className="driver360 driver360--placeholder" data-driver360>
-        <header className="driver360__header">
-          <p className="driver360__eyebrow">Driver360</p>
-          <h2>Profilo autista</h2>
-        </header>
-        <p className="driver360__empty">Profilo autista non risolto dal backend.</p>
-      </section>
-    );
-  }
-
-  if (state.status === "loading") {
-    return (
-      <section className="driver360" data-driver360>
-        <header className="driver360__header">
-          <p className="driver360__eyebrow">Driver360</p>
-          <h2>Profilo autista</h2>
-        </header>
-        <p className="driver360__empty">Caricamento profilo autista...</p>
-      </section>
-    );
-  }
-
+  const state = buildDriver360State(message, selectedDriverId);
   if (state.status !== "ready") {
     return (
       <section className="driver360 driver360--placeholder" data-driver360>
@@ -313,7 +295,7 @@ export default function Driver360({ message }: Driver360Props) {
           <p className="driver360__eyebrow">Driver360</p>
           <h2>Profilo autista</h2>
         </header>
-        <p className="driver360__empty">{state.error ?? "Profilo autista non disponibile."}</p>
+        <p className="driver360__empty">{state.error}</p>
       </section>
     );
   }
