@@ -2,15 +2,9 @@
 
 ## Stato finale
 
-CHAT IA NEXT NON CHIUSA.
+CHAT IA NEXT NON CHIUSA — esecuzione ripresa da STEP 5 / voce #6.
 
-Esecuzione fermata a STEP 5 / voce #6 prima della patch boundary.
-
-Motivo tecnico: `src/next/chat-ia/config/view.config.ts:279` contiene ancora il riferimento runtime `firestore-storage-documenti-mezzi-doc`. Rimuovere le entry deprecate dal boundary senza aggiornare quel file farebbe fallire la coerenza view config -> boundary (`chat-ia:diagnostics` T10) e lascerebbe `Ricerca360` puntata a una entry non piu' esistente.
-
-SERVE FILE EXTRA: `src/next/chat-ia/config/view.config.ts`
-
-Motivazione: sostituire/rimuovere il riferimento deprecato `firestore-storage-documenti-mezzi-doc`, gia' affiancato da `firestore-documenti-mezzi-root`, prima di rimuovere dal boundary le entry storage documentali storiche.
+Stato corrente del report: #6 chiusa con patch e CHECKPOINT-A PASS. #10, #12, #13 restano non chiuse finche' non passano i checkpoint successivi.
 
 ## Baseline
 
@@ -28,7 +22,7 @@ Motivazione: sostituire/rimuovere il riferimento deprecato `firestore-storage-do
 | #3 | CHIUSA_DOCUMENTAZIONE | Regola ordinamento default formalizzata nel Registro: `updatedAt`, `timestamp`, `createdAt`, poi cap deterministico. |
 | #4 | CHIUSA_DOCUMENTAZIONE | Decisione prodotto Opzione A formalizzata: nessuna `@cantieri`; `Site360` aggrega fonti esistenti. |
 | #5 | CHIUSA_DOCUMENTAZIONE | `@officine` formalizzata come entry collegata a manutenzioni/Vehicle360, non vista autonoma. |
-| #6 | SOSPESA | Patch boundary non sicura nella whitelist corrente per riferimento residuo in `view.config.ts`. |
+| #6 | CHIUSA_PATCH | `view.config.ts` riallineato alle root documentali e tre entry boundary storage deprecate rimosse; CHECKPOINT-A PASS. |
 | #7 | CHIUSA_DOCUMENTAZIONE | Mapping writer/root documentali -> `allowedFields` formalizzato nel Registro. |
 | #8 | CHIUSA_DOCUMENTAZIONE | Comando normalizzato con `rg` e fallback PowerShell esplicito. |
 | #9 | CHIUSA_DOCUMENTAZIONE | `relation.config.cjs` formalizzato come proiezione backend machine-readable. |
@@ -43,10 +37,12 @@ Motivazione: sostituire/rimuovere il riferimento deprecato `firestore-storage-do
 - `docs/product/REGISTRO_COLLECTION_FIRESTORE.md`
 - `docs/product/SPEC_MOTORE_GENERICO_NEXT.md`
 - `docs/audit/REPORT_CHIUSURA_CHATIA_NEXT_100_2026-05-06.md`
+- `src/next/chat-ia/config/view.config.ts`
+- `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`
 
 ## Patch non applicate
 
-- Boundary #6: non applicata.
+- Boundary #6: patch applicata e CHECKPOINT-A PASS.
 - Driver360 #10: non eseguita.
 - Promozione Registro/SPEC: non eseguita.
 - Aggiornamento live docs: non eseguito per stop prima della chiusura.
@@ -60,6 +56,27 @@ Motivazione: sostituire/rimuovere il riferimento deprecato `firestore-storage-do
 - Ricerca #6:
   - `rg "firestore-storage-documenti-generici-doc|firestore-storage-documenti-magazzino-doc|firestore-storage-documenti-mezzi-doc" backend src tests package.json docs/product docs/audit`
   - esito bloccante: `src/next/chat-ia/config/view.config.ts:279` usa `firestore-storage-documenti-mezzi-doc`.
+- Ripresa #6:
+  - `src/next/chat-ia/config/view.config.ts`: rimossa una occorrenza runtime deprecata da `Ricerca360.entryBoundaryIds`; `firestore-documenti-mezzi-root` resta presente nella stessa vista.
+  - `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`: rimosse le tre entry deprecate storage documentali.
+- CHECKPOINT-A:
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`: PASS.
+  - `npm run build`: PASS.
+  - `npm run chat-ia:diagnostics`: PASS T1..T28.
+  - Playwright 17-21: PASS 10/10.
+
+## Chiusura #6 — Mappa ID
+
+| ID deprecato | ID root sostitutivo |
+|---|---|
+| `firestore-storage-documenti-generici-doc` | `firestore-documenti-generici-root` |
+| `firestore-storage-documenti-magazzino-doc` | `firestore-documenti-magazzino-root` |
+| `firestore-storage-documenti-mezzi-doc` | `firestore-documenti-mezzi-root` |
+
+- Riga `view.config.ts` modificata: vecchia riga 279, `Ricerca360.entryBoundaryIds`.
+- Occorrenze sostituite/rimosse in `view.config.ts`: 1.
+- Entry boundary rimosse: 3.
+- Nessun writer modificato. Nessun dato Firestore reale modificato.
 
 ## Stato Registro/SPEC
 
@@ -70,21 +87,14 @@ Motivazione: sostituire/rimuovere il riferimento deprecato `firestore-storage-do
 ## Commit hash
 
 - Baseline: `28810394`
-- CHECKPOINT-A: non creato.
+- CHECKPOINT-DOC: `decb5cf9`
+- CHECKPOINT-A: da creare nel commit `chiusura #6 — rimozione entry boundary deprecate`.
 - CHECKPOINT-B: non creato.
 - Commit finale documentale: non creato.
 
 ## Prossimo intervento minimo
 
-Autorizzare in whitelist `src/next/chat-ia/config/view.config.ts`, quindi:
-
-1. Rimuovere da `Ricerca360.entryBoundaryIds` il riferimento `firestore-storage-documenti-mezzi-doc`.
-2. Confermare che `firestore-documenti-mezzi-root` resta presente nella stessa vista.
-3. Rimuovere dal boundary le tre entry deprecate:
-   - `firestore-storage-documenti-generici-doc`
-   - `firestore-storage-documenti-magazzino-doc`
-   - `firestore-storage-documenti-mezzi-doc`
-4. Rilanciare CHECKPOINT-A.
+Procedere a STEP 6 / voce #10: verificare se `Driver360.tsx` puo' consumare relationProof gia' prodotta dal backend senza file extra. Se non e' possibile dentro whitelist, fermarsi con `BLOCCO #10 NON CHIUDIBILE NELLA WHITELIST` o `SERVE FILE EXTRA: <path>`.
 
 ## Ultimo commit sicuro
 

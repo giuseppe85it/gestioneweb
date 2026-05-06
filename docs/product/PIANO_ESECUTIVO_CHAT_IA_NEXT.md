@@ -595,7 +595,7 @@ Stop su qualsiasi FAIL.
 ## §9 — BLOCCO 5: Documenti + Cisterna + Euromecc
 
 ### Obiettivo
-Estendere il boundary readonly per le 6 root collection nuove dichiarate dal registro v0.6 BOZZA come "BLOCCO RUNTIME — boundary da estendere": `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` (DA VERIFICARE: il registro v0.6 marca le voci `storage/@documenti_*` come "DEPRECATA — DA SOSTITUIRE CON ROOT COLLECTION"; le entry boundary esistenti `firestore-storage-documenti-*-doc` puntano a `storage/@documenti_*` come `exact_document`. La patch di BLOCCO 5 aggiunge entry root parallele `firestore-<root>-root` con `accessMode: "collection_root"` SENZA rimuovere quelle storage. La rimozione e' BLOCCO 8). E le 3 root Cisterna: `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
+Estendere il boundary readonly per le 6 root collection nuove dichiarate dal registro v0.6 BOZZA come "BLOCCO RUNTIME — boundary da estendere": `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` (CHIUSO 2026-05-06: le entry storiche `firestore-storage-documenti-generici-doc`, `firestore-storage-documenti-magazzino-doc`, `firestore-storage-documenti-mezzi-doc` sono rimosse dal boundary dopo riallineamento di `view.config.ts`; le fonti ufficiali V1 sono le root `firestore-documenti-generici-root`, `firestore-documenti-magazzino-root`, `firestore-documenti-mezzi-root`). E le 3 root Cisterna: `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
 
 ### Agente
 Codex (backend).

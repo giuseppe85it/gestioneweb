@@ -276,7 +276,6 @@ export const VIEW_CONFIGS: Record<ViewEnum, ViewConfig> = {
       "firestore-storage-mezzi-aziendali-doc",
       "firestore-storage-lavori-doc",
       "firestore-storage-manutenzioni-doc",
-      "firestore-storage-documenti-mezzi-doc",
       "firestore-documenti-mezzi-root",
       "firestore-documenti-magazzino-root",
       "firestore-documenti-generici-root",

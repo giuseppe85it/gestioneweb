@@ -380,6 +380,18 @@ Le entry root documentali V1 sono proiezioni sicure dei writer reali. I campi li
 
 `Site360` V1 e' vista aggregatrice certificata su fonti esistenti, non anagrafica autonoma di cantiere. Non esiste apertura di `@cantieri` in V1 e non esiste writer cantieri. Il pannello prove deve mostrare provenienza e relationProof quando il resolver produce una relazione certificata; in assenza di prova, la UI non deve promuovere il label cantiere a entita certificata autonoma.
 
+### Rimozione entry documentali storage deprecate
+
+Chiusura Chat IA NEXT #6, 2026-05-06: le entry boundary storiche `firestore-storage-documenti-generici-doc`, `firestore-storage-documenti-magazzino-doc`, `firestore-storage-documenti-mezzi-doc` sono rimosse dal boundary readonly V1. Le fonti ufficiali diventano le root collection gia' autorizzate:
+
+| ID deprecato | ID root sostitutivo |
+|---|---|
+| `firestore-storage-documenti-generici-doc` | `firestore-documenti-generici-root` |
+| `firestore-storage-documenti-magazzino-doc` | `firestore-documenti-magazzino-root` |
+| `firestore-storage-documenti-mezzi-doc` | `firestore-documenti-mezzi-root` |
+
+`src/next/chat-ia/config/view.config.ts` e' riallineato alle root documentali. Nessun writer e nessun dato Firestore reale sono stati modificati.
+
 ## Inventario sintetico
 
 - Totale collection Firestore tracciate: 41
@@ -411,9 +423,9 @@ Le entry root documentali V1 sono proiezioni sicure dei writer reali. I campi li
 | `@cisterna_schede_ia` | BLOCCO ARCHITETTURALE — boundary root collection da estendere | Schede carburante Cisterna Caravate estratte o manuali. |
 | `storage/@controlli_mezzo_autisti` | BOUNDARY VERIFICATA RUNTIME (post-update allowedFields) | Controlli mezzo inviati da autisti. |
 | `storage/@costiMezzo` | BOUNDARY OPEN — RUNTIME VUOTO — VERIFICATO BY REFERENCE | Costi mezzo legacy/documentali. |
-| `storage/@documenti_generici` | DEPRECATA — DA SOSTITUIRE CON ROOT COLLECTION | Storico registro v0.5; codice reale usa root `@documenti_generici`. |
-| `storage/@documenti_magazzino` | DEPRECATA — DA SOSTITUIRE CON ROOT COLLECTION | Storico registro v0.5; codice reale usa root `@documenti_magazzino`. |
-| `storage/@documenti_mezzi` | DEPRECATA — DA SOSTITUIRE CON ROOT COLLECTION | Storico registro v0.5; codice reale usa root `@documenti_mezzi`. |
+| `storage/@documenti_generici` | RIMOSSA DAL BOUNDARY V1 — STORICO | Sostituita da root `@documenti_generici` / `firestore-documenti-generici-root`. |
+| `storage/@documenti_magazzino` | RIMOSSA DAL BOUNDARY V1 — STORICO | Sostituita da root `@documenti_magazzino` / `firestore-documenti-magazzino-root`. |
+| `storage/@documenti_mezzi` | RIMOSSA DAL BOUNDARY V1 — STORICO | Sostituita da root `@documenti_mezzi` / `firestore-documenti-mezzi-root`. |
 | `@documenti_cisterna` | BLOCCO ARCHITETTURALE — boundary root collection da estendere | Documenti Cisterna Caravate. |
 | `storage/@fornitori` | BOUNDARY VERIFICATA RUNTIME (post-update allowedFields) | Anagrafica fornitori. |
 | `storage/@gomme_eventi` | BOUNDARY VERIFICATA RUNTIME (post-update allowedFields) | Eventi gomme ufficializzati. |
@@ -461,8 +473,8 @@ Le entry root documentali V1 sono proiezioni sicure dei writer reali. I campi li
   - `@documenti_magazzino`: stato precedente "BLOCCO ARCHITETTURALE — boundary da estendere"; stato aggiornato "BLOCCO RUNTIME — resolver `post-llm-resolver.js` da estendere per consumare accessMode `collection_root`".
   - `@documenti_generici`: stato precedente "BLOCCO ARCHITETTURALE — boundary da estendere"; stato aggiornato "BLOCCO RUNTIME — resolver `post-llm-resolver.js` da estendere per consumare accessMode `collection_root`".
 - **Motivazione**: il codice reale scrive root collection `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`; il registro v0.5 le descriveva come documenti `storage/@documenti_*`.
-- **Conseguenza operativa**: le voci `storage/@documenti_generici`, `storage/@documenti_magazzino`, `storage/@documenti_mezzi` restano nel registro come storico ma sono marcate "DEPRECATA — DA SOSTITUIRE CON ROOT COLLECTION".
-- **Blocco boundary**: il prompt v0.6 non introduce nuovi `accessMode` e non mappa root collection come pseudo-documenti `storage`. Serve estensione architetturale esplicita prima del motore generico v1.
+- **Conseguenza operativa 2026-05-06**: le voci `storage/@documenti_generici`, `storage/@documenti_magazzino`, `storage/@documenti_mezzi` restano nel registro solo come storico. Le entry boundary `firestore-storage-documenti-*-doc` sono rimosse e `view.config.ts` punta alle root sostitutive.
+- **Boundary V1**: le root collection sono operative con `accessMode: "collection_root"` tramite `firestore-documenti-generici-root`, `firestore-documenti-magazzino-root`, `firestore-documenti-mezzi-root`.
 
 ### Root collection Cisterna Caravate
 - **Data decisione**: 2026-05-04.
