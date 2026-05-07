@@ -1,2 +1,16 @@
-{"prompt":"profilo autista Sandro Calabrese","durationMs":3084,"responseLength":97,"ok":true,"ts":"2026-05-04T15:38:35.093Z"}
-{"prompt":"mostrami i rifornimenti di oggi","durationMs":3059,"responseLength":67,"ok":true,"ts":"2026-05-04T15:38:39.985Z"}
+{"prompt":"stato euromecc","durationMs":3226,"responseLength":150,"ok":true,"ts":"2026-05-06T18:55:39.454Z"}
+{"prompt":"documenti mezzo TI313387","durationMs":5113,"responseLength":2234,"ok":true,"ts":"2026-05-06T18:55:48.543Z"}
+{"prompt":"schede cisterna","durationMs":3037,"responseLength":150,"ok":true,"ts":"2026-05-06T18:55:53.643Z"}
+{"prompt":"mezzo TI313387","durationMs":3041,"responseLength":2234,"ok":true,"ts":"2026-05-06T18:55:59.107Z"}
+{"prompt":"rifornimenti TI313387","durationMs":4132,"responseLength":2234,"ok":true,"ts":"2026-05-06T18:56:05.799Z"}
+{"prompt":"profilo autista DANIELE LIVI","durationMs":3150,"responseLength":487,"ok":true,"ts":"2026-05-06T18:56:11.214Z"}
+{"prompt":"mezzo TI313387","durationMs":5072,"responseLength":2234,"ok":true,"ts":"2026-05-06T18:56:18.694Z"}
+{"prompt":"schede cisterna","durationMs":4074,"responseLength":150,"ok":true,"ts":"2026-05-06T18:56:24.970Z"}
+{"prompt":"stato euromecc","durationMs":3008,"responseLength":150,"ok":true,"ts":"2026-05-06T18:56:28.017Z"}
+{"prompt":"ricerca TI313387","durationMs":4084,"responseLength":5078,"ok":true,"ts":"2026-05-06T18:56:32.143Z"}
+{"prompt":"profilo autista DANIELE LIVI","durationMs":3078,"responseLength":487,"ok":true,"ts":"2026-05-06T18:56:37.863Z"}
+{"prompt":"mezzo TI313387","durationMs":5082,"responseLength":2234,"ok":true,"ts":"2026-05-06T18:56:43.053Z"}
+{"prompt":"schede cisterna","durationMs":3025,"responseLength":150,"ok":true,"ts":"2026-05-06T18:56:46.167Z"}
+{"prompt":"stato euromecc","durationMs":2047,"responseLength":150,"ok":true,"ts":"2026-05-06T18:56:48.267Z"}
+{"prompt":"ricerca TI313387","durationMs":4136,"responseLength":5078,"ok":true,"ts":"2026-05-06T18:56:52.490Z"}
+{"prompt":"asdfghjkl","durationMs":4050,"responseLength":67,"ok":true,"ts":"2026-05-06T18:56:58.590Z"}

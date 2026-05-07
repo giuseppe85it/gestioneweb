@@ -1,0 +1,16 @@
+[catalog-validator] {"requestId":"chat-tool-use-aa8a6cb9-4338-4a72-bf83-796745eb9287","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-359d4336-7775-4707-932d-75157f07fe56","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-e52c3874-c7ea-41f0-ad1b-b14724ce0e5e","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-f9e483af-5b90-4a15-b6b3-6de24d2ae8ee","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-f4526ee9-65b0-4ec7-9958-a065830c480f","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-1b751a51-a4a3-4a98-98fa-868c60bb119c","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[chat-tool-use] {"ts":"2026-05-06T18:48:20.727Z","kind":"fase_a_fallback","requestId":"chat-tool-use-3b147dab-d331-46ed-ae4f-043368a00d34","reason":"not_driver360"}
+[post-llm-resolver] DEPRECATED: percorso legacy Driver360 invocato; migrare al motore generico v1.
+[catalog-validator] {"requestId":"chat-tool-use-67fe85ec-f564-4192-8b51-0afda5bfb40b","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-ad837c32-7ea1-465f-a1fb-32f2b8e9d38d","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-fc7b38a1-23d2-4b78-89d9-aef81d905c40","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-ca42e50d-ac17-4eeb-ac21-0cceed1f7bd0","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[catalog-validator] {"requestId":"chat-tool-use-8921b78c-2ad5-41b8-a8d5-4a12776ab128","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
+[chat-tool-use] {"ts":"2026-05-06T18:56:58.233Z","kind":"fase_a_fallback","requestId":"chat-tool-use-bae586ee-008c-4b34-8953-381cb7a6a883","reason":"not_driver360"}
+[post-llm-resolver] DEPRECATED: percorso legacy Driver360 invocato; migrare al motore generico v1.
+[catalog-validator] {"requestId":"chat-tool-use-80d95042-62c0-4575-9c6a-9ecef8cc45c3","iter":0,"errors":["accompaniment.params.count deve essere numero non negativo"]}
