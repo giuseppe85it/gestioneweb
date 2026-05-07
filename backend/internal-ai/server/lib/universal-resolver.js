@@ -38,6 +38,31 @@ const DRIVER_QUERY_STOPWORDS = new Set([
 ]);
 
 const PLATE_TOKEN_PATTERN = /\b[A-Z]{2}\d{6}\b/gi;
+const STRICT_PLATE_TOKEN_PATTERN = /\b[A-Z]{2}\d{6}\b/i;
+const PLATE_MATCH_STRATEGIES = new Set([
+  "single_targa_exact_match",
+  "vehicle_plate_exact_match",
+  "material_or_vehicle_exact_match",
+  "vehicle_or_site_exact_match",
+  "driver_id_and_plate_exact_match",
+  "driver_badge_or_id_and_plate_exact_match",
+  "driver_badge_or_plate_exact_match",
+  "confirmed_vehicle_change_exact_match",
+  "tank_or_vehicle_exact_match",
+  "vehicle_or_category_exact_match",
+  "preventivo_or_plate_exact_match",
+]);
+const PLATE_FIELD_NAMES = Object.freeze([
+  "targa",
+  "mezzoTarga",
+  "targaMotrice",
+  "targaRimorchio",
+  "targaCamion",
+  "targaMezzo",
+  "targetTarga",
+  "dopoMotrice",
+  "dopoRimorchio",
+]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -63,6 +88,14 @@ function compactNominalValue(value) {
 
 function normalizeDriverSearchText(value) {
   return text(value).replace(PLATE_TOKEN_PATTERN, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizePlateValue(value) {
+  return text(value).toUpperCase();
+}
+
+function extractPlateToken(value) {
+  return normalizePlateValue(value).match(STRICT_PLATE_TOKEN_PATTERN)?.[0] ?? "";
 }
 
 function tokenizeDriverSearchText(value) {
@@ -141,11 +174,31 @@ function matchesDriverColleghiRecord(raw, matchInput) {
   return queryTokens.every((token) => nameTokens.includes(token));
 }
 
+function matchesPlateRecord(raw, matchInput) {
+  const plate = extractPlateToken(matchInput?.searchText);
+  if (!plate) return true;
+  return PLATE_FIELD_NAMES.some((field) => normalizePlateValue(raw?.[field]) === plate);
+}
+
 function matchesEntryRecord(entryConfig, raw, matchInput) {
   if (entryConfig.matchStrategy === "driver_name_or_badge_exact_token_match") {
     return matchesDriverColleghiRecord(raw, matchInput);
   }
+  if (PLATE_MATCH_STRATEGIES.has(entryConfig.matchStrategy)) {
+    return matchesPlateRecord(raw, matchInput);
+  }
   return true;
+}
+
+export function __diagnoseUniversalResolverPreSliceMatch(input = {}) {
+  const entryConfig = {
+    matchStrategy: text(input.matchStrategy),
+  };
+  const rawItems = Array.isArray(input.rawItems) ? input.rawItems : [];
+  const maxReturned = Number.isFinite(input.maxReturned) ? Number(input.maxReturned) : rawItems.length;
+  return rawItems
+    .filter((raw) => matchesEntryRecord(entryConfig, raw, input.matchInput ?? {}))
+    .slice(0, maxReturned);
 }
 
 function buildQueryMetadata(input) {

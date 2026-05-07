@@ -26,7 +26,7 @@ import {
   type NextRifornimentoReadOnlyItem,
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
-import "../pages/CentroControllo.css";
+import "./next-centro-controllo.css";
 
 type TabKey =
   | "manutenzioni"
@@ -981,7 +981,7 @@ export default function NextCentroControlloParityPage() {
   };
 
   return (
-    <div className="cc-page">
+    <div className="next-centro-controllo-scope cc-page">
       <div className="cc-shell">
         <header className="cc-header">
           <button className="cc-back" type="button" onClick={() => navigate("/next/gestione-operativa")}>

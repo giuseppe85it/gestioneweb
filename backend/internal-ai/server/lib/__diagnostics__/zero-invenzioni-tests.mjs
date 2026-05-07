@@ -18,7 +18,10 @@ import { REGISTRY_CONFIG_FASE_A } from "../registry.config.js";
 import { runQueryEngine } from "../query-engine.js";
 import relationConfigModule from "../relation.config.cjs";
 import { resolveRelationsForCertifiedRecord } from "../relation-resolver.js";
-import { runUniversalResolverFaseA } from "../universal-resolver.js";
+import {
+  __diagnoseUniversalResolverPreSliceMatch,
+  runUniversalResolverFaseA,
+} from "../universal-resolver.js";
 
 dotenv.config({
   path: path.resolve(process.cwd(), "backend/internal-ai/.env"),
@@ -784,6 +787,57 @@ async function runT28() {
     : makeResult("T28", "FAIL", "registro non promosso a v1.0 nonostante assenza DA VERIFICARE nel piano");
 }
 
+async function runT29() {
+  const rawItems = [
+    { id: "first", targa: "AA000001" },
+    { id: "second", targa: "ZZ123456" },
+    { id: "third", mezzoTarga: "YY999999" },
+  ];
+  const strategies = [
+    "single_targa_exact_match",
+    "vehicle_plate_exact_match",
+    "material_or_vehicle_exact_match",
+    "vehicle_or_site_exact_match",
+  ];
+  const failures = [];
+
+  for (const strategy of strategies) {
+    const matched = __diagnoseUniversalResolverPreSliceMatch({
+      matchStrategy: strategy,
+      rawItems,
+      matchInput: { searchText: "profilo mezzo ZZ123456" },
+      maxReturned: 2,
+    });
+    if (matched.length !== 1 || matched[0]?.id !== "second") {
+      failures.push(`${strategy}: filtro targa degenerato, ids=${matched.map((entry) => entry.id).join(",")}`);
+    }
+  }
+
+  const capped = __diagnoseUniversalResolverPreSliceMatch({
+    matchStrategy: "single_targa_exact_match",
+    rawItems,
+    matchInput: { searchText: "ZZ123456" },
+    maxReturned: 1,
+  });
+  if (capped.length !== 1 || capped[0]?.id !== "second") {
+    failures.push("single_targa_exact_match: cap applicato prima del filtro targa");
+  }
+
+  const noMatch = __diagnoseUniversalResolverPreSliceMatch({
+    matchStrategy: "vehicle_plate_exact_match",
+    rawItems,
+    matchInput: { searchText: "ZZ654321" },
+    maxReturned: 2,
+  });
+  if (noMatch.length !== 0) {
+    failures.push(`vehicle_plate_exact_match: targa assente non deve restituire record, count=${noMatch.length}`);
+  }
+
+  return failures.length
+    ? makeResult("T29", "FAIL", failures.join("; "))
+    : makeResult("T29", "PASS", "matchStrategy targa filtrano prima del cap su dataset sintetico");
+}
+
 function renderReport(results) {
   const t5 = results.find((entry) => entry.id === "T5");
   const rows = results.map((entry) => `| ${entry.id} | ${entry.status} | ${entry.detail || "-"} |`).join("\n");
@@ -843,6 +897,7 @@ const results = [
   await runT26(),
   await runT27(),
   await runT28(),
+  await runT29(),
 ];
 
 await fs.mkdir(path.dirname(REPORT_PATH), { recursive: true });
