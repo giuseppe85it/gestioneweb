@@ -40,8 +40,6 @@ type NextNormalizedLegacyRifornimento = {
   note: string | null;
   autistaNome: string | null;
   badgeAutista: string | null;
-  metodoPagamento: NextRifornimentoMetodoPagamento | null;
-  paese: NextRifornimentoPaese | null;
   sourceKind: NextLegacySourceKind;
   sourceKey: string;
 };
@@ -104,10 +102,6 @@ export type NextRifornimentoFieldQuality =
 export type NextRifornimentoCurrency = "EUR" | "CHF" | null;
 
 export type NextRifornimentoProvenienza = "business" | "campo" | "ricostruito";
-
-export type NextRifornimentoMetodoPagamento = "piccadilly" | "eni" | "contanti";
-
-export type NextRifornimentoPaese = "IT" | "CH";
 
 export type NextRifornimentoSourceClassification = "canonico" | "ricostruito";
 
@@ -190,8 +184,6 @@ export type NextRifornimentoReadOnlyItem = {
     reliability: Exclude<NextRifornimentoReliabilityStatus, "da_verificare">;
     reason: string;
   };
-  metodoPagamento: NextRifornimentoMetodoPagamento | null;
-  paese: NextRifornimentoPaese | null;
 };
 
 export type NextMezzoRifornimentiSnapshot = {
@@ -313,29 +305,6 @@ function resolveTipoFromLegacyRecord(record: NextRifornimentoRaw): {
     value: tipo,
     quality: tipo ? "certo" : "non_disponibile",
   };
-}
-
-function resolveMetodoPagamentoFromLegacyRecord(
-  record: NextRifornimentoRaw,
-): NextRifornimentoMetodoPagamento | null {
-  const raw = normalizeOptionalText(record.metodoPagamento);
-  if (!raw) return null;
-  const normalized = raw.toLowerCase().trim();
-  if (normalized === "piccadilly") return "piccadilly";
-  if (normalized === "eni") return "eni";
-  if (normalized === "contanti") return "contanti";
-  return null;
-}
-
-function resolvePaeseFromLegacyRecord(
-  record: NextRifornimentoRaw,
-): NextRifornimentoPaese | null {
-  const raw = normalizeOptionalText(record.paese);
-  if (!raw) return null;
-  const normalized = raw.toUpperCase().trim();
-  if (normalized === "IT") return "IT";
-  if (normalized === "CH") return "CH";
-  return null;
 }
 
 function extractAutistaNome(record: NextRifornimentoRaw): string | null {
@@ -553,8 +522,6 @@ function normalizeLegacyRifornimento(
     note: normalizeOptionalText(raw.note),
     autistaNome: extractAutistaNome(raw),
     badgeAutista: extractBadgeAutista(raw),
-    metodoPagamento: resolveMetodoPagamentoFromLegacyRecord(raw),
-    paese: resolvePaeseFromLegacyRecord(raw),
     sourceKind,
     sourceKey: sourceKind === "business" ? BUSINESS_DATASET_KEY : FIELD_DATASET_KEY,
   };
@@ -857,8 +824,6 @@ function buildBusinessOnlyOutput(
     sourceRecordIds,
     source: buildSourceAlias("business", "solo_business", sourceKeys, sourceRecordIds),
     sourceTrust,
-    metodoPagamento: row.metodoPagamento,
-    paese: row.paese,
   };
 }
 
@@ -917,8 +882,6 @@ function buildFieldOnlyOutput(
     sourceRecordIds,
     source: buildSourceAlias("campo", "solo_campo", sourceKeys, sourceRecordIds),
     sourceTrust,
-    metodoPagamento: row.metodoPagamento,
-    paese: row.paese,
   };
 }
 
@@ -1048,9 +1011,6 @@ function buildMergedOutput(
     fieldQuality,
   });
 
-  const metodoPagamento = businessRow.metodoPagamento ?? fieldRow.metodoPagamento;
-  const paese = businessRow.paese ?? fieldRow.paese;
-
   return {
     id: businessRow.id,
     mezzoTarga: businessRow.mezzoTarga,
@@ -1079,8 +1039,6 @@ function buildMergedOutput(
     sourceRecordIds,
     source: buildSourceAlias("ricostruito", matchStrategy, sourceKeys, sourceRecordIds),
     sourceTrust,
-    metodoPagamento,
-    paese,
   };
 }
 

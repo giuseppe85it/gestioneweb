@@ -26,8 +26,6 @@ import {
   type NextRifornimentoReadOnlyItem,
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
-import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
-import { buildNextDossierPath } from "./nextStructuralPaths";
 import "./next-centro-controllo.css";
 
 type TabKey =
@@ -51,8 +49,6 @@ type RefuelSourceFilter =
   | "distributore_piccadilly"
   | "distributore_eni"
   | "distributore_contanti";
-type MonthFilter = number | "all";
-type YearFilter = number | "all";
 
 type ScheduledMaintenanceRow = {
   id: string;
@@ -193,8 +189,8 @@ const deriveRefuelSource = (
 };
 
 const formatMediaLitriKm = (value: number): string => {
-  const fixed = value.toFixed(2);
-  return `${fixed.replace(".", ",")} km/L`;
+  const fixed = value.toFixed(4);
+  return fixed.replace(".", ",");
 };
 
 const safeText = (value: unknown): string => String(value ?? "").trim();
@@ -480,18 +476,10 @@ export default function NextCentroControlloParityPage() {
   const [richiesteOnlyNuove, setRichiesteOnlyNuove] = useState(true);
 
   const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<YearFilter>(now.getFullYear());
-  const [targaFilterInput, setTargaFilterInput] = useState("");
-  const [targaFilterSelected, setTargaFilterSelected] = useState<string | null>(null);
-  const [targaDropdownOpen, setTargaDropdownOpen] = useState(false);
-  const [autistaFilterInput, setAutistaFilterInput] = useState("");
-  const [autistaFilterSelected, setAutistaFilterSelected] = useState<string | null>(null);
-  const [autistaDropdownOpen, setAutistaDropdownOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+  const [targaFilter, setTargaFilter] = useState("");
   const [refuelSourceFilter, setRefuelSourceFilter] = useState<RefuelSourceFilter>("all");
-
-  const [colleghiList, setColleghiList] = useState<{ id: string; nome: string }[]>([]);
-  const [mezziTargheList, setMezziTargheList] = useState<string[]>([]);
 
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingMaintenancePdf, setGeneratingMaintenancePdf] = useState(false);
@@ -634,53 +622,10 @@ export default function NextCentroControlloParityPage() {
     }
   };
 
-  const loadColleghiAnagrafica = async () => {
-    try {
-      const snapshot = await readNextColleghiSnapshot();
-      const mapped = snapshot.items
-        .map((item) => ({
-          id: safeText(item.id),
-          nome: safeText(item.nome),
-        }))
-        .filter((entry) => entry.nome.length > 0)
-        .sort((left, right) =>
-          left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
-        );
-      setColleghiList(mapped);
-    } catch {
-      setColleghiList([]);
-    }
-  };
-
-  const loadMezziAnagrafica = async () => {
-    try {
-      const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
-      const targheSet = new Set<string>();
-      for (const item of snapshot.items) {
-        const targaNorm = normalizeTarga(item.targa);
-        if (targaNorm) targheSet.add(targaNorm);
-      }
-      const mapped = Array.from(targheSet).sort((left, right) =>
-        left.localeCompare(right, "it", { sensitivity: "base" }),
-      );
-      setMezziTargheList(mapped);
-    } catch {
-      setMezziTargheList([]);
-    }
-  };
-
   useEffect(() => {
     void loadScheduledMaintenances();
     void loadRefuels();
     void loadAutistiReadOnlySections();
-  }, []);
-
-  useEffect(() => {
-    void loadColleghiAnagrafica();
-  }, []);
-
-  useEffect(() => {
-    void loadMezziAnagrafica();
   }, []);
 
   useEffect(() => {
@@ -717,29 +662,15 @@ export default function NextCentroControlloParityPage() {
   }, [refuelRows]);
 
   const filteredMonthlyRefuels = useMemo(() => {
-    const targaNorm = targaFilterSelected ? normalizeTarga(targaFilterSelected) : "";
-    const autistaNorm = autistaFilterSelected
-      ? autistaFilterSelected.trim().toLowerCase()
-      : "";
+    const targaNorm = normalizeTarga(targaFilter);
     return refuelRows.filter((item) => {
-      if (selectedMonth !== "all" && item.dateObj.getMonth() + 1 !== selectedMonth) return false;
-      if (selectedYear !== "all" && item.dateObj.getFullYear() !== selectedYear) return false;
-      if (targaNorm && item.targa !== targaNorm) return false;
+      if (item.dateObj.getMonth() + 1 !== selectedMonth) return false;
+      if (item.dateObj.getFullYear() !== selectedYear) return false;
+      if (targaNorm && !item.targa.includes(targaNorm)) return false;
       if (refuelSourceFilter !== "all" && item.sourceKey !== refuelSourceFilter) return false;
-      if (autistaNorm) {
-        const itemAutista = (item.autistaNome ?? "").trim().toLowerCase();
-        if (itemAutista !== autistaNorm) return false;
-      }
       return true;
     });
-  }, [
-    refuelRows,
-    selectedMonth,
-    selectedYear,
-    targaFilterSelected,
-    refuelSourceFilter,
-    autistaFilterSelected,
-  ]);
+  }, [refuelRows, selectedMonth, selectedYear, targaFilter, refuelSourceFilter]);
 
   const monthlyTotals = useMemo(() => {
     const litri = filteredMonthlyRefuels.reduce((sum, item) => sum + (item.litri ?? 0), 0);
@@ -749,138 +680,38 @@ export default function NextCentroControlloParityPage() {
     };
   }, [filteredMonthlyRefuels]);
 
-  const colleghiSuggestions = useMemo(() => {
-    const query = autistaFilterInput.trim().toLowerCase();
-    if (!query) return colleghiList;
-    return colleghiList.filter((entry) =>
-      entry.nome.toLowerCase().includes(query),
-    );
-  }, [colleghiList, autistaFilterInput]);
-
-  const targheSuggestions = useMemo(() => {
-    const query = normalizeTargaFilter(targaFilterInput);
-    if (!query) return mezziTargheList;
-    return mezziTargheList.filter((targa) => targa.includes(query));
-  }, [mezziTargheList, targaFilterInput]);
-
-  const refuelSeedIndex = useMemo(() => {
-    const fullSortedByTarga = new Map<string, RefuelRow[]>();
-    const fullSorted = [...refuelRows].sort((left, right) => {
+  const filteredMonthlyRefuelsWithMedia = useMemo(() => {
+    const sortedAsc = [...filteredMonthlyRefuels].sort((left, right) => {
       const targaCompare = left.targa.localeCompare(right.targa, "it", { sensitivity: "base" });
       if (targaCompare !== 0) return targaCompare;
       return left.dateObj.getTime() - right.dateObj.getTime();
     });
-    for (const row of fullSorted) {
-      const list = fullSortedByTarga.get(row.targa);
-      if (list) {
-        list.push(row);
-      } else {
-        fullSortedByTarga.set(row.targa, [row]);
-      }
-    }
-    const findSeed = (row: RefuelRow): RefuelRow | null => {
-      const list = fullSortedByTarga.get(row.targa);
-      if (!list || list.length === 0) return null;
-      const rowTs = row.dateObj.getTime();
-      for (let i = list.length - 1; i >= 0; i -= 1) {
-        const candidate = list[i];
-        if (
-          candidate.dateObj.getTime() < rowTs &&
-          typeof candidate.km === "number" &&
-          candidate.km > 0 &&
-          typeof row.km === "number" &&
-          candidate.km < row.km
-        ) {
-          return candidate;
-        }
-      }
-      return null;
-    };
-    return { findSeed };
-  }, [refuelRows]);
-
-  const filteredMonthlyRefuelsWithMedia = useMemo(() => {
-    const mediaById = new Map<string, { label: string; value: number | null }>();
-    for (const row of filteredMonthlyRefuels) {
-      const seed = refuelSeedIndex.findSeed(row);
+    const previousByTarga = new Map<string, RefuelRow>();
+    const mediaById = new Map<string, string>();
+    for (const row of sortedAsc) {
+      const key = row.targa;
+      const previous = previousByTarga.get(key) ?? null;
       let mediaLabel = "—";
-      let mediaValue: number | null = null;
       if (
-        seed &&
+        previous &&
         typeof row.km === "number" && row.km > 0 &&
-        typeof seed.km === "number" && seed.km > 0 &&
-        row.km > seed.km &&
+        typeof previous.km === "number" && previous.km > 0 &&
+        row.km > previous.km &&
         typeof row.litri === "number" && row.litri > 0
       ) {
-        const mediaKmL = (row.km - seed.km) / row.litri;
-        if (Number.isFinite(mediaKmL) && mediaKmL > 0) {
-          mediaLabel = formatMediaLitriKm(mediaKmL);
-          mediaValue = mediaKmL;
+        const media = row.litri / (row.km - previous.km);
+        if (Number.isFinite(media) && media > 0) {
+          mediaLabel = formatMediaLitriKm(media);
         }
       }
-      mediaById.set(`${row.id}_${row.dateObj.getTime()}`, {
-        label: mediaLabel,
-        value: mediaValue,
-      });
+      mediaById.set(`${row.id}_${row.dateObj.getTime()}`, mediaLabel);
+      previousByTarga.set(key, row);
     }
-    return filteredMonthlyRefuels.map((row) => {
-      const entry = mediaById.get(`${row.id}_${row.dateObj.getTime()}`);
-      return {
-        row,
-        mediaLitriKm: entry?.label ?? "—",
-        mediaLitriKmValue: entry?.value ?? null,
-      };
-    });
-  }, [filteredMonthlyRefuels, refuelSeedIndex]);
-
-  const mediaFlottaMese = useMemo(() => {
-    const subset =
-      selectedMonth === "all" || selectedYear === "all"
-        ? refuelRows
-        : refuelRows.filter(
-            (item) =>
-              item.dateObj.getMonth() + 1 === selectedMonth &&
-              item.dateObj.getFullYear() === selectedYear,
-          );
-    let sumKm = 0;
-    let sumLitri = 0;
-    for (const row of subset) {
-      const seed = refuelSeedIndex.findSeed(row);
-      if (
-        seed &&
-        typeof row.km === "number" && row.km > 0 &&
-        typeof seed.km === "number" && seed.km > 0 &&
-        row.km > seed.km &&
-        typeof row.litri === "number" && row.litri > 0
-      ) {
-        const delta = row.km - seed.km;
-        if (Number.isFinite(delta) && delta > 0) {
-          sumKm += delta;
-          sumLitri += row.litri;
-        }
-      }
-    }
-    if (sumLitri <= 0) {
-      return {
-        value: null as number | null,
-        sogliaSopra: null as number | null,
-        sogliaSotto: null as number | null,
-      };
-    }
-    const value = sumKm / sumLitri;
-    if (!Number.isFinite(value) || value <= 0) {
-      return {
-        value: null as number | null,
-        sogliaSopra: null as number | null,
-        sogliaSotto: null as number | null,
-      };
-    }
-    return {
-      value,
-      sogliaSopra: value * 1.3,
-      sogliaSotto: value * 0.7,
-    };
-  }, [refuelRows, selectedMonth, selectedYear, refuelSeedIndex]);
+    return filteredMonthlyRefuels.map((row) => ({
+      row,
+      mediaLitriKm: mediaById.get(`${row.id}_${row.dateObj.getTime()}`) ?? "—",
+    }));
+  }, [filteredMonthlyRefuels]);
 
   const segnalazioniCounters = useMemo(
     () => ({
@@ -943,7 +774,7 @@ export default function NextCentroControlloParityPage() {
 
   const priorityItems = useMemo(() => {
     const nowTs = Date.now();
-    const globalTargaKey = targaFilterSelected ? normalizeTargaFilter(targaFilterSelected) : "";
+    const globalTargaKey = normalizeTargaFilter(targaFilter);
     const priorityFromControlli: PriorityItem[] = controlliRows
       .filter((row) => row.isKo && row.ts > 0 && nowTs - row.ts <= KO_PRIORITY_WINDOW_MS)
       .map((row, idx) => {
@@ -1053,7 +884,7 @@ export default function NextCentroControlloParityPage() {
     return ordered.filter((item) =>
       normalizeTargaFilter(item.targa).includes(globalTargaKey)
     );
-  }, [controlliRows, scheduledMaintenances, segnalazioniRows, richiesteRows, targaFilterSelected]);
+  }, [controlliRows, scheduledMaintenances, segnalazioniRows, richiesteRows, targaFilter]);
 
   const priorityHighCount = useMemo(
     () => priorityItems.filter((item) => item.score >= PRIORITY_HIGH_THRESHOLD).length,
@@ -1127,10 +958,7 @@ export default function NextCentroControlloParityPage() {
         })
       : buildPdfShareText({
           contextLabel: "Report rifornimenti mensili",
-          dateLabel:
-            selectedMonth === "all" || selectedYear === "all"
-              ? "Tutti i periodi"
-              : `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
+          dateLabel: `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
           fileName: pdfPreviewFileName || "rifornimenti-mensili.pdf",
           url: pdfPreviewUrl,
         });
@@ -1169,10 +997,6 @@ export default function NextCentroControlloParityPage() {
   };
 
   const handlePreviewPdf = async () => {
-    if (selectedMonth === "all" || selectedYear === "all") {
-      window.alert("Seleziona un mese e un anno specifici per generare il PDF mensile.");
-      return;
-    }
     if (!filteredMonthlyRefuels.length) {
       window.alert("Nessun rifornimento nel periodo selezionato.");
       return;
@@ -1188,7 +1012,7 @@ export default function NextCentroControlloParityPage() {
             anno: selectedYear,
             items: buildPdfItems(),
             filters: {
-              targa: targaFilterSelected ? normalizeTarga(targaFilterSelected) || null : null,
+              targa: normalizeTarga(targaFilter) || null,
             },
           }),
         fileName: `rifornimenti_mensili_${monthLabel}.pdf`,
@@ -1465,17 +1289,7 @@ export default function NextCentroControlloParityPage() {
                 <button
                   type="button"
                   className="cc-primary-btn"
-                  disabled={
-                    generatingPdf ||
-                    loadingRefuels ||
-                    selectedMonth === "all" ||
-                    selectedYear === "all"
-                  }
-                  title={
-                    selectedMonth === "all" || selectedYear === "all"
-                      ? "Seleziona mese e anno specifici per generare il PDF"
-                      : undefined
-                  }
+                  disabled={generatingPdf || loadingRefuels}
                   onClick={handlePreviewPdf}
                 >
                   {generatingPdf ? "Generazione in corso..." : "Anteprima PDF mensile"}
@@ -1487,13 +1301,9 @@ export default function NextCentroControlloParityPage() {
               <label>
                 Mese
                 <select
-                  value={selectedMonth === "all" ? "all" : String(selectedMonth)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setSelectedMonth(raw === "all" ? "all" : Number(raw));
-                  }}
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
                 >
-                  <option value="all">Tutto</option>
                   {MONTH_NAMES.map((label, idx) => (
                     <option key={label} value={idx + 1}>
                       {label}
@@ -1504,14 +1314,7 @@ export default function NextCentroControlloParityPage() {
 
               <label>
                 Anno
-                <select
-                  value={selectedYear === "all" ? "all" : String(selectedYear)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setSelectedYear(raw === "all" ? "all" : Number(raw));
-                  }}
-                >
-                  <option value="all">Tutto</option>
+                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}>
                   {availableYears.map((year) => (
                     <option key={year} value={year}>
                       {year}
@@ -1520,110 +1323,14 @@ export default function NextCentroControlloParityPage() {
                 </select>
               </label>
 
-              <label className="cc-targa-filter cc-combobox-label">
+              <label className="cc-targa-filter">
                 Filtro targa
-                <div className="cc-combobox">
-                  <input
-                    type="text"
-                    placeholder="Es. TI315407"
-                    value={targaFilterInput}
-                    onFocus={() => setTargaDropdownOpen(true)}
-                    onBlur={() => window.setTimeout(() => setTargaDropdownOpen(false), 120)}
-                    onChange={(e) => {
-                      setTargaFilterInput(e.target.value);
-                      setTargaDropdownOpen(true);
-                    }}
-                  />
-                  {(targaFilterInput.length > 0 || targaFilterSelected) && (
-                    <button
-                      type="button"
-                      className="cc-combobox-clear"
-                      aria-label="Cancella filtro targa"
-                      onClick={() => {
-                        setTargaFilterInput("");
-                        setTargaFilterSelected(null);
-                        setTargaDropdownOpen(false);
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                  {targaDropdownOpen && targheSuggestions.length > 0 && (
-                    <ul className="cc-combobox-list" role="listbox">
-                      {targheSuggestions.slice(0, 50).map((targa) => (
-                        <li key={targa}>
-                          <button
-                            type="button"
-                            className="cc-combobox-item"
-                            role="option"
-                            aria-selected={targaFilterSelected === targa}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setTargaFilterInput(targa);
-                              setTargaFilterSelected(targa);
-                              setTargaDropdownOpen(false);
-                            }}
-                          >
-                            {targa}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </label>
-
-              <label className="cc-combobox-label">
-                Autista
-                <div className="cc-combobox">
-                  <input
-                    type="text"
-                    placeholder="Cerca autista..."
-                    value={autistaFilterInput}
-                    onFocus={() => setAutistaDropdownOpen(true)}
-                    onBlur={() => window.setTimeout(() => setAutistaDropdownOpen(false), 120)}
-                    onChange={(e) => {
-                      setAutistaFilterInput(e.target.value);
-                      setAutistaDropdownOpen(true);
-                    }}
-                  />
-                  {(autistaFilterInput.length > 0 || autistaFilterSelected) && (
-                    <button
-                      type="button"
-                      className="cc-combobox-clear"
-                      aria-label="Cancella filtro autista"
-                      onClick={() => {
-                        setAutistaFilterInput("");
-                        setAutistaFilterSelected(null);
-                        setAutistaDropdownOpen(false);
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                  {autistaDropdownOpen && colleghiSuggestions.length > 0 && (
-                    <ul className="cc-combobox-list" role="listbox">
-                      {colleghiSuggestions.slice(0, 50).map((entry) => (
-                        <li key={entry.id || entry.nome}>
-                          <button
-                            type="button"
-                            className="cc-combobox-item"
-                            role="option"
-                            aria-selected={autistaFilterSelected === entry.nome}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setAutistaFilterInput(entry.nome);
-                              setAutistaFilterSelected(entry.nome);
-                              setAutistaDropdownOpen(false);
-                            }}
-                          >
-                            {entry.nome}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <input
+                  type="text"
+                  placeholder="Es. TI315407"
+                  value={targaFilter}
+                  onChange={(e) => setTargaFilter(e.target.value)}
+                />
               </label>
 
               <label>
@@ -1652,32 +1359,6 @@ export default function NextCentroControlloParityPage() {
                 <span>Totale litri</span>
                 <strong>{formatNumberIt(monthlyTotals.litri, 2)} L</strong>
               </div>
-              <div className="cc-summary-card">
-                <span>
-                  Media flotta
-                  <span
-                    className="cc-summary-info"
-                    title="Media pesata di tutti i camion del mese (km totali / litri totali). Non cambia con i filtri Targa/Autista/Fonte."
-                    aria-label="Info Media flotta"
-                  >
-                    ?
-                  </span>
-                </span>
-                <strong>
-                  {mediaFlottaMese.value !== null
-                    ? formatMediaLitriKm(mediaFlottaMese.value)
-                    : "—"}
-                </strong>
-                {mediaFlottaMese.value !== null &&
-                  mediaFlottaMese.sogliaSopra !== null &&
-                  mediaFlottaMese.sogliaSotto !== null && (
-                    <small className="cc-summary-sub">
-                      Soglia anomalia:{" "}
-                      {mediaFlottaMese.sogliaSotto.toFixed(2).replace(".", ",")} /{" "}
-                      {mediaFlottaMese.sogliaSopra.toFixed(2).replace(".", ",")} km/L
-                    </small>
-                  )}
-              </div>
             </div>
 
             {loadingRefuels && <div className="cc-status">Caricamento rifornimenti...</div>}
@@ -1697,55 +1378,21 @@ export default function NextCentroControlloParityPage() {
                       <th>Litri</th>
                       <th>Km</th>
                       <th>Fonte</th>
-                      <th className="cc-col-media">Media km/L</th>
+                      <th className="cc-col-media">Media L/km</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMonthlyRefuelsWithMedia.map(
-                      ({ row: item, mediaLitriKm, mediaLitriKmValue }) => {
-                        const isAnomala =
-                          mediaFlottaMese.value !== null &&
-                          mediaFlottaMese.sogliaSopra !== null &&
-                          mediaFlottaMese.sogliaSotto !== null &&
-                          mediaLitriKmValue !== null &&
-                          (mediaLitriKmValue > mediaFlottaMese.sogliaSopra ||
-                            mediaLitriKmValue < mediaFlottaMese.sogliaSotto);
-                        const cellClass = `cc-col-media${
-                          isAnomala ? " cc-media-anomala" : ""
-                        }`;
-                        return (
-                          <tr key={`${item.id}_${item.dateObj.getTime()}`}>
-                            <td>{formatDateIt(item.dateObj)}</td>
-                            <td>
-                              <button
-                                type="button"
-                                className="cc-targa-link"
-                                onClick={() => navigate(buildNextDossierPath(item.targa))}
-                                title={`Apri dossier mezzo ${item.targa}`}
-                              >
-                                {item.targa}
-                              </button>
-                            </td>
-                            <td>{item.autistaNome || "-"}</td>
-                            <td>{formatNumberIt(item.litri, 2)}</td>
-                            <td>{formatNumberIt(item.km, 0)}</td>
-                            <td>{item.sourceLabel}</td>
-                            <td className={cellClass}>
-                              {mediaLitriKm}
-                              {isAnomala && (
-                                <span
-                                  className="cc-media-warning-icon"
-                                  title="Valore anomalo (oltre ±30% dalla media flotta del mese). Possibile errore di battitura sui km."
-                                  aria-label="Valore anomalo"
-                                >
-                                  ⚠
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      },
-                    )}
+                    {filteredMonthlyRefuelsWithMedia.map(({ row: item, mediaLitriKm }) => (
+                      <tr key={`${item.id}_${item.dateObj.getTime()}`}>
+                        <td>{formatDateIt(item.dateObj)}</td>
+                        <td>{item.targa}</td>
+                        <td>{item.autistaNome || "-"}</td>
+                        <td>{formatNumberIt(item.litri, 2)}</td>
+                        <td>{formatNumberIt(item.km, 0)}</td>
+                        <td>{item.sourceLabel}</td>
+                        <td className="cc-col-media">{mediaLitriKm}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

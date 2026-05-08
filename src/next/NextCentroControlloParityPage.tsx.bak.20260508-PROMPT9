@@ -787,9 +787,7 @@ export default function NextCentroControlloParityPage() {
         if (
           candidate.dateObj.getTime() < rowTs &&
           typeof candidate.km === "number" &&
-          candidate.km > 0 &&
-          typeof row.km === "number" &&
-          candidate.km < row.km
+          candidate.km > 0
         ) {
           return candidate;
         }
