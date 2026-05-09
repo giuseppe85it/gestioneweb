@@ -2888,8 +2888,6 @@ export type RifornimentiMensiliPdfItem = {
   fonteLabel?: string | null;
   mediaKmLLabel?: string | null;
   isAnomala?: boolean | null;
-  hasKmAnomaly?: boolean | null;
-  hasLitriAnomaly?: boolean | null;
 };
 
 export type RifornimentiMensiliPdfInput = {
@@ -2909,12 +2907,6 @@ export type RifornimentiMensiliPdfInput = {
     kmRows: number;
     litriRows: number;
   };
-  anomalieDettaglio?: Array<{
-    targa: string;
-    dataDisplay: string;
-    autistaNome: string;
-    messages: string[];
-  }> | null;
 };
 
 const MONTHS_IT = [
@@ -3009,7 +3001,6 @@ export async function generateRifornimentiMensiliPDF(
 async function buildRifornimentiMensiliMonthlyDocument(
   input: RifornimentiMensiliPdfInput
 ): Promise<{ doc: jsPDF; fileName: string }> {
-  const WARNING_GLYPH = "*";
   const monthNum = Number(input?.mese);
   const month =
     Number.isFinite(monthNum) && monthNum >= 1 && monthNum <= 12 ? monthNum : 1;
@@ -3081,18 +3072,12 @@ async function buildRifornimentiMensiliMonthlyDocument(
       safeStr(item?.source) ||
       "-";
     const mediaLabel = safeStr(item?.mediaKmLLabel) || "—";
-    const litriText = formatPdfNumber(item?.litri, 2);
-    const kmText = formatPdfNumber(item?.km, 0);
-    const litriCell =
-      item?.hasLitriAnomaly === true ? `${litriText} ${WARNING_GLYPH}` : litriText;
-    const kmCell =
-      item?.hasKmAnomaly === true ? `${kmText} ${WARNING_GLYPH}` : kmText;
     return [
       safeStr(item?.data) || "-",
       fmtTarga(item?.targa) || "-",
       safeStr(item?.autistaNome) || "—",
-      litriCell,
-      kmCell,
+      formatPdfNumber(item?.litri, 2),
+      formatPdfNumber(item?.km, 0),
       fonte,
       mediaLabel,
     ];
@@ -3163,75 +3148,8 @@ async function buildRifornimentiMensiliMonthlyDocument(
     doc.setTextColor(80, 80, 80);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti · ${anomalie.litriRows} litri sospetti`;
+    const anomalieText = `⚠ ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti · ${anomalie.litriRows} litri sospetti`;
     doc.text(anomalieText, 14, summaryY);
-  }
-
-  const dettaglio = input?.anomalieDettaglio;
-  if (dettaglio && dettaglio.length > 0) {
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const FOOTER_RESERVE = 18;
-    const LEFT_MARGIN = 14;
-    const RIGHT_MARGIN = 14;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const usableWidth = pageWidth - LEFT_MARGIN - RIGHT_MARGIN;
-    const HEADER_HEIGHT = 6;
-    const BULLET_INDENT = 5;
-    const BULLET_LINE_HEIGHT = 5;
-    const ENTRY_GAP = 3;
-
-    let detailY = summaryY + 10;
-
-    const ensureSpace = async (needed: number) => {
-      if (detailY + needed > pageHeight - FOOTER_RESERVE) {
-        doc.addPage();
-        detailY = await drawHeader(doc, title);
-      }
-    };
-
-    await ensureSpace(14);
-    doc.setTextColor(...COLORS.textBlack);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Dettaglio anomalie rilevate", LEFT_MARGIN, detailY);
-    detailY += 2;
-    doc.setDrawColor(...COLORS.headerLine);
-    doc.setLineWidth(0.3);
-    doc.line(LEFT_MARGIN, detailY, pageWidth - RIGHT_MARGIN, detailY);
-    detailY += 5;
-
-    for (const entry of dettaglio) {
-      const wrappedBullets: string[][] = entry.messages.map((m) =>
-        doc.splitTextToSize(`• ${m}`, usableWidth - BULLET_INDENT) as string[],
-      );
-      const bulletsLineCount = wrappedBullets.reduce(
-        (sum, lines) => sum + lines.length,
-        0,
-      );
-      const entryHeight =
-        HEADER_HEIGHT + bulletsLineCount * BULLET_LINE_HEIGHT + ENTRY_GAP;
-
-      await ensureSpace(entryHeight);
-
-      doc.setTextColor(...COLORS.textBlack);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      const headerText = `${WARNING_GLYPH} ${entry.targa} - ${entry.dataDisplay} (${entry.autistaNome})`;
-      doc.text(headerText, LEFT_MARGIN, detailY);
-      detailY += HEADER_HEIGHT;
-
-      doc.setTextColor(90, 80, 60);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      for (const lines of wrappedBullets) {
-        for (const line of lines) {
-          doc.text(line, LEFT_MARGIN + BULLET_INDENT, detailY);
-          detailY += BULLET_LINE_HEIGHT;
-        }
-      }
-
-      detailY += ENTRY_GAP;
-    }
   }
 
   addStandardFooter(doc);

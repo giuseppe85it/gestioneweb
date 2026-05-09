@@ -2885,11 +2885,6 @@ export type RifornimentiMensiliPdfItem = {
   distributore?: string | null;
   note?: string | null;
   source?: string | null;
-  fonteLabel?: string | null;
-  mediaKmLLabel?: string | null;
-  isAnomala?: boolean | null;
-  hasKmAnomaly?: boolean | null;
-  hasLitriAnomaly?: boolean | null;
 };
 
 export type RifornimentiMensiliPdfInput = {
@@ -2899,22 +2894,6 @@ export type RifornimentiMensiliPdfInput = {
   filters?: {
     targa?: string | null;
   };
-  mediaFlotta?: {
-    value: number | null;
-    sogliaSopra: number | null;
-    sogliaSotto: number | null;
-  };
-  anomalieSummary?: {
-    totalRows: number;
-    kmRows: number;
-    litriRows: number;
-  };
-  anomalieDettaglio?: Array<{
-    targa: string;
-    dataDisplay: string;
-    autistaNome: string;
-    messages: string[];
-  }> | null;
 };
 
 const MONTHS_IT = [
@@ -3006,246 +2985,19 @@ export async function generateRifornimentiMensiliPDF(
   });
 }
 
-async function buildRifornimentiMensiliMonthlyDocument(
-  input: RifornimentiMensiliPdfInput
-): Promise<{ doc: jsPDF; fileName: string }> {
-  const WARNING_GLYPH = "*";
-  const monthNum = Number(input?.mese);
-  const month =
-    Number.isFinite(monthNum) && monthNum >= 1 && monthNum <= 12 ? monthNum : 1;
-  const yearNum = Number(input?.anno);
-  const year = Number.isFinite(yearNum) ? yearNum : new Date().getFullYear();
-
-  const targaFilter = fmtTarga(input?.filters?.targa || "");
-  const periodLabel = `${MONTHS_IT[month - 1]} ${year}`;
-  const title = targaFilter
-    ? `Report Rifornimenti Mensili - ${periodLabel} - Targa ${targaFilter}`
-    : `Report Rifornimenti Mensili - ${periodLabel}`;
-
-  const items = Array.isArray(input?.items) ? input.items : [];
-  const totalLitri = items.reduce(
-    (sum, item) => sum + (toFinitePdfNumber(item?.litri) ?? 0),
-    0,
-  );
-
-  const doc = new jsPDF({ orientation: "landscape" });
-  let currentY = await drawHeader(doc, title);
-
-  const mediaFlotta = input?.mediaFlotta;
-  if (mediaFlotta && mediaFlotta.value !== null) {
-    const valueLabel = `${mediaFlotta.value
-      .toFixed(2)
-      .replace(".", ",")} km/L`;
-    const rangeLabel =
-      mediaFlotta.sogliaSotto !== null && mediaFlotta.sogliaSopra !== null
-        ? `Range tipico: ${mediaFlotta.sogliaSotto
-            .toFixed(2)
-            .replace(".", ",")} – ${mediaFlotta.sogliaSopra
-            .toFixed(2)
-            .replace(".", ",")} km/L`
-        : "";
-
-    doc.setDrawColor(...COLORS.headerLine);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(14, currentY, 268, 14, 3, 3, "FD");
-    doc.setTextColor(...COLORS.textBlack);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text(`Media flotta del mese: ${valueLabel}`, 18, currentY + 6);
-    if (rangeLabel) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.text(rangeLabel, 18, currentY + 11);
-    }
-    currentY += 18;
-  } else if (mediaFlotta && mediaFlotta.value === null) {
-    doc.setTextColor(...COLORS.textBlack);
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(9);
-    doc.text(
-      "Media flotta non calcolabile (dati insufficienti).",
-      18,
-      currentY + 5,
-    );
-    currentY += 10;
-  }
-
-  const head = [
-    ["Data", "Targa", "Autista", "Litri", "Km", "Fonte", "Media km/L"],
-  ];
-
-  const body = items.map((item) => {
-    const fonte =
-      safeStr(item?.fonteLabel) ||
-      safeStr(item?.distributore) ||
-      safeStr(item?.source) ||
-      "-";
-    const mediaLabel = safeStr(item?.mediaKmLLabel) || "—";
-    const litriText = formatPdfNumber(item?.litri, 2);
-    const kmText = formatPdfNumber(item?.km, 0);
-    const litriCell =
-      item?.hasLitriAnomaly === true ? `${litriText} ${WARNING_GLYPH}` : litriText;
-    const kmCell =
-      item?.hasKmAnomaly === true ? `${kmText} ${WARNING_GLYPH}` : kmText;
-    return [
-      safeStr(item?.data) || "-",
-      fmtTarga(item?.targa) || "-",
-      safeStr(item?.autistaNome) || "—",
-      litriCell,
-      kmCell,
-      fonte,
-      mediaLabel,
-    ];
-  });
-
-  if (body.length === 0) {
-    body.push(["—", "—", "—", "—", "—", "—", "Nessun rifornimento nel periodo selezionato"]);
-  }
-
-  const anomalaFlags = items.map((item) => Boolean(item?.isAnomala));
-  const ANOMALA_BG: [number, number, number] = [255, 245, 244];
-
-  autoTable(doc, {
-    startY: currentY,
-    margin: { left: 14, right: 14 },
-    head,
-    body,
-    styles: {
-      font: "helvetica",
-      fontSize: 8,
-      cellPadding: 2.6,
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: COLORS.tableHeaderBg,
-      textColor: COLORS.tableHeaderText,
-      fontStyle: "bold",
-    },
-    alternateRowStyles: {
-      fillColor: COLORS.rowAlt,
-    },
-    columnStyles: {
-      0: { cellWidth: 26 },
-      1: { cellWidth: 30 },
-      2: { cellWidth: 60 },
-      3: { cellWidth: 22, halign: "right" },
-      4: { cellWidth: 26, halign: "right" },
-      5: { cellWidth: 50 },
-      6: { cellWidth: 32, halign: "right" },
-    },
-    didParseCell: (data) => {
-      if (data.section !== "body") return;
-      const idx = data.row.index;
-      if (idx >= 0 && idx < anomalaFlags.length && anomalaFlags[idx]) {
-        data.cell.styles.fillColor = ANOMALA_BG;
-      }
-    },
-  });
-
-  const lastY =
-    (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable
-      ?.finalY ?? currentY;
-  let summaryY = lastY + 8;
-
-  doc.setTextColor(...COLORS.textBlack);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(`Rifornimenti: ${items.length}`, 14, summaryY);
-  doc.text(
-    `Totale litri: ${formatPdfNumber(totalLitri, 2)} L`,
-    80,
-    summaryY,
-  );
-
-  const anomalie = input?.anomalieSummary;
-  if (anomalie && anomalie.totalRows > 0) {
-    summaryY += 8;
-    doc.setTextColor(80, 80, 80);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti · ${anomalie.litriRows} litri sospetti`;
-    doc.text(anomalieText, 14, summaryY);
-  }
-
-  const dettaglio = input?.anomalieDettaglio;
-  if (dettaglio && dettaglio.length > 0) {
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const FOOTER_RESERVE = 18;
-    const LEFT_MARGIN = 14;
-    const RIGHT_MARGIN = 14;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const usableWidth = pageWidth - LEFT_MARGIN - RIGHT_MARGIN;
-    const HEADER_HEIGHT = 6;
-    const BULLET_INDENT = 5;
-    const BULLET_LINE_HEIGHT = 5;
-    const ENTRY_GAP = 3;
-
-    let detailY = summaryY + 10;
-
-    const ensureSpace = async (needed: number) => {
-      if (detailY + needed > pageHeight - FOOTER_RESERVE) {
-        doc.addPage();
-        detailY = await drawHeader(doc, title);
-      }
-    };
-
-    await ensureSpace(14);
-    doc.setTextColor(...COLORS.textBlack);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Dettaglio anomalie rilevate", LEFT_MARGIN, detailY);
-    detailY += 2;
-    doc.setDrawColor(...COLORS.headerLine);
-    doc.setLineWidth(0.3);
-    doc.line(LEFT_MARGIN, detailY, pageWidth - RIGHT_MARGIN, detailY);
-    detailY += 5;
-
-    for (const entry of dettaglio) {
-      const wrappedBullets: string[][] = entry.messages.map((m) =>
-        doc.splitTextToSize(`• ${m}`, usableWidth - BULLET_INDENT) as string[],
-      );
-      const bulletsLineCount = wrappedBullets.reduce(
-        (sum, lines) => sum + lines.length,
-        0,
-      );
-      const entryHeight =
-        HEADER_HEIGHT + bulletsLineCount * BULLET_LINE_HEIGHT + ENTRY_GAP;
-
-      await ensureSpace(entryHeight);
-
-      doc.setTextColor(...COLORS.textBlack);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      const headerText = `${WARNING_GLYPH} ${entry.targa} - ${entry.dataDisplay} (${entry.autistaNome})`;
-      doc.text(headerText, LEFT_MARGIN, detailY);
-      detailY += HEADER_HEIGHT;
-
-      doc.setTextColor(90, 80, 60);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      for (const lines of wrappedBullets) {
-        for (const line of lines) {
-          doc.text(line, LEFT_MARGIN + BULLET_INDENT, detailY);
-          detailY += BULLET_LINE_HEIGHT;
-        }
-      }
-
-      detailY += ENTRY_GAP;
-    }
-  }
-
-  addStandardFooter(doc);
-
-  const datePart = `${String(month).padStart(2, "0")}-${year}`;
-  const fileName = `${sanitizeFileName(`rifornimenti_mensili_${datePart}`)}.pdf`;
-  return { doc, fileName };
-}
-
 export async function generateRifornimentiMensiliPDFBlob(
   input: RifornimentiMensiliPdfInput
 ): Promise<{ blob: Blob; fileName: string }> {
-  const { doc, fileName } = await buildRifornimentiMensiliMonthlyDocument(input);
-  return { blob: doc.output("blob") as Blob, fileName };
+  const payload = buildRifornimentiMensiliPayload(input);
+  return generateSmartPDFBlob({
+    kind: "table",
+    title: payload.title,
+    orientation: "landscape",
+    rows: payload.rows,
+    columns: payload.columns,
+    fontSize: 8,
+    tableWidth: "auto",
+  });
 }
 
 export type ManutenzioneProgrammataPdfItem = {

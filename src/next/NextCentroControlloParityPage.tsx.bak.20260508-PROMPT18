@@ -28,7 +28,6 @@ import {
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
 import { buildNextDossierPath } from "./nextStructuralPaths";
-import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
 import "./next-centro-controllo.css";
 
 type TabKey =
@@ -663,8 +662,6 @@ export default function NextCentroControlloParityPage() {
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [investigationRow, setInvestigationRow] = useState<RefuelRow | null>(null);
   const [investigationExpansion, setInvestigationExpansion] = useState<5 | 10 | "all">(5);
-  const [editRifornimentoOpen, setEditRifornimentoOpen] = useState(false);
-  const [editRifornimentoRow, setEditRifornimentoRow] = useState<RefuelRow | null>(null);
 
   const [analisiOpen, setAnalisiOpen] = useState(false);
   const [analisiActiveTab, setAnalisiActiveTab] = useState<
@@ -1764,46 +1761,7 @@ export default function NextCentroControlloParityPage() {
       fonteLabel: entry.row.sourceLabel,
       mediaKmLLabel: entry.mediaLitriKm,
       isAnomala: entry.anomalies.length > 0,
-      hasKmAnomaly: entry.anomalies.some((a) => a.target === "km"),
-      hasLitriAnomaly: entry.anomalies.some((a) => a.target === "litri"),
     }));
-
-  const buildAnomalieDettaglio = (): Array<{
-    targa: string;
-    dataDisplay: string;
-    autistaNome: string;
-    messages: string[];
-  }> => {
-    const anomale = filteredMonthlyRefuelsWithAnomalies.filter(
-      (entry) => entry.anomalies.length > 0,
-    );
-    const detailEntries = anomale.map((entry) => {
-      const seed = refuelSeedIndex.findSeed(entry.row);
-      const messages = entry.anomalies.map((anomaly) =>
-        describeAnomaly(anomaly, entry.row, seed),
-      );
-      return {
-        targa: entry.row.targa,
-        dataDisplay: formatDateItDisplay(entry.row.dateObj),
-        autistaNome: entry.row.autistaNome ?? "—",
-        messages,
-        _ts: entry.row.dateObj.getTime(),
-      };
-    });
-    detailEntries.sort((a, b) => {
-      const targaCmp = a.targa.localeCompare(b.targa, "it", {
-        sensitivity: "base",
-      });
-      if (targaCmp !== 0) return targaCmp;
-      return b._ts - a._ts;
-    });
-    return detailEntries.map(({ targa, dataDisplay, autistaNome, messages }) => ({
-      targa,
-      dataDisplay,
-      autistaNome,
-      messages,
-    }));
-  };
 
   const buildMaintenancePdfItems = (): ManutenzioneProgrammataPdfItem[] =>
     selectedMaintenanceRows.map((row) => ({
@@ -1913,7 +1871,6 @@ export default function NextCentroControlloParityPage() {
               kmRows: anomaliesSummary.kmRows,
               litriRows: anomaliesSummary.litriRows,
             },
-            anomalieDettaglio: buildAnomalieDettaglio(),
           }),
         fileName: `rifornimenti_mensili_${monthLabel}.pdf`,
         previousUrl: pdfPreviewUrl,
@@ -2503,28 +2460,17 @@ export default function NextCentroControlloParityPage() {
                             </button>
                           );
                         };
-                        const trClassNames = [trClass, "cc-row-clickable"]
-                          .filter(Boolean)
-                          .join(" ");
                         return (
                           <tr
                             key={`${item.id}_${item.dateObj.getTime()}`}
-                            className={trClassNames}
-                            title="Click per modificare il rifornimento"
-                            onClick={() => {
-                              setEditRifornimentoRow(item);
-                              setEditRifornimentoOpen(true);
-                            }}
+                            className={trClass}
                           >
                             <td>{formatDateIt(item.dateObj)}</td>
                             <td>
                               <button
                                 type="button"
                                 className="cc-targa-link"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(buildNextDossierPath(item.targa));
-                                }}
+                                onClick={() => navigate(buildNextDossierPath(item.targa))}
                                 title={`Apri dossier mezzo ${item.targa}`}
                               >
                                 {item.targa}
@@ -3867,20 +3813,6 @@ export default function NextCentroControlloParityPage() {
           );
         })()
       )}
-
-      <NextRifornimentoEditModal
-        open={editRifornimentoOpen}
-        row={editRifornimentoRow}
-        onClose={() => {
-          setEditRifornimentoOpen(false);
-          setEditRifornimentoRow(null);
-        }}
-        onSaved={() => {
-          setEditRifornimentoOpen(false);
-          setEditRifornimentoRow(null);
-          void loadRefuels();
-        }}
-      />
 
       <PdfPreviewModal
         open={pdfPreviewOpen}

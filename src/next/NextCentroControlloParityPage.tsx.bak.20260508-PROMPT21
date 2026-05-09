@@ -28,7 +28,6 @@ import {
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
 import { buildNextDossierPath } from "./nextStructuralPaths";
-import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
 import "./next-centro-controllo.css";
 
 type TabKey =
@@ -663,8 +662,6 @@ export default function NextCentroControlloParityPage() {
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [investigationRow, setInvestigationRow] = useState<RefuelRow | null>(null);
   const [investigationExpansion, setInvestigationExpansion] = useState<5 | 10 | "all">(5);
-  const [editRifornimentoOpen, setEditRifornimentoOpen] = useState(false);
-  const [editRifornimentoRow, setEditRifornimentoRow] = useState<RefuelRow | null>(null);
 
   const [analisiOpen, setAnalisiOpen] = useState(false);
   const [analisiActiveTab, setAnalisiActiveTab] = useState<
@@ -2503,28 +2500,17 @@ export default function NextCentroControlloParityPage() {
                             </button>
                           );
                         };
-                        const trClassNames = [trClass, "cc-row-clickable"]
-                          .filter(Boolean)
-                          .join(" ");
                         return (
                           <tr
                             key={`${item.id}_${item.dateObj.getTime()}`}
-                            className={trClassNames}
-                            title="Click per modificare il rifornimento"
-                            onClick={() => {
-                              setEditRifornimentoRow(item);
-                              setEditRifornimentoOpen(true);
-                            }}
+                            className={trClass}
                           >
                             <td>{formatDateIt(item.dateObj)}</td>
                             <td>
                               <button
                                 type="button"
                                 className="cc-targa-link"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(buildNextDossierPath(item.targa));
-                                }}
+                                onClick={() => navigate(buildNextDossierPath(item.targa))}
                                 title={`Apri dossier mezzo ${item.targa}`}
                               >
                                 {item.targa}
@@ -3867,20 +3853,6 @@ export default function NextCentroControlloParityPage() {
           );
         })()
       )}
-
-      <NextRifornimentoEditModal
-        open={editRifornimentoOpen}
-        row={editRifornimentoRow}
-        onClose={() => {
-          setEditRifornimentoOpen(false);
-          setEditRifornimentoRow(null);
-        }}
-        onSaved={() => {
-          setEditRifornimentoOpen(false);
-          setEditRifornimentoRow(null);
-          void loadRefuels();
-        }}
-      />
 
       <PdfPreviewModal
         open={pdfPreviewOpen}

@@ -2888,8 +2888,6 @@ export type RifornimentiMensiliPdfItem = {
   fonteLabel?: string | null;
   mediaKmLLabel?: string | null;
   isAnomala?: boolean | null;
-  hasKmAnomaly?: boolean | null;
-  hasLitriAnomaly?: boolean | null;
 };
 
 export type RifornimentiMensiliPdfInput = {
@@ -3009,7 +3007,6 @@ export async function generateRifornimentiMensiliPDF(
 async function buildRifornimentiMensiliMonthlyDocument(
   input: RifornimentiMensiliPdfInput
 ): Promise<{ doc: jsPDF; fileName: string }> {
-  const WARNING_GLYPH = "*";
   const monthNum = Number(input?.mese);
   const month =
     Number.isFinite(monthNum) && monthNum >= 1 && monthNum <= 12 ? monthNum : 1;
@@ -3081,18 +3078,12 @@ async function buildRifornimentiMensiliMonthlyDocument(
       safeStr(item?.source) ||
       "-";
     const mediaLabel = safeStr(item?.mediaKmLLabel) || "—";
-    const litriText = formatPdfNumber(item?.litri, 2);
-    const kmText = formatPdfNumber(item?.km, 0);
-    const litriCell =
-      item?.hasLitriAnomaly === true ? `${litriText} ${WARNING_GLYPH}` : litriText;
-    const kmCell =
-      item?.hasKmAnomaly === true ? `${kmText} ${WARNING_GLYPH}` : kmText;
     return [
       safeStr(item?.data) || "-",
       fmtTarga(item?.targa) || "-",
       safeStr(item?.autistaNome) || "—",
-      litriCell,
-      kmCell,
+      formatPdfNumber(item?.litri, 2),
+      formatPdfNumber(item?.km, 0),
       fonte,
       mediaLabel,
     ];
@@ -3157,6 +3148,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     summaryY,
   );
 
+  const WARNING_GLYPH = "*";
   const anomalie = input?.anomalieSummary;
   if (anomalie && anomalie.totalRows > 0) {
     summaryY += 8;
@@ -3175,9 +3167,9 @@ async function buildRifornimentiMensiliMonthlyDocument(
     const RIGHT_MARGIN = 14;
     const pageWidth = doc.internal.pageSize.getWidth();
     const usableWidth = pageWidth - LEFT_MARGIN - RIGHT_MARGIN;
-    const HEADER_HEIGHT = 6;
+    const HEADER_HEIGHT = 5;
     const BULLET_INDENT = 5;
-    const BULLET_LINE_HEIGHT = 5;
+    const BULLET_LINE_HEIGHT = 4;
     const ENTRY_GAP = 3;
 
     let detailY = summaryY + 10;
@@ -3192,7 +3184,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     await ensureSpace(14);
     doc.setTextColor(...COLORS.textBlack);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.text("Dettaglio anomalie rilevate", LEFT_MARGIN, detailY);
     detailY += 2;
     doc.setDrawColor(...COLORS.headerLine);
@@ -3215,14 +3207,14 @@ async function buildRifornimentiMensiliMonthlyDocument(
 
       doc.setTextColor(...COLORS.textBlack);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
+      doc.setFontSize(10);
       const headerText = `${WARNING_GLYPH} ${entry.targa} - ${entry.dataDisplay} (${entry.autistaNome})`;
       doc.text(headerText, LEFT_MARGIN, detailY);
       detailY += HEADER_HEIGHT;
 
       doc.setTextColor(90, 80, 60);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
+      doc.setFontSize(9);
       for (const lines of wrappedBullets) {
         for (const line of lines) {
           doc.text(line, LEFT_MARGIN + BULLET_INDENT, detailY);
