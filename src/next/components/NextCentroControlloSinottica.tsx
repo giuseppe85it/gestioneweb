@@ -7,6 +7,7 @@ import type {
 } from "../types/centroControlloTypes";
 import { detectRefuelAnomalies } from "../NextCentroControlloParityPage";
 import type { ActiveSession, HomeEvent } from "../../utils/homeEvents";
+import { classifyMezzoCategoria } from "../domain/nextCentroControlloDomain";
 import "./sinottica-flotta-v2-design-tokens.css";
 
 type MaintenanceStatus = "SCADUTA" | "IN_SCADENZA" | "OK" | "SENZA_DATA";
@@ -32,6 +33,11 @@ export type SinotticaManutenzioneRecord = {
   targa: string;
   data: string;
   descrizione: string;
+  gommeInterventoTipo?: "ordinario" | "straordinario" | null;
+  gommeStraordinario?: {
+    asseId: string | null;
+    motivo: string | null;
+  } | null;
 };
 
 export type SinotticaLavoroRow = {
@@ -153,7 +159,7 @@ type SinotticaRow = {
   kmTotali: number | null;
   kmDataTs: number | null;
   gommeUltimoTs: number | null;
-  gommeAxleProblema: { asseId: number; severity: "warn" | "bad" } | null;
+  gommeAxleProblema: { asseId: string; severity: "warn" | "bad" } | null;
   segnali: SegnaleChip[];
   hasUrgentSignals: boolean;
   hasWarning: boolean;
@@ -204,31 +210,19 @@ function parseDateFlexible(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-const MOTORIZED_CATEGORIES_NORMALIZED: ReadonlySet<string> = new Set<string>([
-  "trattore stradale",
-  "motrice 2 assi",
-  "motrice 3 assi",
-  "motrice 4 assi",
-]);
-
-function isMotorized(categoria: string | null | undefined): boolean {
-  if (!categoria) return false;
-  return MOTORIZED_CATEGORIES_NORMALIZED.has(
-    categoria.trim().toLowerCase(),
-  );
-}
-
 function deriveIconKind(
   categoria: string,
 ): "trattore" | "cisterna" | "rimorchio" {
-  const cat = (categoria ?? "").toLowerCase();
+  const cat: string = (categoria ?? "").toLowerCase();
   if (cat.includes("cisterna")) return "cisterna";
-  if (!isMotorized(categoria)) return "rimorchio";
+  if (classifyMezzoCategoria(categoria) === "rimorchio") return "rimorchio";
   return "trattore";
 }
 
 function deriveRowKind(categoria: string | null | undefined): RowKind {
-  return isMotorized(categoria) ? "motrice" : "rimorchio";
+  return classifyMezzoCategoria(categoria) === "motorizzato"
+    ? "motrice"
+    : "rimorchio";
 }
 
 function formatDateIt(ts: number | null): string {
@@ -284,6 +278,36 @@ function formatDeltaKmL(value: number | null): {
     };
   }
   return { text: "≈ 0", cls: "zero" };
+}
+
+function deriveGommeAxleProblema(
+  gommeForTarga: SinotticaManutenzioneRecord[],
+): string | null {
+  const sortedDesc: SinotticaManutenzioneRecord[] = [...gommeForTarga].sort(
+    (a: SinotticaManutenzioneRecord, b: SinotticaManutenzioneRecord) => {
+      const tsA: number = parseDateFlexible(a.data)?.getTime() ?? 0;
+      const tsB: number = parseDateFlexible(b.data)?.getTime() ?? 0;
+      return tsB - tsA;
+    },
+  );
+  for (const record of sortedDesc) {
+    if (
+      record.gommeInterventoTipo === "straordinario" &&
+      record.gommeStraordinario?.asseId
+    ) {
+      return record.gommeStraordinario.asseId;
+    }
+  }
+  return null;
+}
+
+function formatAxleLabel(asseId: string): string {
+  const normalized: string = asseId.trim().toLowerCase();
+  if (normalized === "anteriore") return "anteriore";
+  if (normalized === "posteriore") return "posteriore";
+  const match: RegExpMatchArray | null = normalized.match(/^asse(\d+)$/);
+  if (match) return match[1];
+  return asseId;
 }
 
 function deriveSegnTipo(
@@ -656,7 +680,8 @@ export default function NextCentroControlloSinottica({
       const kmTotali: number | null = kmMaxInfo.km;
       const kmDataTs: number | null = kmMaxInfo.dateTs;
 
-      const manutList = manutByTarga.get(targaUp) ?? [];
+      const manutList: SinotticaManutenzioneRecord[] =
+        manutByTarga.get(targaUp) ?? [];
       let gommeUltimoTs: number | null = null;
       for (const mr of manutList) {
         if (!isCambioGommeDescription(mr.descrizione)) continue;
@@ -665,6 +690,13 @@ export default function NextCentroControlloSinottica({
         const t = d.getTime();
         if (gommeUltimoTs === null || t > gommeUltimoTs) gommeUltimoTs = t;
       }
+      const gommeAxleProblemaAsseId: string | null =
+        deriveGommeAxleProblema(manutList);
+      const gommeAxleProblema:
+        | { asseId: string; severity: "warn" | "bad" }
+        | null = gommeAxleProblemaAsseId
+        ? { asseId: gommeAxleProblemaAsseId, severity: "warn" }
+        : null;
 
       const lvList = lavoriByTarga.get(targaUp) ?? [];
       const lvUrg = lvList.filter((l) => l.urgenza === "alta").length;
@@ -757,7 +789,7 @@ export default function NextCentroControlloSinottica({
         kmTotali,
         kmDataTs,
         gommeUltimoTs,
-        gommeAxleProblema: null,
+        gommeAxleProblema,
         segnali: chips,
         hasUrgentSignals: hasUrg,
         hasWarning,
@@ -1227,7 +1259,7 @@ export default function NextCentroControlloSinottica({
                   : "ccs-axle-badge"
               }
             >
-              Asse {r.gommeAxleProblema.asseId} da verificare
+              Asse {formatAxleLabel(r.gommeAxleProblema.asseId)} da verificare
             </span>
           )}
         </div>

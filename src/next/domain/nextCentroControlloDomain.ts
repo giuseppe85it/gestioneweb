@@ -21,16 +21,43 @@ const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const CATEGORIE_RIMORCHI_HOME = [
+export type MezzoCategoryKind = "motorizzato" | "rimorchio";
+
+const CATEGORIE_MOTORIZZATE_NORMALIZED: ReadonlySet<string> = new Set<string>([
+  "trattore stradale",
+  "motrice 2 assi",
+  "motrice 3 assi",
+  "motrice 4 assi",
+]);
+
+const CATEGORIE_RIMORCHI_NORMALIZED: ReadonlySet<string> = new Set<string>([
   "biga",
   "vasca",
   "centina",
   "semirimorchio asse fisso",
   "semirimorchio asse sterzante",
-] as const;
-const CATEGORIE_RIMORCHI_HOME_SET = new Set(
-  CATEGORIE_RIMORCHI_HOME.map((value) => value.trim().toLowerCase())
-);
+]);
+
+/**
+ * Classifica una categoria mezzo come "motorizzato" o "rimorchio".
+ * Default conservativo "motorizzato": una categoria sconosciuta finisce
+ * nel tab Mezzi con motore (visibile subito), non nascosta nei rimorchi.
+ */
+export function classifyMezzoCategoria(
+  categoria: string | null | undefined,
+): MezzoCategoryKind {
+  if (!categoria) return "motorizzato";
+  const norm: string = categoria.trim().toLowerCase();
+  if (CATEGORIE_MOTORIZZATE_NORMALIZED.has(norm)) return "motorizzato";
+  if (CATEGORIE_RIMORCHI_NORMALIZED.has(norm)) return "rimorchio";
+  if (norm.includes("rimorchio") || norm.includes("semirimorchio")) {
+    return "rimorchio";
+  }
+  if (norm.includes("motrice") || norm.includes("trattore")) {
+    return "motorizzato";
+  }
+  return "motorizzato";
+}
 
 type MezzoRecord = Record<string, unknown>;
 type SessioneRecord = Record<string, unknown>;
@@ -1078,8 +1105,7 @@ function buildImportantAutistiItems(
 }
 
 function isRimorchioCategoria(categoria: string | null): boolean {
-  if (!categoria) return false;
-  return CATEGORIE_RIMORCHI_HOME_SET.has(categoria.trim().toLowerCase());
+  return classifyMezzoCategoria(categoria) === "rimorchio";
 }
 
 function buildAssetLocationLists(

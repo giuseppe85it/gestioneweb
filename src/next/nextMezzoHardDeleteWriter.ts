@@ -48,6 +48,19 @@ function recordTargaCandidates(record: RawRecord): string[] {
   return list;
 }
 
+function recordMatchesMezzo(
+  record: unknown,
+  targaUp: string,
+  mezzoId: string,
+): boolean {
+  if (!isRecord(record)) return false;
+  if (targaUp && recordTargaCandidates(record).includes(targaUp)) return true;
+  if (mezzoId && typeof record.mezzoId === "string") {
+    if (String(record.mezzoId).trim() === mezzoId) return true;
+  }
+  return false;
+}
+
 export type HardDeleteResult = {
   ok: boolean;
   error?: string;
@@ -74,12 +87,10 @@ export async function previewHardDeleteCounts(
 ): Promise<HardDeletePreview> {
   const targaUp: string = normalizeTarga(targa);
   const idTrim: string = String(mezzoId ?? "").trim();
-  const countByTarga = async (key: string): Promise<number> => {
+  const countByMezzo = async (key: string): Promise<number> => {
     const list: unknown[] = unwrapList(await getItemSync(key));
-    return list.filter(
-      (r: unknown) =>
-        isRecord(r) && recordTargaCandidates(r).includes(targaUp),
-    ).length;
+    return list.filter((r: unknown) => recordMatchesMezzo(r, targaUp, idTrim))
+      .length;
   };
   const mezziList: unknown[] = unwrapList(await getItemSync(MEZZI_KEY));
   const mezziCount: number = mezziList.filter(
@@ -87,29 +98,29 @@ export async function previewHardDeleteCounts(
   ).length;
   return {
     mezzi: mezziCount,
-    rifornimentiDossier: await countByTarga(DOSSIER_RIFORNIMENTI_KEY),
-    rifornimentiTmp: await countByTarga(RIFORNIMENTI_TMP_KEY),
-    manutenzioni: await countByTarga(MANUTENZIONI_KEY),
-    lavori: await countByTarga(LAVORI_KEY),
-    segnalazioni: await countByTarga(SEGNALAZIONI_KEY),
-    controlli: await countByTarga(CONTROLLI_KEY),
-    richieste: await countByTarga(RICHIESTE_KEY),
-    gommeTmp: await countByTarga(GOMME_TMP_KEY),
-    gommeEventi: await countByTarga(GOMME_EVENTI_KEY),
-    sessioni: await countByTarga(SESSIONI_KEY),
+    rifornimentiDossier: await countByMezzo(DOSSIER_RIFORNIMENTI_KEY),
+    rifornimentiTmp: await countByMezzo(RIFORNIMENTI_TMP_KEY),
+    manutenzioni: await countByMezzo(MANUTENZIONI_KEY),
+    lavori: await countByMezzo(LAVORI_KEY),
+    segnalazioni: await countByMezzo(SEGNALAZIONI_KEY),
+    controlli: await countByMezzo(CONTROLLI_KEY),
+    richieste: await countByMezzo(RICHIESTE_KEY),
+    gommeTmp: await countByMezzo(GOMME_TMP_KEY),
+    gommeEventi: await countByMezzo(GOMME_EVENTI_KEY),
+    sessioni: await countByMezzo(SESSIONI_KEY),
   };
 }
 
-async function deleteByTargaInDataset(
+async function deleteByMezzoInDataset(
   key: string,
   targaUp: string,
+  mezzoId: string,
 ): Promise<number> {
   const raw: unknown = await getItemSync(key);
   const list: unknown[] = unwrapList(raw);
   if (list.length === 0) return 0;
   const filtered: unknown[] = list.filter((r: unknown) => {
-    if (!isRecord(r)) return true;
-    return !recordTargaCandidates(r).includes(targaUp);
+    return !recordMatchesMezzo(r, targaUp, mezzoId);
   });
   const removed: number = list.length - filtered.length;
   if (removed > 0) {
@@ -165,45 +176,55 @@ export async function hardDeleteMezzo(
       await runWithCloneWriteScopedAllowance(
         DELETE_MEZZO_WRITE_SCOPE,
         async () => {
-          const rifornimentiDossier: number = await deleteByTargaInDataset(
+          const rifornimentiDossier: number = await deleteByMezzoInDataset(
             DOSSIER_RIFORNIMENTI_KEY,
             targaUp,
+            idTrim,
           );
-          const rifornimentiTmp: number = await deleteByTargaInDataset(
+          const rifornimentiTmp: number = await deleteByMezzoInDataset(
             RIFORNIMENTI_TMP_KEY,
             targaUp,
+            idTrim,
           );
-          const manutenzioni: number = await deleteByTargaInDataset(
+          const manutenzioni: number = await deleteByMezzoInDataset(
             MANUTENZIONI_KEY,
             targaUp,
+            idTrim,
           );
-          const lavori: number = await deleteByTargaInDataset(
+          const lavori: number = await deleteByMezzoInDataset(
             LAVORI_KEY,
             targaUp,
+            idTrim,
           );
-          const segnalazioni: number = await deleteByTargaInDataset(
+          const segnalazioni: number = await deleteByMezzoInDataset(
             SEGNALAZIONI_KEY,
             targaUp,
+            idTrim,
           );
-          const controlli: number = await deleteByTargaInDataset(
+          const controlli: number = await deleteByMezzoInDataset(
             CONTROLLI_KEY,
             targaUp,
+            idTrim,
           );
-          const richieste: number = await deleteByTargaInDataset(
+          const richieste: number = await deleteByMezzoInDataset(
             RICHIESTE_KEY,
             targaUp,
+            idTrim,
           );
-          const gommeTmp: number = await deleteByTargaInDataset(
+          const gommeTmp: number = await deleteByMezzoInDataset(
             GOMME_TMP_KEY,
             targaUp,
+            idTrim,
           );
-          const gommeEventi: number = await deleteByTargaInDataset(
+          const gommeEventi: number = await deleteByMezzoInDataset(
             GOMME_EVENTI_KEY,
             targaUp,
+            idTrim,
           );
-          const sessioni: number = await deleteByTargaInDataset(
+          const sessioni: number = await deleteByMezzoInDataset(
             SESSIONI_KEY,
             targaUp,
+            idTrim,
           );
           const mezzi: number = await deleteMezzoById(idTrim);
           return {

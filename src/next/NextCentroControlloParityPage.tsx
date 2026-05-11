@@ -699,6 +699,11 @@ export default function NextCentroControlloParityPage() {
       targa: string;
       data: string;
       descrizione: string;
+      gommeInterventoTipo?: "ordinario" | "straordinario" | null;
+      gommeStraordinario?: {
+        asseId: string | null;
+        motivo: string | null;
+      } | null;
     }>
   >([]);
 
@@ -865,6 +870,7 @@ export default function NextCentroControlloParityPage() {
         autistaNome: string | null;
         manutenzioneDataFineTimestamp: number | null;
         manutenzioneDataFine: string;
+        manutenzioneContrattoAttivo: boolean;
         fotoUrl: string | null;
         dataScadenzaRevisioneTimestamp: number | null;
         dataUltimoCollaudoTimestamp: number | null;
@@ -938,6 +944,13 @@ export default function NextCentroControlloParityPage() {
         targa: normalizeTarga(r.targa),
         data: r.data,
         descrizione: r.descrizione,
+        gommeInterventoTipo: r.gommeInterventoTipo ?? null,
+        gommeStraordinario: r.gommeStraordinario
+          ? {
+              asseId: r.gommeStraordinario.asseId ?? null,
+              motivo: r.gommeStraordinario.motivo ?? null,
+            }
+          : null,
       }));
       setManutenzioniStorico(mapped);
     } catch {
