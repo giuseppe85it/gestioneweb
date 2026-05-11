@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
@@ -86,6 +86,8 @@ type SegnalazioneRow = {
   letta: boolean | null;
   isNuova: boolean;
   fotoCount: number;
+  chiusa: boolean;
+  hasLinkedLavoro: boolean;
 };
 
 type ControlloRow = {
@@ -101,6 +103,8 @@ type ControlloRow = {
   koList: string[];
   isKo: boolean;
   note: string;
+  chiuso: boolean;
+  hasLinkedLavoro: boolean;
 };
 
 type RichiestaRow = {
@@ -116,6 +120,7 @@ type RichiestaRow = {
   letta: boolean | null;
   isNuova: boolean;
   hasFoto: boolean;
+  evasa: boolean;
 };
 
 
@@ -468,6 +473,8 @@ const mapSegnalazioneRow = (item: NextAutistiSegnalazioneSectionItem): Segnalazi
   letta: item.letta,
   isNuova: item.isNuova,
   fotoCount: item.fotoCount,
+  chiusa: item.chiusa,
+  hasLinkedLavoro: item.hasLinkedLavoro,
 });
 
 const mapControlloRow = (item: NextAutistiControlloSectionItem): ControlloRow => {
@@ -498,6 +505,8 @@ const mapControlloRow = (item: NextAutistiControlloSectionItem): ControlloRow =>
     koList: item.koList,
     isKo: item.isKo,
     note: item.note || "",
+    chiuso: item.chiuso,
+    hasLinkedLavoro: item.hasLinkedLavoro,
   };
 };
 
@@ -514,6 +523,7 @@ const mapRichiestaRow = (item: NextAutistiRichiestaSectionItem): RichiestaRow =>
   letta: item.letta,
   isNuova: item.isNuova,
   hasFoto: item.hasFoto,
+  evasa: item.evasa,
 });
 
 const normalizeRefuelRecord = (
@@ -626,6 +636,32 @@ export default function NextCentroControlloParityPage() {
   const [deleteModalMezzoId, setDeleteModalMezzoId] = useState<string | null>(
     null,
   );
+
+  const advanceAfterMark = useCallback((markedId: string) => {
+    setEventModalEvents((prev: HomeEvent[]) => {
+      if (prev.length <= 1) {
+        setSinotticaEventoModalOpen(false);
+        setSinotticaEventoModalEvent(null);
+        setEventModalIndex(0);
+        return [];
+      }
+      const filtered: HomeEvent[] = prev.filter(
+        (e: HomeEvent) => e.id !== markedId,
+      );
+      if (filtered.length === 0) {
+        setSinotticaEventoModalOpen(false);
+        setSinotticaEventoModalEvent(null);
+        setEventModalIndex(0);
+        return [];
+      }
+      setEventModalIndex((prevIdx: number) => {
+        const nextIdx: number = Math.min(prevIdx, filtered.length - 1);
+        setSinotticaEventoModalEvent(filtered[nextIdx]);
+        return nextIdx;
+      });
+      return filtered;
+    });
+  }, []);
 
   const [colleghiList, setColleghiList] = useState<{ id: string; nome: string }[]>([]);
   const [mezziTargheList, setMezziTargheList] = useState<string[]>([]);
@@ -1613,27 +1649,24 @@ export default function NextCentroControlloParityPage() {
               if (!result.ok) {
                 throw new Error(result.error || "Errore.");
               }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
               await loadAutistiReadOnlySections();
+              advanceAfterMark(id);
             }}
             onMarkChiusa={async (id: string) => {
               const result = await markSegnalazioneChiusa(id);
               if (!result.ok) {
                 throw new Error(result.error || "Errore.");
               }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
               await loadAutistiReadOnlySections();
+              advanceAfterMark(id);
             }}
             onMarkChiuso={async (id: string) => {
               const result = await markControlloChiuso(id);
               if (!result.ok) {
                 throw new Error(result.error || "Errore.");
               }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
               await loadAutistiReadOnlySections();
+              advanceAfterMark(id);
             }}
             onClose={() => {
               setSinotticaEventoModalOpen(false);
