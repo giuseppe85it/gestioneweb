@@ -1,9 +1,5 @@
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import {
-  CloneWriteBlockedError,
-  assertCloneWriteAllowed,
-  runWithCloneWriteScopedAllowance,
-} from "../utils/cloneWriteBarrier";
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 
 export const CONTROLLI_WRITE_SCOPE = "centro_controllo_controlli_write";
 
@@ -50,19 +46,11 @@ export async function markControlloChiuso(
     };
     const next: RawRecord[] = [...list];
     next[targetIndex] = updated;
-    await runWithCloneWriteScopedAllowance(CONTROLLI_WRITE_SCOPE, async () => {
-      assertCloneWriteAllowed("storageSync.setItemSync", { key: CONTROLLI_KEY });
-      await setItemSync(CONTROLLI_KEY, next);
-    });
+    await runWithCloneWriteScopedAllowance(CONTROLLI_WRITE_SCOPE, () =>
+      setItemSync(CONTROLLI_KEY, next),
+    );
     return { ok: true };
   } catch (err: unknown) {
-    if (err instanceof CloneWriteBlockedError) {
-      return {
-        ok: false,
-        error:
-          "Scrittura bloccata dal barrier clone (controlli). Verificare che la pagina sia /next/centro-controllo.",
-      };
-    }
     const message: string =
       err instanceof Error ? err.message : "Errore salvataggio controllo.";
     return { ok: false, error: message };

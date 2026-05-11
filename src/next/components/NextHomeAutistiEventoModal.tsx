@@ -476,78 +476,83 @@ export default function NextHomeAutistiEventoModal({
         <div
           className="aix-modal"
           onClick={(modalEvent) => modalEvent.stopPropagation()}
-          style={{ position: "relative" }}
         >
-          {hasNav && (
-            <>
-              <button
-                type="button"
-                onClick={() => canPrev && onPrevEvent && onPrevEvent()}
-                disabled={!canPrev}
-                aria-label="Evento precedente"
-                style={{
-                  position: "absolute",
-                  left: "-44px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  border: "1px solid rgba(180,167,144,0.55)",
-                  background: canPrev ? "#f8f4e8" : "#e9e4d6",
-                  color: canPrev ? "#3a352b" : "#a59c8b",
-                  cursor: canPrev ? "pointer" : "not-allowed",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  zIndex: 2,
-                }}
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                onClick={() => canNext && onNextEvent && onNextEvent()}
-                disabled={!canNext}
-                aria-label="Evento successivo"
-                style={{
-                  position: "absolute",
-                  right: "-44px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  border: "1px solid rgba(180,167,144,0.55)",
-                  background: canNext ? "#f8f4e8" : "#e9e4d6",
-                  color: canNext ? "#3a352b" : "#a59c8b",
-                  cursor: canNext ? "pointer" : "not-allowed",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  zIndex: 2,
-                }}
-              >
-                ›
-              </button>
-            </>
-          )}
           <div className="aix-head">
             <div>
               <h3>{detailsTitle}</h3>
               <div style={{ fontSize: "13px", opacity: 0.8 }}>
                 {autistaLabel}
-                {hasNav && (
-                  <span style={{ marginLeft: "10px", opacity: 0.6 }}>
-                    · Evento {(eventIndex ?? 0) + 1} di {eventsCount}
-                  </span>
-                )}
               </div>
             </div>
             <button className="aix-close" onClick={closeDetails} aria-label="Chiudi">
               X
             </button>
           </div>
+
+          {hasNav && (
+            <div
+              className="aix-nav-bar"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 16px",
+                borderBottom: "1px solid #ecdcc1",
+                background: "rgba(245,233,211,0.45)",
+              }}
+            >
+              <button
+                type="button"
+                className="aix-nav-prev"
+                onClick={() => canPrev && onPrevEvent && onPrevEvent()}
+                disabled={!canPrev}
+                aria-label="Evento precedente"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid #ecdcc1",
+                  background: "#f5e9d3",
+                  color: "#3a352b",
+                  cursor: canPrev ? "pointer" : "not-allowed",
+                  opacity: canPrev ? 1 : 0.4,
+                  fontSize: "13px",
+                  fontWeight: 500,
+                }}
+              >
+                ‹ Precedente
+              </button>
+              <span
+                className="aix-nav-counter"
+                style={{
+                  fontSize: "12px",
+                  color: "#888",
+                  fontWeight: 500,
+                }}
+              >
+                Evento {(eventIndex ?? 0) + 1} di {eventsCount}
+              </span>
+              <button
+                type="button"
+                className="aix-nav-next"
+                onClick={() => canNext && onNextEvent && onNextEvent()}
+                disabled={!canNext}
+                aria-label="Evento successivo"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid #ecdcc1",
+                  background: "#f5e9d3",
+                  color: "#3a352b",
+                  cursor: canNext ? "pointer" : "not-allowed",
+                  opacity: canNext ? 1 : 0.4,
+                  fontSize: "13px",
+                  fontWeight: 500,
+                }}
+              >
+                Successivo ›
+              </button>
+            </div>
+          )}
 
           <div className="aix-body">
             <div className="aix-row">

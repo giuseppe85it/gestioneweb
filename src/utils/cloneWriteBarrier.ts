@@ -203,8 +203,13 @@ function logBlockedWrite(error: CloneWriteBlockedError) {
 }
 
 function normalizePathname(pathname: string | undefined): string {
-  const value = String(pathname ?? "").trim();
-  return value.startsWith("/") ? value : `/${value}`;
+  let value = String(pathname ?? "").trim();
+  if (!value.startsWith("/")) value = `/${value}`;
+  // Strip eventuale trailing slash (non per root "/")
+  if (value.length > 1 && value.endsWith("/")) {
+    value = value.replace(/\/+$/, "");
+  }
+  return value;
 }
 
 function getCurrentPathname(): string {

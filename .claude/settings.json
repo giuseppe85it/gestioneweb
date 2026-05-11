@@ -4,7 +4,11 @@
       "Bash(echo \"EXIT_CODE=$?\")",
       "Bash(npx vite *)",
       "Bash(echo \"===EXIT===$?\")",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(python3)",
+      "Bash(where python3 *)",
+      "Bash(where python *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

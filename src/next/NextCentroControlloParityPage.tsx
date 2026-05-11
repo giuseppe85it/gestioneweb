@@ -590,11 +590,7 @@ export default function NextCentroControlloParityPage() {
   const [controlliRows, setControlliRows] = useState<ControlloRow[]>([]);
   const [controlliFilterTarga, setControlliFilterTarga] = useState("");
 
-  const [loadingRichieste, setLoadingRichieste] = useState(false);
-  const [richiesteError, setRichiesteError] = useState<string | null>(null);
   const [richiesteRows, setRichiesteRows] = useState<RichiestaRow[]>([]);
-  const [richiesteFilterTarga, setRichiesteFilterTarga] = useState("");
-  const [richiesteOnlyNuove, setRichiesteOnlyNuove] = useState(true);
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(now.getMonth() + 1);
@@ -776,8 +772,6 @@ export default function NextCentroControlloParityPage() {
     setSegnalazioniError(null);
     setLoadingControlli(true);
     setControlliError(null);
-    setLoadingRichieste(true);
-    setRichiesteError(null);
 
     try {
       const snapshot = await readNextAutistiReadOnlySnapshot(Date.now(), {
@@ -789,7 +783,6 @@ export default function NextCentroControlloParityPage() {
       setRichiesteRows(snapshot.richiesteRows.map(mapRichiestaRow));
       setSegnalazioniError(null);
       setControlliError(null);
-      setRichiesteError(null);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Errore caricamento flussi autisti.";
@@ -798,11 +791,9 @@ export default function NextCentroControlloParityPage() {
       setRichiesteRows([]);
       setSegnalazioniError(message);
       setControlliError(message);
-      setRichiesteError(message);
     } finally {
       setLoadingSegnalazioni(false);
       setLoadingControlli(false);
-      setLoadingRichieste(false);
     }
   };
 
@@ -1193,23 +1184,6 @@ export default function NextCentroControlloParityPage() {
     () => controlliFiltered.filter((row) => !row.isKo),
     [controlliFiltered]
   );
-
-  const richiesteCounters = useMemo(
-    () => ({
-      totale: richiesteRows.length,
-      nuove: richiesteRows.filter((row) => row.isNuova).length,
-    }),
-    [richiesteRows]
-  );
-
-  const richiesteFiltered = useMemo(() => {
-    const targaKey = normalizeTargaFilter(richiesteFilterTarga);
-    return richiesteRows.filter((row) => {
-      if (richiesteOnlyNuove && !row.isNuova) return false;
-      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
-      return true;
-    });
-  }, [richiesteRows, richiesteFilterTarga, richiesteOnlyNuove]);
 
   const closePdfPreview = () => {
     revokePdfPreviewUrl(pdfPreviewUrl);

@@ -1,5 +1,9 @@
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+import {
+  CloneWriteBlockedError,
+  assertCloneWriteAllowed,
+  runWithCloneWriteScopedAllowance,
+} from "../utils/cloneWriteBarrier";
 
 export const SEGNALAZIONI_WRITE_SCOPE = "centro_controllo_segnalazioni_write";
 
@@ -46,11 +50,19 @@ export async function markSegnalazioneChiusa(
     };
     const next: RawRecord[] = [...list];
     next[targetIndex] = updated;
-    await runWithCloneWriteScopedAllowance(SEGNALAZIONI_WRITE_SCOPE, () =>
-      setItemSync(SEGNALAZIONI_KEY, next),
-    );
+    await runWithCloneWriteScopedAllowance(SEGNALAZIONI_WRITE_SCOPE, async () => {
+      assertCloneWriteAllowed("storageSync.setItemSync", { key: SEGNALAZIONI_KEY });
+      await setItemSync(SEGNALAZIONI_KEY, next);
+    });
     return { ok: true };
   } catch (err: unknown) {
+    if (err instanceof CloneWriteBlockedError) {
+      return {
+        ok: false,
+        error:
+          "Scrittura bloccata dal barrier clone (segnalazioni). Verificare che la pagina sia /next/centro-controllo.",
+      };
+    }
     const message: string =
       err instanceof Error ? err.message : "Errore salvataggio segnalazione.";
     return { ok: false, error: message };

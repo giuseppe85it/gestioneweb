@@ -1,13 +1,9 @@
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import {
-  CloneWriteBlockedError,
-  assertCloneWriteAllowed,
-  runWithCloneWriteScopedAllowance,
-} from "../utils/cloneWriteBarrier";
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 
-export const CONTROLLI_WRITE_SCOPE = "centro_controllo_controlli_write";
+export const SEGNALAZIONI_WRITE_SCOPE = "centro_controllo_segnalazioni_write";
 
-const CONTROLLI_KEY = "@controlli_mezzo_autisti";
+const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const SOURCE_LABEL = "centro_controllo_next";
 
 type RawRecord = Record<string, unknown>;
@@ -25,46 +21,38 @@ function unwrapList(raw: unknown): RawRecord[] {
   return [];
 }
 
-export async function markControlloChiuso(
-  controlloId: string,
+export async function markSegnalazioneChiusa(
+  segnalazioneId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const id: string = String(controlloId ?? "").trim();
+  const id: string = String(segnalazioneId ?? "").trim();
   if (!id) {
-    return { ok: false, error: "ID controllo mancante." };
+    return { ok: false, error: "ID segnalazione mancante." };
   }
   try {
-    const raw: unknown = await getItemSync(CONTROLLI_KEY);
+    const raw: unknown = await getItemSync(SEGNALAZIONI_KEY);
     const list: RawRecord[] = unwrapList(raw);
     const targetIndex: number = list.findIndex(
       (r: RawRecord) => String(r.id ?? "").trim() === id,
     );
     if (targetIndex < 0) {
-      return { ok: false, error: "Controllo non trovato." };
+      return { ok: false, error: "Segnalazione non trovata." };
     }
     const current: RawRecord = list[targetIndex];
     const updated: RawRecord = {
       ...current,
-      chiuso: true,
+      chiusa: true,
       dataChiusura: Date.now(),
-      chiuso_by: SOURCE_LABEL,
+      chiusa_by: SOURCE_LABEL,
     };
     const next: RawRecord[] = [...list];
     next[targetIndex] = updated;
-    await runWithCloneWriteScopedAllowance(CONTROLLI_WRITE_SCOPE, async () => {
-      assertCloneWriteAllowed("storageSync.setItemSync", { key: CONTROLLI_KEY });
-      await setItemSync(CONTROLLI_KEY, next);
-    });
+    await runWithCloneWriteScopedAllowance(SEGNALAZIONI_WRITE_SCOPE, () =>
+      setItemSync(SEGNALAZIONI_KEY, next),
+    );
     return { ok: true };
   } catch (err: unknown) {
-    if (err instanceof CloneWriteBlockedError) {
-      return {
-        ok: false,
-        error:
-          "Scrittura bloccata dal barrier clone (controlli). Verificare che la pagina sia /next/centro-controllo.",
-      };
-    }
     const message: string =
-      err instanceof Error ? err.message : "Errore salvataggio controllo.";
+      err instanceof Error ? err.message : "Errore salvataggio segnalazione.";
     return { ok: false, error: message };
   }
 }
