@@ -412,12 +412,6 @@ const parseDateFlexible = (value: unknown): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const shortText = (value: unknown, max = 90): string => {
-  const text = safeText(value);
-  if (!text) return "-";
-  return text.length <= max ? text : `${text.slice(0, max - 1)}...`;
-};
-
 export const formatDateIt = (value: Date | null): string => {
   if (!value) return "--/--/----";
   const dd = String(value.getDate()).padStart(2, "0");
@@ -580,8 +574,6 @@ export default function NextCentroControlloParityPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>("rifornimenti");
 
-  const [loadingMezzi, setLoadingMezzi] = useState(false);
-  const [mezziError, setMezziError] = useState<string | null>(null);
   const [scheduledMaintenances, setScheduledMaintenances] = useState<ScheduledMaintenanceRow[]>(
     []
   );
@@ -715,8 +707,6 @@ export default function NextCentroControlloParityPage() {
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF rifornimenti");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
   const loadScheduledMaintenances = async () => {
-    setLoadingMezzi(true);
-    setMezziError(null);
     try {
       const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
       const today = new Date();
@@ -760,12 +750,8 @@ export default function NextCentroControlloParityPage() {
         });
 
       setScheduledMaintenances(mapped);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Errore caricamento mezzi.";
-      setMezziError(message);
+    } catch {
       setScheduledMaintenances([]);
-    } finally {
-      setLoadingMezzi(false);
     }
   };
 

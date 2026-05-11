@@ -19,6 +19,7 @@ export type NextFlottaClonePatchRecord = {
   dataScadenzaRevisione?: string | null;
   dataUltimoCollaudo?: string | null;
   manutenzioneProgrammata?: boolean;
+  manutenzioneContrattoAttivo?: boolean;
   manutenzioneDataInizio?: string | null;
   manutenzioneDataFine?: string | null;
   manutenzioneKmMax?: string | null;
