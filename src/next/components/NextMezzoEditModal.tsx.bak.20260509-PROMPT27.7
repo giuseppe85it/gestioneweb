@@ -52,7 +52,6 @@ const EDITABLE_FIELDS = [
   "dataScadenzaRevisione",
   "dataUltimoCollaudo",
   "manutenzioneProgrammata",
-  "manutenzioneContrattoAttivo",
   "manutenzioneDataInizio",
   "manutenzioneDataFine",
   "manutenzioneKmMax",
@@ -167,8 +166,6 @@ function normalizeMezzoRecord(record: Record<string, unknown>): MezzoFormData {
     dataScadenzaRevisione: normalizeDateToIso(toText(record.dataScadenzaRevisione)),
     dataUltimoCollaudo: normalizeDateToIso(toText(record.dataUltimoCollaudo)),
     manutenzioneProgrammata: Boolean(record.manutenzioneProgrammata),
-    manutenzioneContrattoAttivo:
-      record.manutenzioneContrattoAttivo === false ? false : true,
     manutenzioneDataInizio: normalizeDateToIso(toText(record.manutenzioneDataInizio)),
     manutenzioneDataFine: normalizeDateToIso(toText(record.manutenzioneDataFine)),
     manutenzioneKmMax: toText(record.manutenzioneKmMax),
@@ -621,35 +618,6 @@ export default function NextMezzoEditModal({
                             updateField("manutenzioneDataFine", event.target.value)
                           }
                         />
-                      </div>
-                      <div className="mezmod-field">
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            cursor: formData.manutenzioneProgrammata
-                              ? "pointer"
-                              : "not-allowed",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              formData.manutenzioneContrattoAttivo !== false
-                            }
-                            disabled={!formData.manutenzioneProgrammata}
-                            onChange={(event) =>
-                              updateField(
-                                "manutenzioneContrattoAttivo",
-                                event.target.checked,
-                              )
-                            }
-                          />
-                          <span className="mezmod-label" style={{ margin: 0 }}>
-                            Contratto attivo (rinnovato)
-                          </span>
-                        </label>
                       </div>
                       <div className="mezmod-field">
                         <span className="mezmod-label">Note contratto</span>

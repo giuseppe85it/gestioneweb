@@ -10,7 +10,9 @@ import {
   sharePdfFile,
 } from "../utils/pdfPreview";
 import {
+  generateManutenzioniProgrammatePDFBlob,
   generateRifornimentiMensiliPDFBlob,
+  type ManutenzioneProgrammataPdfItem,
   type RifornimentiMensiliPdfItem,
 } from "../utils/pdfEngine";
 import {
@@ -25,21 +27,10 @@ import {
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
-import { buildNextDossierPath, buildNextDossierGommePath } from "./nextStructuralPaths";
+import { buildNextDossierPath } from "./nextStructuralPaths";
 import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
 import NextCentroControlloIndagineModal from "./components/NextCentroControlloIndagineModal";
 import NextCentroControlloAnalisiModal from "./components/NextCentroControlloAnalisiModal";
-import NextCentroControlloSinottica from "./components/NextCentroControlloSinottica";
-import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
-import NextMezzoEditModal from "./components/NextMezzoEditModal";
-import NextMezzoCronologiaModal from "./components/NextMezzoCronologiaModal";
-import NextMezzoHardDeleteModal from "./components/NextMezzoHardDeleteModal";
-import { markRichiestaEvasa } from "./nextRichiesteAttrezzatureWriter";
-import { markSegnalazioneChiusa } from "./nextSegnalazioniWriter";
-import { markControlloChiuso } from "./nextControlliWriter";
-import { readNextLavoriInAttesaSnapshot, buildNextDettaglioLavoroPath } from "./domain/nextLavoriDomain";
-import { readNextManutenzioniLegacyDataset } from "./domain/nextManutenzioniDomain";
-import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
 import type {
   Anomaly,
   AnomalyTarget,
@@ -66,9 +57,11 @@ export type {
 };
 
 type TabKey =
+  | "manutenzioni"
   | "rifornimenti"
   | "segnalazioni"
-  | "controlli";
+  | "controlli"
+  | "richieste";
 type MonthFilter = number | "all";
 type YearFilter = number | "all";
 
@@ -118,6 +111,20 @@ type RichiestaRow = {
   hasFoto: boolean;
 };
 
+type PdfContext = "rifornimenti" | "manutenzioni";
+type PrioritySource = "controlli" | "manutenzioni" | "segnalazioni" | "richieste";
+type PriorityItem = {
+  id: string;
+  label: string;
+  score: number;
+  timestamp: number;
+  targa: string;
+  autista: string;
+  motivo: string;
+  source: PrioritySource;
+  tab: TabKey;
+  sectionId: string;
+};
 
 export const MONTH_NAMES = [
   "Gennaio",
@@ -135,6 +142,9 @@ export const MONTH_NAMES = [
 ] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const KO_PRIORITY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const PRIORITY_HIGH_THRESHOLD = 70;
+const PRIORITY_MAX_ROWS = 15;
 
 const deriveRefuelSource = (
   tipoRaw: string | null,
@@ -568,13 +578,17 @@ const normalizeRefuelRecord = (
 
 export default function NextCentroControlloParityPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabKey>("rifornimenti");
+  const [activeTab, setActiveTab] = useState<TabKey>("manutenzioni");
 
   const [loadingMezzi, setLoadingMezzi] = useState(false);
   const [mezziError, setMezziError] = useState<string | null>(null);
   const [scheduledMaintenances, setScheduledMaintenances] = useState<ScheduledMaintenanceRow[]>(
     []
   );
+  const [selectedMaintenanceIds, setSelectedMaintenanceIds] = useState<Record<string, boolean>>(
+    {}
+  );
+
   const [loadingRefuels, setLoadingRefuels] = useState(false);
   const [refuelsError, setRefuelsError] = useState<string | null>(null);
   const [refuelRows, setRefuelRows] = useState<RefuelRow[]>([]);
@@ -613,70 +627,21 @@ export default function NextCentroControlloParityPage() {
   const [editRifornimentoRow, setEditRifornimentoRow] = useState<RefuelRow | null>(null);
 
   const [analisiOpen, setAnalisiOpen] = useState(false);
-  const [analisiInitialTab, setAnalisiInitialTab] = useState<
-    "mezzi" | "autisti" | "confronta" | "andamento" | undefined
-  >(undefined);
-  const [analisiInitialAndamentoTarga, setAnalisiInitialAndamentoTarga] = useState<
-    string | null
-  >(null);
-  const [mezzoEditModalOpen, setMezzoEditModalOpen] = useState(false);
-  const [mezzoEditModalMezzoId, setMezzoEditModalMezzoId] = useState<string | null>(null);
-  const [cronologiaOpen, setCronologiaOpen] = useState(false);
-  const [cronologiaTarga, setCronologiaTarga] = useState<string | null>(null);
-  const [eventModalEvents, setEventModalEvents] = useState<HomeEvent[]>([]);
-  const [eventModalIndex, setEventModalIndex] = useState<number>(0);
-  const [deleteModalOpen, setDeleteModalOpen] = useState<boolean>(false);
-  const [deleteModalTarga, setDeleteModalTarga] = useState<string | null>(null);
-  const [deleteModalMezzoId, setDeleteModalMezzoId] = useState<string | null>(
-    null,
-  );
 
   const [colleghiList, setColleghiList] = useState<{ id: string; nome: string }[]>([]);
   const [mezziTargheList, setMezziTargheList] = useState<string[]>([]);
-  const [sinotticaMezzi, setSinotticaMezzi] = useState<
-    Array<{
-      id: string;
-      targa: string;
-      categoria: string;
-      tipo: "motrice" | "cisterna" | null;
-      marca: string;
-      modello: string;
-      autistaNome: string | null;
-      manutenzioneDataFineTimestamp: number | null;
-      manutenzioneDataFine: string;
-      manutenzioneContrattoAttivo: boolean;
-      fotoUrl: string | null;
-      dataScadenzaRevisioneTimestamp: number | null;
-      dataUltimoCollaudoTimestamp: number | null;
-    }>
-  >([]);
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
-  const [sinotticaEventoModalOpen, setSinotticaEventoModalOpen] = useState(false);
-  const [sinotticaEventoModalEvent, setSinotticaEventoModalEvent] = useState<HomeEvent | null>(null);
-  const [lavoriAperti, setLavoriAperti] = useState<
-    Array<{
-      id: string;
-      targa: string | null;
-      urgenza: "alta" | "media" | "bassa" | null;
-      eseguito: boolean;
-    }>
-  >([]);
-  const [manutenzioniStorico, setManutenzioniStorico] = useState<
-    Array<{
-      id: string;
-      targa: string;
-      data: string;
-      descrizione: string;
-    }>
-  >([]);
 
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingMaintenancePdf, setGeneratingMaintenancePdf] = useState(false);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("rifornimenti-mensili.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF rifornimenti");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [pdfContext, setPdfContext] = useState<PdfContext>("rifornimenti");
+  const [priorityOnlyHigh, setPriorityOnlyHigh] = useState(false);
+
   const loadScheduledMaintenances = async () => {
     setLoadingMezzi(true);
     setMezziError(null);
@@ -828,102 +793,16 @@ export default function NextCentroControlloParityPage() {
     try {
       const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
       const targheSet = new Set<string>();
-      const mezziForSinottica: Array<{
-        id: string;
-        targa: string;
-        categoria: string;
-        tipo: "motrice" | "cisterna" | null;
-        marca: string;
-        modello: string;
-        autistaNome: string | null;
-        manutenzioneDataFineTimestamp: number | null;
-        manutenzioneDataFine: string;
-        fotoUrl: string | null;
-        dataScadenzaRevisioneTimestamp: number | null;
-        dataUltimoCollaudoTimestamp: number | null;
-      }> = [];
       for (const item of snapshot.items) {
         const targaNorm = normalizeTarga(item.targa);
-        if (!targaNorm) continue;
-        targheSet.add(targaNorm);
-        mezziForSinottica.push({
-          id: item.id,
-          targa: targaNorm,
-          categoria: item.categoria || "Senza categoria",
-          tipo: item.tipo,
-          marca: item.marca,
-          modello: item.modello,
-          autistaNome: item.autistaNome,
-          manutenzioneDataFineTimestamp: item.manutenzioneDataFineTimestamp,
-          manutenzioneDataFine: item.manutenzioneDataFine,
-          manutenzioneContrattoAttivo: item.manutenzioneContrattoAttivo,
-          fotoUrl: item.fotoUrl,
-          dataScadenzaRevisioneTimestamp: item.dataScadenzaRevisioneTimestamp,
-          dataUltimoCollaudoTimestamp: item.dataUltimoCollaudoTimestamp,
-        });
+        if (targaNorm) targheSet.add(targaNorm);
       }
       const mapped = Array.from(targheSet).sort((left, right) =>
         left.localeCompare(right, "it", { sensitivity: "base" }),
       );
       setMezziTargheList(mapped);
-      setSinotticaMezzi(
-        mezziForSinottica.sort((a, b) =>
-          a.targa.localeCompare(b.targa, "it", { sensitivity: "base" }),
-        ),
-      );
     } catch {
       setMezziTargheList([]);
-      setSinotticaMezzi([]);
-    }
-  };
-
-  const loadLavoriAperti = async () => {
-    try {
-      const snapshot = await readNextLavoriInAttesaSnapshot();
-      const rows: Array<{
-        id: string;
-        targa: string | null;
-        urgenza: "alta" | "media" | "bassa" | null;
-        eseguito: boolean;
-      }> = [];
-      for (const group of snapshot.groups) {
-        for (const item of group.items) {
-          if (item.eseguito) continue;
-          rows.push({
-            id: item.id,
-            targa: item.targa ? normalizeTarga(item.targa) : null,
-            urgenza: item.urgenza,
-            eseguito: item.eseguito,
-          });
-        }
-      }
-      setLavoriAperti(rows);
-    } catch {
-      setLavoriAperti([]);
-    }
-  };
-
-  const loadManutenzioniStorico = async () => {
-    try {
-      const records = await readNextManutenzioniLegacyDataset();
-      const mapped = records.map((r) => ({
-        id: r.id,
-        targa: normalizeTarga(r.targa),
-        data: r.data,
-        descrizione: r.descrizione,
-      }));
-      setManutenzioniStorico(mapped);
-    } catch {
-      setManutenzioniStorico([]);
-    }
-  };
-
-  const loadActiveSessionsCC = async () => {
-    try {
-      const sessions = await loadActiveSessions();
-      setActiveSessions(sessions);
-    } catch {
-      setActiveSessions([]);
     }
   };
 
@@ -938,17 +817,35 @@ export default function NextCentroControlloParityPage() {
   }, []);
 
   useEffect(() => {
-    void loadActiveSessionsCC();
-  }, []);
-
-  useEffect(() => {
-    void loadLavoriAperti();
-    void loadManutenzioniStorico();
-  }, []);
-
-  useEffect(() => {
     void loadMezziAnagrafica();
   }, []);
+
+  useEffect(() => {
+    setSelectedMaintenanceIds((prev) => {
+      const validIds = new Set(scheduledMaintenances.map((row) => row.id));
+      const next: Record<string, boolean> = {};
+      Object.keys(prev).forEach((id) => {
+        if (prev[id] && validIds.has(id)) next[id] = true;
+      });
+      return next;
+    });
+  }, [scheduledMaintenances]);
+
+  const maintenanceCounters = useMemo(() => {
+    return {
+      total: scheduledMaintenances.length,
+      scadute: scheduledMaintenances.filter((row) => row.status === "SCADUTA").length,
+      inScadenza: scheduledMaintenances.filter((row) => row.status === "IN_SCADENZA").length,
+      ok: scheduledMaintenances.filter((row) => row.status === "OK").length,
+    };
+  }, [scheduledMaintenances]);
+
+  const selectedMaintenanceRows = useMemo(
+    () => scheduledMaintenances.filter((row) => selectedMaintenanceIds[row.id]),
+    [scheduledMaintenances, selectedMaintenanceIds]
+  );
+
+  const selectedMaintenanceCount = selectedMaintenanceRows.length;
 
   const availableYears = useMemo(() => {
     const years = new Set<number>([new Date().getFullYear()]);
@@ -1211,6 +1108,132 @@ export default function NextCentroControlloParityPage() {
     });
   }, [richiesteRows, richiesteFilterTarga, richiesteOnlyNuove]);
 
+  const priorityItems = useMemo(() => {
+    const nowTs = Date.now();
+    const globalTargaKey = targaFilterSelected ? normalizeTargaFilter(targaFilterSelected) : "";
+    const priorityFromControlli: PriorityItem[] = controlliRows
+      .filter((row) => row.isKo && row.ts > 0 && nowTs - row.ts <= KO_PRIORITY_WINDOW_MS)
+      .map((row, idx) => {
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_ctrl_${row.id}_${idx}`,
+          label: "CONTROLLO KO",
+          score: 100,
+          timestamp: row.ts,
+          targa: row.targaLabel || "-",
+          autista,
+          motivo: row.koList.length ? `Check KO: ${row.koList.join(", ")}` : "Check KO",
+          source: "controlli",
+          tab: "controlli",
+          sectionId: "cc-anchor-controlli",
+        };
+      });
+
+    const priorityFromManutenzioni: PriorityItem[] = scheduledMaintenances
+      .filter(
+        (row) =>
+          row.status === "SCADUTA" || row.status === "IN_SCADENZA" || row.status === "SENZA_DATA"
+      )
+      .map((row, idx) => {
+        const score =
+          row.status === "SCADUTA" ? 90 : row.status === "IN_SCADENZA" ? 70 : row.status === "SENZA_DATA" ? 30 : 0;
+        const label =
+          row.status === "SCADUTA"
+            ? "MANUTENZIONE SCADUTA"
+            : row.status === "IN_SCADENZA"
+            ? "MANUTENZIONE IN SCADENZA"
+            : "MANUTENZIONE: DATA MANCANTE";
+        const timestamp = row.manutenzioneDataFine ? row.manutenzioneDataFine.getTime() : 0;
+        const motivo =
+          row.status === "SENZA_DATA"
+            ? "Data fine non impostata"
+            : `Data fine: ${formatDateIt(row.manutenzioneDataFine)}`;
+        return {
+          id: `prio_manut_${row.id}_${idx}`,
+          label,
+          score,
+          timestamp,
+          targa: row.targa || "-",
+          autista: "-",
+          motivo,
+          source: "manutenzioni",
+          tab: "manutenzioni",
+          sectionId: "cc-anchor-manutenzioni",
+        };
+      });
+
+    const priorityFromSegnalazioni: PriorityItem[] = segnalazioniRows
+      .filter((row) => row.isNuova)
+      .map((row, idx) => {
+        const tipoUpper = row.tipo.toUpperCase();
+        const score = 60 + (tipoUpper === "GOMME" ? 15 : 0);
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_segn_${row.id}_${idx}`,
+          label: "SEGNALAZIONE",
+          score,
+          timestamp: row.ts,
+          targa: row.targa || "-",
+          autista,
+          motivo: `${tipoUpper || "TIPO N/D"} - ${shortText(row.descrizione, 100)}`,
+          source: "segnalazioni",
+          tab: "segnalazioni",
+          sectionId: "cc-anchor-segnalazioni",
+        };
+      });
+
+    const priorityFromRichieste: PriorityItem[] = richiesteRows
+      .filter((row) => row.isNuova)
+      .map((row, idx) => {
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_rich_${row.id}_${idx}`,
+          label: "RICHIESTA ATTREZZATURE",
+          score: 40,
+          timestamp: row.ts,
+          targa: row.targa || "-",
+          autista,
+          motivo: shortText(row.testo, 100),
+          source: "richieste",
+          tab: "richieste",
+          sectionId: "cc-anchor-richieste",
+        };
+      });
+
+    const ordered = [
+      ...priorityFromControlli,
+      ...priorityFromManutenzioni,
+      ...priorityFromSegnalazioni,
+      ...priorityFromRichieste,
+    ].sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return b.timestamp - a.timestamp;
+    });
+
+    if (!globalTargaKey) return ordered;
+    return ordered.filter((item) =>
+      normalizeTargaFilter(item.targa).includes(globalTargaKey)
+    );
+  }, [controlliRows, scheduledMaintenances, segnalazioniRows, richiesteRows, targaFilterSelected]);
+
+  const priorityHighCount = useMemo(
+    () => priorityItems.filter((item) => item.score >= PRIORITY_HIGH_THRESHOLD).length,
+    [priorityItems]
+  );
+
+  const priorityVisibleItems = useMemo(() => {
+    const base = priorityOnlyHigh
+      ? priorityItems.filter((item) => item.score >= PRIORITY_HIGH_THRESHOLD)
+      : priorityItems;
+    return base.slice(0, PRIORITY_MAX_ROWS);
+  }, [priorityItems, priorityOnlyHigh]);
+
   const closePdfPreview = () => {
     revokePdfPreviewUrl(pdfPreviewUrl);
     setPdfPreviewOpen(false);
@@ -1274,16 +1297,81 @@ export default function NextCentroControlloParityPage() {
     }));
   };
 
-  const buildShareMessage = () =>
-    buildPdfShareText({
-      contextLabel: "Report rifornimenti mensili",
-      dateLabel:
-        selectedMonth === "all" || selectedYear === "all"
-          ? "Tutti i periodi"
-          : `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
-      fileName: pdfPreviewFileName || "rifornimenti-mensili.pdf",
-      url: pdfPreviewUrl,
+  const buildMaintenancePdfItems = (): ManutenzioneProgrammataPdfItem[] =>
+    selectedMaintenanceRows.map((row) => ({
+      targa: row.targa,
+      dataFine: row.manutenzioneDataFine ? formatDateIt(row.manutenzioneDataFine) : "DATA MANCANTE",
+      kmMax: row.manutenzioneKmMax || "-",
+      contratto: row.manutenzioneContratto || "-",
+      revisione: row.dataScadenzaRevisione ? formatDateIt(row.dataScadenzaRevisione) : "-",
+    }));
+
+  const selectAllMaintenances = () => {
+    const next: Record<string, boolean> = {};
+    scheduledMaintenances.forEach((row) => {
+      next[row.id] = true;
     });
+    setSelectedMaintenanceIds(next);
+  };
+
+  const deselectAllMaintenances = () => {
+    setSelectedMaintenanceIds({});
+  };
+
+  const toggleMaintenanceSelection = (id: string) => {
+    setSelectedMaintenanceIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const buildShareMessage = () =>
+    pdfContext === "manutenzioni"
+      ? buildPdfShareText({
+          contextLabel: "Manutenzioni programmate selezionate",
+          dateLabel: formatDateIt(new Date()),
+          fileName: pdfPreviewFileName || "manutenzioni-programmate.pdf",
+          url: pdfPreviewUrl,
+        })
+      : buildPdfShareText({
+          contextLabel: "Report rifornimenti mensili",
+          dateLabel:
+            selectedMonth === "all" || selectedYear === "all"
+              ? "Tutti i periodi"
+              : `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
+          fileName: pdfPreviewFileName || "rifornimenti-mensili.pdf",
+          url: pdfPreviewUrl,
+        });
+
+  const handlePreviewMaintenancePdf = async () => {
+    if (!selectedMaintenanceRows.length) {
+      window.alert("Seleziona almeno un mezzo.");
+      return;
+    }
+    try {
+      setGeneratingMaintenancePdf(true);
+      setPdfContext("manutenzioni");
+      const preview = await openPreview({
+        source: () =>
+          generateManutenzioniProgrammatePDFBlob({
+            titolo: "Manutenzioni programmate selezionate",
+            dataReport: formatDateIt(new Date()),
+            items: buildMaintenancePdfItems(),
+          }),
+        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\//g, "-")}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF manutenzioni (${selectedMaintenanceRows.length})`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF manutenzioni:", err);
+      window.alert("Impossibile generare l'anteprima PDF.");
+    } finally {
+      setGeneratingMaintenancePdf(false);
+    }
+  };
 
   const handlePreviewPdf = async () => {
     if (selectedMonth === "all" || selectedYear === "all") {
@@ -1296,6 +1384,7 @@ export default function NextCentroControlloParityPage() {
     }
     try {
       setGeneratingPdf(true);
+      setPdfContext("rifornimenti");
       const monthLabel = `${String(selectedMonth).padStart(2, "0")}-${selectedYear}`;
       const preview = await openPreview({
         source: () =>
@@ -1372,6 +1461,16 @@ export default function NextCentroControlloParityPage() {
     window.open(buildWhatsAppShareUrl(buildShareMessage()), "_blank", "noopener,noreferrer");
   };
 
+  const handlePriorityItemClick = (item: PriorityItem) => {
+    if (activeTab !== item.tab) {
+      setActiveTab(item.tab);
+    }
+    window.setTimeout(() => {
+      const target = document.getElementById(item.sectionId);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, activeTab === item.tab ? 0 : 80);
+  };
+
   return (
     <div className="next-centro-controllo-scope cc-page">
       <div className="cc-shell">
@@ -1386,337 +1485,59 @@ export default function NextCentroControlloParityPage() {
           </p>
         </header>
 
-        <NextCentroControlloSinottica
-          mezzi={sinotticaMezzi}
-          refuelRows={refuelRows}
-          refuelSeedIndex={refuelSeedIndex}
-          manutenzioniStorico={manutenzioniStorico}
-          lavoriAperti={lavoriAperti}
-          activeSessions={activeSessions}
-          segnalazioniAperte={segnalazioniRows
-            .filter(
-              (row) =>
-                !row.chiusa &&
-                !row.hasLinkedLavoro &&
-                row.targa &&
-                row.targa !== "-",
-            )
-            .map((row) => ({
-              id: row.id,
-              targa: row.targa,
-              tipo: row.tipo,
-              isNuova: row.isNuova,
-              ts: row.ts,
-              autistaNome: row.autistaNome,
-              badgeAutista: row.badgeAutista,
-              descrizione: row.descrizione,
-              stato: row.stato,
-            }))}
-          controlliKo={controlliRows
-            .filter((row) => row.isKo && !row.chiuso && !row.hasLinkedLavoro)
-            .map((row) => {
-              const targa =
-                row.targaMotrice && row.targaMotrice !== "-"
-                  ? row.targaMotrice
-                  : row.targaRimorchio && row.targaRimorchio !== "-"
-                    ? row.targaRimorchio
-                    : "";
-              return {
-                id: row.id,
-                targa,
-                isKo: row.isKo,
-                ts: row.ts,
-                autistaNome: row.autistaNome,
-                badgeAutista: row.badgeAutista,
-                koList: row.koList,
-                note: row.note,
-                targaMotrice: row.targaMotrice,
-                targaRimorchio: row.targaRimorchio,
-              };
-            })
-            .filter((r) => r.targa !== "")}
-          richiesteAperte={richiesteRows
-            .filter((row) => !row.evasa && row.targa && row.targa !== "-")
-            .map((row) => ({
-              id: row.id,
-              targa: row.targa,
-              isNuova: row.isNuova,
-              ts: row.ts,
-              autistaNome: row.autistaNome,
-              badgeAutista: row.badgeAutista,
-              attrezzatura: row.testo,
-              quantita: "",
-              stato: row.stato,
-              note: "",
-            }))}
-          onTargaClick={(targa) => navigate(buildNextDossierPath(targa))}
-          onAnomalieClick={(targa) => {
-            const targaUp: string = targa.toUpperCase();
-            const candidates: RefuelRow[] = refuelRows
-              .filter((r: RefuelRow) => (r.targa || "").toUpperCase() === targaUp)
-              .filter((r: RefuelRow) => {
-                const seed: RefuelRow | null = refuelSeedIndex.findSeed(r);
-                return detectRefuelAnomalies(r, seed).length > 0;
-              })
-              .sort((a: RefuelRow, b: RefuelRow) =>
-                (b.dateObj?.getTime() ?? 0) - (a.dateObj?.getTime() ?? 0),
-              );
-            const mostRecent: RefuelRow | undefined = candidates[0];
-            if (mostRecent) {
-              setInvestigationRow(mostRecent);
-              setInvestigationOpen(true);
-            } else {
-              navigate(buildNextDossierPath(targa));
-            }
-          }}
-          onGommeClick={(targa) => navigate(buildNextDossierGommePath(targa))}
-          onDocumentiClick={(targa) =>
-            navigate(`/next/scadenze-collaudi?targa=${encodeURIComponent(targa)}`)
-          }
-          onConsumoClick={(targa: string) => {
-            setAnalisiInitialTab("andamento");
-            setAnalisiInitialAndamentoTarga(targa);
-            setAnalisiOpen(true);
-          }}
-          onFotoClick={(targa: string) => {
-            setCronologiaTarga(targa);
-            setCronologiaOpen(true);
-          }}
-          onFotoDelete={(targa: string) => {
-            const targaUp: string = targa.toUpperCase();
-            const mezzo = sinotticaMezzi.find(
-              (m) => m.targa.toUpperCase() === targaUp,
-            );
-            if (!mezzo) return;
-            setDeleteModalTarga(targa);
-            setDeleteModalMezzoId(mezzo.id);
-            setDeleteModalOpen(true);
-          }}
-          onChipListOpen={(
-            _anchorRect: DOMRect,
-            kind: "lavori" | "segnalazione" | "controllo" | "richiesta",
-            targa: string,
-            ids: string[],
-          ) => {
-            const targaUp: string = targa.toUpperCase();
-            const idSet: Set<string> = new Set(ids);
-            if (kind === "lavori") {
-              const first: string | undefined = ids[0];
-              if (first) navigate(buildNextDettaglioLavoroPath({ lavoroId: first }));
-              return;
-            }
-            const list: HomeEvent[] = [];
-            if (kind === "segnalazione") {
-              segnalazioniRows
-                .filter((s) => idSet.has(s.id))
-                .forEach((s) => {
-                  list.push({
-                    id: s.id,
-                    tipo: "segnalazione",
-                    targa: s.targa,
-                    autista: s.autistaNome,
-                    timestamp: s.ts,
-                    payload: {
-                      tipo: s.tipo,
-                      tipoProblema: s.tipo,
-                      descrizione: s.descrizione,
-                      stato: s.stato,
-                      autistaNome: s.autistaNome,
-                      badgeAutista: s.badgeAutista,
-                      targa: s.targa,
-                    },
-                  });
-                });
-            } else if (kind === "controllo") {
-              controlliRows
-                .filter((c) => idSet.has(c.id))
-                .forEach((c) => {
-                  const targaCtrl: string =
-                    c.targaMotrice && c.targaMotrice !== "-"
-                      ? c.targaMotrice
-                      : c.targaRimorchio && c.targaRimorchio !== "-"
-                        ? c.targaRimorchio
-                        : "";
-                  list.push({
-                    id: c.id,
-                    tipo: "controllo",
-                    targa: targaCtrl,
-                    autista: c.autistaNome,
-                    timestamp: c.ts,
-                    payload: {
-                      koList: c.koList,
-                      anomalie: c.koList,
-                      esito: c.isKo ? "KO" : "OK",
-                      stato: c.isKo ? "KO" : "OK",
-                      note: c.note,
-                      autistaNome: c.autistaNome,
-                      badgeAutista: c.badgeAutista,
-                      targaMotrice: c.targaMotrice,
-                      targaRimorchio: c.targaRimorchio,
-                    },
-                  });
-                });
-            } else {
-              richiesteRows
-                .filter((q) => idSet.has(q.id))
-                .forEach((q) => {
-                  list.push({
-                    id: q.id,
-                    tipo: "richiesta_attrezzature",
-                    targa: q.targa,
-                    autista: q.autistaNome,
-                    timestamp: q.ts,
-                    payload: {
-                      attrezzatura: q.testo,
-                      descrizione: q.testo,
-                      quantita: "",
-                      stato: q.stato,
-                      note: "",
-                      autistaNome: q.autistaNome,
-                      badgeAutista: q.badgeAutista,
-                      targa: q.targa,
-                    },
-                  });
-                });
-            }
-            // unused targa context for now (used to disambiguate title if needed)
-            void targaUp;
-            if (list.length === 0) return;
-            setEventModalEvents(list);
-            setEventModalIndex(0);
-            setSinotticaEventoModalEvent(list[0]);
-            setSinotticaEventoModalOpen(true);
-          }}
-          onContrattoClick={(targa: string) => {
-            const targaUp: string = targa.toUpperCase();
-            const mezzo = sinotticaMezzi.find(
-              (m) => m.targa.toUpperCase() === targaUp,
-            );
-            if (mezzo) {
-              setMezzoEditModalMezzoId(mezzo.id);
-              setMezzoEditModalOpen(true);
-            }
-          }}
-          onLavoroClick={(lavoroId) =>
-            navigate(buildNextDettaglioLavoroPath({ lavoroId }))
-          }
-          onEventoChipClick={(event) => {
-            setSinotticaEventoModalEvent(event);
-            setSinotticaEventoModalOpen(true);
-          }}
-        />
-        {sinotticaEventoModalOpen && sinotticaEventoModalEvent && (
-          <NextHomeAutistiEventoModal
-            event={sinotticaEventoModalEvent}
-            editable={true}
-            eventsCount={eventModalEvents.length || undefined}
-            eventIndex={
-              eventModalEvents.length > 0 ? eventModalIndex : undefined
-            }
-            onPrevEvent={
-              eventModalEvents.length > 1
-                ? () => {
-                    const nextIdx: number = Math.max(0, eventModalIndex - 1);
-                    setEventModalIndex(nextIdx);
-                    setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
-                  }
-                : undefined
-            }
-            onNextEvent={
-              eventModalEvents.length > 1
-                ? () => {
-                    const nextIdx: number = Math.min(
-                      eventModalEvents.length - 1,
-                      eventModalIndex + 1,
-                    );
-                    setEventModalIndex(nextIdx);
-                    setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
-                  }
-                : undefined
-            }
-            onMarkEvasa={async (id: string) => {
-              const result = await markRichiestaEvasa(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
-              await loadAutistiReadOnlySections();
-            }}
-            onMarkChiusa={async (id: string) => {
-              const result = await markSegnalazioneChiusa(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
-              await loadAutistiReadOnlySections();
-            }}
-            onMarkChiuso={async (id: string) => {
-              const result = await markControlloChiuso(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
-              await loadAutistiReadOnlySections();
-            }}
-            onClose={() => {
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
-              setEventModalEvents([]);
-              setEventModalIndex(0);
-            }}
-          />
-        )}
-        <NextMezzoCronologiaModal
-          open={cronologiaOpen}
-          targa={cronologiaTarga}
-          onClose={() => {
-            setCronologiaOpen(false);
-            setCronologiaTarga(null);
-          }}
-        />
-        <NextMezzoHardDeleteModal
-          open={deleteModalOpen}
-          targa={deleteModalTarga}
-          mezzoId={deleteModalMezzoId}
-          onClose={() => {
-            setDeleteModalOpen(false);
-            setDeleteModalTarga(null);
-            setDeleteModalMezzoId(null);
-          }}
-          onDeleted={() => {
-            setDeleteModalOpen(false);
-            setDeleteModalTarga(null);
-            setDeleteModalMezzoId(null);
-            void loadMezziAnagrafica();
-            void loadScheduledMaintenances();
-            void loadRefuels();
-            void loadAutistiReadOnlySections();
-            void loadLavoriAperti();
-            void loadManutenzioniStorico();
-            void loadActiveSessionsCC();
-          }}
-        />
-        {mezzoEditModalMezzoId && (
-          <NextMezzoEditModal
-            mezzoId={mezzoEditModalMezzoId}
-            isOpen={mezzoEditModalOpen}
-            onClose={() => {
-              setMezzoEditModalOpen(false);
-              setMezzoEditModalMezzoId(null);
-            }}
-            onSaved={() => {
-              setMezzoEditModalOpen(false);
-              setMezzoEditModalMezzoId(null);
-              void loadMezziAnagrafica();
-              void loadScheduledMaintenances();
-            }}
-          />
-        )}
+        <section className="cc-priority-section">
+          <div className="cc-section-head">
+            <h2>PRIORITA OGGI</h2>
+            <div className="cc-actions">
+              <span className="cc-inline-count">
+                Totale: {priorityItems.length} | Alte priorita (soglia 70): {priorityHighCount}
+              </span>
+              <label className="cc-toggle">
+                <input
+                  type="checkbox"
+                  checked={priorityOnlyHigh}
+                  onChange={(e) => setPriorityOnlyHigh(e.target.checked)}
+                />
+                <span>Solo alte priorita</span>
+              </label>
+            </div>
+          </div>
+
+          {priorityVisibleItems.length === 0 ? (
+            <div className="cc-status">Nessuna priorita da mostrare.</div>
+          ) : (
+            <div className="cc-priority-list">
+              {priorityVisibleItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`cc-priority-row ${
+                    item.score >= PRIORITY_HIGH_THRESHOLD ? "is-high" : ""
+                  }`}
+                  onClick={() => handlePriorityItemClick(item)}
+                >
+                  <span className="cc-priority-score">{item.score}</span>
+                  <span className="cc-priority-label">{item.label}</span>
+                  <span className="cc-priority-targa">{item.targa}</span>
+                  <span className="cc-priority-autista">{item.autista}</span>
+                  <span className="cc-priority-motivo">{item.motivo}</span>
+                  <span className="cc-priority-date">
+                    {formatDateIt(item.timestamp ? new Date(item.timestamp) : null)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="cc-tabs">
+          <button
+            type="button"
+            className={activeTab === "manutenzioni" ? "active" : ""}
+            onClick={() => setActiveTab("manutenzioni")}
+          >
+            Manutenzioni programmate
+          </button>
           <button
             type="button"
             className={activeTab === "rifornimenti" ? "active" : ""}
@@ -1738,7 +1559,111 @@ export default function NextCentroControlloParityPage() {
           >
             Controlli KO/OK
           </button>
+          <button
+            type="button"
+            className={activeTab === "richieste" ? "active" : ""}
+            onClick={() => setActiveTab("richieste")}
+          >
+            Richieste attrezzature
+          </button>
         </div>
+
+        {activeTab === "manutenzioni" && (
+          <section className="cc-section" id="cc-anchor-manutenzioni">
+            <div className="cc-section-head">
+              <h2>Manutenzioni programmate</h2>
+              <button type="button" className="cc-secondary-btn" onClick={() => void loadScheduledMaintenances()}>
+                Aggiorna
+              </button>
+            </div>
+
+            <div className="cc-maintenance-actions">
+              <button type="button" className="cc-secondary-btn" onClick={selectAllMaintenances}>
+                Seleziona tutti
+              </button>
+              <button type="button" className="cc-secondary-btn" onClick={deselectAllMaintenances}>
+                Deseleziona tutti
+              </button>
+              <span className="cc-selected-count">Selezionati: {selectedMaintenanceCount}</span>
+              <button
+                type="button"
+                className="cc-primary-btn"
+                disabled={selectedMaintenanceCount === 0 || generatingMaintenancePdf}
+                onClick={handlePreviewMaintenancePdf}
+              >
+                {generatingMaintenancePdf
+                  ? "Generazione in corso..."
+                  : "Anteprima PDF selezionati"}
+              </button>
+            </div>
+
+            <div className="cc-summary-grid">
+              <div className="cc-summary-card">
+                <span>Programmate</span>
+                <strong>{maintenanceCounters.total}</strong>
+              </div>
+              <div className="cc-summary-card danger">
+                <span>Scadute</span>
+                <strong>{maintenanceCounters.scadute}</strong>
+              </div>
+              <div className="cc-summary-card warn">
+                <span>In scadenza</span>
+                <strong>{maintenanceCounters.inScadenza}</strong>
+              </div>
+              <div className="cc-summary-card ok">
+                <span>OK</span>
+                <strong>{maintenanceCounters.ok}</strong>
+              </div>
+            </div>
+
+            {loadingMezzi && <div className="cc-status">Caricamento manutenzioni programmate...</div>}
+            {mezziError && <div className="cc-status error">{mezziError}</div>}
+            {!loadingMezzi && !mezziError && scheduledMaintenances.length === 0 && (
+              <div className="cc-status">Nessuna manutenzione programmata trovata.</div>
+            )}
+
+            {!loadingMezzi && scheduledMaintenances.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Targa</th>
+                      <th>Categoria</th>
+                      <th>Data fine</th>
+                      <th>Stato</th>
+                      <th>Dettagli</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scheduledMaintenances.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedMaintenanceIds[row.id])}
+                            onChange={() => toggleMaintenanceSelection(row.id)}
+                            aria-label={`Seleziona mezzo ${row.targa}`}
+                          />
+                        </td>
+                        <td>{row.targa}</td>
+                        <td>{row.categoria}</td>
+                        <td>{formatDateIt(row.manutenzioneDataFine)}</td>
+                        <td>
+                          <span className={`cc-badge ${row.status.toLowerCase()}`}>{row.status}</span>
+                        </td>
+                        <td>
+                          {row.manutenzioneContratto ? `Contratto: ${row.manutenzioneContratto}` : "-"}
+                          {row.manutenzioneKmMax ? ` - Km max: ${row.manutenzioneKmMax}` : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
         {activeTab === "rifornimenti" && (
           <section className="cc-section" id="cc-anchor-rifornimenti">
@@ -2285,6 +2210,81 @@ export default function NextCentroControlloParityPage() {
           </section>
         )}
 
+        {activeTab === "richieste" && (
+          <section className="cc-section" id="cc-anchor-richieste">
+            <div className="cc-section-head">
+              <h2>Richieste attrezzature</h2>
+              <div className="cc-actions">
+                <span className="cc-inline-count">
+                  Totali: {richiesteCounters.totale} | Nuove: {richiesteCounters.nuove}
+                </span>
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingRichieste}
+                  onClick={() => void loadAutistiReadOnlySections()}
+                >
+                  Aggiorna dati
+                </button>
+              </div>
+            </div>
+
+            <div className="cc-filters cc-filters-compact">
+              <label className="cc-targa-filter">
+                Filtro targa
+                <input
+                  type="text"
+                  placeholder="Es. TI315407"
+                  value={richiesteFilterTarga}
+                  onChange={(e) => setRichiesteFilterTarga(e.target.value)}
+                />
+              </label>
+              <label className="cc-toggle">
+                <input
+                  type="checkbox"
+                  checked={richiesteOnlyNuove}
+                  onChange={(e) => setRichiesteOnlyNuove(e.target.checked)}
+                />
+                <span>Solo nuove</span>
+              </label>
+            </div>
+
+            {loadingRichieste && <div className="cc-status">Caricamento richieste...</div>}
+            {richiesteError && <div className="cc-status error">{richiesteError}</div>}
+            {!loadingRichieste && !richiesteError && richiesteFiltered.length === 0 && (
+              <div className="cc-status">Nessuna richiesta per i filtri selezionati.</div>
+            )}
+
+            {!loadingRichieste && richiesteFiltered.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Targa</th>
+                      <th>Autista</th>
+                      <th>Testo</th>
+                      <th>Foto</th>
+                      <th>Stato</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {richiesteFiltered.map((row, idx) => (
+                      <tr key={`${row.id}_${row.ts}_${idx}`}>
+                        <td>{formatDateIt(row.dateObj)}</td>
+                        <td>{row.targa}</td>
+                        <td>{row.autistaNome || "-"}</td>
+                        <td>{row.testo}</td>
+                        <td>{row.hasFoto ? "SI" : "NO"}</td>
+                        <td>{row.isNuova ? "NUOVA" : row.stato}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
       <NextCentroControlloIndagineModal
@@ -2301,11 +2301,7 @@ export default function NextCentroControlloParityPage() {
 
       <NextCentroControlloAnalisiModal
         open={analisiOpen}
-        onClose={() => {
-          setAnalisiOpen(false);
-          setAnalisiInitialTab(undefined);
-          setAnalisiInitialAndamentoTarga(null);
-        }}
+        onClose={() => setAnalisiOpen(false)}
         refuelRows={refuelRows}
         refuelSeedIndex={refuelSeedIndex}
         mezziTargheList={mezziTargheList}
@@ -2313,8 +2309,6 @@ export default function NextCentroControlloParityPage() {
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
         refuelSourceFilter={refuelSourceFilter}
-        initialTab={analisiInitialTab}
-        initialAndamentoTarga={analisiInitialAndamentoTarga}
       />
 
 

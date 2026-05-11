@@ -1,0 +1,3898 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
+import {
+  generateManutenzioniProgrammatePDFBlob,
+  generateRifornimentiMensiliPDFBlob,
+  type ManutenzioneProgrammataPdfItem,
+  type RifornimentiMensiliPdfItem,
+} from "../utils/pdfEngine";
+import {
+  readNextAutistiReadOnlySnapshot,
+  type NextAutistiControlloSectionItem,
+  type NextAutistiRichiestaSectionItem,
+  type NextAutistiSegnalazioneSectionItem,
+} from "./domain/nextAutistiDomain";
+import {
+  readNextRifornimentiReadOnlySnapshot,
+  type NextRifornimentoReadOnlyItem,
+} from "./domain/nextRifornimentiDomain";
+import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
+import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
+import { buildNextDossierPath } from "./nextStructuralPaths";
+import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
+import "./next-centro-controllo.css";
+
+type TabKey =
+  | "manutenzioni"
+  | "rifornimenti"
+  | "segnalazioni"
+  | "controlli"
+  | "richieste";
+type MaintenanceStatus = "SCADUTA" | "IN_SCADENZA" | "OK" | "SENZA_DATA";
+type RefuelSource = "dossier" | "tmp" | "merged";
+type RefuelSourceKey =
+  | "caravate"
+  | "distributore_piccadilly"
+  | "distributore_eni"
+  | "distributore_contanti"
+  | "distributore_altro"
+  | "non_determinato";
+type RefuelSourceFilter =
+  | "all"
+  | "caravate"
+  | "distributore_piccadilly"
+  | "distributore_eni"
+  | "distributore_contanti";
+type MonthFilter = number | "all";
+type YearFilter = number | "all";
+
+type ScheduledMaintenanceRow = {
+  id: string;
+  targa: string;
+  categoria: string;
+  manutenzioneDataFine: Date | null;
+  manutenzioneDataFineRaw: string;
+  manutenzioneContratto: string;
+  manutenzioneKmMax: string;
+  dataScadenzaRevisione: Date | null;
+  status: MaintenanceStatus;
+  daysToDeadline: number | null;
+};
+
+type RefuelRow = {
+  id: string;
+  originId: string;
+  targa: string;
+  dateObj: Date;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  litri: number | null;
+  km: number | null;
+  distributore: string;
+  note: string;
+  source: RefuelSource;
+  tipoRaw: string | null;
+  metodoPagamento: "piccadilly" | "eni" | "contanti" | null;
+  paese: "IT" | "CH" | null;
+  sourceLabel: string;
+  sourceKey: RefuelSourceKey;
+};
+
+type SegnalazioneRow = {
+  id: string;
+  ts: number;
+  dateObj: Date | null;
+  targa: string;
+  targaFilterKey: string;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  tipo: string;
+  descrizione: string;
+  stato: string;
+  letta: boolean | null;
+  isNuova: boolean;
+  fotoCount: number;
+};
+
+type ControlloRow = {
+  id: string;
+  ts: number;
+  dateObj: Date | null;
+  targaMotrice: string;
+  targaRimorchio: string;
+  targaLabel: string;
+  targaFilterKey: string;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  koList: string[];
+  isKo: boolean;
+  note: string;
+};
+
+type RichiestaRow = {
+  id: string;
+  ts: number;
+  dateObj: Date | null;
+  targa: string;
+  targaFilterKey: string;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  testo: string;
+  stato: string;
+  letta: boolean | null;
+  isNuova: boolean;
+  hasFoto: boolean;
+};
+
+type PdfContext = "rifornimenti" | "manutenzioni";
+type PrioritySource = "controlli" | "manutenzioni" | "segnalazioni" | "richieste";
+type PriorityItem = {
+  id: string;
+  label: string;
+  score: number;
+  timestamp: number;
+  targa: string;
+  autista: string;
+  motivo: string;
+  source: PrioritySource;
+  tab: TabKey;
+  sectionId: string;
+};
+
+const MONTH_NAMES = [
+  "Gennaio",
+  "Febbraio",
+  "Marzo",
+  "Aprile",
+  "Maggio",
+  "Giugno",
+  "Luglio",
+  "Agosto",
+  "Settembre",
+  "Ottobre",
+  "Novembre",
+  "Dicembre",
+] as const;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const KO_PRIORITY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const PRIORITY_HIGH_THRESHOLD = 70;
+const PRIORITY_MAX_ROWS = 15;
+
+const deriveRefuelSource = (
+  tipoRaw: string | null,
+  metodoRaw: string | null,
+): { label: string; key: RefuelSourceKey } => {
+  const tipo = (tipoRaw ?? "").toLowerCase().trim();
+  const metodo = (metodoRaw ?? "").toLowerCase().trim();
+  if (tipo === "caravate") {
+    return { label: "Caravate", key: "caravate" };
+  }
+  if (tipo === "distributore") {
+    if (metodo === "piccadilly") {
+      return { label: "Distributore Piccadilly", key: "distributore_piccadilly" };
+    }
+    if (metodo === "eni") {
+      return { label: "Distributore Eni", key: "distributore_eni" };
+    }
+    if (metodo === "contanti") {
+      return { label: "Distributore Contanti", key: "distributore_contanti" };
+    }
+    return { label: "Distributore", key: "distributore_altro" };
+  }
+  return { label: "—", key: "non_determinato" };
+};
+
+const formatMediaLitriKm = (value: number): string => {
+  const fixed = value.toFixed(2);
+  return `${fixed.replace(".", ",")} km/L`;
+};
+
+type AnomalyType =
+  | "KM_TORNANO_INDIETRO"
+  | "KM_SALTO_TROPPO_GRANDE"
+  | "KM_INVALIDI"
+  | "KM_INVARIATI"
+  | "LITRI_TROPPO_ALTI"
+  | "LITRI_NON_VALIDI"
+  | "LITRI_TROPPO_BASSI";
+
+type AnomalyTarget = "km" | "litri";
+
+type Anomaly = {
+  type: AnomalyType;
+  target: AnomalyTarget;
+  message: string;
+};
+
+function formatIntegerIt(value: number): string {
+  return value.toLocaleString("it-IT", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatDecimalIt(value: number, fractionDigits = 2): string {
+  return value.toLocaleString("it-IT", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+function formatDateItDisplay(value: Date | null): string {
+  if (!value) return "--/--/----";
+  const dd = String(value.getDate()).padStart(2, "0");
+  const mm = String(value.getMonth() + 1).padStart(2, "0");
+  const yyyy = value.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function describeAnomaly(
+  anomaly: Anomaly,
+  row: RefuelRow,
+  seed: RefuelRow | null,
+): string {
+  const seedDate = seed ? formatDateItDisplay(seed.dateObj) : "—";
+  const seedKmText =
+    seed && typeof seed.km === "number" ? formatIntegerIt(seed.km) : "—";
+  const rowKmText =
+    typeof row.km === "number" ? formatIntegerIt(row.km) : "—";
+  const rowKmRaw =
+    row.km === null || row.km === undefined ? "assente" : String(row.km);
+  const rowLitriRaw =
+    row.litri === null || row.litri === undefined
+      ? "assente"
+      : String(row.litri);
+  const rowLitriText =
+    typeof row.litri === "number" ? formatDecimalIt(row.litri, 2) : "—";
+
+  switch (anomaly.type) {
+    case "KM_TORNANO_INDIETRO": {
+      const diff =
+        seed && typeof seed.km === "number" && typeof row.km === "number"
+          ? formatIntegerIt(seed.km - row.km)
+          : "—";
+      return `Salto km incoerente: il rifornimento precedente del ${seedDate} ha km ${seedKmText}, superiori di ${diff} km a questo (km ${rowKmText}). Probabile errore di battitura su uno dei due record.`;
+    }
+    case "KM_SALTO_TROPPO_GRANDE": {
+      const diff =
+        seed && typeof seed.km === "number" && typeof row.km === "number"
+          ? formatIntegerIt(row.km - seed.km)
+          : "—";
+      return `Salto km elevato: dal rifornimento precedente del ${seedDate} (km ${seedKmText}) sono stati percorsi ${diff} km. Verifica plausibilità (oltre soglia 1.200 km tra rifornimenti consecutivi).`;
+    }
+    case "KM_INVALIDI": {
+      return `Km mancanti o non validi sul rifornimento. Valore registrato: ${rowKmRaw}.`;
+    }
+    case "KM_INVARIATI": {
+      return `Km uguali al rifornimento precedente del ${seedDate} (km ${seedKmText}). Mezzo non si è mosso ma ha rifornito: verifica.`;
+    }
+    case "LITRI_TROPPO_ALTI": {
+      return `Litri sospetti: registrati ${rowLitriText} L (oltre soglia 500 L per singolo rifornimento). Verifica il valore.`;
+    }
+    case "LITRI_NON_VALIDI": {
+      return `Litri mancanti o non validi sul rifornimento. Valore registrato: ${rowLitriRaw}.`;
+    }
+    case "LITRI_TROPPO_BASSI": {
+      return `Litri sospetti: registrati ${rowLitriText} L (sotto soglia 20 L, insolito per un camion). Verifica il valore.`;
+    }
+    default:
+      return anomaly.message;
+  }
+}
+
+function detectRefuelAnomalies(
+  row: RefuelRow,
+  seed: RefuelRow | null,
+): Anomaly[] {
+  const result: Anomaly[] = [];
+
+  const rowKmInvalid =
+    row.km === null ||
+    row.km === undefined ||
+    (typeof row.km === "number" && row.km <= 0);
+
+  if (rowKmInvalid) {
+    result.push({
+      type: "KM_INVALIDI",
+      target: "km",
+      message: "Km mancanti o non validi",
+    });
+  } else if (
+    seed &&
+    typeof seed.km === "number" &&
+    seed.km > 0 &&
+    typeof row.km === "number" &&
+    row.km > 0
+  ) {
+    if (row.km < seed.km) {
+      result.push({
+        type: "KM_TORNANO_INDIETRO",
+        target: "km",
+        message:
+          "Km inferiori al rifornimento precedente (possibile errore di battitura)",
+      });
+    } else if (row.km > seed.km && row.km - seed.km > 1200) {
+      result.push({
+        type: "KM_SALTO_TROPPO_GRANDE",
+        target: "km",
+        message: "Salto km > 1200 dal rifornimento precedente",
+      });
+    } else if (row.km === seed.km) {
+      result.push({
+        type: "KM_INVARIATI",
+        target: "km",
+        message:
+          "Km uguali al rifornimento precedente (mezzo non si è mosso ma ha rifornito)",
+      });
+    }
+  }
+
+  const rowLitriInvalid =
+    row.litri === null ||
+    row.litri === undefined ||
+    (typeof row.litri === "number" && row.litri <= 0);
+
+  if (rowLitriInvalid) {
+    result.push({
+      type: "LITRI_NON_VALIDI",
+      target: "litri",
+      message: "Litri mancanti o non validi",
+    });
+  } else if (typeof row.litri === "number" && row.litri > 0) {
+    if (row.litri > 500) {
+      result.push({
+        type: "LITRI_TROPPO_ALTI",
+        target: "litri",
+        message: "Litri sospetti (> 500 L per singolo rifornimento)",
+      });
+    } else if (row.litri < 20) {
+      result.push({
+        type: "LITRI_TROPPO_BASSI",
+        target: "litri",
+        message:
+          "Litri sospetti (< 20 L per singolo rifornimento, insolito per un camion)",
+      });
+    }
+  }
+
+  return result;
+}
+
+const safeText = (value: unknown): string => String(value ?? "").trim();
+
+const normalizeTarga = (value: unknown): string =>
+  String(value ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+
+const normalizeTargaFilter = (value: unknown): string =>
+  String(value ?? "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .trim();
+
+const toNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const normalized = String(value).replace(",", ".").replace(/[^\d.-]/g, "").trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const extractAutistaNome = (record: Record<string, unknown> | null | undefined): string => {
+  const direct = safeText(record?.autistaNome ?? record?.nomeAutista);
+  if (direct) return direct;
+  const rawAutista = record?.autista;
+  if (typeof rawAutista === "string") {
+    return safeText(rawAutista);
+  }
+  if (rawAutista && typeof rawAutista === "object") {
+    return safeText((rawAutista as { nome?: unknown })?.nome);
+  }
+  return "";
+};
+
+const parseDateFlexible = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  if (typeof value === "number") {
+    const ms = value > 1_000_000_000_000 ? value : value * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const maybe = value as {
+      toDate?: () => Date;
+      seconds?: number;
+      _seconds?: number;
+    };
+    if (typeof maybe.toDate === "function") {
+      const d = maybe.toDate();
+      return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    }
+    if (typeof maybe.seconds === "number") {
+      const d = new Date(maybe.seconds * 1000);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof maybe._seconds === "number") {
+      const d = new Date(maybe._seconds * 1000);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const dmyWithTime = raw.match(
+    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
+  );
+  if (dmyWithTime) {
+    const day = Number(dmyWithTime[1]);
+    const month = Number(dmyWithTime[2]) - 1;
+    const yearRaw = Number(dmyWithTime[3]);
+    const year = dmyWithTime[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
+    const hh = Number(dmyWithTime[4] ?? "12");
+    const mm = Number(dmyWithTime[5] ?? "00");
+    const d = new Date(year, month, day, hh, mm, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const shortText = (value: unknown, max = 90): string => {
+  const text = safeText(value);
+  if (!text) return "-";
+  return text.length <= max ? text : `${text.slice(0, max - 1)}...`;
+};
+
+const formatDateIt = (value: Date | null): string => {
+  if (!value) return "--/--/----";
+  const dd = String(value.getDate()).padStart(2, "0");
+  const mm = String(value.getMonth() + 1).padStart(2, "0");
+  const yyyy = value.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+};
+
+const formatNumberIt = (value: number | null, fractionDigits = 2): string => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  return value.toLocaleString("it-IT", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+};
+
+const startOfDay = (value: Date): Date =>
+  new Date(value.getFullYear(), value.getMonth(), value.getDate(), 0, 0, 0, 0);
+
+const daysFromToday = (target: Date, today: Date): number =>
+  Math.floor((startOfDay(target).getTime() - startOfDay(today).getTime()) / DAY_MS);
+
+const evaluateMaintenanceStatus = (
+  dateFine: Date | null,
+  today: Date
+): { status: MaintenanceStatus; daysToDeadline: number | null; priority: number } => {
+  if (!dateFine) {
+    return { status: "SENZA_DATA", daysToDeadline: null, priority: 3 };
+  }
+  const days = daysFromToday(dateFine, today);
+  if (days < 0) return { status: "SCADUTA", daysToDeadline: days, priority: 0 };
+  if (days <= 30) return { status: "IN_SCADENZA", daysToDeadline: days, priority: 1 };
+  return { status: "OK", daysToDeadline: days, priority: 2 };
+};
+
+const mapRefuelSource = (item: NextRifornimentoReadOnlyItem): RefuelSource => {
+  if (item.provenienza === "business") return "dossier";
+  if (item.provenienza === "campo") return "tmp";
+  return "merged";
+};
+
+const mapSegnalazioneRow = (item: NextAutistiSegnalazioneSectionItem): SegnalazioneRow => ({
+  id: item.id,
+  ts: item.timestamp ?? 0,
+  dateObj: item.timestamp ? new Date(item.timestamp) : null,
+  targa: normalizeTarga(item.targa) || "-",
+  targaFilterKey: normalizeTargaFilter(item.targa),
+  autistaNome: item.autistaNome,
+  badgeAutista: item.badgeAutista,
+  tipo: item.tipo || "-",
+  descrizione: item.descrizione || "-",
+  stato: item.stato || "-",
+  letta: item.letta,
+  isNuova: item.isNuova,
+  fotoCount: item.fotoCount,
+});
+
+const mapControlloRow = (item: NextAutistiControlloSectionItem): ControlloRow => {
+  const targaMotrice = normalizeTarga(item.targaMotrice) || "-";
+  const targaRimorchio = normalizeTarga(item.targaRimorchio) || "-";
+  const targaFilterKey = [normalizeTargaFilter(item.targaMotrice), normalizeTargaFilter(item.targaRimorchio)]
+    .filter(Boolean)
+    .join(" ");
+  const targaLabel =
+    targaMotrice !== "-" && targaRimorchio !== "-"
+      ? `MOTRICE ${targaMotrice} / RIMORCHIO ${targaRimorchio}`
+      : targaMotrice !== "-"
+      ? `MOTRICE ${targaMotrice}`
+      : targaRimorchio !== "-"
+      ? `RIMORCHIO ${targaRimorchio}`
+      : "-";
+
+  return {
+    id: item.id,
+    ts: item.timestamp ?? 0,
+    dateObj: item.timestamp ? new Date(item.timestamp) : null,
+    targaMotrice,
+    targaRimorchio,
+    targaLabel,
+    targaFilterKey,
+    autistaNome: item.autistaNome,
+    badgeAutista: item.badgeAutista,
+    koList: item.koList,
+    isKo: item.isKo,
+    note: item.note || "",
+  };
+};
+
+const mapRichiestaRow = (item: NextAutistiRichiestaSectionItem): RichiestaRow => ({
+  id: item.id,
+  ts: item.timestamp ?? 0,
+  dateObj: item.timestamp ? new Date(item.timestamp) : null,
+  targa: normalizeTarga(item.targa) || "-",
+  targaFilterKey: normalizeTargaFilter(item.targa),
+  autistaNome: item.autistaNome,
+  badgeAutista: item.badgeAutista,
+  testo: item.testo || "-",
+  stato: item.stato || "-",
+  letta: item.letta,
+  isNuova: item.isNuova,
+  hasFoto: item.hasFoto,
+});
+
+const normalizeRefuelRecord = (
+  record: Record<string, unknown> | null | undefined,
+  index: number,
+  source: RefuelSource
+): RefuelRow | null => {
+  const originId = safeText(record?.id);
+  const targa = normalizeTarga(
+    record?.mezzoTarga ??
+      record?.targaCamion ??
+      record?.targaMotrice ??
+      record?.targaRimorchio ??
+      record?.targa
+  );
+  const dateObj =
+    parseDateFlexible(record?.data) ||
+    parseDateFlexible(record?.dataOra) ||
+    parseDateFlexible(record?.timestamp);
+  if (!targa || !dateObj) return null;
+
+  const tipoRawValue = record?.tipo;
+  const tipoRaw = typeof tipoRawValue === "string" ? tipoRawValue : null;
+  const metodoValue = record?.metodoPagamento;
+  const metodoPagamento =
+    metodoValue === "piccadilly" || metodoValue === "eni" || metodoValue === "contanti"
+      ? metodoValue
+      : null;
+  const paeseValue = record?.paese;
+  const paese = paeseValue === "IT" || paeseValue === "CH" ? paeseValue : null;
+  const derived = deriveRefuelSource(tipoRaw, metodoPagamento);
+
+  return {
+    id: originId || `${source}_${index}`,
+    originId,
+    targa,
+    dateObj,
+    autistaNome: extractAutistaNome(record) || null,
+    badgeAutista: safeText(record?.badgeAutista ?? record?.badge) || null,
+    litri: toNumber(record?.litri),
+    km: toNumber(record?.km),
+    distributore: safeText(record?.distributore ?? record?.tipo),
+    note: safeText(record?.note),
+    source,
+    tipoRaw,
+    metodoPagamento,
+    paese,
+    sourceLabel: derived.label,
+    sourceKey: derived.key,
+  };
+};
+
+export default function NextCentroControlloParityPage() {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<TabKey>("manutenzioni");
+
+  const [loadingMezzi, setLoadingMezzi] = useState(false);
+  const [mezziError, setMezziError] = useState<string | null>(null);
+  const [scheduledMaintenances, setScheduledMaintenances] = useState<ScheduledMaintenanceRow[]>(
+    []
+  );
+  const [selectedMaintenanceIds, setSelectedMaintenanceIds] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  const [loadingRefuels, setLoadingRefuels] = useState(false);
+  const [refuelsError, setRefuelsError] = useState<string | null>(null);
+  const [refuelRows, setRefuelRows] = useState<RefuelRow[]>([]);
+
+  const [loadingSegnalazioni, setLoadingSegnalazioni] = useState(false);
+  const [segnalazioniError, setSegnalazioniError] = useState<string | null>(null);
+  const [segnalazioniRows, setSegnalazioniRows] = useState<SegnalazioneRow[]>([]);
+  const [segnalazioniFilterTarga, setSegnalazioniFilterTarga] = useState("");
+  const [segnalazioniOnlyNuove, setSegnalazioniOnlyNuove] = useState(true);
+
+  const [loadingControlli, setLoadingControlli] = useState(false);
+  const [controlliError, setControlliError] = useState<string | null>(null);
+  const [controlliRows, setControlliRows] = useState<ControlloRow[]>([]);
+  const [controlliFilterTarga, setControlliFilterTarga] = useState("");
+
+  const [loadingRichieste, setLoadingRichieste] = useState(false);
+  const [richiesteError, setRichiesteError] = useState<string | null>(null);
+  const [richiesteRows, setRichiesteRows] = useState<RichiestaRow[]>([]);
+  const [richiesteFilterTarga, setRichiesteFilterTarga] = useState("");
+  const [richiesteOnlyNuove, setRichiesteOnlyNuove] = useState(true);
+
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<YearFilter>(now.getFullYear());
+  const [targaFilterInput, setTargaFilterInput] = useState("");
+  const [targaFilterSelected, setTargaFilterSelected] = useState<string | null>(null);
+  const [targaDropdownOpen, setTargaDropdownOpen] = useState(false);
+  const [autistaFilterInput, setAutistaFilterInput] = useState("");
+  const [autistaFilterSelected, setAutistaFilterSelected] = useState<string | null>(null);
+  const [autistaDropdownOpen, setAutistaDropdownOpen] = useState(false);
+  const [refuelSourceFilter, setRefuelSourceFilter] = useState<RefuelSourceFilter>("all");
+  const [anomaliesFilterActive, setAnomaliesFilterActive] = useState(false);
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [investigationRow, setInvestigationRow] = useState<RefuelRow | null>(null);
+  const [investigationExpansion, setInvestigationExpansion] = useState<5 | 10 | "all">(5);
+  const [editRifornimentoOpen, setEditRifornimentoOpen] = useState(false);
+  const [editRifornimentoRow, setEditRifornimentoRow] = useState<RefuelRow | null>(null);
+
+  const [analisiOpen, setAnalisiOpen] = useState(false);
+  const [analisiActiveTab, setAnalisiActiveTab] = useState<
+    "mezzi" | "autisti" | "confronta" | "andamento"
+  >("mezzi");
+  const [mezziSelected, setMezziSelected] = useState<Set<string>>(new Set());
+  const [autistiSelected, setAutistiSelected] = useState<Set<string>>(new Set());
+  const [confrontaCategoria, setConfrontaCategoria] = useState<"mezzi" | "autisti">("mezzi");
+  const [andamentoMezzoSelected, setAndamentoMezzoSelected] = useState<string | null>(null);
+  const [andamentoTargaInput, setAndamentoTargaInput] = useState("");
+  const [andamentoTargaDropdownOpen, setAndamentoTargaDropdownOpen] = useState(false);
+
+  const [colleghiList, setColleghiList] = useState<{ id: string; nome: string }[]>([]);
+  const [mezziTargheList, setMezziTargheList] = useState<string[]>([]);
+
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingMaintenancePdf, setGeneratingMaintenancePdf] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("rifornimenti-mensili.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF rifornimenti");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [pdfContext, setPdfContext] = useState<PdfContext>("rifornimenti");
+  const [priorityOnlyHigh, setPriorityOnlyHigh] = useState(false);
+
+  const loadScheduledMaintenances = async () => {
+    setLoadingMezzi(true);
+    setMezziError(null);
+    try {
+      const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
+      const today = new Date();
+
+      const mapped = snapshot.items
+        .filter((item) => item.manutenzioneProgrammata)
+        .map((item, idx) => {
+          const targaNorm = normalizeTarga(item.targa);
+          const rowId = safeText(item.id) || targaNorm || `mezzo_${idx}`;
+          const dataFineRaw = safeText(item.manutenzioneDataFine);
+          const dataFine = parseDateFlexible(dataFineRaw);
+          const revisioneDate = parseDateFlexible(item.dataScadenzaRevisione);
+          const { status, daysToDeadline, priority } = evaluateMaintenanceStatus(dataFine, today);
+          return {
+            id: rowId,
+            targa: targaNorm || "-",
+            categoria: safeText(item.categoria) || "-",
+            manutenzioneDataFine: dataFine,
+            manutenzioneDataFineRaw: dataFineRaw,
+            manutenzioneContratto: safeText(item.manutenzioneContratto),
+            manutenzioneKmMax: safeText(item.manutenzioneKmMax),
+            dataScadenzaRevisione: revisioneDate,
+            status,
+            daysToDeadline,
+            _priority: priority,
+          };
+        })
+        .sort((a, b) => {
+          if (a._priority !== b._priority) return a._priority - b._priority;
+          if (a.daysToDeadline === null && b.daysToDeadline !== null) return 1;
+          if (a.daysToDeadline !== null && b.daysToDeadline === null) return -1;
+          if (a.daysToDeadline !== null && b.daysToDeadline !== null) {
+            return a.daysToDeadline - b.daysToDeadline;
+          }
+          return a.targa.localeCompare(b.targa);
+        })
+        .map((row) => {
+          const nextRow = { ...row } as ScheduledMaintenanceRow & { _priority?: number };
+          delete nextRow._priority;
+          return nextRow as ScheduledMaintenanceRow;
+        });
+
+      setScheduledMaintenances(mapped);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Errore caricamento mezzi.";
+      setMezziError(message);
+      setScheduledMaintenances([]);
+    } finally {
+      setLoadingMezzi(false);
+    }
+  };
+
+  const loadRefuels = async () => {
+    setLoadingRefuels(true);
+    setRefuelsError(null);
+    try {
+      const snapshot = await readNextRifornimentiReadOnlySnapshot();
+      const rows = snapshot.items
+        .map((item, idx) =>
+          normalizeRefuelRecord(
+            {
+              id: item.id,
+              mezzoTarga: item.targa,
+              autistaNome: item.autistaNome,
+              badgeAutista: item.badgeAutista,
+              litri: item.litri,
+              km: item.km,
+              distributore: item.distributore,
+              note: item.note,
+              timestamp: item.timestamp ?? item.timestampRicostruito ?? item.dataDisplay,
+              data: item.dataDisplay,
+              tipo: item.tipo,
+              metodoPagamento: item.metodoPagamento,
+              paese: item.paese,
+            },
+            idx,
+            mapRefuelSource(item)
+          )
+        )
+        .filter((item): item is RefuelRow => Boolean(item))
+        .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+      setRefuelRows(rows);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Errore caricamento rifornimenti.";
+      setRefuelsError(message);
+      setRefuelRows([]);
+    } finally {
+      setLoadingRefuels(false);
+    }
+  };
+
+  const loadAutistiReadOnlySections = async () => {
+    setLoadingSegnalazioni(true);
+    setSegnalazioniError(null);
+    setLoadingControlli(true);
+    setControlliError(null);
+    setLoadingRichieste(true);
+    setRichiesteError(null);
+
+    try {
+      const snapshot = await readNextAutistiReadOnlySnapshot(Date.now(), {
+        includeLocalClone: false,
+        includeStorageOverlay: false,
+      });
+      setSegnalazioniRows(snapshot.segnalazioniRows.map(mapSegnalazioneRow));
+      setControlliRows(snapshot.controlliRows.map(mapControlloRow));
+      setRichiesteRows(snapshot.richiesteRows.map(mapRichiestaRow));
+      setSegnalazioniError(null);
+      setControlliError(null);
+      setRichiesteError(null);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Errore caricamento flussi autisti.";
+      setSegnalazioniRows([]);
+      setControlliRows([]);
+      setRichiesteRows([]);
+      setSegnalazioniError(message);
+      setControlliError(message);
+      setRichiesteError(message);
+    } finally {
+      setLoadingSegnalazioni(false);
+      setLoadingControlli(false);
+      setLoadingRichieste(false);
+    }
+  };
+
+  const loadColleghiAnagrafica = async () => {
+    try {
+      const snapshot = await readNextColleghiSnapshot();
+      const mapped = snapshot.items
+        .map((item) => ({
+          id: safeText(item.id),
+          nome: safeText(item.nome),
+        }))
+        .filter((entry) => entry.nome.length > 0)
+        .sort((left, right) =>
+          left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
+        );
+      setColleghiList(mapped);
+    } catch {
+      setColleghiList([]);
+    }
+  };
+
+  const loadMezziAnagrafica = async () => {
+    try {
+      const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
+      const targheSet = new Set<string>();
+      for (const item of snapshot.items) {
+        const targaNorm = normalizeTarga(item.targa);
+        if (targaNorm) targheSet.add(targaNorm);
+      }
+      const mapped = Array.from(targheSet).sort((left, right) =>
+        left.localeCompare(right, "it", { sensitivity: "base" }),
+      );
+      setMezziTargheList(mapped);
+    } catch {
+      setMezziTargheList([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadScheduledMaintenances();
+    void loadRefuels();
+    void loadAutistiReadOnlySections();
+  }, []);
+
+  useEffect(() => {
+    void loadColleghiAnagrafica();
+  }, []);
+
+  useEffect(() => {
+    void loadMezziAnagrafica();
+  }, []);
+
+  useEffect(() => {
+    setSelectedMaintenanceIds((prev) => {
+      const validIds = new Set(scheduledMaintenances.map((row) => row.id));
+      const next: Record<string, boolean> = {};
+      Object.keys(prev).forEach((id) => {
+        if (prev[id] && validIds.has(id)) next[id] = true;
+      });
+      return next;
+    });
+  }, [scheduledMaintenances]);
+
+  const maintenanceCounters = useMemo(() => {
+    return {
+      total: scheduledMaintenances.length,
+      scadute: scheduledMaintenances.filter((row) => row.status === "SCADUTA").length,
+      inScadenza: scheduledMaintenances.filter((row) => row.status === "IN_SCADENZA").length,
+      ok: scheduledMaintenances.filter((row) => row.status === "OK").length,
+    };
+  }, [scheduledMaintenances]);
+
+  const selectedMaintenanceRows = useMemo(
+    () => scheduledMaintenances.filter((row) => selectedMaintenanceIds[row.id]),
+    [scheduledMaintenances, selectedMaintenanceIds]
+  );
+
+  const selectedMaintenanceCount = selectedMaintenanceRows.length;
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    refuelRows.forEach((item) => years.add(item.dateObj.getFullYear()));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [refuelRows]);
+
+  const filteredMonthlyRefuels = useMemo(() => {
+    const targaNorm = targaFilterSelected ? normalizeTarga(targaFilterSelected) : "";
+    const autistaNorm = autistaFilterSelected
+      ? autistaFilterSelected.trim().toLowerCase()
+      : "";
+    return refuelRows.filter((item) => {
+      if (selectedMonth !== "all" && item.dateObj.getMonth() + 1 !== selectedMonth) return false;
+      if (selectedYear !== "all" && item.dateObj.getFullYear() !== selectedYear) return false;
+      if (targaNorm && item.targa !== targaNorm) return false;
+      if (refuelSourceFilter !== "all" && item.sourceKey !== refuelSourceFilter) return false;
+      if (autistaNorm) {
+        const itemAutista = (item.autistaNome ?? "").trim().toLowerCase();
+        if (itemAutista !== autistaNorm) return false;
+      }
+      return true;
+    });
+  }, [
+    refuelRows,
+    selectedMonth,
+    selectedYear,
+    targaFilterSelected,
+    refuelSourceFilter,
+    autistaFilterSelected,
+  ]);
+
+  const monthlyTotals = useMemo(() => {
+    const litri = filteredMonthlyRefuels.reduce((sum, item) => sum + (item.litri ?? 0), 0);
+    return {
+      count: filteredMonthlyRefuels.length,
+      litri,
+    };
+  }, [filteredMonthlyRefuels]);
+
+  const colleghiSuggestions = useMemo(() => {
+    const query = autistaFilterInput.trim().toLowerCase();
+    if (!query) return colleghiList;
+    return colleghiList.filter((entry) =>
+      entry.nome.toLowerCase().includes(query),
+    );
+  }, [colleghiList, autistaFilterInput]);
+
+  const targheSuggestions = useMemo(() => {
+    const query = normalizeTargaFilter(targaFilterInput);
+    if (!query) return mezziTargheList;
+    return mezziTargheList.filter((targa) => targa.includes(query));
+  }, [mezziTargheList, targaFilterInput]);
+
+  const refuelSeedIndex = useMemo(() => {
+    const fullSortedByTarga = new Map<string, RefuelRow[]>();
+    const fullSorted = [...refuelRows].sort((left, right) => {
+      const targaCompare = left.targa.localeCompare(right.targa, "it", { sensitivity: "base" });
+      if (targaCompare !== 0) return targaCompare;
+      return left.dateObj.getTime() - right.dateObj.getTime();
+    });
+    for (const row of fullSorted) {
+      const list = fullSortedByTarga.get(row.targa);
+      if (list) {
+        list.push(row);
+      } else {
+        fullSortedByTarga.set(row.targa, [row]);
+      }
+    }
+    const findSeed = (row: RefuelRow): RefuelRow | null => {
+      const list = fullSortedByTarga.get(row.targa);
+      if (!list || list.length === 0) return null;
+      const rowTs = row.dateObj.getTime();
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const candidate = list[i];
+        if (
+          candidate.dateObj.getTime() < rowTs &&
+          typeof candidate.km === "number" &&
+          candidate.km > 0 &&
+          typeof row.km === "number" &&
+          candidate.km < row.km
+        ) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+    return { findSeed };
+  }, [refuelRows]);
+
+  const filteredMonthlyRefuelsWithMedia = useMemo(() => {
+    const mediaById = new Map<string, { label: string; value: number | null }>();
+    for (const row of filteredMonthlyRefuels) {
+      const seed = refuelSeedIndex.findSeed(row);
+      let mediaLabel = "—";
+      let mediaValue: number | null = null;
+      if (
+        seed &&
+        typeof row.km === "number" && row.km > 0 &&
+        typeof seed.km === "number" && seed.km > 0 &&
+        row.km > seed.km &&
+        typeof row.litri === "number" && row.litri > 0
+      ) {
+        const mediaKmL = (row.km - seed.km) / row.litri;
+        if (Number.isFinite(mediaKmL) && mediaKmL > 0) {
+          mediaLabel = formatMediaLitriKm(mediaKmL);
+          mediaValue = mediaKmL;
+        }
+      }
+      mediaById.set(`${row.id}_${row.dateObj.getTime()}`, {
+        label: mediaLabel,
+        value: mediaValue,
+      });
+    }
+    return filteredMonthlyRefuels.map((row) => {
+      const entry = mediaById.get(`${row.id}_${row.dateObj.getTime()}`);
+      return {
+        row,
+        mediaLitriKm: entry?.label ?? "—",
+        mediaLitriKmValue: entry?.value ?? null,
+      };
+    });
+  }, [filteredMonthlyRefuels, refuelSeedIndex]);
+
+  const mediaFlottaMese = useMemo(() => {
+    const subset =
+      selectedMonth === "all" || selectedYear === "all"
+        ? refuelRows
+        : refuelRows.filter(
+            (item) =>
+              item.dateObj.getMonth() + 1 === selectedMonth &&
+              item.dateObj.getFullYear() === selectedYear,
+          );
+    let sumKm = 0;
+    let sumLitri = 0;
+    for (const row of subset) {
+      const seed = refuelSeedIndex.findSeed(row);
+      if (
+        seed &&
+        typeof row.km === "number" && row.km > 0 &&
+        typeof seed.km === "number" && seed.km > 0 &&
+        row.km > seed.km &&
+        typeof row.litri === "number" && row.litri > 0
+      ) {
+        const delta = row.km - seed.km;
+        if (Number.isFinite(delta) && delta > 0) {
+          sumKm += delta;
+          sumLitri += row.litri;
+        }
+      }
+    }
+    if (sumLitri <= 0) {
+      return {
+        value: null as number | null,
+        sogliaSopra: null as number | null,
+        sogliaSotto: null as number | null,
+      };
+    }
+    const value = sumKm / sumLitri;
+    if (!Number.isFinite(value) || value <= 0) {
+      return {
+        value: null as number | null,
+        sogliaSopra: null as number | null,
+        sogliaSotto: null as number | null,
+      };
+    }
+    return {
+      value,
+      sogliaSopra: value * 1.3,
+      sogliaSotto: value * 0.7,
+    };
+  }, [refuelRows, selectedMonth, selectedYear, refuelSeedIndex]);
+
+  const analisiData = useMemo(() => {
+    if (!analisiOpen) return null;
+
+    const isValidPair = (
+      row: RefuelRow,
+      seed: RefuelRow | null,
+    ): seed is RefuelRow =>
+      !!seed &&
+      typeof row.km === "number" &&
+      row.km > 0 &&
+      typeof seed.km === "number" &&
+      seed.km > 0 &&
+      row.km > seed.km &&
+      typeof row.litri === "number" &&
+      row.litri > 0;
+
+    const computeStats = (rows: RefuelRow[]) => {
+      let sumKm = 0;
+      let sumLitri = 0;
+      let validCount = 0;
+      const ratios: number[] = [];
+      for (const row of rows) {
+        const seed = refuelSeedIndex.findSeed(row);
+        if (!isValidPair(row, seed)) continue;
+        const litri = row.litri as number;
+        const delta = (row.km as number) - seed.km!;
+        if (!Number.isFinite(delta) || delta <= 0) continue;
+        sumKm += delta;
+        sumLitri += litri;
+        validCount += 1;
+        const r = delta / litri;
+        if (Number.isFinite(r) && r > 0) ratios.push(r);
+      }
+      const pesata =
+        sumLitri > 0 && Number.isFinite(sumKm / sumLitri) && sumKm / sumLitri > 0
+          ? sumKm / sumLitri
+          : null;
+      const semplice =
+        ratios.length > 0
+          ? ratios.reduce((s, r) => s + r, 0) / ratios.length
+          : null;
+      return {
+        kmTot: sumKm,
+        litriTot: sumLitri,
+        validCount,
+        pesata,
+        semplice,
+      };
+    };
+
+    const filteredForClassifica = refuelRows.filter((row) => {
+      if (selectedMonth !== "all" && row.dateObj.getMonth() + 1 !== selectedMonth)
+        return false;
+      if (selectedYear !== "all" && row.dateObj.getFullYear() !== selectedYear)
+        return false;
+      if (refuelSourceFilter !== "all" && row.sourceKey !== refuelSourceFilter)
+        return false;
+      return true;
+    });
+
+    const mezziMap = new Map<string, RefuelRow[]>();
+    for (const row of filteredForClassifica) {
+      const list = mezziMap.get(row.targa);
+      if (list) list.push(row);
+      else mezziMap.set(row.targa, [row]);
+    }
+    const mezziAggregati = Array.from(mezziMap.entries())
+      .map(([targa, rows]) => {
+        const stats = computeStats(rows);
+        return {
+          id: targa,
+          targa,
+          rifCount: rows.length,
+          kmTot: stats.kmTot,
+          litriTot: stats.litriTot,
+          semplice: stats.semplice,
+          pesata: stats.pesata,
+        };
+      })
+      .filter((m) => m.rifCount >= 3 && m.pesata !== null)
+      .sort((a, b) => {
+        const pa = a.pesata ?? 0;
+        const pb = b.pesata ?? 0;
+        if (pa !== pb) return pb - pa;
+        return b.kmTot - a.kmTot;
+      });
+
+    const autistiMap = new Map<string, RefuelRow[]>();
+    for (const row of filteredForClassifica) {
+      const key = (row.autistaNome ?? "").trim().toLowerCase();
+      if (!key) continue;
+      const list = autistiMap.get(key);
+      if (list) list.push(row);
+      else autistiMap.set(key, [row]);
+    }
+    const autistiAggregati = Array.from(autistiMap.entries())
+      .map(([key, rows]) => {
+        const nome = rows[0]?.autistaNome ?? key;
+        const stats = computeStats(rows);
+        return {
+          id: key,
+          autistaNome: nome,
+          rifCount: rows.length,
+          kmTot: stats.kmTot,
+          litriTot: stats.litriTot,
+          semplice: stats.semplice,
+          pesata: stats.pesata,
+        };
+      })
+      .filter((a) => a.rifCount >= 3 && a.pesata !== null)
+      .sort((a, b) => {
+        const pa = a.pesata ?? 0;
+        const pb = b.pesata ?? 0;
+        if (pa !== pb) return pb - pa;
+        return b.kmTot - a.kmTot;
+      });
+
+    let andamento: {
+      targa: string;
+      categoria: string;
+      totalRifMezzo: number;
+      mezzoAvgStorica: number | null;
+      currentEntry: {
+        key: string;
+        year: number;
+        month: number;
+        rifCount: number;
+        kmTot: number;
+        litriTot: number;
+        pesata: number | null;
+        scostamento: number | null;
+        isCurrent: boolean;
+      } | null;
+      monthly: Array<{
+        key: string;
+        year: number;
+        month: number;
+        rifCount: number;
+        kmTot: number;
+        litriTot: number;
+        pesata: number | null;
+        scostamento: number | null;
+        isCurrent: boolean;
+      }>;
+      maxPesata: number;
+      autistiSuMezzo: Array<{
+        autistaKey: string;
+        autistaNome: string;
+        rifCount: number;
+        kmTot: number;
+        litriTot: number;
+        pesata: number | null;
+        scostamento: number | null;
+      }>;
+    } | null = null;
+
+    if (andamentoMezzoSelected) {
+      const targa = andamentoMezzoSelected;
+      const allMezzo = refuelRows.filter((r) => r.targa === targa);
+
+      const buckets = new Map<string, RefuelRow[]>();
+      for (const row of allMezzo) {
+        const y = row.dateObj.getFullYear();
+        const m = row.dateObj.getMonth() + 1;
+        const key = `${y}-${String(m).padStart(2, "0")}`;
+        const list = buckets.get(key);
+        if (list) list.push(row);
+        else buckets.set(key, [row]);
+      }
+
+      const monthlyEntries = Array.from(buckets.entries())
+        .map(([key, rows]) => {
+          const [yStr, mStr] = key.split("-");
+          const year = Number(yStr);
+          const month = Number(mStr);
+          const stats = computeStats(rows);
+          return {
+            key,
+            year,
+            month,
+            rows,
+            rifCount: rows.length,
+            kmTot: stats.kmTot,
+            litriTot: stats.litriTot,
+            pesata: stats.pesata,
+          };
+        })
+        .sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          return b.month - a.month;
+        });
+
+      const last12 = monthlyEntries.slice(0, 12);
+
+      const today = new Date();
+      const currentY = today.getFullYear();
+      const currentM = today.getMonth() + 1;
+      const currentKey = `${currentY}-${String(currentM).padStart(2, "0")}`;
+
+      const storicoRows: RefuelRow[] = [];
+      for (const entry of last12) {
+        if (entry.key === currentKey) continue;
+        storicoRows.push(...entry.rows);
+      }
+      const storicoStats = computeStats(storicoRows);
+      const mezzoAvgStorica = storicoStats.pesata;
+
+      const last12WithScostamento = last12.map((e) => {
+        let scostamento: number | null = null;
+        if (mezzoAvgStorica && e.pesata !== null) {
+          scostamento = (e.pesata - mezzoAvgStorica) / mezzoAvgStorica;
+        }
+        const isCurrent = e.key === currentKey;
+        return {
+          key: e.key,
+          year: e.year,
+          month: e.month,
+          rifCount: e.rifCount,
+          kmTot: e.kmTot,
+          litriTot: e.litriTot,
+          pesata: e.pesata,
+          scostamento,
+          isCurrent,
+        };
+      });
+
+      let maxPesata = 0;
+      for (const e of last12WithScostamento) {
+        if (e.pesata !== null && e.pesata > maxPesata) maxPesata = e.pesata;
+      }
+
+      const currentEntry =
+        last12WithScostamento.find((e) => e.isCurrent) ?? null;
+
+      const cutoff = new Date(today);
+      cutoff.setMonth(cutoff.getMonth() - 6);
+      const last6MezzoRows = allMezzo.filter((r) => r.dateObj >= cutoff);
+      const autistiMezzoMap = new Map<string, RefuelRow[]>();
+      for (const row of last6MezzoRows) {
+        const key = (row.autistaNome ?? "").trim().toLowerCase();
+        if (!key) continue;
+        const list = autistiMezzoMap.get(key);
+        if (list) list.push(row);
+        else autistiMezzoMap.set(key, [row]);
+      }
+      const autistiSuMezzo = Array.from(autistiMezzoMap.entries())
+        .map(([key, rows]) => {
+          const nome = rows[0]?.autistaNome ?? key;
+          const stats = computeStats(rows);
+          let scostamento: number | null = null;
+          if (mezzoAvgStorica && stats.pesata !== null) {
+            scostamento = (stats.pesata - mezzoAvgStorica) / mezzoAvgStorica;
+          }
+          return {
+            autistaKey: key,
+            autistaNome: nome,
+            rifCount: rows.length,
+            kmTot: stats.kmTot,
+            litriTot: stats.litriTot,
+            pesata: stats.pesata,
+            scostamento,
+          };
+        })
+        .filter((a) => a.rifCount >= 3)
+        .sort((a, b) => b.rifCount - a.rifCount);
+
+      const categoriaFromMaintenance =
+        scheduledMaintenances.find((m) => m.targa === targa)?.categoria ?? "—";
+
+      andamento = {
+        targa,
+        categoria: categoriaFromMaintenance,
+        totalRifMezzo: allMezzo.length,
+        mezzoAvgStorica,
+        currentEntry,
+        monthly: last12WithScostamento,
+        maxPesata,
+        autistiSuMezzo,
+      };
+    }
+
+    return {
+      mezziAggregati,
+      autistiAggregati,
+      andamento,
+    };
+  }, [
+    analisiOpen,
+    refuelRows,
+    refuelSeedIndex,
+    selectedMonth,
+    selectedYear,
+    refuelSourceFilter,
+    andamentoMezzoSelected,
+    scheduledMaintenances,
+  ]);
+
+  const andamentoTargheSuggestions = useMemo(() => {
+    const query = normalizeTargaFilter(andamentoTargaInput);
+    if (!query) return mezziTargheList;
+    return mezziTargheList.filter((targa) => targa.includes(query));
+  }, [mezziTargheList, andamentoTargaInput]);
+
+  useEffect(() => {
+    if (!analisiOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAnalisiOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [analisiOpen]);
+
+  const closeAnalisi = () => {
+    setAnalisiOpen(false);
+  };
+
+  const toggleMezzoFlag = (id: string) => {
+    setMezziSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setConfrontaCategoria("mezzi");
+  };
+
+  const toggleAutistaFlag = (id: string) => {
+    setAutistiSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setConfrontaCategoria("autisti");
+  };
+
+  const clearFlags = () => {
+    setMezziSelected(new Set());
+    setAutistiSelected(new Set());
+  };
+
+  const filteredMonthlyRefuelsWithAnomalies = useMemo(() => {
+    return filteredMonthlyRefuelsWithMedia.map((entry) => {
+      const seed = refuelSeedIndex.findSeed(entry.row);
+      const anomalies = detectRefuelAnomalies(entry.row, seed);
+      return { ...entry, anomalies };
+    });
+  }, [filteredMonthlyRefuelsWithMedia, refuelSeedIndex]);
+
+  const anomaliesSummary = useMemo(() => {
+    let totalRows = 0;
+    let kmRows = 0;
+    let litriRows = 0;
+    for (const entry of filteredMonthlyRefuelsWithAnomalies) {
+      if (entry.anomalies.length === 0) continue;
+      totalRows += 1;
+      if (entry.anomalies.some((a) => a.target === "km")) kmRows += 1;
+      if (entry.anomalies.some((a) => a.target === "litri")) litriRows += 1;
+    }
+    return { totalRows, kmRows, litriRows };
+  }, [filteredMonthlyRefuelsWithAnomalies]);
+
+  const displayedRefuelsWithAnomalies = useMemo(() => {
+    if (!anomaliesFilterActive) return filteredMonthlyRefuelsWithAnomalies;
+    return filteredMonthlyRefuelsWithAnomalies.filter(
+      (entry) => entry.anomalies.length > 0,
+    );
+  }, [filteredMonthlyRefuelsWithAnomalies, anomaliesFilterActive]);
+
+  const investigationData = useMemo(() => {
+    if (!investigationRow) return null;
+    const target = investigationRow;
+    const targaNorm = target.targa;
+    const autistaKey = (target.autistaNome ?? "").trim().toLowerCase();
+
+    const mezzoHistoryAll = refuelRows
+      .filter((r) => r.targa === targaNorm)
+      .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+
+    const computeEntry = (row: RefuelRow) => {
+      const seed = refuelSeedIndex.findSeed(row);
+      let mediaLitriKm = "—";
+      let mediaLitriKmValue: number | null = null;
+      if (
+        seed &&
+        typeof row.km === "number" && row.km > 0 &&
+        typeof seed.km === "number" && seed.km > 0 &&
+        row.km > seed.km &&
+        typeof row.litri === "number" && row.litri > 0
+      ) {
+        const mediaKmL = (row.km - seed.km) / row.litri;
+        if (Number.isFinite(mediaKmL) && mediaKmL > 0) {
+          mediaLitriKm = formatMediaLitriKm(mediaKmL);
+          mediaLitriKmValue = mediaKmL;
+        }
+      }
+      const anomalies = detectRefuelAnomalies(row, seed);
+      return { row, seed, mediaLitriKm, mediaLitriKmValue, anomalies };
+    };
+
+    const mezzoHistoryEntries = mezzoHistoryAll.map(computeEntry);
+    const totalMezzo = mezzoHistoryEntries.length;
+
+    let visibleCount: number;
+    if (investigationExpansion === "all") {
+      visibleCount = totalMezzo;
+    } else {
+      visibleCount = Math.min(investigationExpansion, totalMezzo);
+    }
+    const mezzoHistoryVisible = mezzoHistoryEntries.slice(0, visibleCount);
+
+    const ultimi5MezzoEntries = mezzoHistoryEntries.slice(0, 5);
+    const ultimi5MezzoCount = ultimi5MezzoEntries.length;
+    const mezzoAnomalieCount = ultimi5MezzoEntries.filter(
+      (e) => e.anomalies.length > 0,
+    ).length;
+
+    let autistaAnomalieCount = 0;
+    let ultimi5AutistaCount = 0;
+    if (autistaKey) {
+      const autistaHistoryAll = refuelRows
+        .filter((r) => (r.autistaNome ?? "").trim().toLowerCase() === autistaKey)
+        .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+      const ultimi5Autista = autistaHistoryAll.slice(0, 5).map(computeEntry);
+      ultimi5AutistaCount = ultimi5Autista.length;
+      autistaAnomalieCount = ultimi5Autista.filter(
+        (e) => e.anomalies.length > 0,
+      ).length;
+    }
+
+    const targetEntry = computeEntry(target);
+
+    const targetAnomalies = targetEntry.anomalies;
+    const targetSeed = targetEntry.seed;
+    const targetMediaLabel = targetEntry.mediaLitriKm;
+
+    const descriptions = targetAnomalies.map((a) =>
+      describeAnomaly(a, target, targetSeed),
+    );
+
+    return {
+      target,
+      targetSeed,
+      targetAnomalies,
+      targetMediaLabel,
+      descriptions,
+      mezzoHistoryVisible,
+      totalMezzo,
+      visibleCount,
+      mezzoAnomalieCount,
+      ultimi5MezzoCount,
+      autistaAnomalieCount,
+      ultimi5AutistaCount,
+      autistaKey,
+    };
+  }, [
+    investigationRow,
+    investigationExpansion,
+    refuelRows,
+    refuelSeedIndex,
+  ]);
+
+  useEffect(() => {
+    if (!investigationOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInvestigationOpen(false);
+        setInvestigationExpansion(5);
+        setInvestigationRow(null);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [investigationOpen]);
+
+  const closeInvestigation = () => {
+    setInvestigationOpen(false);
+    setInvestigationExpansion(5);
+    setInvestigationRow(null);
+  };
+
+  const openInvestigation = (row: RefuelRow) => {
+    setInvestigationRow(row);
+    setInvestigationExpansion(5);
+    setInvestigationOpen(true);
+  };
+
+  const segnalazioniCounters = useMemo(
+    () => ({
+      totale: segnalazioniRows.length,
+      nuove: segnalazioniRows.filter((row) => row.isNuova).length,
+    }),
+    [segnalazioniRows]
+  );
+
+  const segnalazioniFiltered = useMemo(() => {
+    const targaKey = normalizeTargaFilter(segnalazioniFilterTarga);
+    return segnalazioniRows.filter((row) => {
+      if (segnalazioniOnlyNuove && !row.isNuova) return false;
+      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
+      return true;
+    });
+  }, [segnalazioniRows, segnalazioniFilterTarga, segnalazioniOnlyNuove]);
+
+  const controlliCounters = useMemo(
+    () => ({
+      ko: controlliRows.filter((row) => row.isKo).length,
+      ok: controlliRows.filter((row) => !row.isKo).length,
+    }),
+    [controlliRows]
+  );
+
+  const controlliFiltered = useMemo(() => {
+    const targaKey = normalizeTargaFilter(controlliFilterTarga);
+    return controlliRows.filter((row) => {
+      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
+      return true;
+    });
+  }, [controlliRows, controlliFilterTarga]);
+
+  const controlliKoFiltered = useMemo(
+    () => controlliFiltered.filter((row) => row.isKo),
+    [controlliFiltered]
+  );
+  const controlliOkFiltered = useMemo(
+    () => controlliFiltered.filter((row) => !row.isKo),
+    [controlliFiltered]
+  );
+
+  const richiesteCounters = useMemo(
+    () => ({
+      totale: richiesteRows.length,
+      nuove: richiesteRows.filter((row) => row.isNuova).length,
+    }),
+    [richiesteRows]
+  );
+
+  const richiesteFiltered = useMemo(() => {
+    const targaKey = normalizeTargaFilter(richiesteFilterTarga);
+    return richiesteRows.filter((row) => {
+      if (richiesteOnlyNuove && !row.isNuova) return false;
+      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
+      return true;
+    });
+  }, [richiesteRows, richiesteFilterTarga, richiesteOnlyNuove]);
+
+  const priorityItems = useMemo(() => {
+    const nowTs = Date.now();
+    const globalTargaKey = targaFilterSelected ? normalizeTargaFilter(targaFilterSelected) : "";
+    const priorityFromControlli: PriorityItem[] = controlliRows
+      .filter((row) => row.isKo && row.ts > 0 && nowTs - row.ts <= KO_PRIORITY_WINDOW_MS)
+      .map((row, idx) => {
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_ctrl_${row.id}_${idx}`,
+          label: "CONTROLLO KO",
+          score: 100,
+          timestamp: row.ts,
+          targa: row.targaLabel || "-",
+          autista,
+          motivo: row.koList.length ? `Check KO: ${row.koList.join(", ")}` : "Check KO",
+          source: "controlli",
+          tab: "controlli",
+          sectionId: "cc-anchor-controlli",
+        };
+      });
+
+    const priorityFromManutenzioni: PriorityItem[] = scheduledMaintenances
+      .filter(
+        (row) =>
+          row.status === "SCADUTA" || row.status === "IN_SCADENZA" || row.status === "SENZA_DATA"
+      )
+      .map((row, idx) => {
+        const score =
+          row.status === "SCADUTA" ? 90 : row.status === "IN_SCADENZA" ? 70 : row.status === "SENZA_DATA" ? 30 : 0;
+        const label =
+          row.status === "SCADUTA"
+            ? "MANUTENZIONE SCADUTA"
+            : row.status === "IN_SCADENZA"
+            ? "MANUTENZIONE IN SCADENZA"
+            : "MANUTENZIONE: DATA MANCANTE";
+        const timestamp = row.manutenzioneDataFine ? row.manutenzioneDataFine.getTime() : 0;
+        const motivo =
+          row.status === "SENZA_DATA"
+            ? "Data fine non impostata"
+            : `Data fine: ${formatDateIt(row.manutenzioneDataFine)}`;
+        return {
+          id: `prio_manut_${row.id}_${idx}`,
+          label,
+          score,
+          timestamp,
+          targa: row.targa || "-",
+          autista: "-",
+          motivo,
+          source: "manutenzioni",
+          tab: "manutenzioni",
+          sectionId: "cc-anchor-manutenzioni",
+        };
+      });
+
+    const priorityFromSegnalazioni: PriorityItem[] = segnalazioniRows
+      .filter((row) => row.isNuova)
+      .map((row, idx) => {
+        const tipoUpper = row.tipo.toUpperCase();
+        const score = 60 + (tipoUpper === "GOMME" ? 15 : 0);
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_segn_${row.id}_${idx}`,
+          label: "SEGNALAZIONE",
+          score,
+          timestamp: row.ts,
+          targa: row.targa || "-",
+          autista,
+          motivo: `${tipoUpper || "TIPO N/D"} - ${shortText(row.descrizione, 100)}`,
+          source: "segnalazioni",
+          tab: "segnalazioni",
+          sectionId: "cc-anchor-segnalazioni",
+        };
+      });
+
+    const priorityFromRichieste: PriorityItem[] = richiesteRows
+      .filter((row) => row.isNuova)
+      .map((row, idx) => {
+        const autista = row.autistaNome
+          ? `${row.autistaNome}${row.badgeAutista ? ` (${row.badgeAutista})` : ""}`
+          : "-";
+        return {
+          id: `prio_rich_${row.id}_${idx}`,
+          label: "RICHIESTA ATTREZZATURE",
+          score: 40,
+          timestamp: row.ts,
+          targa: row.targa || "-",
+          autista,
+          motivo: shortText(row.testo, 100),
+          source: "richieste",
+          tab: "richieste",
+          sectionId: "cc-anchor-richieste",
+        };
+      });
+
+    const ordered = [
+      ...priorityFromControlli,
+      ...priorityFromManutenzioni,
+      ...priorityFromSegnalazioni,
+      ...priorityFromRichieste,
+    ].sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return b.timestamp - a.timestamp;
+    });
+
+    if (!globalTargaKey) return ordered;
+    return ordered.filter((item) =>
+      normalizeTargaFilter(item.targa).includes(globalTargaKey)
+    );
+  }, [controlliRows, scheduledMaintenances, segnalazioniRows, richiesteRows, targaFilterSelected]);
+
+  const priorityHighCount = useMemo(
+    () => priorityItems.filter((item) => item.score >= PRIORITY_HIGH_THRESHOLD).length,
+    [priorityItems]
+  );
+
+  const priorityVisibleItems = useMemo(() => {
+    const base = priorityOnlyHigh
+      ? priorityItems.filter((item) => item.score >= PRIORITY_HIGH_THRESHOLD)
+      : priorityItems;
+    return base.slice(0, PRIORITY_MAX_ROWS);
+  }, [priorityItems, priorityOnlyHigh]);
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  useEffect(() => {
+    return () => revokePdfPreviewUrl(pdfPreviewUrl);
+  }, [pdfPreviewUrl]);
+
+  const buildPdfItems = (): RifornimentiMensiliPdfItem[] =>
+    filteredMonthlyRefuelsWithAnomalies.map((entry) => ({
+      data: formatDateIt(entry.row.dateObj),
+      targa: entry.row.targa,
+      autistaNome: entry.row.autistaNome,
+      litri: entry.row.litri,
+      km: entry.row.km,
+      fonteLabel: entry.row.sourceLabel,
+      mediaKmLLabel: entry.mediaLitriKm,
+      isAnomala: entry.anomalies.length > 0,
+      hasKmAnomaly: entry.anomalies.some((a) => a.target === "km"),
+      hasLitriAnomaly: entry.anomalies.some((a) => a.target === "litri"),
+    }));
+
+  const buildAnomalieDettaglio = (): Array<{
+    targa: string;
+    dataDisplay: string;
+    autistaNome: string;
+    messages: string[];
+  }> => {
+    const anomale = filteredMonthlyRefuelsWithAnomalies.filter(
+      (entry) => entry.anomalies.length > 0,
+    );
+    const detailEntries = anomale.map((entry) => {
+      const seed = refuelSeedIndex.findSeed(entry.row);
+      const messages = entry.anomalies.map((anomaly) =>
+        describeAnomaly(anomaly, entry.row, seed),
+      );
+      return {
+        targa: entry.row.targa,
+        dataDisplay: formatDateItDisplay(entry.row.dateObj),
+        autistaNome: entry.row.autistaNome ?? "—",
+        messages,
+        _ts: entry.row.dateObj.getTime(),
+      };
+    });
+    detailEntries.sort((a, b) => {
+      const targaCmp = a.targa.localeCompare(b.targa, "it", {
+        sensitivity: "base",
+      });
+      if (targaCmp !== 0) return targaCmp;
+      return b._ts - a._ts;
+    });
+    return detailEntries.map(({ targa, dataDisplay, autistaNome, messages }) => ({
+      targa,
+      dataDisplay,
+      autistaNome,
+      messages,
+    }));
+  };
+
+  const buildMaintenancePdfItems = (): ManutenzioneProgrammataPdfItem[] =>
+    selectedMaintenanceRows.map((row) => ({
+      targa: row.targa,
+      dataFine: row.manutenzioneDataFine ? formatDateIt(row.manutenzioneDataFine) : "DATA MANCANTE",
+      kmMax: row.manutenzioneKmMax || "-",
+      contratto: row.manutenzioneContratto || "-",
+      revisione: row.dataScadenzaRevisione ? formatDateIt(row.dataScadenzaRevisione) : "-",
+    }));
+
+  const selectAllMaintenances = () => {
+    const next: Record<string, boolean> = {};
+    scheduledMaintenances.forEach((row) => {
+      next[row.id] = true;
+    });
+    setSelectedMaintenanceIds(next);
+  };
+
+  const deselectAllMaintenances = () => {
+    setSelectedMaintenanceIds({});
+  };
+
+  const toggleMaintenanceSelection = (id: string) => {
+    setSelectedMaintenanceIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const buildShareMessage = () =>
+    pdfContext === "manutenzioni"
+      ? buildPdfShareText({
+          contextLabel: "Manutenzioni programmate selezionate",
+          dateLabel: formatDateIt(new Date()),
+          fileName: pdfPreviewFileName || "manutenzioni-programmate.pdf",
+          url: pdfPreviewUrl,
+        })
+      : buildPdfShareText({
+          contextLabel: "Report rifornimenti mensili",
+          dateLabel:
+            selectedMonth === "all" || selectedYear === "all"
+              ? "Tutti i periodi"
+              : `${String(selectedMonth).padStart(2, "0")}/${selectedYear}`,
+          fileName: pdfPreviewFileName || "rifornimenti-mensili.pdf",
+          url: pdfPreviewUrl,
+        });
+
+  const handlePreviewMaintenancePdf = async () => {
+    if (!selectedMaintenanceRows.length) {
+      window.alert("Seleziona almeno un mezzo.");
+      return;
+    }
+    try {
+      setGeneratingMaintenancePdf(true);
+      setPdfContext("manutenzioni");
+      const preview = await openPreview({
+        source: () =>
+          generateManutenzioniProgrammatePDFBlob({
+            titolo: "Manutenzioni programmate selezionate",
+            dataReport: formatDateIt(new Date()),
+            items: buildMaintenancePdfItems(),
+          }),
+        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\//g, "-")}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF manutenzioni (${selectedMaintenanceRows.length})`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF manutenzioni:", err);
+      window.alert("Impossibile generare l'anteprima PDF.");
+    } finally {
+      setGeneratingMaintenancePdf(false);
+    }
+  };
+
+  const handlePreviewPdf = async () => {
+    if (selectedMonth === "all" || selectedYear === "all") {
+      window.alert("Seleziona un mese e un anno specifici per generare il PDF mensile.");
+      return;
+    }
+    if (!filteredMonthlyRefuels.length) {
+      window.alert("Nessun rifornimento nel periodo selezionato.");
+      return;
+    }
+    try {
+      setGeneratingPdf(true);
+      setPdfContext("rifornimenti");
+      const monthLabel = `${String(selectedMonth).padStart(2, "0")}-${selectedYear}`;
+      const preview = await openPreview({
+        source: () =>
+          generateRifornimentiMensiliPDFBlob({
+            mese: selectedMonth,
+            anno: selectedYear,
+            items: buildPdfItems(),
+            filters: {
+              targa: targaFilterSelected ? normalizeTarga(targaFilterSelected) || null : null,
+            },
+            mediaFlotta: {
+              value: mediaFlottaMese.value,
+              sogliaSopra: mediaFlottaMese.sogliaSopra,
+              sogliaSotto: mediaFlottaMese.sogliaSotto,
+            },
+            anomalieSummary: {
+              totalRows: anomaliesSummary.totalRows,
+              kmRows: anomaliesSummary.kmRows,
+              litriRows: anomaliesSummary.litriRows,
+            },
+            anomalieDettaglio: buildAnomalieDettaglio(),
+          }),
+        fileName: `rifornimenti_mensili_${monthLabel}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(
+        `Anteprima PDF rifornimenti ${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`
+      );
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF rifornimenti:", err);
+      window.alert("Impossibile generare l'anteprima PDF.");
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handleSharePdf = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "rifornimenti-mensili.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF rifornimenti",
+      text: buildShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildShareMessage());
+    setPdfShareHint(
+      copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile."
+    );
+  };
+
+  const handleCopyPdfText = async () => {
+    const copied = await copyTextToClipboard(buildShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPdf = () => {
+    window.open(buildWhatsAppShareUrl(buildShareMessage()), "_blank", "noopener,noreferrer");
+  };
+
+  const handlePriorityItemClick = (item: PriorityItem) => {
+    if (activeTab !== item.tab) {
+      setActiveTab(item.tab);
+    }
+    window.setTimeout(() => {
+      const target = document.getElementById(item.sectionId);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, activeTab === item.tab ? 0 : 80);
+  };
+
+  return (
+    <div className="next-centro-controllo-scope cc-page">
+      <div className="cc-shell">
+        <header className="cc-header">
+          <button className="cc-back" type="button" onClick={() => navigate("/next/gestione-operativa")}>
+            Torna a Gestione Operativa
+          </button>
+          <h1>Centro Controllo</h1>
+          <p>
+            Monitoraggio manutenzioni, rifornimenti e flussi autisti (segnalazioni, controlli,
+            richieste).
+          </p>
+        </header>
+
+        <section className="cc-priority-section">
+          <div className="cc-section-head">
+            <h2>PRIORITA OGGI</h2>
+            <div className="cc-actions">
+              <span className="cc-inline-count">
+                Totale: {priorityItems.length} | Alte priorita (soglia 70): {priorityHighCount}
+              </span>
+              <label className="cc-toggle">
+                <input
+                  type="checkbox"
+                  checked={priorityOnlyHigh}
+                  onChange={(e) => setPriorityOnlyHigh(e.target.checked)}
+                />
+                <span>Solo alte priorita</span>
+              </label>
+            </div>
+          </div>
+
+          {priorityVisibleItems.length === 0 ? (
+            <div className="cc-status">Nessuna priorita da mostrare.</div>
+          ) : (
+            <div className="cc-priority-list">
+              {priorityVisibleItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`cc-priority-row ${
+                    item.score >= PRIORITY_HIGH_THRESHOLD ? "is-high" : ""
+                  }`}
+                  onClick={() => handlePriorityItemClick(item)}
+                >
+                  <span className="cc-priority-score">{item.score}</span>
+                  <span className="cc-priority-label">{item.label}</span>
+                  <span className="cc-priority-targa">{item.targa}</span>
+                  <span className="cc-priority-autista">{item.autista}</span>
+                  <span className="cc-priority-motivo">{item.motivo}</span>
+                  <span className="cc-priority-date">
+                    {formatDateIt(item.timestamp ? new Date(item.timestamp) : null)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <div className="cc-tabs">
+          <button
+            type="button"
+            className={activeTab === "manutenzioni" ? "active" : ""}
+            onClick={() => setActiveTab("manutenzioni")}
+          >
+            Manutenzioni programmate
+          </button>
+          <button
+            type="button"
+            className={activeTab === "rifornimenti" ? "active" : ""}
+            onClick={() => setActiveTab("rifornimenti")}
+          >
+            Report rifornimenti
+          </button>
+          <button
+            type="button"
+            className={activeTab === "segnalazioni" ? "active" : ""}
+            onClick={() => setActiveTab("segnalazioni")}
+          >
+            Segnalazioni autisti
+          </button>
+          <button
+            type="button"
+            className={activeTab === "controlli" ? "active" : ""}
+            onClick={() => setActiveTab("controlli")}
+          >
+            Controlli KO/OK
+          </button>
+          <button
+            type="button"
+            className={activeTab === "richieste" ? "active" : ""}
+            onClick={() => setActiveTab("richieste")}
+          >
+            Richieste attrezzature
+          </button>
+        </div>
+
+        {activeTab === "manutenzioni" && (
+          <section className="cc-section" id="cc-anchor-manutenzioni">
+            <div className="cc-section-head">
+              <h2>Manutenzioni programmate</h2>
+              <button type="button" className="cc-secondary-btn" onClick={() => void loadScheduledMaintenances()}>
+                Aggiorna
+              </button>
+            </div>
+
+            <div className="cc-maintenance-actions">
+              <button type="button" className="cc-secondary-btn" onClick={selectAllMaintenances}>
+                Seleziona tutti
+              </button>
+              <button type="button" className="cc-secondary-btn" onClick={deselectAllMaintenances}>
+                Deseleziona tutti
+              </button>
+              <span className="cc-selected-count">Selezionati: {selectedMaintenanceCount}</span>
+              <button
+                type="button"
+                className="cc-primary-btn"
+                disabled={selectedMaintenanceCount === 0 || generatingMaintenancePdf}
+                onClick={handlePreviewMaintenancePdf}
+              >
+                {generatingMaintenancePdf
+                  ? "Generazione in corso..."
+                  : "Anteprima PDF selezionati"}
+              </button>
+            </div>
+
+            <div className="cc-summary-grid">
+              <div className="cc-summary-card">
+                <span>Programmate</span>
+                <strong>{maintenanceCounters.total}</strong>
+              </div>
+              <div className="cc-summary-card danger">
+                <span>Scadute</span>
+                <strong>{maintenanceCounters.scadute}</strong>
+              </div>
+              <div className="cc-summary-card warn">
+                <span>In scadenza</span>
+                <strong>{maintenanceCounters.inScadenza}</strong>
+              </div>
+              <div className="cc-summary-card ok">
+                <span>OK</span>
+                <strong>{maintenanceCounters.ok}</strong>
+              </div>
+            </div>
+
+            {loadingMezzi && <div className="cc-status">Caricamento manutenzioni programmate...</div>}
+            {mezziError && <div className="cc-status error">{mezziError}</div>}
+            {!loadingMezzi && !mezziError && scheduledMaintenances.length === 0 && (
+              <div className="cc-status">Nessuna manutenzione programmata trovata.</div>
+            )}
+
+            {!loadingMezzi && scheduledMaintenances.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Targa</th>
+                      <th>Categoria</th>
+                      <th>Data fine</th>
+                      <th>Stato</th>
+                      <th>Dettagli</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scheduledMaintenances.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedMaintenanceIds[row.id])}
+                            onChange={() => toggleMaintenanceSelection(row.id)}
+                            aria-label={`Seleziona mezzo ${row.targa}`}
+                          />
+                        </td>
+                        <td>{row.targa}</td>
+                        <td>{row.categoria}</td>
+                        <td>{formatDateIt(row.manutenzioneDataFine)}</td>
+                        <td>
+                          <span className={`cc-badge ${row.status.toLowerCase()}`}>{row.status}</span>
+                        </td>
+                        <td>
+                          {row.manutenzioneContratto ? `Contratto: ${row.manutenzioneContratto}` : "-"}
+                          {row.manutenzioneKmMax ? ` - Km max: ${row.manutenzioneKmMax}` : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "rifornimenti" && (
+          <section className="cc-section" id="cc-anchor-rifornimenti">
+            <div className="cc-section-head">
+              <h2>Report rifornimenti mensili</h2>
+              <div className="cc-actions">
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingRefuels}
+                  onClick={() => void loadRefuels()}
+                >
+                  Aggiorna dati
+                </button>
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingRefuels}
+                  onClick={() => setAnalisiOpen(true)}
+                >
+                  Analisi consumi
+                </button>
+                <button
+                  type="button"
+                  className="cc-primary-btn"
+                  disabled={
+                    generatingPdf ||
+                    loadingRefuels ||
+                    selectedMonth === "all" ||
+                    selectedYear === "all"
+                  }
+                  title={
+                    selectedMonth === "all" || selectedYear === "all"
+                      ? "Seleziona mese e anno specifici per generare il PDF"
+                      : undefined
+                  }
+                  onClick={handlePreviewPdf}
+                >
+                  {generatingPdf ? "Generazione in corso..." : "Anteprima PDF mensile"}
+                </button>
+              </div>
+            </div>
+
+            <div className="cc-filters">
+              <label>
+                Mese
+                <select
+                  value={selectedMonth === "all" ? "all" : String(selectedMonth)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setSelectedMonth(raw === "all" ? "all" : Number(raw));
+                  }}
+                >
+                  <option value="all">Tutto</option>
+                  {MONTH_NAMES.map((label, idx) => (
+                    <option key={label} value={idx + 1}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Anno
+                <select
+                  value={selectedYear === "all" ? "all" : String(selectedYear)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setSelectedYear(raw === "all" ? "all" : Number(raw));
+                  }}
+                >
+                  <option value="all">Tutto</option>
+                  {availableYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="cc-targa-filter cc-combobox-label">
+                Filtro targa
+                <div className="cc-combobox">
+                  <input
+                    type="text"
+                    placeholder="Es. TI315407"
+                    value={targaFilterInput}
+                    onFocus={() => setTargaDropdownOpen(true)}
+                    onBlur={() => window.setTimeout(() => setTargaDropdownOpen(false), 120)}
+                    onChange={(e) => {
+                      setTargaFilterInput(e.target.value);
+                      setTargaDropdownOpen(true);
+                    }}
+                  />
+                  {(targaFilterInput.length > 0 || targaFilterSelected) && (
+                    <button
+                      type="button"
+                      className="cc-combobox-clear"
+                      aria-label="Cancella filtro targa"
+                      onClick={() => {
+                        setTargaFilterInput("");
+                        setTargaFilterSelected(null);
+                        setTargaDropdownOpen(false);
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                  {targaDropdownOpen && targheSuggestions.length > 0 && (
+                    <ul className="cc-combobox-list" role="listbox">
+                      {targheSuggestions.slice(0, 50).map((targa) => (
+                        <li key={targa}>
+                          <button
+                            type="button"
+                            className="cc-combobox-item"
+                            role="option"
+                            aria-selected={targaFilterSelected === targa}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setTargaFilterInput(targa);
+                              setTargaFilterSelected(targa);
+                              setTargaDropdownOpen(false);
+                            }}
+                          >
+                            {targa}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </label>
+
+              <label className="cc-combobox-label">
+                Autista
+                <div className="cc-combobox">
+                  <input
+                    type="text"
+                    placeholder="Cerca autista..."
+                    value={autistaFilterInput}
+                    onFocus={() => setAutistaDropdownOpen(true)}
+                    onBlur={() => window.setTimeout(() => setAutistaDropdownOpen(false), 120)}
+                    onChange={(e) => {
+                      setAutistaFilterInput(e.target.value);
+                      setAutistaDropdownOpen(true);
+                    }}
+                  />
+                  {(autistaFilterInput.length > 0 || autistaFilterSelected) && (
+                    <button
+                      type="button"
+                      className="cc-combobox-clear"
+                      aria-label="Cancella filtro autista"
+                      onClick={() => {
+                        setAutistaFilterInput("");
+                        setAutistaFilterSelected(null);
+                        setAutistaDropdownOpen(false);
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                  {autistaDropdownOpen && colleghiSuggestions.length > 0 && (
+                    <ul className="cc-combobox-list" role="listbox">
+                      {colleghiSuggestions.slice(0, 50).map((entry) => (
+                        <li key={entry.id || entry.nome}>
+                          <button
+                            type="button"
+                            className="cc-combobox-item"
+                            role="option"
+                            aria-selected={autistaFilterSelected === entry.nome}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setAutistaFilterInput(entry.nome);
+                              setAutistaFilterSelected(entry.nome);
+                              setAutistaDropdownOpen(false);
+                            }}
+                          >
+                            {entry.nome}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </label>
+
+              <label>
+                Fonte
+                <select
+                  value={refuelSourceFilter}
+                  onChange={(e) =>
+                    setRefuelSourceFilter(e.target.value as RefuelSourceFilter)
+                  }
+                >
+                  <option value="all">Tutte</option>
+                  <option value="caravate">Caravate</option>
+                  <option value="distributore_piccadilly">Distributore Piccadilly</option>
+                  <option value="distributore_eni">Distributore Eni</option>
+                  <option value="distributore_contanti">Distributore Contanti</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="cc-summary-grid">
+              <div className="cc-summary-card">
+                <span>Rifornimenti</span>
+                <strong>{monthlyTotals.count}</strong>
+              </div>
+              <div className="cc-summary-card">
+                <span>Totale litri</span>
+                <strong>{formatNumberIt(monthlyTotals.litri, 2)} L</strong>
+              </div>
+              <div className="cc-summary-card">
+                <span>
+                  Media flotta
+                  <span
+                    className="cc-summary-info"
+                    title="Media pesata di tutti i camion del mese (km totali / litri totali). Non cambia con i filtri Targa/Autista/Fonte."
+                    aria-label="Info Media flotta"
+                  >
+                    ?
+                  </span>
+                </span>
+                <strong>
+                  {mediaFlottaMese.value !== null
+                    ? formatMediaLitriKm(mediaFlottaMese.value)
+                    : "—"}
+                </strong>
+                {mediaFlottaMese.value !== null &&
+                  mediaFlottaMese.sogliaSopra !== null &&
+                  mediaFlottaMese.sogliaSotto !== null && (
+                    <small className="cc-summary-sub">
+                      Range tipico:{" "}
+                      {mediaFlottaMese.sogliaSotto.toFixed(2).replace(".", ",")} –{" "}
+                      {mediaFlottaMese.sogliaSopra.toFixed(2).replace(".", ",")} km/L
+                    </small>
+                  )}
+              </div>
+              <div
+                className={`cc-summary-card cc-summary-card-clickable${
+                  anomaliesFilterActive ? " cc-summary-card-active" : ""
+                }`}
+                onClick={() => setAnomaliesFilterActive((prev) => !prev)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setAnomaliesFilterActive((prev) => !prev);
+                  }
+                }}
+                aria-pressed={anomaliesFilterActive}
+                title={
+                  anomaliesFilterActive
+                    ? "Click per tornare alla vista normale"
+                    : "Click per filtrare solo le righe con anomalie"
+                }
+              >
+                <span>Anomalie</span>
+                <strong>{anomaliesSummary.totalRows}</strong>
+                {anomaliesSummary.totalRows > 0 && (
+                  <>
+                    {anomaliesSummary.kmRows > 0 && (
+                      <small className="cc-summary-sub">
+                        {anomaliesSummary.kmRows} km incoerenti
+                      </small>
+                    )}
+                    {anomaliesSummary.litriRows > 0 && (
+                      <small className="cc-summary-sub">
+                        {anomaliesSummary.litriRows} litri sospetti
+                      </small>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {loadingRefuels && <div className="cc-status">Caricamento rifornimenti...</div>}
+            {refuelsError && <div className="cc-status error">{refuelsError}</div>}
+            {!loadingRefuels && !refuelsError && filteredMonthlyRefuels.length === 0 && (
+              <div className="cc-status">Nessun rifornimento per i filtri selezionati.</div>
+            )}
+            {!loadingRefuels &&
+              !refuelsError &&
+              filteredMonthlyRefuels.length > 0 &&
+              anomaliesFilterActive &&
+              displayedRefuelsWithAnomalies.length === 0 && (
+                <div className="cc-status">Nessuna anomalia rilevata.</div>
+              )}
+
+            {!loadingRefuels && displayedRefuelsWithAnomalies.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Targa</th>
+                      <th>Autista</th>
+                      <th>Litri</th>
+                      <th>Km</th>
+                      <th>Fonte</th>
+                      <th className="cc-col-media">Media km/L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedRefuelsWithAnomalies.map(
+                      ({ row: item, mediaLitriKm, anomalies }) => {
+                        const kmAnomalies = anomalies.filter((a) => a.target === "km");
+                        const litriAnomalies = anomalies.filter(
+                          (a) => a.target === "litri",
+                        );
+                        const trClass =
+                          anomalies.length > 0 ? "cc-row-anomala" : undefined;
+                        const renderWarning = (list: Anomaly[]) => {
+                          if (list.length === 0) return null;
+                          const tooltip = list.map((a) => a.message).join(" · ");
+                          return (
+                            <button
+                              type="button"
+                              className="cc-cell-warning"
+                              title={tooltip}
+                              aria-label="Apri indagine anomalia"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openInvestigation(item);
+                              }}
+                            >
+                              ⚠
+                            </button>
+                          );
+                        };
+                        const trClassNames = [trClass, "cc-row-clickable"]
+                          .filter(Boolean)
+                          .join(" ");
+                        return (
+                          <tr
+                            key={`${item.id}_${item.dateObj.getTime()}`}
+                            className={trClassNames}
+                            title="Click per modificare il rifornimento"
+                            onClick={() => {
+                              setEditRifornimentoRow(item);
+                              setEditRifornimentoOpen(true);
+                            }}
+                          >
+                            <td>{formatDateIt(item.dateObj)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="cc-targa-link"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(buildNextDossierPath(item.targa));
+                                }}
+                                title={`Apri dossier mezzo ${item.targa}`}
+                              >
+                                {item.targa}
+                              </button>
+                            </td>
+                            <td>{item.autistaNome || "-"}</td>
+                            <td>
+                              {formatNumberIt(item.litri, 2)}
+                              {renderWarning(litriAnomalies)}
+                            </td>
+                            <td>
+                              {formatNumberIt(item.km, 0)}
+                              {renderWarning(kmAnomalies)}
+                            </td>
+                            <td>{item.sourceLabel}</td>
+                            <td className="cc-col-media">{mediaLitriKm}</td>
+                          </tr>
+                        );
+                      },
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "segnalazioni" && (
+          <section className="cc-section" id="cc-anchor-segnalazioni">
+            <div className="cc-section-head">
+              <h2>Segnalazioni autisti</h2>
+              <div className="cc-actions">
+                <span className="cc-inline-count">
+                  Totali: {segnalazioniCounters.totale} | Nuove: {segnalazioniCounters.nuove}
+                </span>
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingSegnalazioni}
+                  onClick={() => void loadAutistiReadOnlySections()}
+                >
+                  Aggiorna dati
+                </button>
+              </div>
+            </div>
+
+            <div className="cc-filters cc-filters-compact">
+              <label className="cc-targa-filter">
+                Filtro targa
+                <input
+                  type="text"
+                  placeholder="Es. TI315407"
+                  value={segnalazioniFilterTarga}
+                  onChange={(e) => setSegnalazioniFilterTarga(e.target.value)}
+                />
+              </label>
+              <label className="cc-toggle">
+                <input
+                  type="checkbox"
+                  checked={segnalazioniOnlyNuove}
+                  onChange={(e) => setSegnalazioniOnlyNuove(e.target.checked)}
+                />
+                <span>Solo nuove</span>
+              </label>
+            </div>
+
+            {loadingSegnalazioni && <div className="cc-status">Caricamento segnalazioni...</div>}
+            {segnalazioniError && <div className="cc-status error">{segnalazioniError}</div>}
+            {!loadingSegnalazioni && !segnalazioniError && segnalazioniFiltered.length === 0 && (
+              <div className="cc-status">Nessuna segnalazione per i filtri selezionati.</div>
+            )}
+
+            {!loadingSegnalazioni && segnalazioniFiltered.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Targa</th>
+                      <th>Autista</th>
+                      <th>Tipo</th>
+                      <th>Descrizione</th>
+                      <th>Stato</th>
+                      <th>Foto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {segnalazioniFiltered.map((row, idx) => (
+                      <tr key={`${row.id}_${row.ts}_${idx}`}>
+                        <td>{formatDateIt(row.dateObj)}</td>
+                        <td>{row.targa}</td>
+                        <td>{row.autistaNome || "-"}</td>
+                        <td>{row.tipo}</td>
+                        <td>{row.descrizione}</td>
+                        <td>{row.isNuova ? "NUOVA" : row.stato}</td>
+                        <td>{row.fotoCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "controlli" && (
+          <section className="cc-section" id="cc-anchor-controlli">
+            <div className="cc-section-head">
+              <h2>Controlli mezzo KO/OK</h2>
+              <div className="cc-actions">
+                <span className="cc-inline-count">
+                  KO: {controlliCounters.ko} | OK: {controlliCounters.ok}
+                </span>
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingControlli}
+                  onClick={() => void loadAutistiReadOnlySections()}
+                >
+                  Aggiorna dati
+                </button>
+              </div>
+            </div>
+
+            <div className="cc-filters cc-filters-compact">
+              <label className="cc-targa-filter">
+                Filtro targa
+                <input
+                  type="text"
+                  placeholder="Es. TI315407"
+                  value={controlliFilterTarga}
+                  onChange={(e) => setControlliFilterTarga(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {loadingControlli && <div className="cc-status">Caricamento controlli...</div>}
+            {controlliError && <div className="cc-status error">{controlliError}</div>}
+            {!loadingControlli && !controlliError && controlliFiltered.length === 0 && (
+              <div className="cc-status">Nessun controllo per i filtri selezionati.</div>
+            )}
+
+            {!loadingControlli && controlliFiltered.length > 0 && (
+              <div className="cc-two-columns">
+                <div className="cc-column">
+                  <h3 className="cc-column-title">KO ({controlliKoFiltered.length})</h3>
+                  {controlliKoFiltered.length === 0 ? (
+                    <div className="cc-status">Nessun controllo KO.</div>
+                  ) : (
+                    <div className="cc-card-list">
+                      {controlliKoFiltered.map((row, idx) => (
+                        <article className="cc-control-card ko" key={`${row.id}_${row.ts}_${idx}`}>
+                          <div className="cc-control-row">
+                            <span>{formatDateIt(row.dateObj)}</span>
+                            <span className="cc-badge scaduta">KO</span>
+                          </div>
+                          <div className="cc-control-title">{row.targaLabel}</div>
+                          <div className="cc-control-text">Autista: {row.autistaNome || "-"}</div>
+                          <div className="cc-control-text">Check KO: {row.koList.join(", ")}</div>
+                          {row.note ? <div className="cc-control-note">Note: {row.note}</div> : null}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="cc-column">
+                  <h3 className="cc-column-title">OK ({controlliOkFiltered.length})</h3>
+                  {controlliOkFiltered.length === 0 ? (
+                    <div className="cc-status">Nessun controllo OK.</div>
+                  ) : (
+                    <div className="cc-card-list">
+                      {controlliOkFiltered.map((row, idx) => (
+                        <article className="cc-control-card ok" key={`${row.id}_${row.ts}_${idx}`}>
+                          <div className="cc-control-row">
+                            <span>{formatDateIt(row.dateObj)}</span>
+                            <span className="cc-badge ok">OK</span>
+                          </div>
+                          <div className="cc-control-title">{row.targaLabel}</div>
+                          <div className="cc-control-text">Autista: {row.autistaNome || "-"}</div>
+                          <div className="cc-control-text">Check KO: nessuno</div>
+                          {row.note ? <div className="cc-control-note">Note: {row.note}</div> : null}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "richieste" && (
+          <section className="cc-section" id="cc-anchor-richieste">
+            <div className="cc-section-head">
+              <h2>Richieste attrezzature</h2>
+              <div className="cc-actions">
+                <span className="cc-inline-count">
+                  Totali: {richiesteCounters.totale} | Nuove: {richiesteCounters.nuove}
+                </span>
+                <button
+                  type="button"
+                  className="cc-secondary-btn"
+                  disabled={loadingRichieste}
+                  onClick={() => void loadAutistiReadOnlySections()}
+                >
+                  Aggiorna dati
+                </button>
+              </div>
+            </div>
+
+            <div className="cc-filters cc-filters-compact">
+              <label className="cc-targa-filter">
+                Filtro targa
+                <input
+                  type="text"
+                  placeholder="Es. TI315407"
+                  value={richiesteFilterTarga}
+                  onChange={(e) => setRichiesteFilterTarga(e.target.value)}
+                />
+              </label>
+              <label className="cc-toggle">
+                <input
+                  type="checkbox"
+                  checked={richiesteOnlyNuove}
+                  onChange={(e) => setRichiesteOnlyNuove(e.target.checked)}
+                />
+                <span>Solo nuove</span>
+              </label>
+            </div>
+
+            {loadingRichieste && <div className="cc-status">Caricamento richieste...</div>}
+            {richiesteError && <div className="cc-status error">{richiesteError}</div>}
+            {!loadingRichieste && !richiesteError && richiesteFiltered.length === 0 && (
+              <div className="cc-status">Nessuna richiesta per i filtri selezionati.</div>
+            )}
+
+            {!loadingRichieste && richiesteFiltered.length > 0 && (
+              <div className="cc-table-wrap">
+                <table className="cc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Targa</th>
+                      <th>Autista</th>
+                      <th>Testo</th>
+                      <th>Foto</th>
+                      <th>Stato</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {richiesteFiltered.map((row, idx) => (
+                      <tr key={`${row.id}_${row.ts}_${idx}`}>
+                        <td>{formatDateIt(row.dateObj)}</td>
+                        <td>{row.targa}</td>
+                        <td>{row.autistaNome || "-"}</td>
+                        <td>{row.testo}</td>
+                        <td>{row.hasFoto ? "SI" : "NO"}</td>
+                        <td>{row.isNuova ? "NUOVA" : row.stato}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+
+      {investigationOpen && investigationData && (
+        (() => {
+          const data = investigationData;
+          const target = data.target;
+          const targetAnomalies = data.targetAnomalies;
+          const descriptions = data.descriptions;
+          const totalMezzo = data.totalMezzo;
+          const visibleCount = data.visibleCount;
+          const mezzoHistoryVisible = data.mezzoHistoryVisible;
+          const mezzoCount = data.mezzoAnomalieCount;
+          const nMezzo = data.ultimi5MezzoCount;
+          const autistaCount = data.autistaAnomalieCount;
+          const nAutista = data.ultimi5AutistaCount;
+          const hasAutista = data.autistaKey.length > 0;
+
+          const targetKmAnomalies = targetAnomalies.filter((a) => a.target === "km");
+          const targetLitriAnomalies = targetAnomalies.filter(
+            (a) => a.target === "litri",
+          );
+
+          let p1Title: string;
+          let p1Sub: string;
+          let p1Variant: "isolata" | "parziale" | "sistematica" = "parziale";
+          if (mezzoCount <= 1) {
+            p1Title = `Anomalia ISOLATA — solo 1 anomalia su ${nMezzo} rifornimenti recenti del mezzo.`;
+            p1Sub =
+              "I rifornimenti precedenti e successivi sono coerenti tra loro. L'errore è circoscritto a questo singolo record.";
+            p1Variant = "isolata";
+          } else if (mezzoCount === 2) {
+            p1Title = `Anomalia parzialmente ricorrente — 2 anomalie su ${nMezzo} rifornimenti recenti del mezzo.`;
+            p1Sub =
+              "Alcuni rifornimenti presentano segnalazioni. Verifica se c'è un pattern.";
+            p1Variant = "parziale";
+          } else {
+            p1Title = `Anomalia SISTEMATICA — ${mezzoCount} anomalie su ${nMezzo} rifornimenti recenti del mezzo.`;
+            p1Sub =
+              "Pattern ricorrente: serve indagine operativa (mezzo o procedura).";
+            p1Variant = "sistematica";
+          }
+
+          const p2Title = `Mezzo ${target.targa}: ${mezzoCount}/${nMezzo} anomalie recenti.`;
+          let p2Sub: string;
+          if (mezzoCount === 0) {
+            p2Sub = "Il mezzo non mostra problemi sui suoi rifornimenti.";
+          } else if (mezzoCount === 1) {
+            p2Sub =
+              "Il mezzo non mostra problemi sistematici sui suoi rifornimenti.";
+          } else if (mezzoCount === 2) {
+            p2Sub = "Verifica se ci sono problemi ricorrenti sul mezzo.";
+          } else {
+            p2Sub =
+              "Mezzo con anomalie ricorrenti — verifica manutenzione, contachilometri, abitudini di rifornimento.";
+          }
+
+          let p3Title: string;
+          let p3Sub: string;
+          if (!hasAutista) {
+            p3Title =
+              "Autista non identificato sul record corrente — analisi non applicabile.";
+            p3Sub = "";
+          } else {
+            const autistaLabel = target.autistaNome ?? "—";
+            p3Title = `Autista ${autistaLabel}: ${autistaCount}/${nAutista} anomalie sui suoi ultimi ${nAutista} rifornimenti (su qualsiasi mezzo).`;
+            if (autistaCount === 0) {
+              p3Sub = "L'autista non mostra problemi sui suoi rifornimenti.";
+            } else if (autistaCount === 1) {
+              p3Sub =
+                "L'autista non mostra problemi sistematici sui suoi rifornimenti.";
+            } else if (autistaCount === 2) {
+              p3Sub = "Verifica se ci sono problemi ricorrenti sull'autista.";
+            } else {
+              p3Sub =
+                "Autista con anomalie ricorrenti — verifica formazione o procedure di registrazione.";
+            }
+          }
+
+          let p4Title: string;
+          if (mezzoCount >= 2 && autistaCount >= 2) {
+            p4Title =
+              "Anomalie concentrate su MEZZO E AUTISTA insieme. Probabile accoppiamento problematico (autista che usa spesso questo mezzo e fa errori specifici).";
+          } else if (mezzoCount >= 2 && autistaCount < 2) {
+            p4Title =
+              "Anomalie concentrate sul MEZZO (l'autista non mostra problemi su altri mezzi). Probabile problema del mezzo (es. contachilometri difettoso).";
+          } else if (mezzoCount < 2 && autistaCount >= 2) {
+            p4Title =
+              "Anomalie concentrate sull'AUTISTA (il mezzo non mostra problemi con altri autisti). Probabile errore ricorrente di battitura o procedura dell'autista.";
+          } else {
+            p4Title = `Caso singolo: nessun pattern emergente né sul mezzo né sull'autista. Probabile errore manuale isolato. Verificare il valore reale al ${formatDateItDisplay(target.dateObj)} per correggere il record.`;
+          }
+
+          const renderHistoryWarning = (list: Anomaly[]) => {
+            if (list.length === 0) return null;
+            const tooltip = list.map((a) => a.message).join(" · ");
+            return (
+              <span
+                className="cc-cell-warning"
+                title={tooltip}
+                aria-label="Anomalia rilevata"
+              >
+                ⚠
+              </span>
+            );
+          };
+
+          return (
+            <div
+              className="cc-investigation-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Indagine anomalia"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeInvestigation();
+              }}
+            >
+              <div className="cc-investigation-dialog">
+                <div className="cc-investigation-header">
+                  <div>
+                    <h3>Indagine anomalia</h3>
+                    <p className="cc-investigation-subtitle">
+                      Rifornimento del {formatDateItDisplay(target.dateObj)} ·{" "}
+                      {target.targa}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="cc-investigation-close"
+                    onClick={closeInvestigation}
+                    aria-label="Chiudi indagine"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="cc-investigation-body">
+                  <section className="cc-investigation-card">
+                    <h4>Rifornimento sospetto</h4>
+                    <div className="cc-investigation-record-grid">
+                      <div>
+                        <span className="cc-investigation-label">Data</span>
+                        <strong>{formatDateItDisplay(target.dateObj)}</strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Targa</span>
+                        <strong>{target.targa}</strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Autista</span>
+                        <strong>{target.autistaNome ?? "—"}</strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Km</span>
+                        <strong>
+                          {typeof target.km === "number"
+                            ? formatIntegerIt(target.km)
+                            : "—"}
+                          {targetKmAnomalies.length > 0 && (
+                            <span className="cc-cell-warning" aria-hidden="true">
+                              {" "}
+                              ⚠
+                            </span>
+                          )}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Litri</span>
+                        <strong>
+                          {typeof target.litri === "number"
+                            ? formatDecimalIt(target.litri, 2)
+                            : "—"}
+                          {targetLitriAnomalies.length > 0 && (
+                            <span className="cc-cell-warning" aria-hidden="true">
+                              {" "}
+                              ⚠
+                            </span>
+                          )}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Media km/L</span>
+                        <strong>{data.targetMediaLabel}</strong>
+                      </div>
+                      <div>
+                        <span className="cc-investigation-label">Fonte</span>
+                        <strong>{target.sourceLabel}</strong>
+                      </div>
+                    </div>
+                    {descriptions.length > 0 && (
+                      <div className="cc-investigation-anomaly-list">
+                        {descriptions.map((desc, idx) => (
+                          <div
+                            key={idx}
+                            className="cc-investigation-anomaly-desc"
+                          >
+                            <span className="cc-investigation-anomaly-icon">
+                              ⚠
+                            </span>
+                            <span>{desc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="cc-investigation-card">
+                    <h4>Storia ultimi rifornimenti · {target.targa}</h4>
+                    <div className="cc-investigation-counter">
+                      Mostrati {visibleCount} di {totalMezzo}
+                    </div>
+                    <div className="cc-table-wrap">
+                      <table className="cc-table">
+                        <thead>
+                          <tr>
+                            <th>Data</th>
+                            <th>Autista</th>
+                            <th>Km</th>
+                            <th>Litri</th>
+                            <th>Km/L</th>
+                            <th>Fonte</th>
+                            <th>Anomalie</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mezzoHistoryVisible.map((entry) => {
+                            const isCurrent =
+                              entry.row.id === target.id &&
+                              entry.row.dateObj.getTime() ===
+                                target.dateObj.getTime();
+                            return (
+                              <tr
+                                key={`${entry.row.id}_${entry.row.dateObj.getTime()}`}
+                                className={
+                                  isCurrent
+                                    ? "cc-investigation-row-current"
+                                    : undefined
+                                }
+                              >
+                                <td>{formatDateItDisplay(entry.row.dateObj)}</td>
+                                <td>{entry.row.autistaNome ?? "—"}</td>
+                                <td>
+                                  {typeof entry.row.km === "number"
+                                    ? formatIntegerIt(entry.row.km)
+                                    : "—"}
+                                </td>
+                                <td>
+                                  {typeof entry.row.litri === "number"
+                                    ? formatDecimalIt(entry.row.litri, 2)
+                                    : "—"}
+                                </td>
+                                <td>{entry.mediaLitriKm}</td>
+                                <td>{entry.row.sourceLabel}</td>
+                                <td>{renderHistoryWarning(entry.anomalies)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="cc-investigation-expand-row">
+                      {investigationExpansion === 5 && totalMezzo > 5 && (
+                        <button
+                          type="button"
+                          className="cc-investigation-expand-btn"
+                          onClick={() => setInvestigationExpansion(10)}
+                        >
+                          Mostra altri 5
+                        </button>
+                      )}
+                      {investigationExpansion !== "all" &&
+                        totalMezzo > visibleCount && (
+                          <button
+                            type="button"
+                            className="cc-investigation-expand-btn"
+                            onClick={() => setInvestigationExpansion("all")}
+                          >
+                            Mostra tutti ({totalMezzo})
+                          </button>
+                        )}
+                    </div>
+                  </section>
+
+                  <section className="cc-investigation-card">
+                    <h4>Cosa dicono i dati</h4>
+                    <div className="cc-investigation-patterns">
+                      <div
+                        className={`cc-investigation-pattern-card${
+                          p1Variant === "sistematica"
+                            ? " cc-investigation-pattern-card-warn"
+                            : p1Variant === "isolata"
+                              ? " cc-investigation-pattern-card-warn"
+                              : ""
+                        }`}
+                      >
+                        <span className="cc-investigation-pattern-icon">⚠</span>
+                        <div>
+                          <strong>{p1Title}</strong>
+                          <p>{p1Sub}</p>
+                        </div>
+                      </div>
+                      <div className="cc-investigation-pattern-card">
+                        <span className="cc-investigation-pattern-icon">📊</span>
+                        <div>
+                          <strong>{p2Title}</strong>
+                          <p>{p2Sub}</p>
+                        </div>
+                      </div>
+                      <div className="cc-investigation-pattern-card">
+                        <span className="cc-investigation-pattern-icon">👤</span>
+                        <div>
+                          <strong>{p3Title}</strong>
+                          {p3Sub && <p>{p3Sub}</p>}
+                        </div>
+                      </div>
+                      <div className="cc-investigation-pattern-card">
+                        <span className="cc-investigation-pattern-icon">🔍</span>
+                        <div>
+                          <strong>{p4Title}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <div className="cc-investigation-footer">
+                  <button
+                    type="button"
+                    className="cc-secondary-btn"
+                    onClick={closeInvestigation}
+                  >
+                    Chiudi
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
+
+      {analisiOpen && analisiData && (
+        (() => {
+          const data = analisiData;
+          const mesiLabel =
+            selectedMonth === "all"
+              ? "Tutti i mesi"
+              : MONTH_NAMES[(selectedMonth as number) - 1];
+          const annoLabel = selectedYear === "all" ? "Tutti gli anni" : String(selectedYear);
+          const fonteLabel =
+            refuelSourceFilter === "all"
+              ? "Tutte"
+              : refuelSourceFilter === "caravate"
+                ? "Caravate"
+                : refuelSourceFilter === "distributore_piccadilly"
+                  ? "Distributore Piccadilly"
+                  : refuelSourceFilter === "distributore_eni"
+                    ? "Distributore Eni"
+                    : "Distributore Contanti";
+
+          const tooltipSemplice =
+            "Media aritmetica delle medie singole di ogni rifornimento. Tutti i rifornimenti pesano uguale, anche quelli con pochi km.";
+          const tooltipPesata =
+            "Km totali percorsi divisi litri totali consumati. È il consumo reale del mezzo nel periodo, più affidabile della semplice.";
+
+          const totalFlags = mezziSelected.size + autistiSelected.size;
+          const confrontaEnabled =
+            mezziSelected.size >= 2 || autistiSelected.size >= 2;
+          const showCategoryToggle =
+            mezziSelected.size >= 2 && autistiSelected.size >= 2;
+          const effectiveCategoria =
+            confrontaCategoria === "mezzi" && mezziSelected.size >= 2
+              ? "mezzi"
+              : confrontaCategoria === "autisti" && autistiSelected.size >= 2
+                ? "autisti"
+                : mezziSelected.size >= 2
+                  ? "mezzi"
+                  : "autisti";
+
+          const renderTagEsito = (scostamento: number | null) => {
+            if (scostamento === null) {
+              return <span className="cc-analisi-tag-ok">—</span>;
+            }
+            const pctText = `${scostamento >= 0 ? "+" : ""}${(
+              scostamento * 100
+            )
+              .toFixed(1)
+              .replace(".", ",")}%`;
+            if (scostamento <= -0.3) {
+              return <span className="cc-analisi-tag-low">{pctText}</span>;
+            }
+            if (scostamento <= -0.15) {
+              return <span className="cc-analisi-tag-warn">{pctText}</span>;
+            }
+            return <span className="cc-analisi-tag-ok">in linea</span>;
+          };
+
+          const renderClassificaMezzi = () => {
+            if (data.mezziAggregati.length === 0) {
+              return (
+                <div className="cc-status">
+                  Nessun mezzo con almeno 3 rifornimenti nel periodo selezionato.
+                </div>
+              );
+            }
+            return (
+              <>
+                <p className="cc-analisi-section-info">
+                  Ordinata per km/L pesata · {data.mezziAggregati.length} mezzi sopra
+                  soglia (≥3 rifornimenti). Tiebreak: Km totali maggiori in alto.
+                </p>
+                <div className="cc-table-wrap">
+                  <table className="cc-table cc-analisi-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Flag</th>
+                        <th>Targa</th>
+                        <th title={tooltipSemplice}>km/L semplice ?</th>
+                        <th title={tooltipPesata}>km/L pesata ?</th>
+                        <th>Km tot</th>
+                        <th>Litri tot</th>
+                        <th>Rif.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.mezziAggregati.map((m, i) => (
+                        <tr
+                          key={m.id}
+                          className={i === 0 ? "cc-analisi-rank-best" : undefined}
+                        >
+                          <td>{i + 1}</td>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="cc-analisi-flag-checkbox"
+                              checked={mezziSelected.has(m.id)}
+                              onChange={() => toggleMezzoFlag(m.id)}
+                              aria-label={`Flag mezzo ${m.targa}`}
+                            />
+                          </td>
+                          <td>{m.targa}</td>
+                          <td>
+                            {m.semplice !== null
+                              ? formatMediaLitriKm(m.semplice)
+                              : "—"}
+                          </td>
+                          <td>
+                            <strong>
+                              {m.pesata !== null
+                                ? formatMediaLitriKm(m.pesata)
+                                : "—"}
+                            </strong>
+                          </td>
+                          <td>{formatNumberIt(m.kmTot, 0)}</td>
+                          <td>{formatNumberIt(m.litriTot, 2)}</td>
+                          <td>{m.rifCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          };
+
+          const renderClassificaAutisti = () => {
+            if (data.autistiAggregati.length === 0) {
+              return (
+                <div className="cc-status">
+                  Nessun autista con almeno 3 rifornimenti nel periodo selezionato.
+                </div>
+              );
+            }
+            return (
+              <>
+                <p className="cc-analisi-section-info">
+                  Ordinata per km/L pesata · {data.autistiAggregati.length} autisti
+                  sopra soglia (≥3 rifornimenti). Tiebreak: Km totali maggiori in
+                  alto.
+                </p>
+                <div className="cc-table-wrap">
+                  <table className="cc-table cc-analisi-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Flag</th>
+                        <th>Autista</th>
+                        <th title={tooltipSemplice}>km/L semplice ?</th>
+                        <th title={tooltipPesata}>km/L pesata ?</th>
+                        <th>Km tot</th>
+                        <th>Litri tot</th>
+                        <th>Rif.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.autistiAggregati.map((a, i) => (
+                        <tr
+                          key={a.id}
+                          className={i === 0 ? "cc-analisi-rank-best" : undefined}
+                        >
+                          <td>{i + 1}</td>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="cc-analisi-flag-checkbox"
+                              checked={autistiSelected.has(a.id)}
+                              onChange={() => toggleAutistaFlag(a.id)}
+                              aria-label={`Flag autista ${a.autistaNome}`}
+                            />
+                          </td>
+                          <td>{a.autistaNome}</td>
+                          <td>
+                            {a.semplice !== null
+                              ? formatMediaLitriKm(a.semplice)
+                              : "—"}
+                          </td>
+                          <td>
+                            <strong>
+                              {a.pesata !== null
+                                ? formatMediaLitriKm(a.pesata)
+                                : "—"}
+                            </strong>
+                          </td>
+                          <td>{formatNumberIt(a.kmTot, 0)}</td>
+                          <td>{formatNumberIt(a.litriTot, 2)}</td>
+                          <td>{a.rifCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          };
+
+          const renderConfronta = () => {
+            if (!confrontaEnabled) {
+              return (
+                <div className="cc-status">
+                  Seleziona almeno 2 mezzi o 2 autisti dalle classifiche per
+                  abilitare il confronto.
+                </div>
+              );
+            }
+            const entitiesAll =
+              effectiveCategoria === "mezzi"
+                ? data.mezziAggregati
+                    .filter((m) => mezziSelected.has(m.id))
+                    .map((m) => ({
+                      id: m.id,
+                      label: m.targa,
+                      pesata: m.pesata,
+                      semplice: m.semplice,
+                      kmTot: m.kmTot,
+                      litriTot: m.litriTot,
+                      rifCount: m.rifCount,
+                    }))
+                : data.autistiAggregati
+                    .filter((a) => autistiSelected.has(a.id))
+                    .map((a) => ({
+                      id: a.id,
+                      label: a.autistaNome,
+                      pesata: a.pesata,
+                      semplice: a.semplice,
+                      kmTot: a.kmTot,
+                      litriTot: a.litriTot,
+                      rifCount: a.rifCount,
+                    }));
+            if (entitiesAll.length < 2) {
+              return (
+                <div className="cc-status">
+                  La selezione di {effectiveCategoria === "mezzi" ? "mezzi" : "autisti"}{" "}
+                  ha meno di 2 elementi sopra soglia. Aggiungi flag o cambia
+                  categoria.
+                </div>
+              );
+            }
+            const sorted = [...entitiesAll].sort(
+              (a, b) => (b.pesata ?? 0) - (a.pesata ?? 0),
+            );
+            const best = sorted[0];
+            const worst = sorted[sorted.length - 1];
+            const diff =
+              best.pesata !== null && worst.pesata !== null
+                ? best.pesata - worst.pesata
+                : null;
+            const insight =
+              diff !== null
+                ? `${best.label} più efficiente di ${worst.label}, differenza ${formatDecimalIt(diff, 2)} km/L.`
+                : "Confronto non calcolabile (km/L mancanti su una o più entità selezionate).";
+
+            return (
+              <>
+                {showCategoryToggle && (
+                  <div className="cc-analisi-toggle-row">
+                    <button
+                      type="button"
+                      className={`cc-analisi-toggle-btn${
+                        effectiveCategoria === "mezzi" ? " cc-analisi-toggle-btn-active" : ""
+                      }`}
+                      onClick={() => setConfrontaCategoria("mezzi")}
+                    >
+                      Mezzi ({mezziSelected.size})
+                    </button>
+                    <button
+                      type="button"
+                      className={`cc-analisi-toggle-btn${
+                        effectiveCategoria === "autisti" ? " cc-analisi-toggle-btn-active" : ""
+                      }`}
+                      onClick={() => setConfrontaCategoria("autisti")}
+                    >
+                      Autisti ({autistiSelected.size})
+                    </button>
+                  </div>
+                )}
+                <div className="cc-analisi-confronta-grid">
+                  {sorted.map((e, idx) => {
+                    const cardClass =
+                      idx === 0
+                        ? "cc-analisi-card cc-analisi-card-best"
+                        : idx === sorted.length - 1
+                          ? "cc-analisi-card cc-analisi-card-worst"
+                          : "cc-analisi-card";
+                    return (
+                      <div key={e.id} className={cardClass}>
+                        <div className="cc-analisi-card-label">{e.label}</div>
+                        <div className="cc-analisi-card-pesata">
+                          {e.pesata !== null ? formatMediaLitriKm(e.pesata) : "—"}
+                        </div>
+                        <div className="cc-analisi-card-grid">
+                          <div>
+                            <span>km/L semplice</span>
+                            <strong>
+                              {e.semplice !== null
+                                ? formatMediaLitriKm(e.semplice)
+                                : "—"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Km tot</span>
+                            <strong>{formatNumberIt(e.kmTot, 0)}</strong>
+                          </div>
+                          <div>
+                            <span>Litri tot</span>
+                            <strong>{formatNumberIt(e.litriTot, 2)}</strong>
+                          </div>
+                          <div>
+                            <span>Rif.</span>
+                            <strong>{e.rifCount}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="cc-analisi-insight">{insight}</div>
+              </>
+            );
+          };
+
+          const renderAndamento = () => {
+            const monthLabelShort = (year: number, month: number) => {
+              const idx = month - 1;
+              const m = MONTH_NAMES[idx]?.slice(0, 3) ?? String(month);
+              return `${m} ${year}`;
+            };
+            const a = data.andamento;
+
+            return (
+              <>
+                <div className="cc-analisi-section">
+                  <label className="cc-combobox-label">
+                    Cerca o seleziona mezzo
+                    <div className="cc-combobox">
+                      <input
+                        type="text"
+                        placeholder="Cerca targa o seleziona dalla lista"
+                        value={andamentoTargaInput}
+                        onFocus={() => setAndamentoTargaDropdownOpen(true)}
+                        onBlur={() =>
+                          window.setTimeout(
+                            () => setAndamentoTargaDropdownOpen(false),
+                            120,
+                          )
+                        }
+                        onChange={(e) => {
+                          setAndamentoTargaInput(e.target.value);
+                          setAndamentoTargaDropdownOpen(true);
+                        }}
+                      />
+                      {(andamentoTargaInput.length > 0 || andamentoMezzoSelected) && (
+                        <button
+                          type="button"
+                          className="cc-combobox-clear"
+                          aria-label="Reset selezione mezzo"
+                          onClick={() => {
+                            setAndamentoTargaInput("");
+                            setAndamentoMezzoSelected(null);
+                            setAndamentoTargaDropdownOpen(false);
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
+                      {andamentoTargaDropdownOpen &&
+                        andamentoTargheSuggestions.length > 0 && (
+                          <ul className="cc-combobox-list" role="listbox">
+                            {andamentoTargheSuggestions.slice(0, 50).map((targa) => (
+                              <li key={targa}>
+                                <button
+                                  type="button"
+                                  className="cc-combobox-item"
+                                  role="option"
+                                  aria-selected={andamentoMezzoSelected === targa}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setAndamentoTargaInput(targa);
+                                    setAndamentoMezzoSelected(targa);
+                                    setAndamentoTargaDropdownOpen(false);
+                                  }}
+                                >
+                                  {targa}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                    </div>
+                  </label>
+                  <small className="cc-analisi-helper">
+                    Lista completa di tutti i mezzi anagrafati. La selezione apre il
+                    dettaglio dell'andamento.
+                  </small>
+                </div>
+
+                {!a && (
+                  <div className="cc-status">
+                    Seleziona un mezzo per vedere il suo andamento nel tempo.
+                  </div>
+                )}
+
+                {a && (
+                  <>
+                    <div className="cc-analisi-section">
+                      <div className="cc-analisi-andamento-head">
+                        <div>
+                          <div className="cc-analisi-andamento-targa">{a.targa}</div>
+                          <div className="cc-analisi-andamento-meta">
+                            {a.categoria} · {a.totalRifMezzo} rifornimenti totali nello
+                            storico
+                          </div>
+                        </div>
+                        <div className="cc-analisi-andamento-storica">
+                          <span>Media storica del mezzo</span>
+                          <strong>
+                            {a.mezzoAvgStorica !== null
+                              ? formatMediaLitriKm(a.mezzoAvgStorica)
+                              : "—"}
+                          </strong>
+                          <small>su ultimi 12 mesi</small>
+                        </div>
+                      </div>
+                      {a.currentEntry &&
+                        a.currentEntry.scostamento !== null &&
+                        a.currentEntry.scostamento <= -0.15 && (
+                          <div
+                            className={
+                              a.currentEntry.scostamento <= -0.3
+                                ? "cc-analisi-alert-low"
+                                : "cc-analisi-alert-warn"
+                            }
+                          >
+                            <span className="cc-cell-warning" aria-hidden="true">
+                              ⚠
+                            </span>
+                            <div>
+                              <strong>Calo significativo nel mese corrente.</strong>
+                              <p>
+                                A {monthLabelShort(a.currentEntry.year, a.currentEntry.month)}{" "}
+                                il mezzo registra{" "}
+                                {a.currentEntry.pesata !== null
+                                  ? formatMediaLitriKm(a.currentEntry.pesata)
+                                  : "—"}
+                                ,{" "}
+                                {(a.currentEntry.scostamento * 100)
+                                  .toFixed(1)
+                                  .replace(".", ",")}
+                                % rispetto alla sua media storica (
+                                {a.mezzoAvgStorica !== null
+                                  ? formatMediaLitriKm(a.mezzoAvgStorica)
+                                  : "—"}
+                                ). Verificare se è un singolo episodio o trend in
+                                corso.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                    </div>
+
+                    <div className="cc-analisi-section">
+                      <h4>Andamento mensile (ultimi 12 mesi)</h4>
+                      {a.monthly.length === 0 && (
+                        <div className="cc-status">
+                          Nessun rifornimento storico per questo mezzo.
+                        </div>
+                      )}
+                      {a.monthly.length > 0 && (
+                        <div className="cc-table-wrap">
+                          <table className="cc-table cc-analisi-table">
+                            <thead>
+                              <tr>
+                                <th>Mese</th>
+                                <th>Km percorsi</th>
+                                <th>Litri tot</th>
+                                <th>Rif.</th>
+                                <th title={tooltipPesata}>km/L pesata ?</th>
+                                <th>Confronto</th>
+                                <th>Esito</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {a.monthly.map((m) => {
+                                const fillPct =
+                                  a.maxPesata > 0 && m.pesata !== null
+                                    ? Math.max(2, (m.pesata / a.maxPesata) * 100)
+                                    : 0;
+                                let barClass = "cc-analisi-bar-fill";
+                                if (m.scostamento !== null) {
+                                  if (m.scostamento <= -0.3)
+                                    barClass += " cc-analisi-bar-fill-low";
+                                  else if (m.scostamento <= -0.15)
+                                    barClass += " cc-analisi-bar-fill-warn";
+                                }
+                                const monthLabel = m.isCurrent
+                                  ? `${monthLabelShort(m.year, m.month)} (corrente)`
+                                  : monthLabelShort(m.year, m.month);
+                                return (
+                                  <tr
+                                    key={m.key}
+                                    className={
+                                      m.isCurrent
+                                        ? "cc-analisi-row-current"
+                                        : undefined
+                                    }
+                                  >
+                                    <td>{monthLabel}</td>
+                                    <td>{formatNumberIt(m.kmTot, 0)}</td>
+                                    <td>{formatNumberIt(m.litriTot, 2)}</td>
+                                    <td>{m.rifCount}</td>
+                                    <td>
+                                      <strong>
+                                        {m.pesata !== null
+                                          ? formatMediaLitriKm(m.pesata)
+                                          : "—"}
+                                      </strong>
+                                    </td>
+                                    <td>
+                                      <div className="cc-analisi-bar-bg">
+                                        <div
+                                          className={barClass}
+                                          style={{ width: `${fillPct}%` }}
+                                        />
+                                      </div>
+                                    </td>
+                                    <td>{renderTagEsito(m.scostamento)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <small className="cc-analisi-helper">
+                        La km/L pesata = km totali del mese ÷ litri totali del mese.
+                        Smussa l'effetto dei rabbocchi parziali. La barra confronta
+                        col valore massimo del periodo. Soglie: −15% giallo, −30%
+                        rosso.
+                      </small>
+                    </div>
+
+                    <div className="cc-analisi-section">
+                      <h4>Autisti che hanno guidato il mezzo (ultimi 6 mesi)</h4>
+                      {a.autistiSuMezzo.length === 0 ? (
+                        <div className="cc-status">
+                          Nessun autista con almeno 3 rifornimenti su questo mezzo
+                          negli ultimi 6 mesi.
+                        </div>
+                      ) : (
+                        <div className="cc-table-wrap">
+                          <table className="cc-table cc-analisi-table">
+                            <thead>
+                              <tr>
+                                <th>Autista</th>
+                                <th>Rif.</th>
+                                <th>Litri tot</th>
+                                <th>Km tot</th>
+                                <th title={tooltipPesata}>km/L pesata ?</th>
+                                <th>Esito</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {a.autistiSuMezzo.map((au) => {
+                                let tag: ReactNode;
+                                if (au.scostamento === null) {
+                                  tag = (
+                                    <span className="cc-analisi-tag-ok">—</span>
+                                  );
+                                } else if (au.scostamento <= -0.3) {
+                                  tag = (
+                                    <span className="cc-analisi-tag-low">
+                                      {(au.scostamento * 100)
+                                        .toFixed(1)
+                                        .replace(".", ",")}
+                                      % vs mezzo
+                                    </span>
+                                  );
+                                } else if (au.scostamento <= -0.15) {
+                                  tag = (
+                                    <span className="cc-analisi-tag-warn">
+                                      {(au.scostamento * 100)
+                                        .toFixed(1)
+                                        .replace(".", ",")}
+                                      % vs mezzo
+                                    </span>
+                                  );
+                                } else {
+                                  tag = (
+                                    <span className="cc-analisi-tag-ok">
+                                      in linea con storico
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <tr key={au.autistaKey}>
+                                    <td>{au.autistaNome}</td>
+                                    <td>{au.rifCount}</td>
+                                    <td>{formatNumberIt(au.litriTot, 2)}</td>
+                                    <td>{formatNumberIt(au.kmTot, 0)}</td>
+                                    <td>
+                                      <strong>
+                                        {au.pesata !== null
+                                          ? formatMediaLitriKm(au.pesata)
+                                          : "—"}
+                                      </strong>
+                                    </td>
+                                    <td>{tag}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <small className="cc-analisi-helper">
+                        Confronto km/L pesata di ciascun autista vs media storica del
+                        mezzo. Soglia segnalazione: −15% rispetto al mezzo. Conteggio
+                        rifornimenti minimo 3 per entrare in tabella.
+                      </small>
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          };
+
+          return (
+            <div
+              className="cc-analisi-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Analisi consumi"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeAnalisi();
+              }}
+            >
+              <div className="cc-analisi-dialog">
+                <div className="cc-analisi-header">
+                  <div>
+                    <h3>Analisi consumi</h3>
+                    <p className="cc-analisi-subtitle">
+                      Periodo: {mesiLabel} {selectedMonth !== "all" ? annoLabel : ""}
+                      {selectedMonth === "all" ? `· ${annoLabel}` : ""} · Fonte:{" "}
+                      {fonteLabel}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="cc-investigation-close"
+                    onClick={closeAnalisi}
+                    aria-label="Chiudi analisi consumi"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="cc-analisi-tabs">
+                  <button
+                    type="button"
+                    className={`cc-analisi-tab${
+                      analisiActiveTab === "mezzi" ? " cc-analisi-tab-active" : ""
+                    }`}
+                    onClick={() => setAnalisiActiveTab("mezzi")}
+                  >
+                    Classifica mezzi
+                  </button>
+                  <button
+                    type="button"
+                    className={`cc-analisi-tab${
+                      analisiActiveTab === "autisti" ? " cc-analisi-tab-active" : ""
+                    }`}
+                    onClick={() => setAnalisiActiveTab("autisti")}
+                  >
+                    Classifica autisti
+                  </button>
+                  <button
+                    type="button"
+                    className={`cc-analisi-tab${
+                      analisiActiveTab === "confronta" ? " cc-analisi-tab-active" : ""
+                    }${!confrontaEnabled ? " cc-analisi-tab-disabled" : ""}`}
+                    onClick={() => {
+                      if (confrontaEnabled) setAnalisiActiveTab("confronta");
+                    }}
+                    disabled={!confrontaEnabled}
+                    title={
+                      confrontaEnabled
+                        ? undefined
+                        : "Seleziona almeno 2 mezzi o 2 autisti per abilitare il confronto"
+                    }
+                  >
+                    Confronta {totalFlags > 0 ? `(${totalFlags})` : ""}
+                  </button>
+                  <button
+                    type="button"
+                    className={`cc-analisi-tab${
+                      analisiActiveTab === "andamento" ? " cc-analisi-tab-active" : ""
+                    }`}
+                    onClick={() => setAnalisiActiveTab("andamento")}
+                  >
+                    Andamento mezzo
+                  </button>
+                </div>
+
+                <div className="cc-analisi-body">
+                  {analisiActiveTab === "mezzi" && renderClassificaMezzi()}
+                  {analisiActiveTab === "autisti" && renderClassificaAutisti()}
+                  {analisiActiveTab === "confronta" && renderConfronta()}
+                  {analisiActiveTab === "andamento" && renderAndamento()}
+                </div>
+
+                <div className="cc-analisi-footer">
+                  <span className="cc-analisi-footer-info">
+                    {mezziSelected.size} mezzi · {autistiSelected.size} autisti
+                    flaggati
+                  </span>
+                  {totalFlags > 0 && (
+                    <button
+                      type="button"
+                      className="cc-secondary-btn"
+                      onClick={clearFlags}
+                    >
+                      Pulisci flag
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="cc-secondary-btn"
+                    onClick={closeAnalisi}
+                  >
+                    Chiudi
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
+
+      <NextRifornimentoEditModal
+        open={editRifornimentoOpen}
+        row={editRifornimentoRow}
+        onClose={() => {
+          setEditRifornimentoOpen(false);
+          setEditRifornimentoRow(null);
+        }}
+        onSaved={() => {
+          setEditRifornimentoOpen(false);
+          setEditRifornimentoRow(null);
+          void loadRefuels();
+        }}
+      />
+
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePdf}
+        onCopyLink={handleCopyPdfText}
+        onWhatsApp={handleWhatsAppPdf}
+      />
+    </div>
+  );
+}

@@ -140,8 +140,6 @@ export type NextAutistiSegnalazioneSectionItem = {
   chiusa: boolean;
   dataChiusura: number | null;
   chiusaBy: string | null;
-  linkedLavoroId: string | null;
-  hasLinkedLavoro: boolean;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -160,8 +158,6 @@ export type NextAutistiControlloSectionItem = {
   chiuso: boolean;
   dataChiusura: number | null;
   chiusoBy: string | null;
-  linkedLavoroIds: string[];
-  hasLinkedLavoro: boolean;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -548,8 +544,6 @@ function normalizeSegnalazioneSectionItem(
     chiusa: record.chiusa === true,
     dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
     chiusaBy: normalizeOptionalText(record.chiusa_by),
-    linkedLavoroId: normalizeOptionalText(record.linkedLavoroId),
-    hasLinkedLavoro: Boolean(normalizeOptionalText(record.linkedLavoroId)),
     sourceDataset: SEGNALAZIONI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -677,27 +671,6 @@ function normalizeControlloSectionItem(
     chiuso: record.chiuso === true,
     dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
     chiusoBy: normalizeOptionalText(record.chiuso_by),
-    linkedLavoroIds: (() => {
-      const ids: string[] = [];
-      const single: string | null = normalizeOptionalText(record.linkedLavoroId);
-      if (single) ids.push(single);
-      if (Array.isArray(record.linkedLavoroIds)) {
-        record.linkedLavoroIds.forEach((entry: unknown) => {
-          const t: string | null = normalizeOptionalText(entry);
-          if (t && !ids.includes(t)) ids.push(t);
-        });
-      }
-      return ids;
-    })(),
-    hasLinkedLavoro: (() => {
-      if (normalizeOptionalText(record.linkedLavoroId)) return true;
-      if (Array.isArray(record.linkedLavoroIds)) {
-        return record.linkedLavoroIds.some((entry: unknown) =>
-          Boolean(normalizeOptionalText(entry)),
-        );
-      }
-      return false;
-    })(),
     sourceDataset: CONTROLLI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -829,8 +802,6 @@ function normalizeCloneSegnalazioneSectionItem(
     chiusa: false,
     dataChiusura: null,
     chiusaBy: null,
-    linkedLavoroId: null,
-    hasLinkedLavoro: false,
     sourceDataset: "@next_clone_autisti:segnalazioni",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],
@@ -885,8 +856,6 @@ function normalizeCloneControlloSectionItem(
     chiuso: false,
     dataChiusura: null,
     chiusoBy: null,
-    linkedLavoroIds: [],
-    hasLinkedLavoro: false,
     sourceDataset: "@next_clone_autisti:controlli",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],

@@ -120,7 +120,6 @@ export type NextAnagraficheFlottaMezzoItem = {
   dataUltimoCollaudo: string;
   dataUltimoCollaudoTimestamp: number | null;
   manutenzioneProgrammata: boolean;
-  manutenzioneContrattoAttivo: boolean;
   manutenzioneDataInizio: string;
   manutenzioneDataInizioTimestamp: number | null;
   manutenzioneDataFine: string;
@@ -599,8 +598,6 @@ function mapMezzoItem(args: {
     dataUltimoCollaudo: ultimoCollaudo.value,
     dataUltimoCollaudoTimestamp: ultimoCollaudo.timestamp,
     manutenzioneProgrammata: normalizeBoolean(raw.manutenzioneProgrammata),
-    manutenzioneContrattoAttivo:
-      raw.manutenzioneContrattoAttivo === false ? false : true,
     manutenzioneDataInizio: manutenzioneDataInizio.value,
     manutenzioneDataInizioTimestamp: manutenzioneDataInizio.timestamp,
     manutenzioneDataFine: manutenzioneDataFine.value,
@@ -735,8 +732,6 @@ function applyMezzoClonePatch(
     dataUltimoCollaudo: ultimoCollaudo.value,
     dataUltimoCollaudoTimestamp: ultimoCollaudo.timestamp,
     manutenzioneProgrammata: patch.manutenzioneProgrammata ?? item.manutenzioneProgrammata,
-    manutenzioneContrattoAttivo:
-      patch.manutenzioneContrattoAttivo ?? item.manutenzioneContrattoAttivo,
     manutenzioneDataInizio: manutenzioneDataInizio.value,
     manutenzioneDataInizioTimestamp: manutenzioneDataInizio.timestamp,
     manutenzioneDataFine: manutenzioneDataFine.value,
@@ -799,7 +794,6 @@ function buildMezzoFromClonePatch(args: {
     dataScadenzaRevisione: patch.dataScadenzaRevisione ?? "",
     dataUltimoCollaudo: patch.dataUltimoCollaudo ?? "",
     manutenzioneProgrammata: patch.manutenzioneProgrammata ?? false,
-    manutenzioneContrattoAttivo: patch.manutenzioneContrattoAttivo ?? true,
     manutenzioneDataInizio: patch.manutenzioneDataInizio ?? "",
     manutenzioneDataFine: patch.manutenzioneDataFine ?? "",
     manutenzioneKmMax: patch.manutenzioneKmMax ?? "",

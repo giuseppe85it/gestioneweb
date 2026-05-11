@@ -22,14 +22,6 @@ import "../../autistiInbox/AutistiInboxHome.css";
 type NextHomeAutistiEventoModalProps = {
   event: HomeEvent | null;
   onClose: () => void;
-  editable?: boolean;
-  onMarkEvasa?: (id: string) => Promise<void>;
-  onMarkChiusa?: (id: string) => Promise<void>;
-  onMarkChiuso?: (id: string) => Promise<void>;
-  eventsCount?: number;
-  eventIndex?: number;
-  onPrevEvent?: () => void;
-  onNextEvent?: () => void;
 };
 
 type DetailRow = {
@@ -315,39 +307,7 @@ function getEventPdfBlobSource(event: HomeEvent) {
 export default function NextHomeAutistiEventoModal({
   event,
   onClose,
-  editable,
-  onMarkEvasa,
-  onMarkChiusa,
-  onMarkChiuso,
-  eventsCount,
-  eventIndex,
-  onPrevEvent,
-  onNextEvent,
 }: NextHomeAutistiEventoModalProps) {
-  const [marking, setMarking] = useState<boolean>(false);
-  const [markError, setMarkError] = useState<string | null>(null);
-  const hasNav: boolean =
-    typeof eventsCount === "number" &&
-    eventsCount > 1 &&
-    typeof eventIndex === "number";
-  const canPrev: boolean = hasNav && (eventIndex ?? 0) > 0;
-  const canNext: boolean =
-    hasNav && (eventIndex ?? 0) < ((eventsCount ?? 1) - 1);
-
-  useEffect(() => {
-    if (!hasNav) return;
-    const handleArrow = (evt: KeyboardEvent) => {
-      if (evt.key === "ArrowLeft" && canPrev && onPrevEvent) {
-        evt.preventDefault();
-        onPrevEvent();
-      } else if (evt.key === "ArrowRight" && canNext && onNextEvent) {
-        evt.preventDefault();
-        onNextEvent();
-      }
-    };
-    window.addEventListener("keydown", handleArrow);
-    return () => window.removeEventListener("keydown", handleArrow);
-  }, [hasNav, canPrev, canNext, onPrevEvent, onNextEvent]);
   const [showJson, setShowJson] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -473,76 +433,11 @@ export default function NextHomeAutistiEventoModal({
   return (
     <>
       <div className="aix-backdrop" onClick={closeDetails}>
-        <div
-          className="aix-modal"
-          onClick={(modalEvent) => modalEvent.stopPropagation()}
-          style={{ position: "relative" }}
-        >
-          {hasNav && (
-            <>
-              <button
-                type="button"
-                onClick={() => canPrev && onPrevEvent && onPrevEvent()}
-                disabled={!canPrev}
-                aria-label="Evento precedente"
-                style={{
-                  position: "absolute",
-                  left: "-44px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  border: "1px solid rgba(180,167,144,0.55)",
-                  background: canPrev ? "#f8f4e8" : "#e9e4d6",
-                  color: canPrev ? "#3a352b" : "#a59c8b",
-                  cursor: canPrev ? "pointer" : "not-allowed",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  zIndex: 2,
-                }}
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                onClick={() => canNext && onNextEvent && onNextEvent()}
-                disabled={!canNext}
-                aria-label="Evento successivo"
-                style={{
-                  position: "absolute",
-                  right: "-44px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  border: "1px solid rgba(180,167,144,0.55)",
-                  background: canNext ? "#f8f4e8" : "#e9e4d6",
-                  color: canNext ? "#3a352b" : "#a59c8b",
-                  cursor: canNext ? "pointer" : "not-allowed",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  zIndex: 2,
-                }}
-              >
-                ›
-              </button>
-            </>
-          )}
+        <div className="aix-modal" onClick={(modalEvent) => modalEvent.stopPropagation()}>
           <div className="aix-head">
             <div>
               <h3>{detailsTitle}</h3>
-              <div style={{ fontSize: "13px", opacity: 0.8 }}>
-                {autistaLabel}
-                {hasNav && (
-                  <span style={{ marginLeft: "10px", opacity: 0.6 }}>
-                    · Evento {(eventIndex ?? 0) + 1} di {eventsCount}
-                  </span>
-                )}
-              </div>
+              <div style={{ fontSize: "13px", opacity: 0.8 }}>{autistaLabel}</div>
             </div>
             <button className="aix-close" onClick={closeDetails} aria-label="Chiudi">
               X
@@ -700,122 +595,6 @@ export default function NextHomeAutistiEventoModal({
               </div>
             </div>
             {showJson ? <pre className="aix-json">{JSON.stringify(payload ?? {}, null, 2)}</pre> : null}
-
-            {editable && event && (
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "12px 14px",
-                border: "1px solid #ecdcc1",
-                borderRadius: "10px",
-                background: "#fffaf1",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
-              {markError && (
-                <div style={{ color: "#b3261e", font: "500 12.5px/1.4 system-ui" }}>
-                  {markError}
-                </div>
-              )}
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {event.tipo === "richiesta_attrezzature" && onMarkEvasa && (
-                  <button
-                    type="button"
-                    disabled={marking}
-                    onClick={async () => {
-                      setMarking(true);
-                      setMarkError(null);
-                      try {
-                        await onMarkEvasa(event.id);
-                      } catch (err: unknown) {
-                        setMarkError(
-                          err instanceof Error ? err.message : "Errore salvataggio.",
-                        );
-                      } finally {
-                        setMarking(false);
-                      }
-                    }}
-                    style={{
-                      appearance: "none",
-                      border: "1px solid #1f7a4d",
-                      background: "#e7f3ec",
-                      color: "#1f7a4d",
-                      padding: "8px 14px",
-                      borderRadius: "4px",
-                      cursor: marking ? "wait" : "pointer",
-                      font: "600 12.5px/1 system-ui",
-                    }}
-                  >
-                    {marking ? "Salvataggio…" : "Marca evasa"}
-                  </button>
-                )}
-                {event.tipo === "segnalazione" && onMarkChiusa && (
-                  <button
-                    type="button"
-                    disabled={marking}
-                    onClick={async () => {
-                      setMarking(true);
-                      setMarkError(null);
-                      try {
-                        await onMarkChiusa(event.id);
-                      } catch (err: unknown) {
-                        setMarkError(
-                          err instanceof Error ? err.message : "Errore salvataggio.",
-                        );
-                      } finally {
-                        setMarking(false);
-                      }
-                    }}
-                    style={{
-                      appearance: "none",
-                      border: "1px solid #1f7a4d",
-                      background: "#e7f3ec",
-                      color: "#1f7a4d",
-                      padding: "8px 14px",
-                      borderRadius: "4px",
-                      cursor: marking ? "wait" : "pointer",
-                      font: "600 12.5px/1 system-ui",
-                    }}
-                  >
-                    {marking ? "Salvataggio…" : "Marca chiusa"}
-                  </button>
-                )}
-                {event.tipo === "controllo" && onMarkChiuso && (
-                  <button
-                    type="button"
-                    disabled={marking}
-                    onClick={async () => {
-                      setMarking(true);
-                      setMarkError(null);
-                      try {
-                        await onMarkChiuso(event.id);
-                      } catch (err: unknown) {
-                        setMarkError(
-                          err instanceof Error ? err.message : "Errore salvataggio.",
-                        );
-                      } finally {
-                        setMarking(false);
-                      }
-                    }}
-                    style={{
-                      appearance: "none",
-                      border: "1px solid #1f7a4d",
-                      background: "#e7f3ec",
-                      color: "#1f7a4d",
-                      padding: "8px 14px",
-                      borderRadius: "4px",
-                      cursor: marking ? "wait" : "pointer",
-                      font: "600 12.5px/1 system-ui",
-                    }}
-                  >
-                    {marking ? "Salvataggio…" : "Marca chiuso"}
-                  </button>
-                )}
-              </div>
-            </div>
-            )}
           </div>
         </div>
       </div>

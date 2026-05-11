@@ -1,0 +1,152 @@
+/* =========================================================
+   Flotta Design System — Tokens
+   Enterprise dashboard for Swiss fleet logistics software.
+   Light theme primary; values in oklch where useful.
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ---------- Neutrals (paper -> ink) ---------- */
+  --paper:        #fbfbfa;        /* page background, warm off-white */
+  --surface:      #ffffff;        /* cards, table */
+  --surface-2:    #f4f4f2;        /* sticky headers, subtle fills */
+  --surface-3:    #ecebe7;        /* hover */
+  --rule:         #e3e2dd;        /* hairline borders */
+  --rule-strong:  #c9c8c2;        /* heavier dividers */
+
+  --ink-1:        #16181c;        /* primary text */
+  --ink-2:        #3b3f46;        /* secondary text */
+  --ink-3:        #6b7079;        /* tertiary / labels */
+  --ink-4:        #9aa0a8;        /* placeholder, disabled */
+
+  /* ---------- Brand / accent ---------- */
+  --brand:        #1f3a5f;        /* deep navy — primary actions, links */
+  --brand-ink:    #122440;        /* hover/pressed */
+  --brand-tint:   #eaf0f8;        /* subtle bg for selected rows */
+  --accent:       #c1272d;        /* swiss red — critical accent only */
+
+  /* ---------- Semantic status ---------- */
+  --ok:           #1f7a4d;        /* green — manutenzione OK, delta + */
+  --ok-bg:        #e7f3ec;
+  --warn:         #b07407;        /* amber — in scadenza */
+  --warn-bg:      #faf0d9;
+  --bad:          #b3261e;        /* red — scaduta, urgente */
+  --bad-bg:       #f9e6e4;
+  --info:         #1f3a5f;        /* navy informational */
+  --info-bg:      #eaf0f8;
+  --neutral-pill-bg: #ecebe7;
+  --neutral-pill-fg: #3b3f46;
+
+  /* Δ deltas */
+  --delta-pos:    #1f7a4d;
+  --delta-neg:    #b3261e;
+  --delta-zero:   #6b7079;
+
+  /* ---------- Type ---------- */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, -apple-system, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Base */
+  --fs-12: 11.5px;
+  --fs-13: 12.5px;
+  --fs-14: 13.5px;
+  --fs-15: 14.5px;
+  --fs-16: 15.5px;
+  --fs-18: 17px;
+  --fs-22: 21px;
+  --fs-28: 26px;
+  --fs-36: 34px;
+
+  --lh-tight: 1.15;
+  --lh-snug:  1.3;
+  --lh-body:  1.45;
+
+  --tracking-label: 0.06em;     /* uppercase microcopy */
+  --tracking-tabular: 0.005em;
+
+  /* ---------- Geometry ---------- */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 56px;
+
+  /* ---------- Elevation (subtle, enterprise) ---------- */
+  --shadow-1: 0 1px 0 rgba(22,24,28,0.04), 0 1px 2px rgba(22,24,28,0.04);
+  --shadow-2: 0 1px 0 rgba(22,24,28,0.04), 0 4px 12px rgba(22,24,28,0.06);
+  --shadow-pop: 0 8px 32px rgba(22,24,28,0.10), 0 2px 6px rgba(22,24,28,0.06);
+
+  /* ---------- Motion ---------- */
+  --ease: cubic-bezier(.2,.6,.2,1);
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+}
+
+/* =========================================================
+   Semantic typography
+   ========================================================= */
+.t-display    { font: 600 var(--fs-36)/var(--lh-tight) var(--font-sans); letter-spacing: -0.01em; color: var(--ink-1); }
+.t-h1         { font: 600 var(--fs-28)/var(--lh-tight) var(--font-sans); letter-spacing: -0.005em; color: var(--ink-1); }
+.t-h2         { font: 600 var(--fs-22)/var(--lh-snug) var(--font-sans); color: var(--ink-1); }
+.t-h3         { font: 600 var(--fs-18)/var(--lh-snug) var(--font-sans); color: var(--ink-1); }
+.t-body       { font: 400 var(--fs-14)/var(--lh-body) var(--font-sans); color: var(--ink-1); }
+.t-body-sm    { font: 400 var(--fs-13)/var(--lh-body) var(--font-sans); color: var(--ink-2); }
+.t-meta       { font: 400 var(--fs-12)/var(--lh-snug) var(--font-sans); color: var(--ink-3); }
+.t-label      { font: 500 var(--fs-12)/1 var(--font-sans);
+                color: var(--ink-3); text-transform: uppercase;
+                letter-spacing: var(--tracking-label); }
+.t-mono       { font: 500 var(--fs-14)/var(--lh-snug) var(--font-mono);
+                font-feature-settings: 'tnum' 1, 'zero' 1; color: var(--ink-1); }
+.t-num        { font-family: var(--font-mono); font-feature-settings: 'tnum' 1, 'zero' 1;
+                letter-spacing: var(--tracking-tabular); }
+
+/* =========================================================
+   Element defaults (used inside the app)
+   ========================================================= */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink-1);
+  font: 400 var(--fs-14)/var(--lh-body) var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--brand); text-decoration: none; }
+a:hover { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 2px; }
+
+/* =========================================================
+   Status pills (compact, enterprise — not saturated)
+   ========================================================= */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 8px;
+  border-radius: 999px;
+  font: 500 var(--fs-12)/1 var(--font-sans);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pill::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.9;
+}
+.pill--ok    { color: var(--ok);   background: var(--ok-bg);   border-color: color-mix(in srgb, var(--ok) 18%, transparent); }
+.pill--warn  { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 22%, transparent); }
+.pill--bad   { color: var(--bad);  background: var(--bad-bg);  border-color: color-mix(in srgb, var(--bad) 22%, transparent); }
+.pill--info  { color: var(--info); background: var(--info-bg); border-color: color-mix(in srgb, var(--info) 18%, transparent); }
+.pill--ghost { color: var(--ink-2); background: var(--neutral-pill-bg); border-color: var(--rule); }
+.pill--solid-bad { color: #fff; background: var(--bad); border-color: var(--bad); }
+.pill--solid-bad::before { background: #fff; }
+.pill--no-dot::before { display: none; }
+.pill--lg    { height: 24px; font-size: var(--fs-13); padding: 0 10px; }

@@ -137,11 +137,6 @@ export type NextAutistiSegnalazioneSectionItem = {
   letta: boolean | null;
   isNuova: boolean;
   fotoCount: number;
-  chiusa: boolean;
-  dataChiusura: number | null;
-  chiusaBy: string | null;
-  linkedLavoroId: string | null;
-  hasLinkedLavoro: boolean;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -157,11 +152,6 @@ export type NextAutistiControlloSectionItem = {
   koList: string[];
   isKo: boolean;
   note: string | null;
-  chiuso: boolean;
-  dataChiusura: number | null;
-  chiusoBy: string | null;
-  linkedLavoroIds: string[];
-  hasLinkedLavoro: boolean;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -178,9 +168,6 @@ export type NextAutistiRichiestaSectionItem = {
   letta: boolean | null;
   isNuova: boolean;
   hasFoto: boolean;
-  evasa: boolean;
-  dataEvasione: number | null;
-  evasaBy: string | null;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -545,11 +532,6 @@ function normalizeSegnalazioneSectionItem(
     letta,
     isNuova: letta === false || normalizeLowerText(record.stato) === "nuova",
     fotoCount: Array.isArray(record.fotoUrls) ? record.fotoUrls.filter(Boolean).length : 0,
-    chiusa: record.chiusa === true,
-    dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
-    chiusaBy: normalizeOptionalText(record.chiusa_by),
-    linkedLavoroId: normalizeOptionalText(record.linkedLavoroId),
-    hasLinkedLavoro: Boolean(normalizeOptionalText(record.linkedLavoroId)),
     sourceDataset: SEGNALAZIONI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -674,30 +656,6 @@ function normalizeControlloSectionItem(
       normalizeLowerText(record.esito) === "ko" ||
       koList.length > 0,
     note: normalizeOptionalText(record.note ?? record.dettaglio ?? record.messaggio),
-    chiuso: record.chiuso === true,
-    dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
-    chiusoBy: normalizeOptionalText(record.chiuso_by),
-    linkedLavoroIds: (() => {
-      const ids: string[] = [];
-      const single: string | null = normalizeOptionalText(record.linkedLavoroId);
-      if (single) ids.push(single);
-      if (Array.isArray(record.linkedLavoroIds)) {
-        record.linkedLavoroIds.forEach((entry: unknown) => {
-          const t: string | null = normalizeOptionalText(entry);
-          if (t && !ids.includes(t)) ids.push(t);
-        });
-      }
-      return ids;
-    })(),
-    hasLinkedLavoro: (() => {
-      if (normalizeOptionalText(record.linkedLavoroId)) return true;
-      if (Array.isArray(record.linkedLavoroIds)) {
-        return record.linkedLavoroIds.some((entry: unknown) =>
-          Boolean(normalizeOptionalText(entry)),
-        );
-      }
-      return false;
-    })(),
     sourceDataset: CONTROLLI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -772,9 +730,6 @@ function normalizeRichiestaSectionItem(
     letta,
     isNuova: letta === false || normalizeLowerText(record.stato) === "nuova",
     hasFoto: Boolean(normalizeOptionalText(record.fotoUrl)),
-    evasa: record.evasa === true,
-    dataEvasione: typeof record.dataEvasione === "number" ? record.dataEvasione : null,
-    evasaBy: normalizeOptionalText(record.evasa_by),
     sourceDataset: RICHIESTE_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -826,11 +781,6 @@ function normalizeCloneSegnalazioneSectionItem(
     letta: record.letta,
     isNuova: true,
     fotoCount: Array.isArray(record.fotoUrls) ? record.fotoUrls.filter(Boolean).length : 0,
-    chiusa: false,
-    dataChiusura: null,
-    chiusaBy: null,
-    linkedLavoroId: null,
-    hasLinkedLavoro: false,
     sourceDataset: "@next_clone_autisti:segnalazioni",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],
@@ -882,11 +832,6 @@ function normalizeCloneControlloSectionItem(
     koList: issues,
     isKo: issues.length > 0,
     note: record.note,
-    chiuso: false,
-    dataChiusura: null,
-    chiusoBy: null,
-    linkedLavoroIds: [],
-    hasLinkedLavoro: false,
     sourceDataset: "@next_clone_autisti:controlli",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],
@@ -934,9 +879,6 @@ function normalizeCloneRichiestaSectionItem(
     letta: record.letta,
     isNuova: true,
     hasFoto: Boolean(record.fotoUrl),
-    evasa: false,
-    dataEvasione: null,
-    evasaBy: null,
     sourceDataset: "@next_clone_autisti:richieste-attrezzature",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],

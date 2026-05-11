@@ -223,16 +223,6 @@ function readModeFromSearch(search: string): ScadenzeMode {
   return value === "urgenti" ? "urgenti" : "tutte";
 }
 
-function readTargaFromSearch(search: string): string {
-  const raw = new URLSearchParams(search).get("targa");
-  if (!raw) return "";
-  return raw.trim().toUpperCase();
-}
-
-function normalizeTargaForCompare(value: string | null | undefined): string {
-  return String(value ?? "").trim().toUpperCase();
-}
-
 function filterOfficine(items: NextOfficinaReadOnlyItem[], query: string): NextOfficinaReadOnlyItem[] {
   const normalizedQuery = query.trim().toLocaleLowerCase("it");
   if (!normalizedQuery) return items.slice(0, 8);
@@ -255,7 +245,6 @@ export default function NextScadenzeCollaudiPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const mode = readModeFromSearch(location.search);
-  const targaFilter = readTargaFromSearch(location.search);
   const operationPanelRef = useRef<HTMLElement | null>(null);
 
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
@@ -331,17 +320,10 @@ export default function NextScadenzeCollaudiPage() {
   }, [operation]);
 
   const rows = useMemo(() => {
-    const source: D10RevisionItem[] = snapshot?.revisioni ?? [];
-    const byMode: D10RevisionItem[] =
-      mode === "urgenti" ? source.filter(isUrgentRevision) : source;
-    const byTarga: D10RevisionItem[] = targaFilter
-      ? byMode.filter(
-          (item: D10RevisionItem) =>
-            normalizeTargaForCompare(item.targa) === targaFilter,
-        )
-      : byMode;
-    return sortRevisionItems(byTarga);
-  }, [mode, snapshot, targaFilter]);
+    const source = snapshot?.revisioni ?? [];
+    const filtered = mode === "urgenti" ? source.filter(isUrgentRevision) : source;
+    return sortRevisionItems(filtered);
+  }, [mode, snapshot]);
 
   const filteredOfficine = useMemo(() => {
     if (!operation || operation.kind !== "pre-collaudo") return [];
@@ -349,23 +331,10 @@ export default function NextScadenzeCollaudiPage() {
   }, [officine, operation]);
 
   const counters = snapshot?.counters ?? null;
-  const subtitle = targaFilter
-    ? `Filtro mezzo ${targaFilter}${mode === "urgenti" ? " - solo urgenti" : ""}`
-    : mode === "urgenti"
+  const subtitle =
+    mode === "urgenti"
       ? "Solo revisioni urgenti non completate"
       : "Vista completa ordinata per scadenza";
-
-  const clearTargaFilter = () => {
-    const params = new URLSearchParams(location.search);
-    params.delete("targa");
-    navigate(
-      {
-        pathname: location.pathname,
-        search: params.toString() ? `?${params.toString()}` : "",
-      },
-      { replace: true },
-    );
-  };
 
   const setMode = (nextMode: ScadenzeMode) => {
     const params = new URLSearchParams(location.search);
@@ -904,16 +873,6 @@ export default function NextScadenzeCollaudiPage() {
           <div className="next-shell__scadenze-page-subtitle">{subtitle}</div>
         </div>
         <div className="next-shell__scadenze-mode-switch" role="tablist" aria-label="Filtro scadenze">
-          {targaFilter ? (
-            <button
-              type="button"
-              className="next-shell__scadenze-mode-tab"
-              onClick={clearTargaFilter}
-              title={`Rimuovi filtro mezzo ${targaFilter}`}
-            >
-              {targaFilter} ×
-            </button>
-          ) : null}
           <button
             type="button"
             role="tab"
@@ -961,11 +920,9 @@ export default function NextScadenzeCollaudiPage() {
           <div className="next-shell__scadenze-empty">Caricamento scadenze...</div>
         ) : rows.length === 0 ? (
           <div className="next-shell__scadenze-empty">
-            {targaFilter
-              ? `Nessuna scadenza revisione per il mezzo ${targaFilter}`
-              : mode === "urgenti"
-                ? "Nessuna revisione urgente da mostrare"
-                : "Nessuna scadenza revisione disponibile"}
+            {mode === "urgenti"
+              ? "Nessuna revisione urgente da mostrare"
+              : "Nessuna scadenza revisione disponibile"}
           </div>
         ) : (
           rows.map((item) => {

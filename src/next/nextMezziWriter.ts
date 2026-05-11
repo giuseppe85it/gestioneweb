@@ -23,6 +23,7 @@ export type Mezzo = {
   dataScadenzaRevisione: string;
   dataUltimoCollaudo: string;
   manutenzioneProgrammata: boolean;
+  manutenzioneContrattoAttivo?: boolean;
   manutenzioneDataInizio?: string;
   manutenzioneDataFine?: string;
   manutenzioneKmMax?: string;
@@ -60,6 +61,7 @@ const PATCHABLE_MEZZO_FIELDS = [
   "dataScadenzaRevisione",
   "dataUltimoCollaudo",
   "manutenzioneProgrammata",
+  "manutenzioneContrattoAttivo",
   "manutenzioneDataInizio",
   "manutenzioneDataFine",
   "manutenzioneKmMax",
