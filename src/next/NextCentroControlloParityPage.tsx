@@ -37,6 +37,11 @@ import NextMezzoHardDeleteModal from "./components/NextMezzoHardDeleteModal";
 import { markRichiestaEvasa } from "./nextRichiesteAttrezzatureWriter";
 import { markSegnalazioneChiusa } from "./nextSegnalazioniWriter";
 import { markControlloChiuso } from "./nextControlliWriter";
+import {
+  createLavoroFromEvento,
+  type LavoroCreateInput,
+  type LavoroCreateResult,
+} from "./nextLavoroCreateWriter";
 import { readNextLavoriInAttesaSnapshot, buildNextDettaglioLavoroPath } from "./domain/nextLavoriDomain";
 import { readNextManutenzioniLegacyDataset } from "./domain/nextManutenzioniDomain";
 import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
@@ -1666,6 +1671,17 @@ export default function NextCentroControlloParityPage() {
               }
               await loadAutistiReadOnlySections();
               advanceAfterMark(id);
+            }}
+            onCreateLavoro={async (
+              input: LavoroCreateInput,
+            ): Promise<LavoroCreateResult> => {
+              const result: LavoroCreateResult =
+                await createLavoroFromEvento(input);
+              if (!result.ok) return result;
+              await loadLavoriAperti();
+              await loadAutistiReadOnlySections();
+              advanceAfterMark(input.origineId);
+              return result;
             }}
             onClose={() => {
               setSinotticaEventoModalOpen(false);

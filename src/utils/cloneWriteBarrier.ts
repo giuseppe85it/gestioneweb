@@ -142,6 +142,13 @@ const DELETE_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@autisti_sessione_attive",
 ]);
 const DELETE_MEZZO_WRITE_SCOPE = "centro_controllo_delete_mezzo_write";
+const LAVORO_CREATE_ALLOWED_WRITE_PATH = "/next/centro-controllo";
+const LAVORO_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@lavori",
+  "@segnalazioni_autisti_tmp",
+  "@controlli_mezzo_autisti",
+]);
+const LAVORO_CREATE_WRITE_SCOPE = "centro_controllo_lavoro_create_write";
 const IA_LIBRETTO_ALLOWED_WRITE_PATH = "/next/ia/libretto";
 const IA_LIBRETTO_ALLOWED_FETCH_PATHS = ["/next/ia/libretto", "/next/ia/archivista"] as const;
 const IA_LIBRETTO_ANALYZE_ENDPOINT =
@@ -428,7 +435,8 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof SEGNALAZIONI_WRITE_SCOPE
     | typeof CONTROLLI_WRITE_SCOPE
     | typeof RICHIESTE_WRITE_SCOPE
-    | typeof DELETE_MEZZO_WRITE_SCOPE,
+    | typeof DELETE_MEZZO_WRITE_SCOPE
+    | typeof LAVORO_CREATE_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -493,6 +501,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return DELETE_MEZZO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    pathname === LAVORO_CREATE_ALLOWED_WRITE_PATH &&
+    hasCloneWriteScopedAllowance(LAVORO_CREATE_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return LAVORO_CREATE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

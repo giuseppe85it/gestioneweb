@@ -19,6 +19,25 @@ import {
 import { formatDateTimeUI } from "../nextDateFormat";
 import "../../autistiInbox/AutistiInboxHome.css";
 
+type CreateLavoroOrigineTipo = "segnalazione" | "controllo";
+type CreateLavoroUrgenza = "bassa" | "media" | "alta";
+
+export type CreateLavoroSubmitInput = {
+  descrizione: string;
+  urgenza: CreateLavoroUrgenza;
+  targa: string;
+  note: string;
+  segnalatoDa: string;
+  origineTipo: CreateLavoroOrigineTipo;
+  origineId: string;
+};
+
+export type CreateLavoroSubmitResult = {
+  ok: boolean;
+  error?: string;
+  lavoroId?: string;
+};
+
 type NextHomeAutistiEventoModalProps = {
   event: HomeEvent | null;
   onClose: () => void;
@@ -26,6 +45,9 @@ type NextHomeAutistiEventoModalProps = {
   onMarkEvasa?: (id: string) => Promise<void>;
   onMarkChiusa?: (id: string) => Promise<void>;
   onMarkChiuso?: (id: string) => Promise<void>;
+  onCreateLavoro?: (
+    input: CreateLavoroSubmitInput,
+  ) => Promise<CreateLavoroSubmitResult>;
   eventsCount?: number;
   eventIndex?: number;
   onPrevEvent?: () => void;
@@ -319,6 +341,7 @@ export default function NextHomeAutistiEventoModal({
   onMarkEvasa,
   onMarkChiusa,
   onMarkChiuso,
+  onCreateLavoro,
   eventsCount,
   eventIndex,
   onPrevEvent,
@@ -356,6 +379,24 @@ export default function NextHomeAutistiEventoModal({
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("evento-autista.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [createFormOpen, setCreateFormOpen] = useState<boolean>(false);
+  const [createDescrizione, setCreateDescrizione] = useState<string>("");
+  const [createUrgenza, setCreateUrgenza] =
+    useState<CreateLavoroUrgenza>("media");
+  const [createTarga, setCreateTarga] = useState<string>("");
+  const [createNote, setCreateNote] = useState<string>("");
+  const [createSubmitting, setCreateSubmitting] = useState<boolean>(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreateFormOpen(false);
+    setCreateDescrizione("");
+    setCreateUrgenza("media");
+    setCreateTarga("");
+    setCreateNote("");
+    setCreateSubmitting(false);
+    setCreateError(null);
+  }, [event?.id]);
 
   useEffect(() => {
     return () => {
@@ -454,9 +495,89 @@ export default function NextHomeAutistiEventoModal({
     window.alert(message);
   };
 
-  const handleCreateLavoroBlocked = () => {
+  const canCreateLavoro: boolean = Boolean(
+    editable &&
+      onCreateLavoro &&
+      (event.tipo === "segnalazione" || event.tipo === "controllo") &&
+      !hasLinkedLavoro(payload),
+  );
+
+  const handleOpenCreateLavoroForm = (): void => {
     if (hasLinkedLavoro(payload)) return;
-    showReadOnlyActionBlocked("Creazione lavoro disponibile solo nella madre. Il clone e read-only.");
+    if (!canCreateLavoro) {
+      showReadOnlyActionBlocked(
+        "Creazione lavoro disponibile solo nella madre. Il clone e read-only.",
+      );
+      return;
+    }
+    const targaSuggerita: string = (() => {
+      const candidate: string = firstText(
+        payload?.targa,
+        payload?.targaCamion,
+        payload?.targaMotrice,
+        payload?.targaRimorchio,
+      );
+      return candidate ? candidate.toUpperCase() : "";
+    })();
+    setCreateDescrizione("");
+    setCreateUrgenza("media");
+    setCreateTarga(targaSuggerita);
+    setCreateNote("");
+    setCreateError(null);
+    setCreateFormOpen(true);
+  };
+
+  const handleSubmitCreateLavoro = async (): Promise<void> => {
+    if (!onCreateLavoro) return;
+    if (event.tipo !== "segnalazione" && event.tipo !== "controllo") return;
+    const descrizioneTrim: string = createDescrizione.trim();
+    if (!descrizioneTrim) {
+      setCreateError("Descrizione obbligatoria.");
+      return;
+    }
+    const origineIdRaw: unknown = payload?.id ?? event.id;
+    const origineId: string = String(origineIdRaw ?? "").trim();
+    if (!origineId) {
+      setCreateError("ID evento mancante.");
+      return;
+    }
+    setCreateSubmitting(true);
+    setCreateError(null);
+    try {
+      const segnalatoDa: string = firstText(
+        payload?.autistaNome,
+        payload?.nomeAutista,
+        payload?.autista,
+        payload?.badgeAutista,
+        payload?.badge,
+        event.autista,
+      ) || "autista";
+      const result: CreateLavoroSubmitResult = await onCreateLavoro({
+        descrizione: descrizioneTrim,
+        urgenza: createUrgenza,
+        targa: createTarga.trim().toUpperCase(),
+        note: createNote.trim(),
+        segnalatoDa,
+        origineTipo: event.tipo,
+        origineId,
+      });
+      if (!result.ok) {
+        setCreateError(result.error || "Errore creazione lavoro.");
+        return;
+      }
+      setCreateFormOpen(false);
+    } catch (err: unknown) {
+      const msg: string =
+        err instanceof Error ? err.message : "Errore creazione lavoro.";
+      setCreateError(msg);
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
+
+  const handleCancelCreateLavoro = (): void => {
+    setCreateFormOpen(false);
+    setCreateError(null);
   };
 
   const handleImportDossierBlocked = () => {
@@ -625,17 +746,146 @@ export default function NextHomeAutistiEventoModal({
                   <button
                     type="button"
                     className="aix-create-btn"
-                    disabled={hasLinkedLavoro(payload)}
+                    disabled={hasLinkedLavoro(payload) || createFormOpen}
                     title={
                       hasLinkedLavoro(payload)
                         ? undefined
-                        : "Clone read-only: creazione disponibile solo nella madre"
+                        : canCreateLavoro
+                          ? "Crea un nuovo lavoro da questo evento"
+                          : "Creazione disponibile solo nella madre"
                     }
-                    onClick={handleCreateLavoroBlocked}
+                    onClick={handleOpenCreateLavoroForm}
                   >
                     {hasLinkedLavoro(payload) ? "GIÀ CREATO" : "CREA LAVORO"}
                   </button>
                 </div>
+                {createFormOpen ? (
+                  <div
+                    className="aix-row-bot"
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      padding: 12,
+                      border: "1px solid #ecdcc1",
+                      borderRadius: 8,
+                      background: "rgba(245,233,211,0.35)",
+                    }}
+                  >
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>
+                        Descrizione *
+                      </span>
+                      <textarea
+                        rows={3}
+                        value={createDescrizione}
+                        onChange={(e) => setCreateDescrizione(e.target.value)}
+                        disabled={createSubmitting}
+                        style={{
+                          padding: "8px 10px",
+                          border: "1px solid #ddd",
+                          borderRadius: 6,
+                          fontFamily: "inherit",
+                          fontSize: 13,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>Urgenza</span>
+                      <select
+                        value={createUrgenza}
+                        onChange={(e) =>
+                          setCreateUrgenza(
+                            e.target.value as CreateLavoroUrgenza,
+                          )
+                        }
+                        disabled={createSubmitting}
+                        style={{
+                          padding: "8px 10px",
+                          border: "1px solid #ddd",
+                          borderRadius: 6,
+                          fontSize: 13,
+                        }}
+                      >
+                        <option value="bassa">Bassa</option>
+                        <option value="media">Media</option>
+                        <option value="alta">Alta</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>
+                        Targa (vuota = magazzino)
+                      </span>
+                      <input
+                        type="text"
+                        value={createTarga}
+                        onChange={(e) =>
+                          setCreateTarga(e.target.value.toUpperCase())
+                        }
+                        disabled={createSubmitting}
+                        style={{
+                          padding: "8px 10px",
+                          border: "1px solid #ddd",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          textTransform: "uppercase",
+                        }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>Note</span>
+                      <textarea
+                        rows={2}
+                        value={createNote}
+                        onChange={(e) => setCreateNote(e.target.value)}
+                        placeholder="Opzionale"
+                        disabled={createSubmitting}
+                        style={{
+                          padding: "8px 10px",
+                          border: "1px solid #ddd",
+                          borderRadius: 6,
+                          fontFamily: "inherit",
+                          fontSize: 13,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                    {createError ? (
+                      <div
+                        style={{
+                          color: "#9b1c1c",
+                          fontSize: 12,
+                          background: "#fde2e2",
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {createError}
+                      </div>
+                    ) : null}
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="aix-create-btn"
+                        onClick={handleCancelCreateLavoro}
+                        disabled={createSubmitting}
+                        style={{ background: "#eee", color: "#333" }}
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        type="button"
+                        className="aix-create-btn"
+                        onClick={() => void handleSubmitCreateLavoro()}
+                        disabled={createSubmitting || !createDescrizione.trim()}
+                      >
+                        {createSubmitting ? "Creazione…" : "Crea"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
