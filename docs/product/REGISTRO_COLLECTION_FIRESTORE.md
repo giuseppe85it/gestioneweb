@@ -1,7 +1,10 @@
 # Registro delle Collection Firestore â€” Gestionale Manutenzione
 
 ## Stato del documento
-Versione: 1.0 STABLE — 2026-05-06
+Versione: 0.6 BOZZA — sessione 2026-05-09→11 (post-1.0 STABLE per nuovi scope barrier write + campi soft-delete + manutenzioneContrattoAttivo; vedi annotazione fondo intestazione)
+Data: 2026-05-11
+Sessione 09-11/05/2026: aggiunta sezione "Scope barrier write" con 4 nuovi scope (RICHIESTE / SEGNALAZIONI / CONTROLLI / DELETE_MEZZO) + estensione INTERNAL_AI_MAGAZZINO_INLINE_SCOPE per `@mezzi_aziendali` da Centro Controllo. Nuovo campo `manutenzioneContrattoAttivo` su `@mezzi_aziendali`. Nuovi campi soft-delete su 3 dataset (segnalazioni/controlli/richieste). Voci collection esistenti invariate, sub-blocchi "Sessione 2026-05-09" aggiunti append-only.
+Versione precedente: 1.0 STABLE — 2026-05-06
 - Data: 2026-05-04
 - Autore: Codex (audit), Giuseppe (validazione attesa)
 - Annotazione 2026-05-06: matrice chiusura Chat IA NEXT completata per V1; C6/C7 BLOCCO 8 PASS, Playwright 17-21 PASS 10/10, diagnostics T1..T28 PASS, #4 chiusa con Opzione A, #13 classificata `DEFERRED_OK`.
@@ -550,6 +553,10 @@ Chiusura Chat IA NEXT #6, 2026-05-06: le entry boundary storiche `firestore-stor
 - **Provenance per dati mostrati**: `targa`, `categoria`, `marca`, `modello`, `autistaId`, `librettoStoragePath`, `fotoPath`, date revisione/collaudo.
 - **Note di validazione (per Giuseppe)**: R2 PARZIALMENTE CHIUSA: `categoria` e' usabile come campo principale osservato (12 valori enum reali). Il campo `tipo` resta alias/seconda fonte da indagare nel motore generico. Il motore deve leggere i valori enum live da Firestore, non hardcodarli. `autistaId` resta fallback secondario e perde priorita' rispetto a `@autisti_sessione_attive`.
 
+#### Sessione 2026-05-09 — Campo `manutenzioneContrattoAttivo`
+- `manutenzioneContrattoAttivo`: boolean (default true). Toggle dal `NextMezzoEditModal` aperto dal Centro Controllo. Quando `false`: KPI "Manut. scadute" esclude il mezzo, bordo critical NON applicato in Sinottica V2, pill "NON ATTIVO" grigia.
+- Persistenza: scrittura su `@mezzi_aziendali` autorizzata da `INTERNAL_AI_MAGAZZINO_INLINE_SCOPE` esteso anche al path `/next/centro-controllo` (vedi sezione "Scope barrier write").
+
 ### `storage/@colleghi`
 - **Path Firestore**: collection `storage`, documento `@colleghi`
 - **Stato verifica**: VERIFICATA RUNTIME
@@ -845,6 +852,12 @@ Chiusura Chat IA NEXT #6, 2026-05-06: le entry boundary storiche `firestore-stor
   - Campi STRUTTURATI usabili come fonte di relazione: badge, autistaId, targa, timestamp, stato, quantita', km, litri, e altri campi tipizzati esplicitamente.
   - Campi LIBERI NON certificano relazioni: note, descrizione, messaggio, commento, testo libero.
   Il Relation Resolver deve attingere solo ai campi strutturati per produrre relationProof. I campi liberi possono essere mostrati come testo informativo, mai come prova.
+
+#### Sessione 2026-05-09 — Campi soft-delete aggiunti
+- `chiuso`: boolean (default false). Set a `true` da `markControlloChiuso` chiamato dal Centro Controllo.
+- `dataChiusura`: number (ms) | null. Timestamp scrittura quando `chiuso === true`.
+- `chiuso_by`: string | null. Valore convenzionale: `"centro_controllo_next"`.
+- Filtro applicato in Sinottica V2: chip "Controllo KO" esclude record con `chiuso === true`.
 
 ### `storage/@costiMezzo`
 - **Path Firestore**: collection `storage`, documento `@costiMezzo`
@@ -1182,6 +1195,12 @@ Chiusura Chat IA NEXT #6, 2026-05-06: le entry boundary storiche `firestore-stor
   - Campi LIBERI NON certificano relazioni: note, descrizione, messaggio, commento, testo libero.
   Il Relation Resolver deve attingere solo ai campi strutturati per produrre relationProof. I campi liberi possono essere mostrati come testo informativo, mai come prova.
 
+#### Sessione 2026-05-09 — Campi soft-delete aggiunti
+- `evasa`: boolean (default false). Set a `true` da `markRichiestaEvasa` chiamato dal Centro Controllo.
+- `dataEvasione`: number (ms) | null. Timestamp scrittura quando `evasa === true`.
+- `evasa_by`: string | null. Valore convenzionale: `"centro_controllo_next"`.
+- Filtro applicato in Sinottica V2: chip "Richieste attrez." esclude record con `evasa === true`.
+
 ### `storage/@rifornimenti`
 - **Path Firestore**: collection `storage`, documento `@rifornimenti`
 - **Stato verifica**: BOUNDARY VERIFICATA RUNTIME (post-update allowedFields)
@@ -1223,6 +1242,12 @@ Chiusura Chat IA NEXT #6, 2026-05-06: le entry boundary storiche `firestore-stor
   - Campi STRUTTURATI usabili come fonte di relazione: badge, autistaId, targa, timestamp, stato, quantita', km, litri, e altri campi tipizzati esplicitamente.
   - Campi LIBERI NON certificano relazioni: note, descrizione, messaggio, commento, testo libero.
   Il Relation Resolver deve attingere solo ai campi strutturati per produrre relationProof. I campi liberi possono essere mostrati come testo informativo, mai come prova.
+
+#### Sessione 2026-05-09 — Campi soft-delete aggiunti
+- `chiusa`: boolean (default false). Set a `true` da `markSegnalazioneChiusa` chiamato dal Centro Controllo.
+- `dataChiusura`: number (ms) | null. Timestamp scrittura quando `chiusa === true`.
+- `chiusa_by`: string | null. Valore convenzionale: `"centro_controllo_next"`.
+- Filtro applicato in Sinottica V2: chip segnalazione esclude record con `chiusa === true` OR `hasLinkedLavoro === true` (segnalazioni con lavoro associato dalla madre).
 
 ### `euromecc_pending`
 - **Path Firestore**: collection root `euromecc_pending`
@@ -1483,4 +1508,47 @@ Domande residue operative:
 - R2: verificare nel motore generico come usare `tipo` accanto a `categoria` senza hardcodare enum.
 - R4: validare nel motore generico l'ordine di priorita' `stockKey` -> `articoloCanonico` -> `codiceArticolo` -> `id` -> `materialeLabel`.
 - R5: validare nel motore generico la priorita' id forti (`id`, `idFornitore`, `fornitoreId`, `supplierId`) e l'uso dei nomi solo per ricerca/disambiguazione.
+
+## Scope barrier write (sessione 2026-05-09→11)
+
+Pattern: ogni scope autorizza scritture su un set ristretto di storage keys da un pathname specifico. Implementazione in `src/utils/cloneWriteBarrier.ts` con counter scoped (`runWithCloneWriteScopedAllowance`) + branch `isAllowedCloneWriteException` per ogni scope.
+
+### RICHIESTE_WRITE_SCOPE
+- Path autorizzato: `/next/centro-controllo`
+- Storage keys: `@richieste_attrezzature_autisti_tmp`
+- Operazioni: `markRichiestaEvasa(id)`
+- Writer: `src/next/nextRichiesteAttrezzatureWriter.ts`
+
+### SEGNALAZIONI_WRITE_SCOPE
+- Path autorizzato: `/next/centro-controllo`
+- Storage keys: `@segnalazioni_autisti_tmp`
+- Operazioni: `markSegnalazioneChiusa(id)`
+- Writer: `src/next/nextSegnalazioniWriter.ts`
+
+### CONTROLLI_WRITE_SCOPE
+- Path autorizzato: `/next/centro-controllo`
+- Storage keys: `@controlli_mezzo_autisti`
+- Operazioni: `markControlloChiuso(id)`
+- Writer: `src/next/nextControlliWriter.ts`
+
+### DELETE_MEZZO_WRITE_SCOPE
+- Path autorizzato: `/next/centro-controllo`
+- Storage keys: 11 dataset (anagrafica + tutti i collegati per cascata): `@mezzi_aziendali`, `@rifornimenti`, `@rifornimenti_autisti_tmp`, `@manutenzioni`, `@lavori`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`, `@richieste_attrezzature_autisti_tmp`, `@cambi_gomme_autisti_tmp`, `@gomme_eventi`, `@autisti_sessione_attive`.
+- Operazioni: `hardDeleteMezzo(targa, mezzoId)`
+- Writer: `src/next/nextMezzoHardDeleteWriter.ts`
+- ATTENZIONE: IRREVERSIBILE. Doppia conferma UI (Shift+click foto mezzo + scrittura targa esatta).
+
+### INTERNAL_AI_MAGAZZINO_INLINE_SCOPE (esteso 2026-05-09)
+- Path autorizzato originale: `/next/dossier-mezzo/*`
+- Path esteso 2026-05-09: + `/next/centro-controllo` (con `pathname.includes("/next/centro-controllo")`)
+- Motivo estensione: click cella Contratto manut. in Sinottica V2 apre `NextMezzoEditModal` da Centro Controllo, che scrive `@mezzi_aziendali` (incluso nuovo campo `manutenzioneContrattoAttivo`).
+- Storage keys: `@mezzi_aziendali`, `@inventario` (separati per scope-branch).
+
+### Pattern difensivo (2026-05-11 — post-PROMPT 27.10)
+Tutti i writer dei 3 scope soft-delete (segnalazioni/controlli/richieste) chiamano esplicitamente `assertCloneWriteAllowed("storageSync.setItemSync", { key })` DENTRO `runWithCloneWriteScopedAllowance` PRIMA di `setItemSync`. Pattern:
+- Se barrier blocca → throw `CloneWriteBlockedError` immediato (no silent swallow di `storageSync.ts`).
+- Catch nel writer ritorna `{ ok: false, error: "Scrittura bloccata dal barrier clone (segnalazioni|controlli|richieste). Verificare che la pagina sia /next/centro-controllo." }`.
+- Toast visibile all'utente invece di silent failure.
+
+Inoltre `normalizePathname` strip trailing slash per matching robusto (`/next/centro-controllo` e `/next/centro-controllo/` matchano entrambi).
 

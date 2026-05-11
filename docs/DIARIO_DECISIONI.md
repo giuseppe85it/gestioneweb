@@ -1,6 +1,6 @@
 # DIARIO DECISIONI STRATEGICHE
 
-Ultimo aggiornamento: 2026-04-23
+Ultimo aggiornamento: 2026-05-11 (sessione 27.13)
 Responsabile: Giuseppe
 
 ## Come funziona questo file
@@ -244,3 +244,75 @@ Decisione: la patch del resolver runtime per consumare entry boundary con access
 Motivo del momento: l'audit PROMPT 24a ha dimostrato che `backend/internal-ai/server/lib/post-llm-resolver.js` e' un resolver Driver360-specifico, non generico. La shape `resolvedFilters` (`backend/internal-ai/server/lib/post-llm-resolver.js:147-155`) e' progettata per single-record (solo `driverId`). Il branch operativo (`:270-279`) ritorna `not_driver360` per qualsiasi vista diversa. Aggiungere `collection_root` qui significherebbe inventare una shape collettore multi-record che andrebbe poi rifatta quando arriva il motore generico. Si evita il doppio lavoro.
 Status: scelta attiva.
 Conseguenza: il prossimo passo e' la spec del motore generico v1 (`docs/product/SPEC_MOTORE_GENERICO_NEXT.md`, da scrivere), che dovra' definire: Resolver multi-vista, shape collettore multi-record, vista generica data-driven, pannello "Perche' vedo questo dato?", relazione con Driver360 esistente (assorbimento o coesistenza). L'attivazione delle 6 entry boundary root collection (`@documenti_*` x3, Cisterna x3) e il risveglio delle 6 entry Euromecc oggi dormienti diventano feature naturali del motore generico, non patch separate.
+
+### 2026-05-09 — Centro Controllo NEXT come torre di controllo operativa
+Decisione: trasformare il Centro Controllo da report read-only a sistema operativo dove si VEDE e si AGISCE (sblocchi scrittura progressivi).
+Motivo: senza azioni il CC obbligava a entrare in pagine sparse per chiudere segnalazioni, marcare evase richieste, ecc. La torre di controllo riduce attrito quotidiano.
+Status: attiva.
+Conseguenza: 4 nuovi scope barrier introdotti (RICHIESTE_WRITE_SCOPE, SEGNALAZIONI_WRITE_SCOPE, CONTROLLI_WRITE_SCOPE, DELETE_MEZZO_WRITE_SCOPE). Estensione di INTERNAL_AI_MAGAZZINO_INLINE_SCOPE per @mezzi_aziendali da /next/centro-controllo.
+
+### 2026-05-09 — Sinottica Flotta V2 stile Design isolato sotto scope (strada C)
+Decisione: la Sinottica V2 usa stile Claude Design al 100% (IBM Plex, palette paper/ink) isolato sotto `.cc-sinottica-scope-v2`. Altri tab del Centro Controllo restano in stile warm/beige.
+Motivo: Sinottica è la vista più importante, merita leggibilità enterprise. Altri tab rifaremo in stile Design in futuro.
+Status: attiva, "isola estetica" accettata come passaggio intermedio.
+Conseguenza: file CSS dedicato `src/next/components/sinottica-flotta-v2-design-tokens.css` (~640 righe). Mockup salvato in `docs/design-mockups/sinottica-flotta/`.
+
+### 2026-05-09 — Soft-delete pattern per segnalazioni/controlli/richieste
+Decisione: marcare chiuse (segnalazioni/controlli) o evase (richieste) NON cancella il record. Aggiunge campi chiusa/chiuso/evasa = true + dataChiusura/dataEvasione + chiusa_by/chiuso_by/evasa_by.
+Motivo: traccia conservata, pattern additivo, niente deroghe barrier distruttive.
+Status: attiva.
+Conseguenza: 3 writer NEXT dedicati: `src/next/nextRichiesteAttrezzatureWriter.ts`, `src/next/nextSegnalazioniWriter.ts`, `src/next/nextControlliWriter.ts`. Reader `src/next/domain/nextAutistiDomain.ts` esteso con default false.
+
+### 2026-05-09 — Hard-delete mezzo con doppia conferma
+Decisione: i mezzi venduti/eliminati possono essere cancellati TUTTI insieme (anagrafica + rifornimenti + manutenzioni + lavori + segnalazioni + controlli + richieste + gomme + sessioni) tramite gesto nascosto (Shift+click foto) + modale conferma con scrittura targa esatta.
+Motivo: serve per pulire mezzi venduti che sporcano la flotta. UX nascosta per ridurre rischio di click accidentale.
+Status: attiva, IRREVERSIBILE.
+Conseguenza: `DELETE_MEZZO_WRITE_SCOPE` con whitelist 11 storage keys. Writer `src/next/nextMezzoHardDeleteWriter.ts`.
+
+### 2026-05-09 — Toggle contratto manutenzione attivo / non rinnoviamo
+Decisione: nuovo campo `manutenzioneContrattoAttivo: boolean` su `@mezzi_aziendali`. Default true. Se false: la pill diventa "NON ATTIVO" grigia, mezzo non conta più in KPI Manut. scadute, nessun bordo critical.
+Motivo: se l'azienda decide di non rinnovare il contratto di assistenza, il mezzo non deve generare allarmi.
+Status: attiva.
+Conseguenza: `NextMezzoEditModal` esteso con checkbox. Modificabile dal click cella Contratto manut. nella Sinottica.
+
+### 2026-05-09 — Cronologia mezzo via @storico_eventi_operativi
+Decisione: per ogni mezzo è consultabile una cronologia delle sessioni (chi l'ha agganciato/sganciato, quando). Apertura: click sulla foto del mezzo nella Sinottica.
+Motivo: visibilità storica utile per audit operativi.
+Status: attiva.
+Conseguenza: reader `src/next/domain/nextSessioniStoricoDomain.ts` + modale `NextMezzoCronologiaModal.tsx` (~295 righe). Frasi naturali ("X ha lasciato A e preso B") invece di "INIZIO_ASSETTO / CAMBIO_ASSETTO" tecnico.
+
+### 2026-05-09 — Eliminazione tab Manutenzioni programmate dal Centro Controllo
+Decisione: il tab "Manutenzioni programmate" sotto la sinottica è ridondante (info già nella pill Contratto manut.). Rimosso solo rendering JSX, loader/state `scheduledMaintenances` preservati per AnalisiModal.
+Motivo: ridurre rumore, la sinottica V2 è ora la fonte unica di stato contratto.
+Status: attiva.
+Conseguenza: ~150 righe rimosse da parity.
+
+### 2026-05-09 — Eliminazione tab Richieste attrezzature dal Centro Controllo
+Decisione: stesso pattern del precedente. Tab UI rimosso, `richiesteRows` preservato per chip Sinottica V2.
+Motivo: ridondanza.
+Status: attiva.
+Conseguenza: ~75 righe rimosse.
+
+### 2026-05-11 — Pattern propagazione campi soft-delete (memo critico)
+Decisione: per ogni nuovo campo aggiunto al tipo reader (`NextAutistiXxxSectionItem`), propagare ESPLICITAMENTE sia nel tipo parity Row (`XxxRow`) sia nella funzione mapper (`mapXxxRow`). Dimenticarne uno = bug silente.
+Motivo: bug emerso in PROMPT 27.10/27.11 — Marca chiusa scriveva su Firestore correttamente, ma il filtro Sinottica leggeva undefined su campo non propagato, risultato: scrittura ok ma UI non aggiornava.
+Status: regola permanente.
+Conseguenza: ogni futuro sblocco scritture deve seguire questo pattern. PROMPT 27.12 ha consolidato il fix.
+
+### 2026-05-11 — Audit badge "ASSE X da verificare" cella Gomme Sinottica (memo)
+Decisione: il badge è dichiarato nel tipo `SinotticaRow` (`gommeAxleProblema`) ma non è mai popolato — quindi non appare mai a runtime. Mantenuto come placeholder; implementazione rimandata a prompt dedicato.
+Motivo: audit PROMPT 27.13 INTERVENTO 5. Causa root identificata: combinazione di CAUSA A (aggregator non implementato, `gommeAxleProblema: null` hardcoded in `src/next/components/NextCentroControlloSinottica.tsx:760`) + CAUSA D (propagazione campi: `SinotticaManutenzioneRecord` linea 30 ha shape ridotta `{id, targa, data, descrizione}`, non include `gommeInterventoTipo`/`gommeStraordinario`/`assiCoinvolti` che il reader `nextManutenzioniDomain.ts:73-76` espone già; il mapping in `NextCentroControlloParityPage.tsx:936-941` scarta i campi gomme).
+Status: audit-only. Proposta fix per PROMPT futuro: (1) estendere `SinotticaManutenzioneRecord` con `gommeInterventoTipo`, `gommeStraordinario`, `assiCoinvolti`; (2) propagarli nel mapping parity (linee 936-941); (3) implementare aggregator a linea 760 — scorrere `manutenzioniStorico` filtrato per targa, trovare l'ultimo evento con `gommeInterventoTipo === "straordinario"` recente, estrarre `asseId` e mappare a `{asseId, severity: "warn"}`.
+Conseguenza: badge resta invisibile finché non viene affrontato in un prompt dedicato. Stesso pattern del bug PROMPT 27.10 (campi droppati nel mapping).
+
+### 2026-05-11 — Audit categorie tipografiche (whitelist Sinottica vs whitelist dominio Home)
+Decisione: esistono DUE whitelist diverse per classificare un mezzo come motrice/rimorchio. Da unificare in futuro tramite singola sorgente domain-level.
+Motivo: audit PROMPT 27.13 INTERVENTO 6. (A) Whitelist Sinottica `MOTORIZED_CATEGORIES_NORMALIZED` (`NextCentroControlloSinottica.tsx:207-212`): {trattore stradale, motrice 2 assi, motrice 3 assi, motrice 4 assi} → tutto il resto è "rimorchio". (B) Whitelist Home `CATEGORIE_RIMORCHI_HOME` (`nextCentroControlloDomain.ts:24-30`): {biga, vasca, centina, semirimorchio asse fisso, semirimorchio asse sterzante} → tutto il resto è "motrice". Discordanza per categorie fuori da entrambe le liste: es. categoria "trattore" (senza "stradale") → Sinottica la classifica rimorchio, Home la classifica motrice. Idem "motrice 5 assi", "cisterna" standalone, varianti con typo o spazi.
+Status: audit-only. Proposta fix per PROMPT futuro: centralizzare in `nextCentroControlloDomain.ts` una funzione `classifyMezzoCategoria(cat): "motrice" | "rimorchio"` con whitelist combinata + fallback esplicito documentato, e importarla nella Sinottica al posto di `isMotorized`.
+Conseguenza: classificazione potenzialmente incoerente tra Home (asset locations) e Sinottica V2 per categorie atipiche. Nessun bug bloccante segnalato, ma rischio sottile di duplicazione mezzo in tab errato.
+
+### 2026-05-11 — Audit orfani hard-delete mezzo (cascade by-targa)
+Decisione: hard-delete cascade su 11 dataset funziona solo per record che espongono almeno una chiave tra {targa, mezzoTarga, targaCamion, targaMotrice, targaRimorchio}. Record orfani con solo `mezzoId` (senza targa) rimangono.
+Motivo: audit PROMPT 27.13 INTERVENTO 7. `nextMezzoHardDeleteWriter.ts` usa `recordTargaCandidates(record)` (linea 35-49) che ispeziona 5 campi targa-like. La funzione `deleteByTargaInDataset` filtra solo per match targa. La cancellazione del mezzo principale usa `mezzoId` (linea 121 `deleteMezzoById`) ma NON viene riconciliato con i 10 dataset cascade. Se un record futuro persiste con solo `mezzoId` (es. nuovi documenti archivio mezzo, allegati) e niente targa, sopravvive all'eliminazione → orfano. Risultato grep: 26 file referenziano `mezzoId`. Dataset attualmente sicuri (popolati con targa): @rifornimenti*, @manutenzioni, @lavori, @segnalazioni_autisti_tmp, @controlli_mezzo_autisti, @richieste_attrezzature_autisti_tmp, @cambi_gomme*, @gomme_eventi, @autisti_sessione_attive.
+Status: audit-only. Proposta fix per PROMPT futuro: aggiungere fallback cascade per `mezzoId` parallelo a quello per targa, oppure invariante esplicita ("ogni record di dataset operativo DEVE includere campo targa snapshot") con guardia nei writer.
+Conseguenza: rischio futuro contenuto. Da rivalutare quando vengono aggiunti dataset nuovi che usano `mezzoId` come chiave primaria di join.
