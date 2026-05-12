@@ -3573,3 +3573,216 @@ export async function stampOriginalPdfWithStatus(
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
+
+// =========================================================
+// PROMPT 30.5 — Archivio Storico (lista corrente per sub-tab)
+// =========================================================
+
+export type ArchivioStoricoPdfKind =
+  | "lavoro"
+  | "manutenzione"
+  | "segnalazione"
+  | "richiesta";
+
+export type ArchivioStoricoPdfFilters = {
+  autista: string | null;
+  targa: string | null;
+  periodoLabel: string;
+  searchQuery: string;
+};
+
+export type ArchivioStoricoPdfRow = {
+  data: string;
+  ora: string;
+  targa: string;
+  titolo: string;
+  autoreAperto: string | null;
+  autoreChiuso: string | null;
+  statoLabel: string;
+  urgenzaLabel: string | null;
+  noteExtra: string | null;
+};
+
+export type ArchivioStoricoPdfInput = {
+  kind: ArchivioStoricoPdfKind;
+  kindLabel: string;
+  filters: ArchivioStoricoPdfFilters;
+  records: ArchivioStoricoPdfRow[];
+  totalCount: number;
+  generatedAtTs: number;
+};
+
+function archivioStoricoColumns(
+  kind: ArchivioStoricoPdfKind,
+): { head: string[]; rowMapper: (r: ArchivioStoricoPdfRow) => string[] } {
+  switch (kind) {
+    case "lavoro": {
+      return {
+        head: ["Data", "Targa", "Urgenza", "Titolo", "Aperto da", "Eseguito da", "Stato"],
+        rowMapper: (r) => [
+          `${r.data} ${r.ora}`.trim(),
+          r.targa || "-",
+          r.urgenzaLabel || "-",
+          r.titolo || "-",
+          r.autoreAperto || "-",
+          r.autoreChiuso || "-",
+          r.statoLabel || "-",
+        ],
+      };
+    }
+    case "manutenzione": {
+      return {
+        head: ["Data", "Targa", "Tipo", "Descrizione", "Fornitore", "Stato"],
+        rowMapper: (r) => [
+          `${r.data} ${r.ora}`.trim(),
+          r.targa || "-",
+          r.urgenzaLabel || "-",
+          r.titolo || "-",
+          r.autoreChiuso || r.noteExtra || "-",
+          r.statoLabel || "-",
+        ],
+      };
+    }
+    case "segnalazione": {
+      return {
+        head: ["Data", "Targa", "Tipo", "Descrizione", "Autista", "Stato"],
+        rowMapper: (r) => [
+          `${r.data} ${r.ora}`.trim(),
+          r.targa || "-",
+          r.urgenzaLabel || "-",
+          r.titolo || "-",
+          r.autoreAperto || "-",
+          r.statoLabel || "-",
+        ],
+      };
+    }
+    case "richiesta": {
+      return {
+        head: ["Data", "Targa", "Descrizione", "Autista", "Stato"],
+        rowMapper: (r) => [
+          `${r.data} ${r.ora}`.trim(),
+          r.targa || "-",
+          r.titolo || "-",
+          r.autoreAperto || "-",
+          r.statoLabel || "-",
+        ],
+      };
+    }
+  }
+}
+
+function buildArchivioStoricoFiltersLabel(
+  filters: ArchivioStoricoPdfFilters,
+): string {
+  const parts: string[] = [];
+  if (filters.autista) parts.push(`Autista: ${filters.autista}`);
+  if (filters.targa) parts.push(`Targa: ${filters.targa}`);
+  const q: string = (filters.searchQuery || "").trim();
+  if (q) parts.push(`Cerca: "${q}"`);
+  return parts.length > 0 ? parts.join(" · ") : "Nessun filtro applicato";
+}
+
+function formatArchivioStoricoTimestamp(ts: number): string {
+  const d: Date = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd: string = String(d.getDate()).padStart(2, "0");
+  const mm: string = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy: string = String(d.getFullYear());
+  const hh: string = String(d.getHours()).padStart(2, "0");
+  const mi: string = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} alle ${hh}:${mi}`;
+}
+
+export async function generateArchivioStoricoPDFBlob(
+  input: ArchivioStoricoPdfInput,
+): Promise<Blob> {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageWidth: number = doc.internal.pageSize.getWidth();
+  const marginX: number = 14;
+
+  // --- Header (palette aziendale, replica COLORS privati di pdfEngine.ts) ---
+  doc.setFillColor(230, 220, 200);
+  doc.rect(0, 0, pageWidth, 18, "F");
+  doc.setTextColor(40, 40, 40);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text(`Archivio Storico — ${input.kindLabel}`, marginX, 11);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const stampLabel: string = `Stampato il ${formatArchivioStoricoTimestamp(input.generatedAtTs)}`;
+  const stampWidth: number = doc.getTextWidth(stampLabel);
+  doc.text(stampLabel, pageWidth - marginX - stampWidth, 11);
+
+  // --- Sottotitolo: periodo + filtri ---
+  let currentY: number = 24;
+  doc.setTextColor(60, 60, 60);
+  doc.setFontSize(10);
+  // PROMPT 31.2: riga "Periodo" in grassetto per maggiore visibilità.
+  doc.setFont("helvetica", "bold");
+  doc.text(`Periodo: ${input.filters.periodoLabel}`, marginX, currentY);
+  doc.setFont("helvetica", "normal");
+  currentY += 5;
+  doc.setFontSize(9);
+  doc.setTextColor(90, 90, 90);
+  doc.text(buildArchivioStoricoFiltersLabel(input.filters), marginX, currentY);
+  currentY += 6;
+
+  // --- Tabella records ---
+  const { head, rowMapper } = archivioStoricoColumns(input.kind);
+  const body: string[][] = input.records.map(rowMapper);
+  if (body.length === 0) {
+    body.push(
+      head.map((_, idx: number) =>
+        idx === 0 ? "Nessun record per i filtri correnti" : "",
+      ),
+    );
+  }
+
+  autoTable(doc, {
+    head: [head],
+    body,
+    startY: currentY,
+    margin: { left: marginX, right: marginX },
+    styles: {
+      font: "helvetica",
+      fontSize: 8,
+      cellPadding: 2,
+      textColor: [40, 40, 40],
+      lineColor: [180, 160, 120],
+      lineWidth: 0.1,
+    },
+    headStyles: {
+      fillColor: [230, 220, 200],
+      textColor: [40, 40, 40],
+      fontStyle: "bold",
+    },
+    alternateRowStyles: {
+      fillColor: [252, 249, 240],
+    },
+    didDrawPage: () => {
+      const pageHeight: number = doc.internal.pageSize.getHeight();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        "GestioneManutenzione · Archivio Storico",
+        marginX,
+        pageHeight - 8,
+      );
+      const totalLabel: string = `${input.totalCount} record`;
+      const totalLabelWidth: number = doc.getTextWidth(totalLabel);
+      doc.text(
+        totalLabel,
+        pageWidth / 2 - totalLabelWidth / 2,
+        pageHeight - 8,
+      );
+      const page = doc.getCurrentPageInfo().pageNumber;
+      const pageLabel: string = `Pagina ${page}`;
+      const pageLabelWidth: number = doc.getTextWidth(pageLabel);
+      doc.text(pageLabel, pageWidth - marginX - pageLabelWidth, pageHeight - 8);
+    },
+  });
+
+  return doc.output("blob") as Blob;
+}

@@ -8,7 +8,19 @@
       "Bash(python3)",
       "Bash(where python3 *)",
       "Bash(where python *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git stash *)",
+      "Bash(rm src/next/NextCentroControlloParityPage.tsx.bak.20260511-PROMPT27.14 src/next/components/NextCentroControlloSinottica.tsx.bak.20260511-PROMPT27.14 src/next/domain/nextCentroControlloDomain.ts.bak.20260511-PROMPT27.14 src/next/nextMezzoHardDeleteWriter.ts.bak.20260511-PROMPT27.14 src/next/NextCentroControlloParityPage.tsx.bak.20260511-PROMPT27.15 src/next/nextFlottaCloneState.ts.bak.20260511-PROMPT27.15)",
+      "Bash(ls \"docs/design-mockups/archivio storico/\")",
+      "Bash(ls \"docs/design-mockups/archivio-storico/\")",
+      "Bash(xxd)",
+      "Bash(tasklist)",
+      "Bash(awk -F'-' '{print $1}')",
+      "Bash(grep \"\\\\.json$\")",
+      "Bash(grep -E \"^  [0-9]+\\\\\\)|TimeoutError|Error:|tests\\\\\\\\\\\\\\\\e2e\\\\\\\\\\\\\\\\24\")",
+      "Bash(npx tsx *)"
     ]
   }
 }

@@ -600,7 +600,28 @@ export default function NextHomeAutistiEventoModal({
         >
           <div className="aix-head">
             <div>
-              <h3>{detailsTitle}</h3>
+              <h3>
+                {detailsTitle}
+                {!editable ? (
+                  <span
+                    className="nhae-readonly-badge"
+                    style={{
+                      display: "inline-block",
+                      marginLeft: "12px",
+                      padding: "3px 8px",
+                      background: "#f4f4f2",
+                      border: "1px solid #e3e2dd",
+                      borderRadius: "4px",
+                      font: "400 11px/1.3 system-ui, -apple-system, sans-serif",
+                      color: "#3b3f46",
+                      letterSpacing: "0.3px",
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    Modalità consultazione · da Archivio storico
+                  </span>
+                ) : null}
+              </h3>
               <div style={{ fontSize: "13px", opacity: 0.8 }}>
                 {autistaLabel}
               </div>
@@ -737,7 +758,7 @@ export default function NextHomeAutistiEventoModal({
               </>
             ) : null}
 
-            {(event.tipo === "segnalazione" || event.tipo === "controllo") ? (
+            {editable && (event.tipo === "segnalazione" || event.tipo === "controllo") ? (
               <div className="aix-row">
                 <div className="aix-row-top">
                   <strong>LAVORO</strong>

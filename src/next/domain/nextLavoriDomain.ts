@@ -27,7 +27,10 @@ type NextLegacyDatasetShape =
   | "unsupported";
 
 type NextLavoriGroupKind = "mezzo" | "magazzino";
-export type NextLavoriListaRouteId = "lavori-in-attesa" | "lavori-eseguiti";
+export type NextLavoriListaRouteId =
+  | "lavori-in-attesa"
+  | "lavori-eseguiti"
+  | "lavori-archivio";
 export type NextLavoriDetailResolution = "group-by-gruppo-id" | "single-record";
 
 export type NextLavoroFieldQuality = "certo" | "ricostruito" | "non_disponibile";
@@ -640,7 +643,18 @@ function buildListaLimitations(args: {
   includeCloneOverlays: boolean;
 }): string[] {
   const routeLabel =
-    args.routeId === "lavori-in-attesa" ? "Lavori in attesa" : "Lavori eseguiti";
+    args.routeId === "lavori-in-attesa"
+      ? "Lavori in attesa"
+      : args.routeId === "lavori-archivio"
+        ? "Archivio lavori"
+        : "Lavori eseguiti";
+
+  const routeNote =
+    args.routeId === "lavori-in-attesa"
+      ? "La madre usa `/lavori-da-eseguire` come writer di creazione; questa lista clone apre solo il backlog globale read-only (`eseguito !== true`)."
+      : args.routeId === "lavori-archivio"
+        ? "L'archivio storico include tutti i lavori (aperti, in attesa, eseguiti) e resta strettamente in sola lettura; i filtri di periodo, autista, targa, ricerca sono applicati lato consumatore."
+        : "La lista clone espone solo consultazione dei lavori chiusi e lascia fuori PDF, share e qualsiasi drill-down legacy scrivente.";
 
   return [
     args.includeCloneOverlays
@@ -653,9 +667,7 @@ function buildListaLimitations(args: {
     args.datasetShape === "unsupported"
       ? "Il dataset `@lavori` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
       : null,
-    args.routeId === "lavori-in-attesa"
-      ? "La madre usa `/lavori-da-eseguire` come writer di creazione; questa lista clone apre solo il backlog globale read-only (`eseguito !== true`)."
-      : "La lista clone espone solo consultazione dei lavori chiusi e lascia fuori PDF, share e qualsiasi drill-down legacy scrivente.",
+    routeNote,
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -858,10 +870,15 @@ async function readNextLavoriListaSnapshot(
   ]);
 
   const mezzoIndex = buildMezzoIndex(anagrafiche.items);
+  // routeId "lavori-archivio": archivio storico cronologico, include tutti
+  // gli stati (aperti, in attesa, eseguiti) ordinati DESC per data
+  // esecuzione/inserimento. SPEC §4.1 + §11.1.
   const relevantItems =
     routeId === "lavori-in-attesa"
       ? sortOpenItems(items.filter((item) => item.matchesGlobalOpenView))
-      : sortExecutedItems(items.filter((item) => item.eseguito === true));
+      : routeId === "lavori-archivio"
+        ? sortExecutedItems(items.slice())
+        : sortExecutedItems(items.filter((item) => item.eseguito === true));
 
   const groupsMap = new Map<string, NextLavoroBaseReadOnlyItem[]>();
   relevantItems.forEach((item) => {
@@ -914,7 +931,12 @@ async function readNextLavoriListaSnapshot(
     domainCode: NEXT_LAVORI_DOMAIN.code,
     domainName: NEXT_LAVORI_DOMAIN.name,
     routeId,
-    title: routeId === "lavori-in-attesa" ? "Lavori in attesa" : "Lavori eseguiti",
+    title:
+      routeId === "lavori-in-attesa"
+        ? "Lavori in attesa"
+        : routeId === "lavori-archivio"
+          ? "Archivio lavori"
+          : "Lavori eseguiti",
     logicalDatasets: NEXT_LAVORI_DOMAIN.logicalDatasets,
     activeReadOnlyDataset: NEXT_LAVORI_DOMAIN.activeReadOnlyDataset,
     normalizationStrategy: NEXT_LAVORI_DOMAIN.normalizationStrategy,
@@ -941,6 +963,27 @@ export async function readNextLavoriEseguitiSnapshot(
   options: ReadNextLavoriSnapshotOptions = {},
 ): Promise<NextLavoriListaSnapshot> {
   return readNextLavoriListaSnapshot("lavori-eseguiti", options);
+}
+
+// Archivio storico cronologico (SPEC §4.1 + §14 step 1, PROMPT 29.6).
+// Riusa la pipeline `readNextLavoriListaSnapshot` con routeId
+// "lavori-archivio" che, internamente, include TUTTI gli stati
+// (aperti, in attesa, eseguiti) ordinati DESC per data.
+// I parametri `fromTs/toTs` sono accettati per coerenza con la
+// signature dichiarata in SPEC §15.2 ma il filtro periodo viene
+// applicato lato consumatore (hook `useArchivioData`), perche'
+// il dataset `@lavori` e' un singolo documento storage senza
+// indice server-side su timestamp.
+export async function readNextLavoriArchivioSnapshot(
+  options: {
+    fromTs?: number;
+    toTs?: number;
+    includeCloneOverlays?: boolean;
+  } = {},
+): Promise<NextLavoriListaSnapshot> {
+  return readNextLavoriListaSnapshot("lavori-archivio", {
+    includeCloneOverlays: options.includeCloneOverlays,
+  });
 }
 
 export function buildNextDettaglioLavoroPath(args: {

@@ -1,0 +1,39 @@
+{
+  "targaRimorchio": "TI84822",
+  "motivoVerifica": null,
+  "letta": true,
+  "targaCamion": "TI239045",
+  "badgeAutista": "17",
+  "fotoUrls": [],
+  "stato": "presa_in_carico",
+  "flagVerifica": false,
+  "linkedLavoroId": "e45fe25f-b3ae-40f4-94e7-0a054d8dccd2",
+  "ambito": "rimorchio",
+  "categoriaMezzo": "semirimorchio asse sterzante",
+  "note": null,
+  "fotoStoragePaths": [],
+  "descrizione": "Guarnizioni tubi e cisterna consumate perdono tanto",
+  "autistaNome": "ORLANDO BUTTI",
+  "problemaGomma": null,
+  "targa": "TI84822",
+  "posizioneGomma": null,
+  "tipoProblema": "altro",
+  "id": "810d56e5-d8f2-4052-b5fa-775f5b366e80",
+  "mezzoId": "MEZZO-1765017515589",
+  "data": 1778587200000,
+  "autistaId": "1764416245505-2869f80f9632c8",
+  "timestamp": 1778587200000,
+  "target": "rimorchio",
+  "foto": [],
+  "adminEdit": {
+    "edited": true,
+    "editedAt": 1778596173008,
+    "editedBy": "admin",
+    "note": null,
+    "patch": {
+      "target": "rimorchio",
+      "timestamp": 1778587200000,
+      "data": 1778587200000
+    }
+  }
+}

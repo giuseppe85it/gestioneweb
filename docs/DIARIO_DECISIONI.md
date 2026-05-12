@@ -316,3 +316,164 @@ Decisione: hard-delete cascade su 11 dataset funziona solo per record che espong
 Motivo: audit PROMPT 27.13 INTERVENTO 7. `nextMezzoHardDeleteWriter.ts` usa `recordTargaCandidates(record)` (linea 35-49) che ispeziona 5 campi targa-like. La funzione `deleteByTargaInDataset` filtra solo per match targa. La cancellazione del mezzo principale usa `mezzoId` (linea 121 `deleteMezzoById`) ma NON viene riconciliato con i 10 dataset cascade. Se un record futuro persiste con solo `mezzoId` (es. nuovi documenti archivio mezzo, allegati) e niente targa, sopravvive all'eliminazione → orfano. Risultato grep: 26 file referenziano `mezzoId`. Dataset attualmente sicuri (popolati con targa): @rifornimenti*, @manutenzioni, @lavori, @segnalazioni_autisti_tmp, @controlli_mezzo_autisti, @richieste_attrezzature_autisti_tmp, @cambi_gomme*, @gomme_eventi, @autisti_sessione_attive.
 Status: audit-only. Proposta fix per PROMPT futuro: aggiungere fallback cascade per `mezzoId` parallelo a quello per targa, oppure invariante esplicita ("ogni record di dataset operativo DEVE includere campo targa snapshot") con guardia nei writer.
 Conseguenza: rischio futuro contenuto. Da rivalutare quando vengono aggiunti dataset nuovi che usano `mezzoId` come chiave primaria di join.
+
+## 2026-05-12 — Archivio Storico NEXT chiuso (PROMPT 29.0 → 31.2)
+
+**Cosa è stato fatto**
+Costruito ex novo il modulo "Archivio Storico" come nuova tab
+del Centro Controllo NEXT, accanto a Sinottica Flotta v2.
+Sessione di 13 prompt (29.0 audit collezioni → 31.2 fix grassetto
+PDF). Tutti i build verdi.
+
+**Strada architetturale scelta (PROMPT 29.0)**
+Strada 3: componente `<StoricoLista>` shared per kind omogenei
++ escape hatch per kind divergenti. 4 sub-tab: Lavori,
+Manutenzioni, Segnalazioni, Richieste (scelti da Giuseppe;
+esclusi Rifornimenti, Controlli, Ordini, Scadenze).
+
+**Decisioni di scope (SPEC 1.0)**
+- Modulo SOLA LETTURA inizialmente (poi rilassato per kebab
+  elimina, vedi sotto)
+- Filtri globali: Autista + Targa + Periodo (default ultimi
+  30gg) + Cerca testuale
+- Ricerca modalità C ibrida: scoped sulla sub-tab attiva con
+  contatori dinamici sulle altre
+- Click riga: espansione inline + bottone "Apri dettaglio →"
+- Componenti: 12 nuovi + 4 hook + 1 generatore PDF dedicato
+- Path radice: `src/next/centroControllo/archivioStorico/`
+
+**Workaround importanti**
+- Timeline "Lavoro generato" su Lavori: rimossa, perché il
+  reader Step 1 (`readNextLavoriArchivioSnapshot`) espone
+  `NextLavoriListaRow` snello senza `source.*`. Link inverso
+  da Segnalazione cliccabile (`linkedLavoroId`).
+- CSS scope dedicato `.cc-archivio-scope-v1` con token duplicati
+  da V2 perché i token V2 sono scoped sotto
+  `.cc-sinottica-scope-v2` (NON globali), file V2 intoccabile.
+- Bug Step 8 scoperto in 30.2: il modale
+  `NextHomeAutistiEventoModal` era dentro
+  `{archivioMode === "sinottica" ? ... : null}` → inaccessibile
+  dall'archivio. Spostato fuori dal wrap → sblocca anche scenari
+  futuri.
+
+**Decisioni UX successive (PROMPT 30.x)**
+- 30.0: audit foto mezzo + collegamenti modali — strategia Y
+  zero-touch via `editable={false}` sul modale eventi esistente
+- 30.1: fix foto mezzo (era codice morto, ArchivioVeicoloPhoto
+  Step 4 mai consumato dalle 4 righe) + cleanup
+  ArchivioVeicoloPhotoPlaceholder
+- 30.2: collegamenti dettaglio (Lavori→pagina dettaglio,
+  Manutenzioni→navigate query param, Segnalazioni/Richieste→
+  modale eventi readOnly con badge "Modalità consultazione")
+  + link "Lavoro generato" cliccabile su Segnalazione
+- 30.3: 4 fix UX:
+  (1) bottone "Apri dettaglio" spostato in riga compatta
+  (2) URL state persistente `?tab=archivio&asTab=...&asAutista=...`
+  per back/forward browser coerente
+  (3) rimossa scritta inutile "Ordinati per data ↓"
+  (4) container foto da 64×48 a 80×56 con `object-fit: contain`
+  (la foto NON era tagliata da CSS, era letter-boxed per aspect
+  mismatch; ridimensionamento risolve)
+- 30.5: export PDF lista per tab con filtri applicati ("ciò che
+  vedi"). Pattern replicato 1:1 dal Tab Rifornimenti CC
+  (PROMPT 27.x). Nuovo generatore
+  `generateArchivioStoricoPDFBlob` in pdfEngine.ts (~200 righe),
+  uso `PdfPreviewModal` esistente, share via Web Share API
+  (status quo: unsupported desktop = caduta su Copy/WhatsApp).
+- 31.2: periodo PDF in grassetto per leggibilità.
+
+**Caso reale "dato sporco" emerso in produzione (31.0 + 31.1)**
+Una segnalazione cisterna ha generato un lavoro con targa
+sbagliata (trattore stradale TI239045 invece di cisterna
+TI84822) per un bug a monte nel CC. Giuseppe ha cancellato il
+lavoro orfano ma la segnalazione è rimasta con
+`hasLinkedLavoro=true` + `linkedLavoroId` orfano, bloccando la
+ri-creazione.
+
+Decisione: NON intervenire sistemicamente in questa sessione.
+Workaround tattico:
+- PROMPT 31.0: fix manuale Firestore con dry-run + conferma
+  esplicita; ripulito flag sulla segnalazione specifica.
+- PROMPT 31.1: aggiunto tasto "Elimina" in archivio storico
+  (kebab menu ⋮) che setta `nascostoInArchivio=true` su
+  Firestore. SOFT-HIDE, non hard-delete. Record resta
+  visibile altrove (Sinottica, modali). Nuova deroga barrier
+  `ARCHIVIO_HIDE_WRITE_SCOPE` su 4 collezioni, SOLO campo
+  `nascostoInArchivio`. Modulo archivio NON è più strettamente
+  sola lettura.
+
+**Cantieri aperti rimandati**
+1. Audit bug "creazione lavoro da segnalazione" — perché il CC
+  ha popolato la targa del trattore invece di cisterna? Ipotesi:
+  prende mezzo correntemente attivo dell'autista invece di
+  quello della segnalazione. Da fare in sessione dedicata.
+2. Fix sistemico: quando si cancella un lavoro, ripristinare
+  `hasLinkedLavoro=false` + `linkedLavoroId=null` sulla
+  segnalazione collegata. Eviterebbe il loop sperimentato oggi.
+3. Eventuale meta-modulo "ripristina record nascosto in
+  archivio" — oggi il soft-hide è unidirezionale. Per ora
+  accettato come tradeoff (Giuseppe può sempre rimuovere il
+  flag a mano se necessario).
+
+**Verifica E2E finale**
+Baseline mantenuta: 75 pass + 1 flaky pre-esistente + 1 skip.
+Test nuovi aggiunti: 13 (foto), 14-16 (collegamenti), 17 (URL
+state), 18 (PDF), 19 (elimina). Test 18 stabile in isolato.
+
+**Memo regola operativa (per future sessioni)**
+- Default playwright SOLO se: tocca CC parent / modali shared /
+  refactor largo. Altrimenti basta tsc+vite per non perdere 30
+  min ad ogni step.
+- Decisione applicata da PROMPT 31.1 in poi.
+
+## 2026-05-12 — Dismissione modulo Lavori NEXT e assorbimento in Manutenzioni NEXT - 12 decisioni operative
+
+**Contesto**
+Sessione di audit pre-dismissione del modulo Lavori NEXT, in vista dell'assorbimento dentro Manutenzioni NEXT (stati `daFare` / `programmata` / `eseguita`). Strategia di riferimento: 3a (madre congelata, NEXT autonoma, nessun mirror continuo). Riferimento audit completo: [docs/_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md](_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md).
+
+**Decisioni**
+
+**J.1 — Migrazione dati**
+Migrazione totale dei record da `@lavori` a `@manutenzioni`. La collection `@lavori` resta viva in Firestore perche' la madre continua a scriverla. La NEXT non legge piu' `@lavori` dopo la dismissione.
+
+**J.2 — Card Home**
+La card Home NEXT "Lavori in attesa" si trasforma in "Manutenzioni da fare". Stesso posto, stessa logica, repuntata sulla nuova collection.
+
+**J.3 — PDF Quadro manutenzioni**
+Il PDF "Quadro manutenzioni" mantiene impaginazione attuale invariata in questo giro. I filtri determinano cosa renderizzare. Il PDF deve sapere renderizzare anche record con stato `daFare` e `programmata` senza crashare su campi opzionali (km, fornitore, costo).
+
+**J.4 — Route dettaglio**
+La route `/next/dettagliolavori/:id` viene mantenuta come redirect verso il dettaglio manutenzione equivalente, per non rompere link e bookmark esistenti.
+
+**J.5 — Foto record migrati**
+Foto dei record migrati: referenziate dal record segnalazione o controllo di origine, non duplicate su Storage.
+
+**J.6 — Repunting lettori indiretti**
+I 12 lettori indiretti `@lavori` identificati in audit con gravita ALTA o CRITICA vengono tutti repuntati a `@manutenzioni` in un solo passaggio, senza periodo di transizione a doppia lettura.
+
+**J.7 — linkedLavoroId**
+Il campo `linkedLavoroId` sui record `@segnalazioni_autisti_tmp` e `@controlli_mezzo_autisti` mantiene il nome invariato. Cambia solo il significato del valore puntato: dopo la migrazione punta all'id della manutenzione equivalente, non piu' all'id lavoro.
+
+**J.8 — Tipo "magazzino"**
+Il tipo "magazzino" dei record `@lavori` (lavori senza targa, richieste materiali generiche) viene mantenuto come tipo "magazzino" anche in `@manutenzioni`.
+
+**J.9 — gruppoId**
+Il campo `gruppoId` presente in `@lavori` non viene portato in `@manutenzioni`. Ogni manutenzione `daFare` e' un record separato, niente concetto di blocco di manutenzioni.
+
+**J.10 — Chat IA Zero-Invenzioni (debito accettato)**
+Tutto il sottosistema chat IA Zero-Invenzioni resta intoccato in questo intervento. Le entries riferite a lavori (`registry.config.js` `work.lavori`, `view.config.ts` `firestore-storage-lavori-doc`, `internal-ai-firebase-readonly-boundary.js`, `internal-ai-repo-understanding.js`, `chatIaRouter.ts`, `sectorFallbacks.ts`, `chatIaMezziData.ts`) restano invariate. Conseguenza accettata in modo cosciente: la chat IA continuera' a leggere `@lavori` come sorgente attiva finche' non verra' fatta una sessione di pulizia dedicata, in futuro. Le manutenzioni `daFare`/`programmata` create dopo la dismissione non saranno visibili dalla chat IA come "lavori" finche' la pulizia non avverra'.
+
+**J.11 — Record clone-only in localStorage**
+I record presenti in `localStorage` `@next_clone_lavori:records` (clone-only, mai persistiti su Firestore) vanno prima contati, poi si decide se migrarli in `@manutenzioni` o scartarli. Decisione rinviata a dopo il conteggio.
+
+**KM/ORE migrazione**
+I record `@lavori` migrati portano i campi `km` e `ore` solo se gia' presenti nel record originale. Se assenti, vengono lasciati vuoti. Nessuna stima da rifornimenti o da altre fonti. Nessun flag origine "lavori_legacy". Conseguenza accettata: il KPI "ultimo intervento a X km/ore" del modulo Manutenzioni si calcola solo sui record che hanno km/ore reali compilati; i record migrati senza km non contribuiscono agli aggregati km/ore ma sono comunque presenti nello storico cronologico.
+
+**Debito tecnico aperto post-dismissione (riferimento per sessione futura di pulizia)**
+- Chat IA Zero-Invenzioni: rimuovere o ripuntare entry `work.lavori` (`registry.config.js`), entry `firestore-storage-lavori-doc` (boundary + `view.config.ts`), entries `next-lavori-*` (repo-understanding), keyword `lavori` (chatIaRouter), testo `sectorFallbacks`, source dichiarata in `chatIaMezziData`.
+- Conteggio e gestione record `@next_clone_lavori:records` in `localStorage` (J.11).
+- Eventuali aggiornamenti `pdfEngine.ts` per i nuovi stati manutenzione, se serve refresh impaginazione futuro.
+
+**Riferimento audit**: [docs/_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md](_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md)
+
+**Prossimo passo**: redazione di `docs/product/SPEC_DISMISSIONE_LAVORI_NEXT.md` basata su queste 12 decisioni piu' i conteggi Firestore reali (capitolo E dell'audit).

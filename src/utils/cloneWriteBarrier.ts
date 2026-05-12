@@ -149,6 +149,19 @@ const LAVORO_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@controlli_mezzo_autisti",
 ]);
 const LAVORO_CREATE_WRITE_SCOPE = "centro_controllo_lavoro_create_write";
+// PROMPT 31.1 — deroga ristretta per il flag `nascostoInArchivio` su 4
+// collezioni Archivio Storico. Il modulo Archivio era dichiarato
+// sola-lettura nello SPEC; questa deroga abilita SOLO la patch del flag
+// hide su /next/centro-controllo. Il writer enforce la singolarità del
+// campo applicativamente (vedi nextArchivioHideWriter.ts).
+const ARCHIVIO_HIDE_ALLOWED_WRITE_PATH = "/next/centro-controllo";
+const ARCHIVIO_HIDE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@lavori",
+  "@manutenzioni",
+  "@segnalazioni_autisti_tmp",
+  "@richieste_attrezzature_autisti_tmp",
+]);
+const ARCHIVIO_HIDE_WRITE_SCOPE = "centro_controllo_archivio_hide_write";
 const IA_LIBRETTO_ALLOWED_WRITE_PATH = "/next/ia/libretto";
 const IA_LIBRETTO_ALLOWED_FETCH_PATHS = ["/next/ia/libretto", "/next/ia/archivista"] as const;
 const IA_LIBRETTO_ANALYZE_ENDPOINT =
@@ -436,7 +449,8 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof CONTROLLI_WRITE_SCOPE
     | typeof RICHIESTE_WRITE_SCOPE
     | typeof DELETE_MEZZO_WRITE_SCOPE
-    | typeof LAVORO_CREATE_WRITE_SCOPE,
+    | typeof LAVORO_CREATE_WRITE_SCOPE
+    | typeof ARCHIVIO_HIDE_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -509,6 +523,15 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return LAVORO_CREATE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  // PROMPT 31.1 — deroga hide flag su Archivio Storico (4 collezioni).
+  if (
+    pathname === ARCHIVIO_HIDE_ALLOWED_WRITE_PATH &&
+    hasCloneWriteScopedAllowance(ARCHIVIO_HIDE_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return ARCHIVIO_HIDE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

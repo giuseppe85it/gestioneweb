@@ -4,6 +4,34 @@
   background: linear-gradient(180deg, #f6efe0 0%, #efe4cf 100%);
 }
 
+/* Page-tabs (Sinottica vs Archivio) — PROMPT 29.9 Step 8 */
+.next-centro-controllo-scope .cc-page-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e3e2dd;
+  margin: 16px 0 0;
+}
+.next-centro-controllo-scope .cc-page-tabs button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 12px 18px 14px;
+  font: 500 13.5px/1 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  color: #6b7079;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 120ms cubic-bezier(.2,.6,.2,1);
+}
+.next-centro-controllo-scope .cc-page-tabs button:hover {
+  color: #16181c;
+}
+.next-centro-controllo-scope .cc-page-tabs button.is-active {
+  color: #16181c;
+  border-bottom-color: #1f3a5f;
+  font-weight: 600;
+}
+
 .next-centro-controllo-scope .cc-shell {
   max-width: 1280px;
   margin: 0 auto;

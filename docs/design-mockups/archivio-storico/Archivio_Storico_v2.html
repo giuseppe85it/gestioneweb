@@ -1,0 +1,2202 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<title>Archivio storico · Centro controllo</title>
+<meta name="viewport" content="width=1440" />
+<link rel="stylesheet" href="colors_and_type.css" />
+<style>
+  /* =========================================================
+     Archivio storico — riprende per intero il linguaggio di
+     Sinottica V2 (stessa shell, stesso .tab, stesso .pill).
+     Componenti nuovi:
+       - .archivio-toolbar  (filtri sempre visibili, sticky)
+       - .feed / .rec       (lista cronologica, niente tabella)
+       - .timeline          (mini-timeline orizzontale degli eventi)
+       - .empty             (stato vuoto)
+     ========================================================= */
+
+  .app { min-height: 100vh; display: grid; grid-template-columns: 220px 1fr; }
+
+  /* ---------- Sidebar (identica a V2) ---------- */
+  .sidebar {
+    background: #14171c; color: #c9c8c2;
+    padding: 20px 18px; display: flex; flex-direction: column; gap: 28px;
+    border-right: 1px solid #0d1014;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; font: 600 17px/1 var(--font-sans); letter-spacing: -0.01em; }
+  .brand-mark { width: 26px; height: 26px; border-radius: 4px; background: var(--accent); display: grid; place-items: center; color: #fff; font: 700 13px/1 var(--font-mono); }
+  .brand small { display: block; font: 400 11px/1.2 var(--font-sans); color: #9aa0a8; letter-spacing: 0.02em; margin-top: 3px; text-transform: none; }
+  .nav-group { display: flex; flex-direction: column; gap: 2px; }
+  .nav-group h6 { font: 500 10.5px/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; color: #6b7079; margin: 0 8px 8px 8px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 4px; color: #c9c8c2; font: 400 13px/1 var(--font-sans); cursor: default; }
+  .nav-item:hover { background: #1c2128; color: #fff; }
+  .nav-item.is-active { background: #1f3a5f; color: #fff; }
+  .nav-item .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+  .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid #1c2128; font: 400 11.5px/1.4 var(--font-sans); color: #6b7079; }
+  .sidebar-footer strong { color: #c9c8c2; font-weight: 500; }
+
+  .main { display: flex; flex-direction: column; min-width: 0; }
+
+  /* ---------- Topbar (identica a V2) ---------- */
+  .topbar { display: flex; align-items: center; gap: 24px; padding: 14px 28px; background: var(--surface); border-bottom: 1px solid var(--rule); }
+  .crumbs { font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+  .crumbs span.sep { color: var(--ink-4); }
+  .crumbs strong { color: var(--ink-1); font-weight: 500; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: var(--fs-13); color: var(--ink-3); }
+  .updated-stamp { font-family: var(--font-mono); font-size: 12px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #1f3a5f; color: #fff; display: grid; place-items: center; font: 500 11.5px/1 var(--font-sans); letter-spacing: 0.02em; }
+
+  /* ---------- Page head ---------- */
+  .page-head { padding: 24px 28px 0; background: var(--paper); }
+  .page-head h1 { font: 600 26px/1.15 var(--font-sans); letter-spacing: -0.005em; margin: 0 0 4px 0; color: var(--ink-1); }
+  .page-head .lede { font: 400 13.5px/1.4 var(--font-sans); color: var(--ink-3); margin: 0; max-width: 720px; }
+
+  /* ---------- Page tabs (Sinottica · Archivio): stesso .tab di V2 ---------- */
+  .tabs {
+    margin: 22px 28px 0;
+    display: flex; align-items: flex-end; gap: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tab {
+    appearance: none; background: transparent; border: 0;
+    padding: 12px 18px 14px;
+    font: 500 13.5px/1 var(--font-sans);
+    color: var(--ink-3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: color var(--dur-1) var(--ease);
+  }
+  .tab .ct {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3);
+    background: var(--surface-2); border: 1px solid var(--rule);
+    padding: 1px 6px; border-radius: 3px;
+    font-weight: 500;
+  }
+  .tab:hover { color: var(--ink-1); }
+  .tab.is-active { color: var(--ink-1); border-bottom-color: var(--brand); font-weight: 600; }
+  .tab.is-active .ct { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 22%, transparent); background: var(--brand-tint); }
+  .tabs-spacer { flex: 1; }
+  .tabs-meta {
+    padding: 0 0 12px 0;
+    font: 400 12px/1 var(--font-sans); color: var(--ink-3);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tabs-meta .archive-glyph { width: 13px; height: 13px; color: var(--ink-4); }
+
+  /* ---------- ARCHIVIO TOOLBAR (filtri sempre visibili, sticky) ---------- */
+  .archivio-toolbar {
+    margin: 0 28px;
+    padding: 14px 0;
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    position: sticky; top: 0; z-index: 5;
+  }
+  .filter-field {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 12px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+    min-width: 0;
+  }
+  .filter-field:hover { border-color: var(--rule-strong); }
+  .filter-field.is-set { border-color: var(--brand); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent); background: var(--brand-tint); }
+  .filter-field .ff-label {
+    font: 500 10.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .filter-field.is-set .ff-label { color: var(--brand); }
+  .filter-field .ff-value {
+    font: 500 13px/1 var(--font-sans);
+    color: var(--ink-1);
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .filter-field .ff-value.is-placeholder { color: var(--ink-4); font-weight: 400; }
+  .filter-field.is-set .ff-value { color: var(--brand-ink); }
+  .filter-field .ff-caret {
+    width: 10px; height: 10px;
+    color: var(--ink-3);
+    flex: none;
+  }
+  .filter-field.is-set .ff-caret { color: var(--brand); }
+  .filter-field .ff-clear {
+    width: 14px; height: 14px;
+    color: var(--brand);
+    cursor: pointer;
+    margin-left: -2px;
+    opacity: 0.7;
+    transition: opacity var(--dur-1) var(--ease);
+  }
+  .filter-field .ff-clear:hover { opacity: 1; }
+
+  /* SEARCH variant: input al posto del ff-value */
+  .filter-field.ff-search {
+    min-width: 240px;
+    max-width: 300px;
+    padding-right: 10px;
+    cursor: text;
+  }
+  .filter-field.ff-search .ff-search-icon {
+    width: 13px; height: 13px;
+    color: var(--ink-3);
+    flex: none;
+    margin-right: -2px;
+  }
+  .filter-field.ff-search.is-set .ff-search-icon { color: var(--brand); }
+  .filter-field.ff-search:focus-within { border-color: var(--brand); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent); }
+  .filter-field.ff-search:focus-within .ff-label { color: var(--brand); }
+  .filter-field.ff-search input {
+    font: 500 13px/1 var(--font-sans);
+    color: var(--ink-1);
+    background: transparent;
+    border: 0; outline: 0; padding: 0; margin: 0;
+    flex: 1; min-width: 0;
+    height: 22px;
+  }
+  .filter-field.ff-search input::placeholder { color: var(--ink-4); font-weight: 400; }
+  .filter-field.ff-search input::-webkit-search-cancel-button,
+  .filter-field.ff-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+  .filter-field.ff-search.is-set input { color: var(--brand-ink); }
+
+  .filter-field.ff-period .ff-value {
+    font-family: var(--font-mono); font-feature-settings: 'tnum' 1;
+    font-size: 12.5px;
+    letter-spacing: 0.005em;
+  }
+
+  /* Chip "X filtri attivi · azzera" — riusa esattamente .filter-state di V2 */
+  .filter-state {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: var(--brand-tint);
+    border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+    border-radius: 4px;
+    font: 500 12px/1 var(--font-sans);
+    color: var(--brand);
+  }
+  .filter-state.is-hidden { display: none; }
+  .filter-state .ct { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; }
+  .filter-state button {
+    appearance: none; border: 0; background: transparent;
+    color: var(--brand); font: 500 12px/1 var(--font-sans);
+    cursor: pointer; padding: 0;
+    border-bottom: 1px dashed currentColor;
+  }
+  .filter-state button:hover { color: var(--brand-ink); }
+
+  .toolbar-spacer { flex: 1; }
+  .toolbar-meta {
+    font: 400 12.5px/1 var(--font-sans); color: var(--ink-3);
+    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .toolbar-meta strong { color: var(--ink-1); font-weight: 500; }
+
+  /* ---------- Sub-tabbar (4 entità) — stesso .tab del V2 ---------- */
+  .sub-tabs {
+    margin: 0 28px;
+    padding-top: 6px;
+  }
+  .sub-tabs .tab { padding-top: 14px; padding-bottom: 12px; }
+
+  /* densità toggle inline a destra della sub-tabbar */
+  .density-toggle {
+    display: inline-flex; align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 2px;
+    align-self: center;
+    margin-bottom: 8px;
+  }
+  .density-toggle button {
+    appearance: none; border: 0; background: transparent;
+    padding: 4px 10px;
+    font: 500 11.5px/1 var(--font-sans);
+    color: var(--ink-3);
+    cursor: pointer;
+    border-radius: 3px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .density-toggle button.is-active { background: var(--brand-tint); color: var(--brand); }
+
+  /* ---------- FEED ---------- */
+  .feed-wrap {
+    margin: 0 28px 40px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 0;
+    border-radius: 0 0 6px 6px;
+  }
+
+  /* day separator */
+  .day-sep {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--rule);
+    position: sticky; top: 64px; z-index: 3;
+  }
+  .day-sep .label {
+    font: 500 10.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+  .day-sep .label strong { color: var(--ink-1); font-weight: 600; letter-spacing: 0.04em; }
+  .day-sep .sep-rule { flex: 1; height: 1px; background: var(--rule); }
+  .day-sep .count {
+    font: 500 11px/1 var(--font-mono);
+    color: var(--ink-3);
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* record */
+  .rec {
+    display: grid;
+    grid-template-columns: 84px 64px 1fr;
+    gap: 0 20px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--rule);
+    align-items: start;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur-1) var(--ease);
+  }
+  .rec:last-child { border-bottom: 0; }
+  .rec:hover { background: #faf9f6; }
+  .rec.is-expanded { background: #faf9f6; }
+  .rec.is-expanded:hover { background: #f6f4ee; }
+
+  /* Veicolo photo column (2nd col), pattern Sinottica V2 */
+  .rec-photo {
+    width: 64px; height: 48px;
+    border-radius: 4px;
+    background: repeating-linear-gradient(135deg, #ecebe7 0 6px, #e3e2dd 6px 12px);
+    border: 1px solid var(--rule);
+    overflow: hidden;
+    display: grid; place-items: center;
+    color: var(--ink-3);
+    position: relative;
+    flex: none;
+  }
+  .rec-photo svg { width: 28px; height: 28px; opacity: 0.55; }
+  .rec-photo::after {
+    content: "foto"; position: absolute; bottom: 2px; right: 4px;
+    font: 400 8.5px/1 var(--font-mono);
+    color: var(--ink-4); letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Riga espansa */
+  .rec-expand-hint {
+    width: 16px; height: 16px;
+    color: var(--ink-4);
+    transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    flex: none;
+    align-self: center;
+  }
+  .rec.is-expanded .rec-expand-hint { transform: rotate(180deg); color: var(--brand); }
+
+  .rec-extra {
+    display: none;
+    margin-top: 14px;
+    padding: 14px 16px 4px;
+    border-top: 1px dashed var(--rule);
+    grid-column: 1 / -1;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .rec.is-expanded .rec-extra { display: flex; }
+
+  .rec-extra .rx-section {
+    display: grid;
+    grid-template-columns: 132px 1fr;
+    gap: 4px 18px;
+    align-items: start;
+  }
+  .rec-extra .rx-label {
+    font: 500 10.5px/1.4 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+    padding-top: 2px;
+  }
+  .rec-extra .rx-value {
+    font: 400 13px/1.55 var(--font-sans);
+    color: var(--ink-1);
+    text-wrap: pretty;
+  }
+  .rec-extra .rx-value strong { font-weight: 600; }
+  .rec-extra .rx-value .mono { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; }
+  .rec-extra .rx-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 10px 24px;
+  }
+  .rec-extra .rx-grid .kv {
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .rec-extra .rx-grid .k {
+    font: 500 10.5px/1.4 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+  .rec-extra .rx-grid .v {
+    font: 500 13px/1.3 var(--font-sans);
+    color: var(--ink-1);
+  }
+  .rec-extra .rx-grid .v.mono { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; font-weight: 500; }
+  .rec-extra .rx-quote {
+    background: #faf9f6;
+    border-left: 3px solid var(--ink-4);
+    padding: 10px 14px;
+    font: italic 400 13px/1.5 var(--font-sans);
+    color: var(--ink-2);
+  }
+  .rec-extra .rx-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: 500 12px/1 var(--font-sans);
+    color: var(--brand);
+    background: var(--brand-tint);
+    border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+    border-radius: 4px;
+    padding: 5px 9px;
+    text-decoration: none;
+    width: fit-content;
+  }
+  .rec-extra .rx-link svg { width: 12px; height: 12px; }
+
+  /* urgenza indicatore: bordo sx 3px come critical row in V2 */
+  .rec.urg-alta { box-shadow: inset 3px 0 0 var(--bad); }
+  .rec.urg-media { box-shadow: inset 3px 0 0 var(--warn); }
+
+  .rec-date {
+    display: flex; flex-direction: column; gap: 4px;
+    padding-top: 1px;
+  }
+  .rec-date .d {
+    font: 600 15px/1 var(--font-mono); color: var(--ink-1);
+    font-feature-settings: 'tnum' 1;
+    letter-spacing: 0.005em;
+  }
+  .rec-date .y {
+    font: 400 11.5px/1 var(--font-mono);
+    color: var(--ink-3);
+  }
+  .rec-date .t {
+    font: 400 11.5px/1 var(--font-mono);
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  .rec-body {
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 0;
+  }
+
+  .rec-head .rec-spacer { flex: 1; min-width: 0; }
+  /* header row: targa, categoria, tipo/urgenza, fornitore, id */
+  .rec-head {
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .rec-head .targa {
+    font: 600 14px/1.1 var(--font-mono);
+    color: var(--ink-1); letter-spacing: 0.02em;
+  }
+  .rec-head .cat {
+    font: 400 11px/1 var(--font-sans);
+    color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .rec-head .rec-id {
+    font: 400 11.5px/1 var(--font-mono);
+    color: var(--ink-4);
+    margin-left: auto;
+  }
+  .rec-head .rec-id::before { content: "#"; }
+
+  /* type chip (mezzo/compressore/attrezz./freni/gomme/elettrico/altro) */
+  .type-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 20px; padding: 0 8px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    color: var(--ink-2);
+    font: 500 10.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .type-chip.is-freni { background: var(--bad-bg); border-color: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+  .type-chip.is-gomme { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+  .type-chip.is-elett { background: var(--info-bg); border-color: color-mix(in srgb, var(--info) 22%, transparent); color: var(--info); }
+
+  /* urgenza pill (Lavori) */
+  .urg-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 20px; padding: 0 8px;
+    border-radius: 3px;
+    font: 500 10.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    border: 1px solid transparent;
+  }
+  .urg-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .urg-pill.is-alta { color: var(--bad); background: var(--bad-bg); border-color: color-mix(in srgb, var(--bad) 22%, transparent); }
+  .urg-pill.is-media { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 22%, transparent); }
+  .urg-pill.is-bassa { color: var(--ink-2); background: var(--surface-2); border-color: var(--rule); }
+  .urg-pill.is-bassa::before { background: var(--ink-4); }
+
+  /* title / descrizione breve */
+  .rec-title {
+    font: 500 14.5px/1.4 var(--font-sans);
+    color: var(--ink-1);
+    text-wrap: pretty;
+    max-width: 760px;
+  }
+
+  /* people / meta line */
+  .rec-people {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    font: 400 12.5px/1.3 var(--font-sans);
+    color: var(--ink-3);
+  }
+  .rec-people strong { font-weight: 500; color: var(--ink-1); }
+  .rec-people .sep { color: var(--ink-4); }
+  .rec-people .importo {
+    font-family: var(--font-mono); font-feature-settings: 'tnum' 1;
+    color: var(--ink-1); font-weight: 500;
+    padding-left: 10px; border-left: 1px solid var(--rule);
+    margin-left: 2px;
+  }
+  .rec-people .importo .ccy {
+    font-family: var(--font-sans); font-size: 10.5px;
+    color: var(--ink-3); letter-spacing: 0.06em;
+    text-transform: uppercase; margin-right: 3px; font-weight: 400;
+  }
+
+  /* footer: timeline + badges */
+  .rec-foot {
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  /* ---------- Mini-timeline ---------- */
+  .timeline {
+    display: inline-flex; align-items: stretch;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 8px 14px;
+  }
+  .tl-step {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 76px;
+    padding: 0 2px;
+    position: relative;
+  }
+  .tl-step .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--ink-4);
+    box-shadow: 0 0 0 2px var(--surface-2);
+    position: relative; z-index: 2;
+  }
+  .tl-step.is-open .dot   { background: var(--info); }
+  .tl-step.is-taken .dot  { background: var(--warn); }
+  .tl-step.is-closed .dot { background: var(--ok); }
+  .tl-step.is-gen .dot {
+    background: var(--brand);
+    border-radius: 1px;
+    transform: rotate(45deg);
+  }
+  .tl-step .lab {
+    font: 500 10.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .tl-step.is-open .lab   { color: var(--info); }
+  .tl-step.is-taken .lab  { color: var(--warn); }
+  .tl-step.is-closed .lab { color: var(--ok); }
+  .tl-step.is-gen .lab    { color: var(--brand); }
+  .tl-step .ts {
+    font: 400 10.5px/1 var(--font-mono);
+    color: var(--ink-3);
+    font-feature-settings: 'tnum' 1;
+    white-space: nowrap;
+  }
+  /* link to generated lavoro */
+  .tl-step.is-gen .ts {
+    color: var(--brand);
+    text-decoration: none;
+    border-bottom: 1px dashed color-mix(in srgb, var(--brand) 50%, transparent);
+    cursor: pointer;
+  }
+  .tl-step.is-gen .ts:hover { color: var(--brand-ink); border-bottom-style: solid; }
+  .tl-line {
+    align-self: center;
+    margin-top: -15px;
+    flex: 0 0 32px;
+    height: 1px;
+    background: var(--rule-strong);
+    position: relative;
+  }
+  .tl-line.is-done { background: color-mix(in srgb, var(--ok) 35%, var(--rule-strong)); }
+  .tl-line.is-gen  { background: color-mix(in srgb, var(--brand) 45%, var(--rule-strong)); border-top: 1px dashed var(--surface-2); margin-top: -16px; }
+
+  /* badges (materiali / foto) */
+  .rec-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .badge-rec {
+    appearance: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 26px; padding: 0 10px;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--ink-2);
+    border-radius: 4px;
+    font: 500 12px/1 var(--font-sans);
+    cursor: pointer;
+    transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+  }
+  .badge-rec:hover { border-color: var(--rule-strong); background: var(--surface-2); }
+  .badge-rec .ic {
+    width: 13px; height: 13px;
+    color: var(--ink-3);
+  }
+  .badge-rec .n {
+    font-family: var(--font-mono); font-feature-settings: 'tnum' 1;
+    color: var(--ink-1);
+    margin-left: -2px;
+  }
+
+  /* ---------- DENSITY: compact ---------- */
+  .feed-wrap.is-compact .rec { padding: 12px 20px; gap: 0 16px; grid-template-columns: 72px 52px 1fr; }
+  .feed-wrap.is-compact .rec-photo { width: 52px; height: 38px; }
+  .feed-wrap.is-compact .rec-photo svg { width: 22px; height: 22px; }
+  .feed-wrap.is-compact .rec-photo::after { display: none; }
+  .feed-wrap.is-compact .rec-body { gap: 5px; }
+  .feed-wrap.is-compact .rec-date .d { font-size: 13.5px; }
+  .feed-wrap.is-compact .rec-date .t,
+  .feed-wrap.is-compact .rec-date .y { font-size: 10.5px; }
+  .feed-wrap.is-compact .rec-title { font-size: 13.5px; line-height: 1.35; }
+  .feed-wrap.is-compact .timeline { padding: 6px 10px; }
+  .feed-wrap.is-compact .tl-step { min-width: 64px; }
+  .feed-wrap.is-compact .tl-line { flex-basis: 24px; }
+
+  /* ---------- Sub-tab pane visibility ---------- */
+  .feed-pane { display: none; }
+  .feed-pane.is-active { display: block; }
+
+  /* ---------- Empty state ---------- */
+  .empty {
+    padding: 64px 20px 72px;
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .empty .e-glyph {
+    width: 56px; height: 56px;
+    color: var(--ink-4);
+    margin-bottom: 8px;
+  }
+  .empty h3 {
+    font: 600 16px/1.2 var(--font-sans);
+    color: var(--ink-1);
+    margin: 0;
+  }
+  .empty p {
+    font: 400 13px/1.5 var(--font-sans);
+    color: var(--ink-3);
+    margin: 0;
+    max-width: 380px;
+  }
+  .empty .e-action {
+    margin-top: 8px;
+    appearance: none; border: 1px solid var(--rule); background: var(--surface);
+    color: var(--ink-1);
+    height: 32px; padding: 0 14px;
+    border-radius: 4px;
+    font: 500 12.5px/1 var(--font-sans);
+    cursor: pointer;
+  }
+  .empty .e-action:hover { border-color: var(--rule-strong); background: var(--surface-2); }
+  .empty .e-action strong { color: var(--brand); font-weight: 500; }
+
+  /* ---------- Doc notes (in fondo, come V2) ---------- */
+  .doc-note {
+    margin: 8px 28px 24px;
+    padding: 14px 18px;
+    border-left: 2px solid var(--rule-strong);
+    color: var(--ink-3);
+    font: 400 12.5px/1.55 var(--font-sans);
+  }
+  .doc-note strong { color: var(--ink-1); font-weight: 500; }
+  .doc-note + .doc-note { margin-top: -8px; }
+  .doc-note ol { margin: 6px 0 0; padding-left: 18px; }
+  .doc-note li { margin: 3px 0; }
+  .doc-note code { font: 500 12px/1 var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; color: var(--ink-2); }
+
+  /* ---------- Tweaks panel ---------- */
+  .tweaks-panel {
+    position: fixed; right: 24px; bottom: 24px;
+    width: 240px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    box-shadow: var(--shadow-pop);
+    padding: 14px 14px 12px;
+    z-index: 50;
+    display: none;
+    font-family: var(--font-sans);
+  }
+  .tweaks-panel.is-open { display: block; }
+  .tweaks-panel h4 {
+    font: 600 11.5px/1 var(--font-sans);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+    margin: 0 0 12px;
+  }
+  .tweaks-panel .tw-section { margin-bottom: 14px; }
+  .tweaks-panel .tw-section:last-child { margin-bottom: 0; }
+  .tweaks-panel .tw-label {
+    font: 500 11px/1 var(--font-sans);
+    color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .tweaks-panel .tw-segment {
+    display: flex; gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .tweaks-panel .tw-segment button {
+    flex: 1;
+    appearance: none; border: 0; background: var(--surface);
+    color: var(--ink-2);
+    padding: 7px 10px;
+    font: 500 12px/1 var(--font-sans);
+    cursor: pointer;
+    border-right: 1px solid var(--rule);
+  }
+  .tweaks-panel .tw-segment button:last-child { border-right: 0; }
+  .tweaks-panel .tw-segment button.is-active {
+    background: var(--brand-tint);
+    color: var(--brand);
+    font-weight: 600;
+  }
+
+  /* hidden helper */
+  .is-hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="app" data-screen-label="Archivio Storico — Centro controllo">
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">F</div>
+      <div>Flotta<small>Gestionale logistica</small></div>
+    </div>
+    <div class="nav-group">
+      <h6>Operatività</h6>
+      <div class="nav-item is-active"><span class="dot"></span>Centro controllo</div>
+      <div class="nav-item"><span class="dot"></span>Viaggi &amp; tratte</div>
+      <div class="nav-item"><span class="dot"></span>Autisti</div>
+    </div>
+    <div class="nav-group">
+      <h6>Officina</h6>
+      <div class="nav-item"><span class="dot"></span>Manutenzioni</div>
+      <div class="nav-item"><span class="dot"></span>Lavori aperti</div>
+      <div class="nav-item"><span class="dot"></span>Segnalazioni</div>
+      <div class="nav-item"><span class="dot"></span>Controlli mezzo</div>
+    </div>
+    <div class="nav-group">
+      <h6>Risorse</h6>
+      <div class="nav-item"><span class="dot"></span>Rifornimenti</div>
+      <div class="nav-item"><span class="dot"></span>Attrezzature</div>
+      <div class="nav-item"><span class="dot"></span>Documenti</div>
+    </div>
+    <div class="sidebar-footer">
+      <strong>Trasporti Verbano SA</strong><br/>
+      Lugano, CH · v4.21.0
+    </div>
+  </aside>
+
+  <!-- ============== MAIN ============== -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="crumbs">
+        Centro controllo <span class="sep">/</span> <strong>Archivio storico</strong>
+      </div>
+      <div class="topbar-right">
+        <span>Aggiornato</span>
+        <span class="updated-stamp">10.05.2026 · 08:42</span>
+        <div class="avatar">MR</div>
+      </div>
+    </header>
+
+    <section class="page-head">
+      <h1>Centro controllo</h1>
+      <p class="lede">Sinottica live e archivio consolidato. L'archivio raccoglie lavori, manutenzioni, segnalazioni e richieste — anche dopo la chiusura — per contestazioni, audit, anomalie.</p>
+    </section>
+
+    <!-- ====== PAGE TABS (sorelle): Sinottica · Archivio ====== -->
+    <div class="tabs page-tabs" role="tablist">
+      <button class="tab" type="button">Sinottica flotta</button>
+      <button class="tab is-active" type="button">Archivio storico</button>
+      <div class="tabs-spacer"></div>
+      <div class="tabs-meta" style="display:none">
+        <svg class="archive-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="0.5"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>
+        <span>Consolidato · ultimi 24 mesi · sola lettura</span>
+      </div>
+    </div>
+
+    <!-- ====== TOOLBAR FILTRI (sticky) ====== -->
+    <section class="archivio-toolbar" aria-label="Filtri archivio">
+
+      <!-- Autista -->
+      <div class="filter-field" id="ff-autista" data-key="autista" tabindex="0">
+        <span class="ff-label">Autista</span>
+        <span class="ff-value is-placeholder">Tutti</span>
+        <svg class="ff-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <!-- Targa -->
+      <div class="filter-field" id="ff-targa" data-key="targa" tabindex="0">
+        <span class="ff-label">Targa</span>
+        <span class="ff-value is-placeholder">Tutte</span>
+        <svg class="ff-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <!-- Cerca (targa o autista, testo libero) -->
+      <label class="filter-field ff-search" id="ff-search" data-key="search" for="ff-search-input">
+        <svg class="ff-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="ff-label">Cerca</span>
+        <input id="ff-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="targa o autista…"/>
+        <svg class="ff-clear" id="ff-search-clear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" title="Pulisci ricerca" style="display:none"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </label>
+
+      <!-- Periodo (date range) — di default ACCESO -->
+      <div class="filter-field ff-period is-set" id="ff-period" data-key="periodo" tabindex="0">
+        <span class="ff-label">Periodo</span>
+        <span class="ff-value">Ultimi 30 giorni</span>
+        <svg class="ff-clear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" title="Rimuovi filtro periodo"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+
+      <!-- Chip filtri attivi -->
+      <div class="filter-state" id="filterState">
+        <span><span class="ct" id="filterCount">1</span> filtro attivo</span>
+        <button type="button" id="filterClear">azzera</button>
+      </div>
+
+      <div class="toolbar-spacer"></div>
+
+      <div class="toolbar-meta">
+        <span id="resultCount"><strong>59</strong> risultati</span>
+        <span style="color:var(--ink-4)">·</span>
+        <span>Ordinati per <strong>data ↓</strong></span>
+      </div>
+    </section>
+
+    <!-- ====== SUB-TABBAR (4 entità) ====== -->
+    <div class="tabs sub-tabs" role="tablist">
+      <button class="tab is-active" type="button" data-pane="lavori">
+        Lavori <span class="ct">23</span>
+      </button>
+      <button class="tab" type="button" data-pane="manutenzioni">
+        Manutenzioni <span class="ct">14</span>
+      </button>
+      <button class="tab" type="button" data-pane="segnalazioni">
+        Segnalazioni <span class="ct">17</span>
+      </button>
+      <button class="tab" type="button" data-pane="richieste">
+        Richieste <span class="ct">5</span>
+      </button>
+      <div class="tabs-spacer"></div>
+      <div class="density-toggle" role="group" aria-label="Densità lista">
+        <button type="button" data-density="comoda" class="is-active">Comoda</button>
+        <button type="button" data-density="compatta">Compatta</button>
+      </div>
+    </div>
+
+    <!-- ====== FEED ====== -->
+    <div class="feed-wrap" id="feedWrap">
+
+      <!-- ============ PANE: LAVORI ============ -->
+      <section class="feed-pane is-active" data-pane="lavori">
+
+        <!-- Day separator: Oggi -->
+        <div class="day-sep">
+          <span class="label"><strong>Oggi</strong> · lunedì 10 maggio</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <!-- LAVORO 1 — urg alta, aperta→presa→chiusa, generato da segnalazione -->
+        <article class="rec urg-alta is-expanded" data-veh="trattore">
+          <div class="rec-date">
+            <div class="d">10 mag</div>
+            <div class="y">2026</div>
+            <div class="t">09:42</div>
+          </div>
+          <div class="rec-photo" title="Trattore">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="11" height="8" rx="1"/><path d="M13 11h4l3 3v3h-7"/><circle cx="6.5" cy="18.5" r="2"/><circle cx="17.5" cy="18.5" r="2"/></svg>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI315407</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-alta">Alta urgenza</span>
+              <span class="rec-id">L-2026-237</span>
+              <span class="rec-spacer"></span>
+              <svg class="rec-expand-hint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </header>
+            <div class="rec-title">Cambio pastiglie freni asse posteriore — rumore stridulo segnalato dall'autista</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>E. Selimi</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina Bianchi</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open">
+                  <span class="dot"></span><span class="lab">Aperta</span><span class="ts">10.05 · 09:42</span>
+                </span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken">
+                  <span class="dot"></span><span class="lab">Presa</span><span class="ts">10.05 · 14:10</span>
+                </span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed">
+                  <span class="dot"></span><span class="lab">Chiusa</span><span class="ts">10.05 · 17:30</span>
+                </span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button" title="6 materiali utilizzati">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">6</span>
+                </button>
+              </div>
+            </footer>
+
+            <!-- ====== DETTAGLI ESPANSI ====== -->
+            <div class="rec-extra">
+              <div class="rx-section">
+                <div class="rx-label">Descrizione</div>
+                <div class="rx-value">Pastiglie freni asse posteriore sostituite su tutti e quattro i punti. Riscontrato cristallizzazione del materiale d'attrito, dischi <strong>nella norma</strong> (spessore residuo 22 mm — soglia 18 mm). Test in piazzale ok, frenata regolare e silenziosa.</div>
+              </div>
+              <div class="rx-section">
+                <div class="rx-label">Note officina</div>
+                <div class="rx-quote">«Pastiglie usurate in modo asimmetrico, asse sx più consumato del dx (probabile lieve trascinamento pinza). Consigliata revisione pinza sx al prossimo tagliando.»</div>
+              </div>
+              <div class="rx-section">
+                <div class="rx-label">Fornitore</div>
+                <div class="rx-value">
+                  <div class="rx-grid">
+                    <div class="kv"><span class="k">Ragione sociale</span><span class="v">Officina Bianchi S.r.l.</span></div>
+                    <div class="kv"><span class="k">Referente</span><span class="v">M. Bianchi</span></div>
+                    <div class="kv"><span class="k">Telefono</span><span class="v mono">+39 0432 712 904</span></div>
+                    <div class="kv"><span class="k">N. fattura</span><span class="v mono">2026/0317</span></div>
+                    <div class="kv"><span class="k">Importo</span><span class="v mono">€ 487,20</span></div>
+                    <div class="kv"><span class="k">Pagamento</span><span class="v">30 gg DF · pagata</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="rx-section">
+                <div class="rx-label">Origine</div>
+                <div class="rx-value">
+                  Generato dalla <a class="rx-link" href="#" data-jump="S-2026-141">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+                    Segnalazione S-2026-141 · "freni"
+                  </a>
+                  <div style="margin-top:6px;color:var(--ink-3);font-size:12px">Aperta dall'autista <strong>E. Selimi</strong> il 10.05 · 08:51, presa in carico da <strong>R. Costa</strong> alle 09:15.</div>
+                </div>
+              </div>
+              <div class="rx-section">
+                <div class="rx-label">Chiusura</div>
+                <div class="rx-value">Chiusa da <strong>R. Costa</strong> il 10.05.2026 alle 17:30. Esito: <strong>positivo</strong>. Km al rientro: <span class="mono">412.870</span>.</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- LAVORO 2 — urg bassa, aperta→chiusa (saltato "presa") -->
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">10 mag</div>
+            <div class="y">2026</div>
+            <div class="t">08:15</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324633</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-bassa">Bassa</span>
+              <span class="rec-id">L-2026-236</span>
+            </header>
+            <div class="rec-title">Sostituzione lampadine fendinebbia anteriori (entrambe)</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>D. Livi</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina interna</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open">
+                  <span class="dot"></span><span class="lab">Aperta</span><span class="ts">10.05 · 08:15</span>
+                </span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed">
+                  <span class="dot"></span><span class="lab">Chiusa</span><span class="ts">10.05 · 10:40</span>
+                </span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">2</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Day separator: Ieri -->
+        <div class="day-sep">
+          <span class="label"><strong>Ieri</strong> · domenica 9 maggio</span>
+          <span class="sep-rule"></span>
+          <span class="count">1 record</span>
+        </div>
+
+        <!-- LAVORO 3 — urg media -->
+        <article class="rec urg-media">
+          <div class="rec-date">
+            <div class="d">9 mag</div>
+            <div class="y">2026</div>
+            <div class="t">14:18</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI298409</span>
+              <span class="cat">Cisterna</span>
+              <span class="urg-pill is-media">Media</span>
+              <span class="rec-id">L-2026-234</span>
+            </header>
+            <div class="rec-title">Sostituzione filtro gasolio e filtro aria — manutenzione programmata anticipata</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>R. Fenderico</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina interna</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">09.05 · 14:18</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">09.05 · 15:02</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">09.05 · 18:11</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">3</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Day separator: 8 maggio -->
+        <div class="day-sep">
+          <span class="label"><strong>Venerdì</strong> · 8 maggio</span>
+          <span class="sep-rule"></span>
+          <span class="count">1 record</span>
+        </div>
+
+        <!-- LAVORO 4 — urg alta -->
+        <article class="rec urg-alta">
+          <div class="rec-date">
+            <div class="d">8 mag</div>
+            <div class="y">2026</div>
+            <div class="t">17:02</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI136914</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-alta">Alta urgenza</span>
+              <span class="rec-id">L-2026-231</span>
+            </header>
+            <div class="rec-title">Controllo perdita olio motore — macchia sotto motore a fine giornata</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>A. Scalamato</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina Diesel-Tec</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">08.05 · 17:02</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">09.05 · 07:30</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">09.05 · 13:50</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">4</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Day separator: questa settimana -->
+        <div class="day-sep">
+          <span class="label"><strong>Questa settimana</strong> · 4–7 maggio</span>
+          <span class="sep-rule"></span>
+          <span class="count">3 record</span>
+        </div>
+
+        <article class="rec urg-media">
+          <div class="rec-date">
+            <div class="d">6 mag</div>
+            <div class="y">2026</div>
+            <div class="t">10:15</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI279216</span>
+              <span class="cat">Cisterna</span>
+              <span class="urg-pill is-media">Media</span>
+              <span class="rec-id">L-2026-228</span>
+            </header>
+            <div class="rec-title">Smontaggio e revisione pompa idraulica — bassa pressione su ribaltabile</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>P. Lauro</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Idraulica Sud SA</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">06.05 · 10:15</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">06.05 · 11:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">07.05 · 16:25</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">9</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">5 mag</div>
+            <div class="y">2026</div>
+            <div class="t">08:00</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI239279</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-bassa">Bassa</span>
+              <span class="rec-id">L-2026-225</span>
+            </header>
+            <div class="rec-title">Tagliando 80 000 km programmato — cambio olio, filtri, controllo cinghie</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>Officina Bianchi</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina Bianchi</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">05.05 · 08:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">05.05 · 17:20</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">12</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">4 mag</div>
+            <div class="y">2026</div>
+            <div class="t">11:50</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI180147</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-bassa">Bassa</span>
+              <span class="rec-id">L-2026-223</span>
+            </header>
+            <div class="rec-title">Riparazione tergicristallo destro — molla braccio allentata</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>S. Calabrese</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina interna</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">04.05 · 11:50</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">04.05 · 14:20</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">04.05 · 15:35</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">1</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Day separator: aprile -->
+        <div class="day-sep">
+          <span class="label"><strong>Aprile</strong> · 28 apr → 30 apr</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec urg-alta">
+          <div class="rec-date">
+            <div class="d">28 apr</div>
+            <div class="y">2026</div>
+            <div class="t">13:42</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324623</span>
+              <span class="cat">Cisterna</span>
+              <span class="urg-pill is-alta">Alta urgenza</span>
+              <span class="rec-id">L-2026-218</span>
+            </header>
+            <div class="rec-title">Sostituzione frizione completa — slittamento in salita carico pieno</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>Officina Bianchi</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina Bianchi</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">28.04 · 13:42</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">29.04 · 08:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">30.04 · 16:10</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">18</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec urg-media">
+          <div class="rec-date">
+            <div class="d">22 apr</div>
+            <div class="y">2026</div>
+            <div class="t">10:00</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI136914</span>
+              <span class="cat">Trattore</span>
+              <span class="urg-pill is-media">Media</span>
+              <span class="rec-id">L-2026-211</span>
+            </header>
+            <div class="rec-title">Sostituzione batteria — avviamenti incerti al mattino</div>
+            <div class="rec-people">
+              <span>Aperto da <strong>A. Scalamato</strong></span>
+              <span class="sep">·</span>
+              <span>Eseguito da <strong>Officina interna</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">22.04 · 10:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">22.04 · 13:15</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">22.04 · 14:50</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">1</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============ PANE: MANUTENZIONI ============ -->
+      <section class="feed-pane" data-pane="manutenzioni">
+
+        <div class="day-sep">
+          <span class="label"><strong>Maggio</strong> · 1 mag → 10 mag</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">5 mag</div>
+            <div class="y">2026</div>
+            <div class="t">08:00</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI239279</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip">Mezzo</span>
+              <span class="rec-id">M-2026-088</span>
+            </header>
+            <div class="rec-title">Tagliando 80 000 km — olio motore, filtro olio, filtro gasolio, filtro aria, controllo cinghie</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Officina Bianchi</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>1 240.00</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">05.05 · 08:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">05.05 · 17:20</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">12</span>
+                </button>
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">2</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">2 mag</div>
+            <div class="y">2026</div>
+            <div class="t">09:30</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">—</span>
+              <span class="cat">Compressore officina</span>
+              <span class="type-chip">Compressore</span>
+              <span class="rec-id">M-2026-085</span>
+            </header>
+            <div class="rec-title">Manutenzione annuale compressore Atlas Copco GA15 — cambio olio, filtro aria, controllo valvole</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Pneuma-Tec SA</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>420.00</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">02.05 · 09:30</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">02.05 · 12:00</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">3</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <div class="day-sep">
+          <span class="label"><strong>Aprile</strong> · 1 apr → 30 apr</span>
+          <span class="sep-rule"></span>
+          <span class="count">3 record</span>
+        </div>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">28 apr</div>
+            <div class="y">2026</div>
+            <div class="t">13:42</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324623</span>
+              <span class="cat">Cisterna</span>
+              <span class="type-chip">Mezzo</span>
+              <span class="rec-id">M-2026-081</span>
+            </header>
+            <div class="rec-title">Sostituzione frizione completa con disco e spingidisco — interventi straordinari fuori contratto</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Officina Bianchi</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>3 850.00</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">28.04 · 13:42</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">30.04 · 16:10</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">18</span>
+                </button>
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">7</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">15 apr</div>
+            <div class="y">2026</div>
+            <div class="t">10:00</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">—</span>
+              <span class="cat">Cassetta autista TI136914</span>
+              <span class="type-chip">Attrezzature</span>
+              <span class="rec-id">M-2026-076</span>
+            </header>
+            <div class="rec-title">Revisione e rifornimento cassetta attrezzi — chiavi mancanti reintegrate, nuovo set chiavi a brugola</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Officina interna</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>185.50</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">15.04 · 10:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">15.04 · 11:30</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">8</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">8 apr</div>
+            <div class="y">2026</div>
+            <div class="t">09:00</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI315407</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip">Mezzo</span>
+              <span class="rec-id">M-2026-070</span>
+            </header>
+            <div class="rec-title">Sostituzione cinghie distribuzione — intervento da contratto casa madre</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Officina Bianchi</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>0.00 <span style="font-size:10.5px;color:var(--ink-3);font-family:var(--font-sans);margin-left:4px;">contratto</span></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">08.04 · 09:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">08.04 · 10:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">08.04 · 16:45</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">5</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <div class="day-sep">
+          <span class="label"><strong>Marzo</strong> · 1 mar → 31 mar</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">25 mar</div>
+            <div class="y">2026</div>
+            <div class="t">14:20</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI298409</span>
+              <span class="cat">Cisterna</span>
+              <span class="type-chip">Mezzo</span>
+              <span class="rec-id">M-2026-064</span>
+            </header>
+            <div class="rec-title">Carrozzeria — sostituzione sportello cabina lato guida dopo urto</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Carrozzeria Foppa</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>2 120.00</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">25.03 · 14:20</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">28.03 · 09:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">02.04 · 17:00</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">11</span>
+                </button>
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">12</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">12 mar</div>
+            <div class="y">2026</div>
+            <div class="t">08:30</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI178456</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip">Mezzo</span>
+              <span class="rec-id">M-2026-052</span>
+            </header>
+            <div class="rec-title">Allineamento, bilanciatura e sostituzione gomme asse 3 (×4)</div>
+            <div class="rec-people">
+              <span>Fornitore <strong>Pneumatici Riva</strong></span>
+              <span class="importo"><span class="ccy">CHF</span>2 480.00</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">12.03 · 08:30</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Eseguita</span><span class="ts">12.03 · 13:10</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                  Materiali <span class="n">4</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============ PANE: SEGNALAZIONI ============ -->
+      <section class="feed-pane" data-pane="segnalazioni">
+
+        <div class="day-sep">
+          <span class="label"><strong>Maggio</strong> · 1 mag → 10 mag</span>
+          <span class="sep-rule"></span>
+          <span class="count">3 record</span>
+        </div>
+
+        <!-- Segnalazione → genera Lavoro (4 step, freni) -->
+        <article class="rec urg-alta">
+          <div class="rec-date">
+            <div class="d">10 mag</div>
+            <div class="y">2026</div>
+            <div class="t">07:08</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI315407</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip is-freni">Freni</span>
+              <span class="rec-id">S-2026-141</span>
+            </header>
+            <div class="rec-title">"Pastiglie freni asse posteriore emettono rumore stridulo da stamattina, soprattutto a freddo. Sembra metallo su metallo."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>E. Selimi</strong></span>
+              <span class="sep">·</span>
+              <span>Da app autista, area di sosta Bellinzona Sud</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">10.05 · 07:08</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">10.05 · 09:42</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">10.05 · 17:30</span></span>
+                <span class="tl-line is-gen"></span>
+                <span class="tl-step is-gen"><span class="dot"></span><span class="lab">Generato</span><a class="ts" title="Apri lavoro #L-2026-237">Lavoro L-2026-237</a></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">3</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Segnalazione gomme — chiusa senza lavoro (falso allarme) -->
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">7 mag</div>
+            <div class="y">2026</div>
+            <div class="t">18:32</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324633</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip is-gomme">Gomme</span>
+              <span class="rec-id">S-2026-138</span>
+            </header>
+            <div class="rec-title">"Sensore pressione gomma asse 2 destra dà avviso intermittente. Controllo visivo: gomma sembra integra."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>D. Livi</strong></span>
+              <span class="sep">·</span>
+              <span>Da app autista, tratta Como → Lugano</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">07.05 · 18:32</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">08.05 · 07:15</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">08.05 · 08:40</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">2</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <!-- Segnalazione elettrica — solo aperta (in attesa) -->
+        <article class="rec urg-media">
+          <div class="rec-date">
+            <div class="d">4 mag</div>
+            <div class="y">2026</div>
+            <div class="t">19:50</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI180147</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip is-elett">Elettrico</span>
+              <span class="rec-id">S-2026-132</span>
+            </header>
+            <div class="rec-title">"Indicatore livello AdBlue dà avviso anche con serbatoio pieno. Non riesco a resettare dal cruscotto."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>S. Calabrese</strong></span>
+              <span class="sep">·</span>
+              <span>Da app autista, deposito</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">04.05 · 19:50</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">05.05 · 08:00</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">06.05 · 11:20</span></span>
+                <span class="tl-line is-gen"></span>
+                <span class="tl-step is-gen"><span class="dot"></span><span class="lab">Generato</span><a class="ts" title="Apri lavoro #L-2026-227">Lavoro L-2026-227</a></span>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <div class="day-sep">
+          <span class="label"><strong>Aprile</strong> · 1 apr → 30 apr</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec urg-alta">
+          <div class="rec-date">
+            <div class="d">28 apr</div>
+            <div class="y">2026</div>
+            <div class="t">11:15</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324623</span>
+              <span class="cat">Cisterna</span>
+              <span class="type-chip">Altro</span>
+              <span class="rec-id">S-2026-128</span>
+            </header>
+            <div class="rec-title">"Frizione slitta in salita carico pieno. Già da qualche giorno è meno reattiva."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>I. Attardi</strong></span>
+              <span class="sep">·</span>
+              <span>Da app autista, salita Monte Ceneri</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">28.04 · 11:15</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">28.04 · 13:42</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">30.04 · 16:10</span></span>
+                <span class="tl-line is-gen"></span>
+                <span class="tl-step is-gen"><span class="dot"></span><span class="lab">Generato</span><a class="ts" title="Apri lavoro #L-2026-218">Lavoro L-2026-218</a></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">5</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">14 apr</div>
+            <div class="y">2026</div>
+            <div class="t">08:55</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI239279</span>
+              <span class="cat">Trattore</span>
+              <span class="type-chip is-elett">Elettrico</span>
+              <span class="rec-id">S-2026-119</span>
+            </header>
+            <div class="rec-title">"Specchio retrovisore destro non si regola elettricamente. Funziona solo manuale."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>F. Martinelli</strong></span>
+              <span class="sep">·</span>
+              <span>Da app autista, deposito</span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">14.04 · 08:55</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">16.04 · 12:00</span></span>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============ PANE: RICHIESTE ============ -->
+      <section class="feed-pane" data-pane="richieste">
+
+        <div class="day-sep">
+          <span class="label"><strong>Maggio</strong> · 1 mag → 10 mag</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">6 mag</div>
+            <div class="y">2026</div>
+            <div class="t">17:42</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI136914</span>
+              <span class="cat">Trattore</span>
+              <span class="rec-id">R-2026-042</span>
+            </header>
+            <div class="rec-title">"Chiave inglese 32 mm mancante in cassetta attrezzi. Servirebbe per smontare il filtro gasolio in strada se necessario. Va sostituita prima di lunedì."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>A. Scalamato</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">06.05 · 17:42</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">07.05 · 08:30</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">09.05 · 11:00</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">1</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">3 mag</div>
+            <div class="y">2026</div>
+            <div class="t">10:20</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI279216</span>
+              <span class="cat">Cisterna</span>
+              <span class="rec-id">R-2026-039</span>
+            </header>
+            <div class="rec-title">"Servirebbe un secondo set di triangoli + giubbotto catarifrangente di scorta. Quello attuale è scolorito."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>P. Lauro</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">03.05 · 10:20</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">04.05 · 14:00</span></span>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <div class="day-sep">
+          <span class="label"><strong>Aprile</strong> · 1 apr → 30 apr</span>
+          <span class="sep-rule"></span>
+          <span class="count">2 record</span>
+        </div>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">22 apr</div>
+            <div class="y">2026</div>
+            <div class="t">15:08</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI315407</span>
+              <span class="cat">Trattore</span>
+              <span class="rec-id">R-2026-034</span>
+            </header>
+            <div class="rec-title">"Manca il rotolo carta per stampante DTCO. Vorrei tenerne 2 di scorta nella cabina."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>E. Selimi</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">22.04 · 15:08</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-taken"><span class="dot"></span><span class="lab">Presa</span><span class="ts">22.04 · 16:30</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">23.04 · 09:15</span></span>
+              </div>
+              <div class="rec-badges">
+                <button class="badge-rec" type="button">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6V4h8v2"/></svg>
+                  Foto <span class="n">1</span>
+                </button>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-date">
+            <div class="d">9 apr</div>
+            <div class="y">2026</div>
+            <div class="t">07:55</div>
+          </div>
+          <div class="rec-body">
+            <header class="rec-head">
+              <span class="targa">TI324633</span>
+              <span class="cat">Trattore</span>
+              <span class="rec-id">R-2026-031</span>
+            </header>
+            <div class="rec-title">"Catene da neve da rimuovere dal vano sotto sedile — non servono più stagione. Mi servirebbe lo spazio per il triangolo nuovo."</div>
+            <div class="rec-people">
+              <span>Aperta da <strong>D. Livi</strong></span>
+            </div>
+            <footer class="rec-foot">
+              <div class="timeline">
+                <span class="tl-step is-open"><span class="dot"></span><span class="lab">Aperta</span><span class="ts">09.04 · 07:55</span></span>
+                <span class="tl-line is-done"></span>
+                <span class="tl-step is-closed"><span class="dot"></span><span class="lab">Chiusa</span><span class="ts">11.04 · 10:00</span></span>
+              </div>
+            </footer>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============ EMPTY STATE (mostrato dal tweak "Cycle stati → Vuoto") ============ -->
+      <section class="feed-pane is-hidden" data-pane="empty">
+        <div class="empty">
+          <svg class="e-glyph" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="10" y="14" width="44" height="10" rx="1"/>
+            <path d="M14 24v26a2 2 0 0 0 2 2h32a2 2 0 0 0 2-2V24"/>
+            <path d="M26 34h12"/>
+            <circle cx="48" cy="48" r="7" stroke-dasharray="2 3"/>
+            <path d="m53.5 53.5 4 4"/>
+          </svg>
+          <h3>Nessun record per i filtri attivi</h3>
+          <p>Prova ad allargare l'intervallo di date, a rimuovere uno dei filtri, oppure azzerali tutti per vedere l'archivio completo.</p>
+          <button class="e-action" type="button" id="emptyClear">Azzera <strong>tutti i filtri</strong></button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ====== Note di design (come V2) ====== -->
+    <p class="doc-note">
+      <strong>Archivio storico — sorella maggiore della Sinottica.</strong> Stessa shell, stessa griglia di colori, stessi <code>.pill</code> e <code>.tab</code> di V2. La Sinottica racconta <em>cosa sta succedendo adesso</em>; l'archivio racconta <em>cosa è successo</em>. Visualmente convivono come tab della stessa pagina (in alto, sotto il page-head): chi è abituato a Sinottica trova qui la stessa toolbar di filtri e lo stesso chip <code>X filtri attivi · azzera</code>, ma sotto trova un <em>feed cronologico</em> invece di una tabella — perché il modo in cui si consulta lo storico è scorrere nel tempo, non confrontare colonne.
+    </p>
+    <p class="doc-note">
+      <strong>Decisioni di layout chiave.</strong>
+      <ol>
+        <li><em>Toolbar sticky.</em> I 3 filtri (Autista, Targa, Periodo) sono in alto e restano visibili anche scorrendo. Quando un filtro è acceso prende il <code>brand-tint</code> + bordo navy — stessa convenzione del KPI attivo in V2. Il filtro Periodo è preacceso al periodo "01.01 → 10.05" così l'archivio non parte mai con tutti i 24 mesi (sarebbe rumoroso); è rimovibile con la × inline. Il chip <em>1 filtro attivo</em> sta subito a destra dei filter-field.</li>
+        <li><em>Sub-tabbar sotto la toolbar.</em> Quattro voci con count badge mono — riusa esattamente il pattern <code>.tab .ct</code> di V2 (motrici / rimorchi). I conteggi tengono conto dei filtri attivi.</li>
+        <li><em>Feed, non tabella.</em> Ogni record è una riga con: data sulla colonna sinistra (mono, fissa 92 px), e a destra header + descrizione + meta + timeline. Le righe critiche prendono il bordo sinistro 3 px <code>--bad</code> / <code>--warn</code> come la <code>tr.is-critical</code> di V2 — è il segnale d'urgenza riconoscibile a colpo d'occhio dalla shell V2.</li>
+        <li><em>Mini-timeline orizzontale.</em> Pallini connessi da linee, etichetta sopra e timestamp sotto. Rendero solo gli eventi che esistono per quel record — niente placeholder grigi per step non avvenuti. I 4 stati di base usano colori semantici già nei token: <span style="color:var(--info)">Aperta</span> (info), <span style="color:var(--warn)">Presa</span> (warn), <span style="color:var(--ok)">Chiusa</span> (ok), e un romboide <span style="color:var(--brand)">brand</span> per "<em>Lavoro generato</em>" — collegato con linea tratteggiata per dire "è un'altra entità che parte da qui". Cliccabile.</li>
+        <li><em>Raggruppamento per giorno.</em> Separatori "Oggi · Ieri · Questa settimana · Mese", in stile <code>label uppercase</code> di V2 con counter mono a destra. Solo etichette percettive, niente filtri impliciti. Lo sticky è impostato anche sui day-sep così sai sempre dove sei nel tempo.</li>
+      </ol>
+    </p>
+    <p class="doc-note">
+      <strong>Note minori.</strong> I badge <em>Materiali</em> / <em>Foto</em> hanno un counter mono integrato e stile coerente con i <code>.sig</code> di V2. Lo stato vuoto vive nello stesso feed-wrap dei pane, così la cornice resta identica quando si "svuota" la lista — meno scossone visivo. Solo lettura: niente azioni operative, niente menu kebab per riga, niente bottoni primari — coerente con il caso d'uso "ho un dubbio, apro l'archivio, scorro e trovo".
+    </p>
+
+  </main>
+</div>
+
+<!-- ====== Tweaks panel ====== -->
+<aside class="tweaks-panel" id="tweaksPanel" aria-hidden="true">
+  <h4>Tweaks</h4>
+  <div class="tw-section">
+    <span class="tw-label">Densità lista</span>
+    <div class="tw-segment" id="twDensity">
+      <button type="button" data-density="comoda" class="is-active">Comoda</button>
+      <button type="button" data-density="compatta">Compatta</button>
+    </div>
+  </div>
+  <div class="tw-section">
+    <span class="tw-label">Cycle stati</span>
+    <div class="tw-segment" id="twState">
+      <button type="button" data-state="pieno">Pieno</button>
+      <button type="button" data-state="filtrato" class="is-active">Filtrato</button>
+      <button type="button" data-state="vuoto">Vuoto</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+(function(){
+
+  // ===== Sub-tab switcher =====
+  const subTabs = document.querySelectorAll('.sub-tabs .tab');
+  const panes = document.querySelectorAll('.feed-pane');
+  let currentPane = 'lavori';
+
+  function showPane(name) {
+    currentPane = name;
+    panes.forEach(p => p.classList.toggle('is-active', p.dataset.pane === name));
+    panes.forEach(p => p.classList.toggle('is-hidden', false));
+    // empty pane visibility handled by state cycle below
+    if (currentState === 'vuoto') applyState('vuoto');
+  }
+  subTabs.forEach(t => t.addEventListener('click', () => {
+    subTabs.forEach(x => x.classList.toggle('is-active', x === t));
+    showPane(t.dataset.pane);
+  }));
+
+  // ===== Page tabs (Sinottica / Archivio) — mostriamo solo "Archivio" attivo, click su Sinottica è demo =====
+  document.querySelectorAll('.page-tabs .tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.page-tabs .tab').forEach(x => x.classList.toggle('is-active', x === t));
+    });
+  });
+
+  // ===== Density toggle (sia nella sub-tabbar che nel Tweaks panel) =====
+  const feedWrap = document.getElementById('feedWrap');
+  function setDensity(d) {
+    feedWrap.classList.toggle('is-compact', d === 'compatta');
+    document.querySelectorAll('.density-toggle button, #twDensity button').forEach(b => {
+      b.classList.toggle('is-active', b.dataset.density === d);
+    });
+  }
+  document.querySelectorAll('.density-toggle button, #twDensity button').forEach(b => {
+    b.addEventListener('click', () => setDensity(b.dataset.density));
+  });
+
+  // ===== Filter clear (azzera tutto) =====
+  const filterState = document.getElementById('filterState');
+  const filterCount = document.getElementById('filterCount');
+  const filterClear = document.getElementById('filterClear');
+  const emptyClear = document.getElementById('emptyClear');
+  const ffPeriod = document.getElementById('ff-period');
+
+  function clearAllFilters() {
+    ffPeriod.classList.remove('is-set');
+    const v = ffPeriod.querySelector('.ff-value');
+    v.textContent = 'Tutto lo storico';
+    v.classList.add('is-placeholder');
+    ffPeriod.querySelector('.ff-clear')?.remove();
+    // pulisci anche la search
+    if (typeof ffSearchInput !== 'undefined') {
+      ffSearchInput.value = '';
+      ffSearch.classList.remove('is-set');
+      ffSearchClear.style.display = 'none';
+    }
+    filterState.classList.add('is-hidden');
+    // se eravamo in "vuoto" o "filtrato", andiamo a "pieno"
+    applyState('pieno');
+  }
+  filterClear?.addEventListener('click', clearAllFilters);
+  emptyClear?.addEventListener('click', clearAllFilters);
+
+  // click sulla x del periodo (NON quella della search)
+  document.addEventListener('click', e => {
+    const x = e.target.closest('.ff-clear');
+    if (x && x.id !== 'ff-search-clear') {
+      e.stopPropagation();
+      clearAllFilters();
+    }
+  });
+
+  // ===== Search field (targa o autista) =====
+  const ffSearch = document.getElementById('ff-search');
+  const ffSearchInput = document.getElementById('ff-search-input');
+  const ffSearchClear = document.getElementById('ff-search-clear');
+
+  function updateFilterCount() {
+    let n = 0;
+    if (ffPeriod.classList.contains('is-set')) n++;
+    if (ffSearch.classList.contains('is-set')) n++;
+    if (document.getElementById('ff-autista')?.classList.contains('is-set')) n++;
+    if (document.getElementById('ff-targa')?.classList.contains('is-set')) n++;
+    if (n === 0) {
+      filterState.classList.add('is-hidden');
+    } else {
+      filterState.classList.remove('is-hidden');
+      filterCount.textContent = String(n);
+      const label = filterState.querySelector('span');
+      if (label) label.innerHTML = '<span class="ct" id="filterCount">' + n + '</span> ' + (n === 1 ? 'filtro attivo' : 'filtri attivi');
+    }
+  }
+
+  function syncSearchState() {
+    const has = ffSearchInput.value.trim().length > 0;
+    ffSearch.classList.toggle('is-set', has);
+    ffSearchClear.style.display = has ? '' : 'none';
+    updateFilterCount();
+  }
+
+  ffSearchInput.addEventListener('input', syncSearchState);
+  ffSearchClear.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ffSearchInput.value = '';
+    syncSearchState();
+    ffSearchInput.focus();
+  });
+
+  // ===== State cycle (Tweaks: pieno / filtrato / vuoto) =====
+  let currentState = 'filtrato';
+
+  function applyState(s) {
+    currentState = s;
+    document.querySelectorAll('#twState button').forEach(b => {
+      b.classList.toggle('is-active', b.dataset.state === s);
+    });
+
+    if (s === 'pieno') {
+      // niente filtri, mostra il pane corrente
+      ffPeriod.classList.remove('is-set');
+      const v = ffPeriod.querySelector('.ff-value');
+      v.textContent = 'Tutto lo storico';
+      v.classList.add('is-placeholder');
+      // search vuota
+      ffSearchInput.value = '';
+      ffSearch.classList.remove('is-set');
+      ffSearchClear.style.display = 'none';
+      filterState.classList.add('is-hidden');
+      // empty pane off
+      document.querySelector('[data-pane="empty"]').classList.add('is-hidden');
+      panes.forEach(p => {
+        if (p.dataset.pane === 'empty') return;
+        p.classList.toggle('is-active', p.dataset.pane === currentPane);
+      });
+      document.getElementById('resultCount').innerHTML = '<strong>147</strong> risultati';
+    }
+    else if (s === 'filtrato') {
+      // 1 filtro attivo (Periodo)
+      ffPeriod.classList.add('is-set');
+      const v = ffPeriod.querySelector('.ff-value');
+      v.textContent = 'Ultimi 30 giorni';
+      v.classList.remove('is-placeholder');
+      // search vuota in stato filtrato
+      ffSearchInput.value = '';
+      ffSearch.classList.remove('is-set');
+      ffSearchClear.style.display = 'none';
+      filterState.classList.remove('is-hidden');
+      filterState.querySelector('span').innerHTML = '<span class="ct" id="filterCount">1</span> filtro attivo';
+      // empty off
+      document.querySelector('[data-pane="empty"]').classList.add('is-hidden');
+      panes.forEach(p => {
+        if (p.dataset.pane === 'empty') return;
+        p.classList.toggle('is-active', p.dataset.pane === currentPane);
+      });
+      document.getElementById('resultCount').innerHTML = '<strong>59</strong> risultati';
+    }
+    else if (s === 'vuoto') {
+      // 3 filtri attivi, lista vuota (Periodo + Search + ipoteticamente Targa)
+      ffPeriod.classList.add('is-set');
+      const v = ffPeriod.querySelector('.ff-value');
+      v.textContent = '01.02.2024 → 28.02.2024';
+      v.classList.remove('is-placeholder');
+      // search con query d'esempio
+      ffSearchInput.value = 'freni';
+      ffSearch.classList.add('is-set');
+      ffSearchClear.style.display = '';
+      filterState.classList.remove('is-hidden');
+      filterState.querySelector('span').innerHTML = '<span class="ct" id="filterCount">3</span> filtri attivi';
+      // nascondi tutti i pane veri, mostra empty
+      panes.forEach(p => p.classList.toggle('is-active', p.dataset.pane === 'empty'));
+      document.querySelector('[data-pane="empty"]').classList.remove('is-hidden');
+      document.getElementById('resultCount').innerHTML = '<strong>0</strong> risultati';
+    }
+  }
+
+  document.querySelectorAll('#twState button').forEach(b => {
+    b.addEventListener('click', () => applyState(b.dataset.state));
+  });
+
+  // ===== Veicolo photo + Expand on click =====
+  const VEHICLE_SVGS = {
+    trattore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="11" height="8" rx="1"/><path d="M13 11h4l3 3v3h-7"/><circle cx="6.5" cy="18.5" r="2"/><circle cx="17.5" cy="18.5" r="2"/></svg>',
+    motrice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="14" height="9" rx="1"/><path d="M16 11h3l2 3v3h-5"/><circle cx="6" cy="19" r="1.6"/><circle cx="11" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></svg>',
+    cisterna: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="9" cy="13" rx="7" ry="4"/><path d="M16 13h3l2 2v2h-5"/><circle cx="6" cy="19" r="1.6"/><circle cx="12" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></svg>',
+    rimorchio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="18" height="10" rx="1"/><circle cx="7" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>',
+    compressore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="11" rx="1"/><circle cx="10" cy="11.5" r="3"/><path d="M17 9h4v6h-4"/></svg>',
+    attrezzature: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-4 4-6-6z"/><path d="M11 10 4 17l3 3 7-7"/></svg>'
+  };
+  function svgForCat(cat) {
+    const c = (cat || '').toLowerCase();
+    if (c.includes('compressore')) return VEHICLE_SVGS.compressore;
+    if (c.includes('attrezz'))     return VEHICLE_SVGS.attrezzature;
+    if (c.includes('cisterna'))    return VEHICLE_SVGS.cisterna;
+    if (c.includes('rimorch'))     return VEHICLE_SVGS.rimorchio;
+    if (c.includes('motrice'))     return VEHICLE_SVGS.motrice;
+    return VEHICLE_SVGS.trattore;
+  }
+  document.querySelectorAll('.rec').forEach((rec) => {
+    // 1. inietta photo se manca
+    if (!rec.querySelector(':scope > .rec-photo')) {
+      const cat = rec.querySelector('.cat')?.textContent?.trim() || '';
+      const photo = document.createElement('div');
+      photo.className = 'rec-photo';
+      photo.title = cat || 'Mezzo';
+      photo.innerHTML = svgForCat(cat);
+      rec.querySelector('.rec-date').after(photo);
+    }
+    // 2. inietta chevron expand se manca
+    const head = rec.querySelector('.rec-head');
+    if (head && !head.querySelector('.rec-expand-hint')) {
+      const spacer = document.createElement('span');
+      spacer.className = 'rec-spacer';
+      const chev = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      chev.setAttribute('class', 'rec-expand-hint');
+      chev.setAttribute('viewBox', '0 0 24 24');
+      chev.setAttribute('fill', 'none');
+      chev.setAttribute('stroke', 'currentColor');
+      chev.setAttribute('stroke-width', '2');
+      chev.setAttribute('stroke-linecap', 'round');
+      chev.setAttribute('stroke-linejoin', 'round');
+      chev.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
+      head.append(spacer, chev);
+    }
+    // 3. inietta rec-extra placeholder se manca
+    const body = rec.querySelector('.rec-body');
+    if (body && !body.querySelector(':scope > .rec-extra')) {
+      const extra = document.createElement('div');
+      extra.className = 'rec-extra';
+      const targa = rec.querySelector('.targa')?.textContent || '';
+      const title = rec.querySelector('.rec-title')?.textContent || '';
+      extra.innerHTML =
+        '<div class="rx-section"><div class="rx-label">Descrizione</div>' +
+        '<div class="rx-value">' + (title || '—') + '. <span style="color:var(--ink-3)">Nessuna nota aggiuntiva registrata su questo record.</span></div></div>' +
+        '<div class="rx-section"><div class="rx-label">Riferimento</div>' +
+        '<div class="rx-value"><span class="mono">' + targa + '</span> · ' +
+        '<a class="rx-link" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>Vedi storico mezzo</a></div></div>';
+      body.append(extra);
+    }
+    // 4. click handler
+    rec.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, .rx-link, input, select, textarea')) return;
+      rec.classList.toggle('is-expanded');
+    });
+  });
+
+  // ===== Tweaks panel host protocol =====
+  const tweaksPanel = document.getElementById('tweaksPanel');
+  window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.type === '__activate_edit_mode') {
+      tweaksPanel.classList.add('is-open');
+      tweaksPanel.setAttribute('aria-hidden', 'false');
+    } else if (d.type === '__deactivate_edit_mode') {
+      tweaksPanel.classList.remove('is-open');
+      tweaksPanel.setAttribute('aria-hidden', 'true');
+    }
+  });
+  try {
+    window.parent.postMessage({type: '__edit_mode_available'}, '*');
+  } catch (_) {}
+
+})();
+</script>
+
+</body>
+</html>

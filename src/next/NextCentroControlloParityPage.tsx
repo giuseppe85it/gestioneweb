@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
   buildPdfShareText,
@@ -42,6 +42,8 @@ import {
   type LavoroCreateInput,
   type LavoroCreateResult,
 } from "./nextLavoroCreateWriter";
+import { NextArchivioStoricoTab } from "./centroControllo/archivioStorico/NextArchivioStoricoTab";
+import type { ArchivioEventoModalRequest } from "./centroControllo/archivioStorico/archivioTypes";
 import { readNextLavoriInAttesaSnapshot, buildNextDettaglioLavoroPath } from "./domain/nextLavoriDomain";
 import { readNextManutenzioniLegacyDataset } from "./domain/nextManutenzioniDomain";
 import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
@@ -578,6 +580,27 @@ const normalizeRefuelRecord = (
 export default function NextCentroControlloParityPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>("rifornimenti");
+  // PROMPT 30.3 — page-tabbar persistita via `?tab=archivio` (default "sinottica")
+  const [searchParams, setSearchParams] = useSearchParams();
+  const archivioMode: "sinottica" | "archivio" =
+    searchParams.get("tab") === "archivio" ? "archivio" : "sinottica";
+  const setArchivioMode = useCallback(
+    (mode: "sinottica" | "archivio"): void => {
+      setSearchParams(
+        (prev: URLSearchParams) => {
+          const next: URLSearchParams = new URLSearchParams(prev);
+          if (mode === "archivio") {
+            next.set("tab", "archivio");
+          } else {
+            next.delete("tab");
+          }
+          return next;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
 
   const [scheduledMaintenances, setScheduledMaintenances] = useState<ScheduledMaintenanceRow[]>(
     []
@@ -660,6 +683,62 @@ export default function NextCentroControlloParityPage() {
     });
   }, []);
 
+  // PROMPT 30.2: apertura modale eventi dall'archivio storico in
+  // modalita' read-only. Ricostruisce HomeEvent dai record gia'
+  // caricati (segnalazioniRows/richiesteRows) — pattern speculare
+  // a quello della Sinottica V2 a righe 1551-1623.
+  const handleOpenEventoFromArchivio = useCallback(
+    (req: ArchivioEventoModalRequest): void => {
+      if (req.tipo === "segnalazione") {
+        const s = segnalazioniRows.find((row) => row.id === req.segnalazioneId);
+        if (!s) return;
+        const event: HomeEvent = {
+          id: s.id,
+          tipo: "segnalazione",
+          targa: s.targa,
+          autista: s.autistaNome,
+          timestamp: s.ts,
+          payload: {
+            tipo: s.tipo,
+            tipoProblema: s.tipo,
+            descrizione: s.descrizione,
+            stato: s.stato,
+            autistaNome: s.autistaNome,
+            badgeAutista: s.badgeAutista,
+            targa: s.targa,
+          },
+        };
+        setSinotticaEventoModalEvent(event);
+        setSinotticaEventoModalEditable(false);
+        setSinotticaEventoModalOpen(true);
+      } else {
+        const q = richiesteRows.find((row) => row.id === req.richiestaId);
+        if (!q) return;
+        const event: HomeEvent = {
+          id: q.id,
+          tipo: "richiesta_attrezzature",
+          targa: q.targa,
+          autista: q.autistaNome,
+          timestamp: q.ts,
+          payload: {
+            attrezzatura: q.testo,
+            descrizione: q.testo,
+            quantita: "",
+            stato: q.stato,
+            note: "",
+            autistaNome: q.autistaNome,
+            badgeAutista: q.badgeAutista,
+            targa: q.targa,
+          },
+        };
+        setSinotticaEventoModalEvent(event);
+        setSinotticaEventoModalEditable(false);
+        setSinotticaEventoModalOpen(true);
+      }
+    },
+    [segnalazioniRows, richiesteRows],
+  );
+
   const [colleghiList, setColleghiList] = useState<{ id: string; nome: string }[]>([]);
   const [mezziTargheList, setMezziTargheList] = useState<string[]>([]);
   const [sinotticaMezzi, setSinotticaMezzi] = useState<
@@ -682,6 +761,11 @@ export default function NextCentroControlloParityPage() {
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [sinotticaEventoModalOpen, setSinotticaEventoModalOpen] = useState(false);
   const [sinotticaEventoModalEvent, setSinotticaEventoModalEvent] = useState<HomeEvent | null>(null);
+  // PROMPT 30.2: flag editable separato, true di default per non rompere
+  // i flussi Sinottica V2 (PROMPT 27.x). L'archivio storico lo setta a
+  // false aprendo il modale via `handleOpenEventoFromArchivio`.
+  const [sinotticaEventoModalEditable, setSinotticaEventoModalEditable] =
+    useState<boolean>(true);
   const [lavoriAperti, setLavoriAperti] = useState<
     Array<{
       id: string;
@@ -1400,6 +1484,34 @@ export default function NextCentroControlloParityPage() {
           </p>
         </header>
 
+        <div className="cc-page-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={archivioMode === "sinottica"}
+            className={archivioMode === "sinottica" ? "is-active" : ""}
+            onClick={() => setArchivioMode("sinottica")}
+          >
+            Sinottica flotta
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={archivioMode === "archivio"}
+            className={archivioMode === "archivio" ? "is-active" : ""}
+            onClick={() => setArchivioMode("archivio")}
+          >
+            Archivio storico
+          </button>
+        </div>
+
+        {archivioMode === "archivio" ? (
+          <NextArchivioStoricoTab
+            onOpenEventoModal={handleOpenEventoFromArchivio}
+          />
+        ) : null}
+        {archivioMode === "sinottica" ? (
+        <>
         <NextCentroControlloSinottica
           mezzi={sinotticaMezzi}
           refuelRows={refuelRows}
@@ -1619,78 +1731,6 @@ export default function NextCentroControlloParityPage() {
             setSinotticaEventoModalOpen(true);
           }}
         />
-        {sinotticaEventoModalOpen && sinotticaEventoModalEvent && (
-          <NextHomeAutistiEventoModal
-            event={sinotticaEventoModalEvent}
-            editable={true}
-            eventsCount={eventModalEvents.length || undefined}
-            eventIndex={
-              eventModalEvents.length > 0 ? eventModalIndex : undefined
-            }
-            onPrevEvent={
-              eventModalEvents.length > 1
-                ? () => {
-                    const nextIdx: number = Math.max(0, eventModalIndex - 1);
-                    setEventModalIndex(nextIdx);
-                    setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
-                  }
-                : undefined
-            }
-            onNextEvent={
-              eventModalEvents.length > 1
-                ? () => {
-                    const nextIdx: number = Math.min(
-                      eventModalEvents.length - 1,
-                      eventModalIndex + 1,
-                    );
-                    setEventModalIndex(nextIdx);
-                    setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
-                  }
-                : undefined
-            }
-            onMarkEvasa={async (id: string) => {
-              const result = await markRichiestaEvasa(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              await loadAutistiReadOnlySections();
-              advanceAfterMark(id);
-            }}
-            onMarkChiusa={async (id: string) => {
-              const result = await markSegnalazioneChiusa(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              await loadAutistiReadOnlySections();
-              advanceAfterMark(id);
-            }}
-            onMarkChiuso={async (id: string) => {
-              const result = await markControlloChiuso(id);
-              if (!result.ok) {
-                throw new Error(result.error || "Errore.");
-              }
-              await loadAutistiReadOnlySections();
-              advanceAfterMark(id);
-            }}
-            onCreateLavoro={async (
-              input: LavoroCreateInput,
-            ): Promise<LavoroCreateResult> => {
-              const result: LavoroCreateResult =
-                await createLavoroFromEvento(input);
-              if (!result.ok) return result;
-              await loadLavoriAperti();
-              await loadAutistiReadOnlySections();
-              advanceAfterMark(input.origineId);
-              return result;
-            }}
-            onClose={() => {
-              setSinotticaEventoModalOpen(false);
-              setSinotticaEventoModalEvent(null);
-              setEventModalEvents([]);
-              setEventModalIndex(0);
-            }}
-          />
-        )}
         <NextMezzoCronologiaModal
           open={cronologiaOpen}
           targa={cronologiaTarga}
@@ -2306,8 +2346,87 @@ export default function NextCentroControlloParityPage() {
             )}
           </section>
         )}
+        </>
+        ) : null}
 
       </div>
+
+      {/* PROMPT 30.2: NextHomeAutistiEventoModal montato fuori dal wrap
+          archivioMode="sinottica" cosi' e' raggiungibile sia dal click
+          chip Sinottica V2 sia dal click "Apri dettaglio" Archivio. */}
+      {sinotticaEventoModalOpen && sinotticaEventoModalEvent && (
+        <NextHomeAutistiEventoModal
+          event={sinotticaEventoModalEvent}
+          editable={sinotticaEventoModalEditable}
+          eventsCount={eventModalEvents.length || undefined}
+          eventIndex={
+            eventModalEvents.length > 0 ? eventModalIndex : undefined
+          }
+          onPrevEvent={
+            eventModalEvents.length > 1
+              ? () => {
+                  const nextIdx: number = Math.max(0, eventModalIndex - 1);
+                  setEventModalIndex(nextIdx);
+                  setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
+                }
+              : undefined
+          }
+          onNextEvent={
+            eventModalEvents.length > 1
+              ? () => {
+                  const nextIdx: number = Math.min(
+                    eventModalEvents.length - 1,
+                    eventModalIndex + 1,
+                  );
+                  setEventModalIndex(nextIdx);
+                  setSinotticaEventoModalEvent(eventModalEvents[nextIdx]);
+                }
+              : undefined
+          }
+          onMarkEvasa={async (id: string) => {
+            const result = await markRichiestaEvasa(id);
+            if (!result.ok) {
+              throw new Error(result.error || "Errore.");
+            }
+            await loadAutistiReadOnlySections();
+            advanceAfterMark(id);
+          }}
+          onMarkChiusa={async (id: string) => {
+            const result = await markSegnalazioneChiusa(id);
+            if (!result.ok) {
+              throw new Error(result.error || "Errore.");
+            }
+            await loadAutistiReadOnlySections();
+            advanceAfterMark(id);
+          }}
+          onMarkChiuso={async (id: string) => {
+            const result = await markControlloChiuso(id);
+            if (!result.ok) {
+              throw new Error(result.error || "Errore.");
+            }
+            await loadAutistiReadOnlySections();
+            advanceAfterMark(id);
+          }}
+          onCreateLavoro={async (
+            input: LavoroCreateInput,
+          ): Promise<LavoroCreateResult> => {
+            const result: LavoroCreateResult =
+              await createLavoroFromEvento(input);
+            if (!result.ok) return result;
+            await loadLavoriAperti();
+            await loadAutistiReadOnlySections();
+            advanceAfterMark(input.origineId);
+            return result;
+          }}
+          onClose={() => {
+            setSinotticaEventoModalOpen(false);
+            setSinotticaEventoModalEvent(null);
+            setSinotticaEventoModalEditable(true);
+            setEventModalEvents([]);
+            setEventModalIndex(0);
+          }}
+        />
+      )}
 
       <NextCentroControlloIndagineModal
         open={investigationOpen}

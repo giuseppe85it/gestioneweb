@@ -1,6 +1,6 @@
 # STATO MIGRAZIONE NEXT
 
-Ultimo aggiornamento: 2026-05-06
+Ultimo aggiornamento: 2026-05-12
 Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`; `docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`; `docs/product/PIANO_ESECUTIVO_CHAT_IA_NEXT.md`
 
 ---
@@ -77,6 +77,7 @@ Legenda: ✅ OK scrivente verificato | 🟡 PARZIALE scrivente non verificato | 
 |---|---|---|---|---|
 | Home | NextHomePage | `/next` | 🔵 | Dashboard (OK) |
 | CentroControllo | NextCentroControlloParityPage | `/next/centro-controllo` | 🔵 | Read-only parity |
+| — | Archivio Storico CC NEXT | `/next/centro-controllo?tab=archivio` | ✅ | **CHIUSO 2026-05-12 (PROMPT 29.0 → 31.2).** Tab dedicata: 4 sub-tab (Lavori, Manutenzioni, Segnalazioni, Richieste) con filtri globali (autista/targa/periodo/cerca), ricerca scoped, foto mezzo, collegamenti dettaglio (modali readOnly + navigate), export PDF, soft-hide via kebab menu (`nascostoInArchivio=true`, deroga barrier `ARCHIVIO_HIDE_WRITE_SCOPE`). Path: `src/next/centroControllo/archivioStorico/`. Riferimento: `docs/DIARIO_DECISIONI.md` 2026-05-12. |
 | GestioneOperativa | NextGestioneOperativaPage | `/next/gestione-operativa` | 🔵 | Hub navigazione (OK) |
 | — | NextOperativitaGlobalePage | `/next/operativita-globale` | 🔵 | Pannelli read-only aggregati |
 
@@ -237,6 +238,7 @@ Per eventuali cambi o nuove decisioni, aggiornare sempre prima `docs/DIARIO_DECI
 
 | Data | Evento |
 |---|---|
+| 2026-05-12 | Archivio Storico CC NEXT — CHIUSO 2026-05-12 (PROMPT 29.0 → 31.2). Nuova tab del Centro Controllo, 4 sub-tab, soft-hide via kebab. Riferimento: `docs/DIARIO_DECISIONI.md` 2026-05-12. |
 | 2026-05-06 | Esecuzione piano Chat IA NEXT: BLOCCHI 1-7 PASS, BLOCCO 8 in validazione finale. Nessuna promozione a CHIUSO prima dei cancelli finali. |
 | 2026-04-23 | Riscrittura integrale da zero in base ad `AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`. Nessun contenuto del file precedente riutilizzato. Backup vecchia versione: `docs/archive/2026-04-23/STATO_MIGRAZIONE_NEXT.md.bak` (il file non preesisteva). |
 | 2026-04-23 | Patch fine giornata: chiusi Materiali da ordinare e Acquisti alias. Gap scriventi 7 → 5. Dettaglio test flusso IA preventivi pendente. |
