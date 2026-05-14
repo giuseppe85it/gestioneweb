@@ -1,6 +1,6 @@
 // Archivio Storico NEXT — PROMPT 30.3 FASE 3 — useArchivioUrlState.
 // Centralizza lettura/scrittura URL params per persistenza navigazionale:
-//   - asTab=<lavoro|manutenzione|segnalazione|richiesta>   sub-tab
+//   - asTab=<manutenzione|segnalazione|richiesta>          sub-tab
 //   - asAutista=<nome>                                     filtro autista
 //   - asTarga=<targa>                                      filtro targa
 //   - asPeriod=<7g|30g|90g|12m|all|custom>                 preset periodo
@@ -33,7 +33,6 @@ export type ArchivioUrlState = {
 };
 
 const VALID_KINDS: ReadonlySet<string> = new Set<string>([
-  "lavoro",
   "manutenzione",
   "segnalazione",
   "richiesta",
@@ -50,7 +49,7 @@ const VALID_PERIODS: ReadonlySet<string> = new Set<string>([
 
 function parseKind(value: string | null): ArchivioRecordKind {
   if (value && VALID_KINDS.has(value)) return value as ArchivioRecordKind;
-  return "lavoro";
+  return "manutenzione";
 }
 
 function parsePeriod(value: string | null): ArchivioUrlPeriodPreset {
@@ -103,7 +102,7 @@ export function useArchivioUrlState(): UseArchivioUrlStateApi {
             next.set(key, value);
           };
           if (Object.prototype.hasOwnProperty.call(partial, "subTab")) {
-            writeOrDelete("asTab", partial.subTab ?? null, "lavoro");
+            writeOrDelete("asTab", partial.subTab ?? null, "manutenzione");
           }
           if (Object.prototype.hasOwnProperty.call(partial, "autista")) {
             writeOrDelete("asAutista", partial.autista ?? null);

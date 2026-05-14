@@ -97,7 +97,7 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
   "operativita-globale": {
     permissionKey: "next.operativita-globale",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Famiglia clone read-only di `Gestione Operativa`, ora riallineata anche in route autonome per inventario, materiali consegnati, attrezzature cantieri, manutenzioni, acquisti, materiali da ordinare, ordini, dettaglio ordine, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
+    futureScope: "Famiglia clone read-only di `Gestione Operativa`, ora riallineata anche in route autonome per inventario, materiali consegnati, attrezzature cantieri, manutenzioni, acquisti, materiali da ordinare, ordini, dettaglio ordine, `Autisti Inbox` e `Autisti Admin` reader-first.",
   },
   "capo": {
     permissionKey: "next.capo",

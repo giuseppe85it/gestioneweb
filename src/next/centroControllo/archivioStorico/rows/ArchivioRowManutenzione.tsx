@@ -4,7 +4,7 @@
 //  - NIENTE badge Foto (nessun campo foto sui record manutenzione)
 //  - Timeline: Aperta e Eseguita coincidono (record creato a posteriori)
 
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -12,8 +12,12 @@ import {
   type ArchivioMezzoMeta,
   type ArchivioRecord,
 } from "../archivioTypes";
+import type { NextManutenzioneStato } from "../../../domain/nextManutenzioniDomain";
+import { formatDateTimeUI } from "../../../nextDateFormat";
 import { ArchivioKebabMenu } from "../ArchivioKebabMenu";
 import { ArchivioVeicoloPhoto } from "../ArchivioVeicoloPhoto";
+import { StoriaRecordTimeline } from "../../../components/StoriaRecordTimeline";
+import { getStoriaRecord } from "../../../helpers/storiaRecord";
 import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeMaterialiIcon,
@@ -45,6 +49,45 @@ function typeChipLabel(
   }
 }
 
+function statoLabel(stato: NextManutenzioneStato | null | undefined): string {
+  if (stato === "daFare") return "DA FARE";
+  if (stato === "programmata") return "PROGRAMMATA";
+  if (stato === "chiusa_da_evento") return "CHIUSA DA EVENTO";
+  return "ESEGUITA";
+}
+
+function statoStyle(stato: NextManutenzioneStato | null | undefined): CSSProperties {
+  if (stato === "daFare") {
+    return { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" };
+  }
+  if (stato === "programmata") {
+    return { background: "#dbeafe", color: "#1e40af", borderColor: "#bfdbfe" };
+  }
+  if (stato === "chiusa_da_evento") {
+    return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
+  }
+  return { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" };
+}
+
+function formatChiusuraEventoTipo(value: string | null | undefined): string {
+  if (value === "gomme_evento") return "cambio gomme";
+  if (value === "manutenzione_eseguita") return "manutenzione eseguita";
+  return value ? value.replace(/_/g, " ") : "evento";
+}
+
+function statoTitle(
+  stato: NextManutenzioneStato | null | undefined,
+  chiusuraDi: string | null | undefined,
+  chiusuraData: number | null | undefined,
+): string | undefined {
+  if (stato !== "chiusa_da_evento") return undefined;
+  const evento = formatChiusuraEventoTipo(chiusuraDi);
+  const data = chiusuraData ? formatDateTimeUI(chiusuraData) : "-";
+  return data && data !== "-"
+    ? `Chiusa dal ${evento} del ${data}`
+    : `Chiusa dal ${evento}`;
+}
+
 export function ArchivioRowManutenzione({
   record,
   isExpanded,
@@ -54,6 +97,7 @@ export function ArchivioRowManutenzione({
 }: Props): ReactElement {
   const navigate = useNavigate();
   const data = record.data;
+  const stato = data.stato ?? "eseguita";
   const ts: number = extractTimestamp(record);
   const safeTs: number | null = ts > 0 ? ts : null;
   const dateLabel = formatDateShort(safeTs);
@@ -99,6 +143,13 @@ export function ArchivioRowManutenzione({
           <span className="archivio-row-type-chip">
             {typeChipLabel(data.tipo)}
           </span>
+          <span
+            className="archivio-row-type-chip"
+            style={statoStyle(stato)}
+            title={statoTitle(stato, data.chiusuraDi, data.chiusuraData)}
+          >
+            {statoLabel(stato)}
+          </span>
           <span className="archivio-row-head-spacer" />
           <ArchivioKebabMenu
             onApriDettaglio={() => {
@@ -115,6 +166,10 @@ export function ArchivioRowManutenzione({
         </header>
 
         <div className="archivio-row-title">{data.descrizione}</div>
+        <StoriaRecordTimeline
+          storia={getStoriaRecord(data as unknown as Record<string, unknown>)}
+          compact
+        />
 
         {(fornitore || showImporto) ? (
           <div className="archivio-row-people">
@@ -149,7 +204,7 @@ export function ArchivioRowManutenzione({
             <span className="archivio-tl-line is-done" />
             <span className="archivio-tl-step is-closed">
               <span className="archivio-tl-dot" />
-              <span className="archivio-tl-lab">Eseguita</span>
+              <span className="archivio-tl-lab">{statoLabel(stato)}</span>
               <span className="archivio-tl-ts">{timelineStamp}</span>
             </span>
           </div>

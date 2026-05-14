@@ -19,23 +19,24 @@ import {
 import { formatDateTimeUI } from "../nextDateFormat";
 import "../../autistiInbox/AutistiInboxHome.css";
 
-type CreateLavoroOrigineTipo = "segnalazione" | "controllo";
-type CreateLavoroUrgenza = "bassa" | "media" | "alta";
+type CreateManutenzioneDaFareOrigineTipo = "segnalazione" | "controllo";
+type CreateManutenzioneDaFareUrgenza = "bassa" | "media" | "alta";
 
-export type CreateLavoroSubmitInput = {
+export type CreateManutenzioneDaFareSubmitInput = {
   descrizione: string;
-  urgenza: CreateLavoroUrgenza;
+  urgenza: CreateManutenzioneDaFareUrgenza;
   targa: string;
   note: string;
   segnalatoDa: string;
-  origineTipo: CreateLavoroOrigineTipo;
+  origineTipo: CreateManutenzioneDaFareOrigineTipo;
   origineId: string;
 };
 
-export type CreateLavoroSubmitResult = {
+export type CreateManutenzioneDaFareSubmitResult = {
   ok: boolean;
   error?: string;
-  lavoroId?: string;
+  manutenzioneId?: string;
+  manutenzioneIds?: string[];
 };
 
 type NextHomeAutistiEventoModalProps = {
@@ -45,9 +46,9 @@ type NextHomeAutistiEventoModalProps = {
   onMarkEvasa?: (id: string) => Promise<void>;
   onMarkChiusa?: (id: string) => Promise<void>;
   onMarkChiuso?: (id: string) => Promise<void>;
-  onCreateLavoro?: (
-    input: CreateLavoroSubmitInput,
-  ) => Promise<CreateLavoroSubmitResult>;
+  onCreateManutenzioneDaFare?: (
+    input: CreateManutenzioneDaFareSubmitInput,
+  ) => Promise<CreateManutenzioneDaFareSubmitResult>;
   eventsCount?: number;
   eventIndex?: number;
   onPrevEvent?: () => void;
@@ -341,7 +342,7 @@ export default function NextHomeAutistiEventoModal({
   onMarkEvasa,
   onMarkChiusa,
   onMarkChiuso,
-  onCreateLavoro,
+  onCreateManutenzioneDaFare,
   eventsCount,
   eventIndex,
   onPrevEvent,
@@ -382,7 +383,7 @@ export default function NextHomeAutistiEventoModal({
   const [createFormOpen, setCreateFormOpen] = useState<boolean>(false);
   const [createDescrizione, setCreateDescrizione] = useState<string>("");
   const [createUrgenza, setCreateUrgenza] =
-    useState<CreateLavoroUrgenza>("media");
+    useState<CreateManutenzioneDaFareUrgenza>("media");
   const [createTarga, setCreateTarga] = useState<string>("");
   const [createNote, setCreateNote] = useState<string>("");
   const [createSubmitting, setCreateSubmitting] = useState<boolean>(false);
@@ -495,18 +496,20 @@ export default function NextHomeAutistiEventoModal({
     window.alert(message);
   };
 
-  const canCreateLavoro: boolean = Boolean(
+  const createManutenzioneDaFareHandler = onCreateManutenzioneDaFare;
+
+  const canCreateManutenzioneDaFare: boolean = Boolean(
     editable &&
-      onCreateLavoro &&
+      createManutenzioneDaFareHandler &&
       (event.tipo === "segnalazione" || event.tipo === "controllo") &&
       !hasLinkedLavoro(payload),
   );
 
-  const handleOpenCreateLavoroForm = (): void => {
+  const handleOpenCreateManutenzioneForm = (): void => {
     if (hasLinkedLavoro(payload)) return;
-    if (!canCreateLavoro) {
+    if (!canCreateManutenzioneDaFare) {
       showReadOnlyActionBlocked(
-        "Creazione lavoro disponibile solo nella madre. Il clone e read-only.",
+        "Creazione manutenzione non disponibile in questa vista.",
       );
       return;
     }
@@ -527,12 +530,16 @@ export default function NextHomeAutistiEventoModal({
     setCreateFormOpen(true);
   };
 
-  const handleSubmitCreateLavoro = async (): Promise<void> => {
-    if (!onCreateLavoro) return;
+  const handleSubmitCreateManutenzione = async (): Promise<void> => {
+    if (!createManutenzioneDaFareHandler) return;
     if (event.tipo !== "segnalazione" && event.tipo !== "controllo") return;
     const descrizioneTrim: string = createDescrizione.trim();
     if (!descrizioneTrim) {
       setCreateError("Descrizione obbligatoria.");
+      return;
+    }
+    if (!createTarga.trim()) {
+      setCreateError("Targa obbligatoria.");
       return;
     }
     const origineIdRaw: unknown = payload?.id ?? event.id;
@@ -552,30 +559,31 @@ export default function NextHomeAutistiEventoModal({
         payload?.badge,
         event.autista,
       ) || "autista";
-      const result: CreateLavoroSubmitResult = await onCreateLavoro({
-        descrizione: descrizioneTrim,
-        urgenza: createUrgenza,
-        targa: createTarga.trim().toUpperCase(),
-        note: createNote.trim(),
-        segnalatoDa,
-        origineTipo: event.tipo,
-        origineId,
-      });
+      const result: CreateManutenzioneDaFareSubmitResult =
+        await createManutenzioneDaFareHandler({
+          descrizione: descrizioneTrim,
+          urgenza: createUrgenza,
+          targa: createTarga.trim().toUpperCase(),
+          note: createNote.trim(),
+          segnalatoDa,
+          origineTipo: event.tipo,
+          origineId,
+        });
       if (!result.ok) {
-        setCreateError(result.error || "Errore creazione lavoro.");
+        setCreateError(result.error || "Errore creazione manutenzione.");
         return;
       }
       setCreateFormOpen(false);
     } catch (err: unknown) {
       const msg: string =
-        err instanceof Error ? err.message : "Errore creazione lavoro.";
+        err instanceof Error ? err.message : "Errore creazione manutenzione.";
       setCreateError(msg);
     } finally {
       setCreateSubmitting(false);
     }
   };
 
-  const handleCancelCreateLavoro = (): void => {
+  const handleCancelCreateManutenzione = (): void => {
     setCreateFormOpen(false);
     setCreateError(null);
   };
@@ -761,7 +769,7 @@ export default function NextHomeAutistiEventoModal({
             {editable && (event.tipo === "segnalazione" || event.tipo === "controllo") ? (
               <div className="aix-row">
                 <div className="aix-row-top">
-                  <strong>LAVORO</strong>
+                  <strong>MANUTENZIONE</strong>
                 </div>
                 <div className="aix-row-bot">
                   <button
@@ -771,13 +779,13 @@ export default function NextHomeAutistiEventoModal({
                     title={
                       hasLinkedLavoro(payload)
                         ? undefined
-                        : canCreateLavoro
-                          ? "Crea un nuovo lavoro da questo evento"
-                          : "Creazione disponibile solo nella madre"
+                        : canCreateManutenzioneDaFare
+                          ? "Crea una manutenzione da fare da questo evento"
+                          : "Creazione manutenzione non disponibile"
                     }
-                    onClick={handleOpenCreateLavoroForm}
+                    onClick={handleOpenCreateManutenzioneForm}
                   >
-                    {hasLinkedLavoro(payload) ? "GIÀ CREATO" : "CREA LAVORO"}
+                    {hasLinkedLavoro(payload) ? "GIA CREATA" : "CREA MANUTENZIONE"}
                   </button>
                 </div>
                 {createFormOpen ? (
@@ -819,7 +827,7 @@ export default function NextHomeAutistiEventoModal({
                         value={createUrgenza}
                         onChange={(e) =>
                           setCreateUrgenza(
-                            e.target.value as CreateLavoroUrgenza,
+                            e.target.value as CreateManutenzioneDaFareUrgenza,
                           )
                         }
                         disabled={createSubmitting}
@@ -837,7 +845,7 @@ export default function NextHomeAutistiEventoModal({
                     </label>
                     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ fontSize: 12, fontWeight: 600 }}>
-                        Targa (vuota = magazzino)
+                        Targa
                       </span>
                       <input
                         type="text"
@@ -890,7 +898,7 @@ export default function NextHomeAutistiEventoModal({
                       <button
                         type="button"
                         className="aix-create-btn"
-                        onClick={handleCancelCreateLavoro}
+                        onClick={handleCancelCreateManutenzione}
                         disabled={createSubmitting}
                         style={{ background: "#eee", color: "#333" }}
                       >
@@ -899,8 +907,8 @@ export default function NextHomeAutistiEventoModal({
                       <button
                         type="button"
                         className="aix-create-btn"
-                        onClick={() => void handleSubmitCreateLavoro()}
-                        disabled={createSubmitting || !createDescrizione.trim()}
+                        onClick={() => void handleSubmitCreateManutenzione()}
+                        disabled={createSubmitting}
                       >
                         {createSubmitting ? "Creazione…" : "Crea"}
                       </button>

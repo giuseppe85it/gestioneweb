@@ -14,6 +14,8 @@ import {
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
 const MEZZI_KEY = "@mezzi_aziendali";
+const SEGNALAZIONI_AUTISTI_KEY = "@segnalazioni_autisti_tmp";
+const CONTROLLI_MEZZO_AUTISTI_KEY = "@controlli_mezzo_autisti";
 const INVENTARIO_KEY = "@inventario";
 const MATERIALI_CONSEGNATI_KEY = "@materialiconsegnati";
 const DOCUMENTI_MEZZI_COLLECTION = "@documenti_mezzi";
@@ -46,6 +48,22 @@ export type NextScheduledMaintenanceStatus =
   | "scaduta"
   | "data_mancante";
 
+export type NextManutenzioneStato = "daFare" | "programmata" | "eseguita" | "chiusa_da_evento";
+export type NextManutenzioneOrigineTipo = "manuale" | "controllo" | "segnalazione";
+export type NextManutenzioneUrgenza = "alta" | "media" | "bassa";
+export type NextChiusuraEventoFields = {
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
+};
+
+export type NextManutenzioneOrigineRecord = {
+  origineRefKey: typeof SEGNALAZIONI_AUTISTI_KEY | typeof CONTROLLI_MEZZO_AUTISTI_KEY;
+  origineRefId: string;
+  origineTipo: Exclude<NextManutenzioneOrigineTipo, "manuale">;
+  data: Record<string, unknown>;
+};
+
 export type NextScheduledMaintenance = {
   enabled: boolean;
   dataInizio: string | null;
@@ -75,6 +93,16 @@ export type NextMaintenanceHistoryItem = {
   gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
   isCambioGommeDerived: boolean;
+  stato: NextManutenzioneStato;
+  dataProgrammata: string | null;
+  origineTipo?: NextManutenzioneOrigineTipo | null;
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  urgenza: NextManutenzioneUrgenza | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
   quality: NextManutenzioneQuality;
@@ -116,7 +144,19 @@ export type NextManutenzioniLegacyDatasetRecord = {
   descrizione: string;
   eseguito: string | null;
   data: string;
+  dataEsecuzione?: string | null;
   tipo: TipoVoce;
+  stato?: NextManutenzioneStato | null;
+  dataProgrammata?: string | null;
+  origineTipo?: NextManutenzioneOrigineTipo | null;
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  eseguitoDa?: string | null;
+  urgenza?: NextManutenzioneUrgenza | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   fornitore?: string;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
@@ -179,6 +219,18 @@ export type NextManutenzioneBusinessSavePayload = {
   descrizione: string;
   eseguito?: string | null;
   data: string;
+  dataEsecuzione?: string | null;
+  stato?: NextManutenzioneStato | null;
+  dataProgrammata?: string | null;
+  origineTipo?: NextManutenzioneOrigineTipo | null;
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  eseguitoDa?: string | null;
+  urgenza?: NextManutenzioneUrgenza | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
@@ -443,6 +495,80 @@ function normalizeSourceDocumentCurrency(value: unknown): "EUR" | "CHF" | "UNKNO
   return null;
 }
 
+function hasOwnField(record: Record<string, unknown>, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, field);
+}
+
+function sanitizeManutenzioneStato(value: unknown): NextManutenzioneStato | null {
+  const normalized = normalizeText(value);
+  if (
+    normalized === "daFare" ||
+    normalized === "programmata" ||
+    normalized === "eseguita" ||
+    normalized === "chiusa_da_evento"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function sanitizeManutenzioneOrigineTipo(value: unknown): NextManutenzioneOrigineTipo | null {
+  const normalized = normalizeLowerText(value);
+  if (normalized === "manuale" || normalized === "controllo" || normalized === "segnalazione") {
+    return normalized;
+  }
+  return null;
+}
+
+function sanitizeManutenzioneUrgenza(value: unknown): NextManutenzioneUrgenza | null {
+  const normalized = normalizeLowerText(value);
+  if (normalized === "alta" || normalized === "media" || normalized === "bassa") {
+    return normalized;
+  }
+  return null;
+}
+
+function hasLegacyExecutionFields(raw: RawRecord): boolean {
+  if (normalizeOptionalText(raw.data) || normalizeOptionalText(raw.dataEsecuzione)) return true;
+  if (normalizeNumber(raw.km) !== null || normalizeNumber(raw.ore) !== null) return true;
+  if (
+    normalizeOptionalText(raw.fornitore) ||
+    normalizeOptionalText(raw.fornitoreLabel) ||
+    normalizeOptionalText(raw.eseguito)
+  ) {
+    return true;
+  }
+  return normalizeNumber(raw.importo) !== null;
+}
+
+function resolveLegacyManutenzioneStato(raw: RawRecord): NextManutenzioneStato {
+  const explicitStato = sanitizeManutenzioneStato(raw.stato);
+  if (explicitStato) return explicitStato;
+
+  // Regola fallback legacy: i record @manutenzioni senza stato esplicito sono letti come eseguiti se hanno segnali di esecuzione (data/dataEsecuzione, km/ore, fornitore/eseguito o importo); altrimenti restano da fare.
+  return hasLegacyExecutionFields(raw) ? "eseguita" : "daFare";
+}
+
+function optionalTextField(raw: RawRecord, field: string): string | null | undefined {
+  if (!hasOwnField(raw, field)) return undefined;
+  return normalizeOptionalText(raw[field]);
+}
+
+function optionalNumberField(raw: RawRecord, field: string): number | null | undefined {
+  if (!hasOwnField(raw, field)) return undefined;
+  return normalizeNumber(raw[field]);
+}
+
+function optionalOrigineTipoField(raw: RawRecord): NextManutenzioneOrigineTipo | null | undefined {
+  if (!hasOwnField(raw, "origineTipo")) return undefined;
+  return sanitizeManutenzioneOrigineTipo(raw.origineTipo);
+}
+
+function optionalUrgenzaField(raw: RawRecord): NextManutenzioneUrgenza | null | undefined {
+  if (!hasOwnField(raw, "urgenza")) return undefined;
+  return sanitizeManutenzioneUrgenza(raw.urgenza);
+}
+
 async function readSourceDocumentMetadataByIds(sourceDocumentIds: string[]): Promise<
   Map<string, { fileUrl: string | null; currency: "EUR" | "CHF" | "UNKNOWN" | null }>
 > {
@@ -507,6 +633,18 @@ function toLegacyDatasetRecord(
             kmCambio,
           }))
         : [];
+  const stato = resolveLegacyManutenzioneStato(raw);
+  const dataEsecuzione = optionalTextField(raw, "dataEsecuzione");
+  const dataProgrammata = optionalTextField(raw, "dataProgrammata");
+  const origineTipo = optionalOrigineTipoField(raw);
+  const origineRefId = optionalTextField(raw, "origineRefId");
+  const origineRefKey = optionalTextField(raw, "origineRefKey");
+  const segnalatoDa = optionalTextField(raw, "segnalatoDa");
+  const eseguitoDa = optionalTextField(raw, "eseguitoDa");
+  const urgenza = optionalUrgenzaField(raw);
+  const chiusuraDi = optionalTextField(raw, "chiusuraDi");
+  const chiusuraRefId = optionalTextField(raw, "chiusuraRefId");
+  const chiusuraData = optionalNumberField(raw, "chiusuraData");
 
   return {
     id: buildHistoryId(raw, index, targa),
@@ -517,7 +655,19 @@ function toLegacyDatasetRecord(
     descrizione,
     eseguito: normalizeOptionalText(raw.eseguito),
     data,
+    ...(dataEsecuzione !== undefined ? { dataEsecuzione } : {}),
     tipo,
+    stato,
+    ...(dataProgrammata !== undefined ? { dataProgrammata } : {}),
+    ...(origineTipo !== undefined ? { origineTipo } : {}),
+    ...(origineRefId !== undefined ? { origineRefId } : {}),
+    ...(origineRefKey !== undefined ? { origineRefKey } : {}),
+    ...(segnalatoDa !== undefined ? { segnalatoDa } : {}),
+    ...(eseguitoDa !== undefined ? { eseguitoDa } : {}),
+    ...(urgenza !== undefined ? { urgenza } : {}),
+    ...(chiusuraDi !== undefined ? { chiusuraDi } : {}),
+    ...(chiusuraRefId !== undefined ? { chiusuraRefId } : {}),
+    ...(chiusuraData !== undefined ? { chiusuraData } : {}),
     fornitore:
       normalizeOptionalText(raw.fornitore) ??
       normalizeOptionalText(raw.fornitoreLabel) ??
@@ -573,6 +723,7 @@ function toHistoryItem(
   const materiali = Array.isArray(raw.materiali) ? raw.materiali : [];
   const dataRaw = normalizeOptionalText(raw.data);
   const km = normalizeNumber(raw.km);
+  const stato = resolveLegacyManutenzioneStato(raw);
   const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, dataRaw, km);
   const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
@@ -614,6 +765,16 @@ function toHistoryItem(
     gommeInterventoTipo,
     gommeStraordinario,
     isCambioGommeDerived: isGomme,
+    stato,
+    dataProgrammata: normalizeOptionalText(raw.dataProgrammata),
+    origineTipo: sanitizeManutenzioneOrigineTipo(raw.origineTipo),
+    origineRefId: normalizeOptionalText(raw.origineRefId),
+    origineRefKey: normalizeOptionalText(raw.origineRefKey),
+    segnalatoDa: normalizeOptionalText(raw.segnalatoDa),
+    urgenza: sanitizeManutenzioneUrgenza(raw.urgenza),
+    chiusuraDi: normalizeOptionalText(raw.chiusuraDi),
+    chiusuraRefId: normalizeOptionalText(raw.chiusuraRefId),
+    chiusuraData: normalizeNumber(raw.chiusuraData),
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
     quality: isGomme ? "derived_acceptable" : "source_direct",
@@ -749,6 +910,46 @@ export async function readNextManutenzioniLegacyDataset(): Promise<
   });
 }
 
+export async function readNextManutenzioniDaFareSnapshot(): Promise<
+  NextManutenzioniLegacyDatasetRecord[]
+> {
+  const records = await readNextManutenzioniLegacyDataset();
+  return records.filter((record) => record.stato === "daFare");
+}
+
+export async function readNextManutenzioniDaFareAndProgrammataGlobalSnapshot(): Promise<
+  NextManutenzioniLegacyDatasetRecord[]
+> {
+  const records = await readNextManutenzioniLegacyDataset();
+  return records.filter((record) => record.stato === "daFare" || record.stato === "programmata");
+}
+
+export async function getNextManutenzioneOrigineRecord(
+  origineRefKey: string | null | undefined,
+  origineRefId: string | null | undefined,
+): Promise<NextManutenzioneOrigineRecord | null> {
+  const key = normalizeOptionalText(origineRefKey);
+  const id = normalizeOptionalText(origineRefId);
+  if (!key || !id) return null;
+  if (key !== SEGNALAZIONI_AUTISTI_KEY && key !== CONTROLLI_MEZZO_AUTISTI_KEY) {
+    return null;
+  }
+
+  const rows = await readStorageDataset(key);
+  const match = rows.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return normalizeOptionalText((entry as RawRecord).id) === id;
+  });
+  if (!match || typeof match !== "object") return null;
+
+  return {
+    origineRefKey: key,
+    origineRefId: id,
+    origineTipo: key === SEGNALAZIONI_AUTISTI_KEY ? "segnalazione" : "controllo",
+    data: match as Record<string, unknown>,
+  };
+}
+
 export async function readNextManutenzioniWorkspaceSnapshot(): Promise<
   NextManutenzioniWorkspaceSnapshot
 > {
@@ -809,6 +1010,7 @@ function sanitizeMaterialiForWrite(
 
 function sanitizeBusinessRecord(
   payload: NextManutenzioneBusinessSavePayload,
+  forcedRecordId?: string | null,
 ): NextManutenzioniLegacyDatasetRecord {
   const targa = normalizeNextMezzoTarga(payload.targa) || normalizeText(payload.targa).toUpperCase();
   const assiCoinvolti = sanitizeAssiCoinvolti(payload.assiCoinvolti);
@@ -833,8 +1035,34 @@ function sanitizeBusinessRecord(
             kmCambio: km,
           }))
         : [];
+  const payloadRaw = payload as unknown as RawRecord;
+  const dataEsecuzione = hasOwnField(payloadRaw, "dataEsecuzione")
+    ? normalizeOptionalText(payload.dataEsecuzione)
+    : undefined;
+  const stato = hasOwnField(payloadRaw, "stato") ? sanitizeManutenzioneStato(payload.stato) : undefined;
+  const dataProgrammata = hasOwnField(payloadRaw, "dataProgrammata")
+    ? normalizeOptionalText(payload.dataProgrammata)
+    : undefined;
+  const origineTipo = hasOwnField(payloadRaw, "origineTipo")
+    ? sanitizeManutenzioneOrigineTipo(payload.origineTipo)
+    : undefined;
+  const origineRefId = hasOwnField(payloadRaw, "origineRefId")
+    ? normalizeOptionalText(payload.origineRefId)
+    : undefined;
+  const origineRefKey = hasOwnField(payloadRaw, "origineRefKey")
+    ? normalizeOptionalText(payload.origineRefKey)
+    : undefined;
+  const segnalatoDa = hasOwnField(payloadRaw, "segnalatoDa")
+    ? normalizeOptionalText(payload.segnalatoDa)
+    : undefined;
+  const eseguitoDa = hasOwnField(payloadRaw, "eseguitoDa")
+    ? normalizeOptionalText(payload.eseguitoDa)
+    : undefined;
+  const urgenza = hasOwnField(payloadRaw, "urgenza")
+    ? sanitizeManutenzioneUrgenza(payload.urgenza)
+    : undefined;
   return {
-    id: buildGeneratedId(),
+    id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
     tipo: payload.tipo,
     fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
@@ -844,6 +1072,15 @@ function sanitizeBusinessRecord(
     descrizione: normalizeOptionalText(payload.descrizione) ?? "Manutenzione",
     eseguito: normalizeOptionalText(payload.eseguito),
     data,
+    ...(dataEsecuzione !== undefined ? { dataEsecuzione } : {}),
+    ...(stato !== undefined ? { stato } : {}),
+    ...(dataProgrammata !== undefined ? { dataProgrammata } : {}),
+    ...(origineTipo !== undefined ? { origineTipo } : {}),
+    ...(origineRefId !== undefined ? { origineRefId } : {}),
+    ...(origineRefKey !== undefined ? { origineRefKey } : {}),
+    ...(segnalatoDa !== undefined ? { segnalatoDa } : {}),
+    ...(eseguitoDa !== undefined ? { eseguitoDa } : {}),
+    ...(urgenza !== undefined ? { urgenza } : {}),
     materiali: sanitizeMaterialiForWrite(payload.materiali),
     importo: typeof payload.importo === "number" ? payload.importo : null,
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
@@ -982,15 +1219,30 @@ async function persistLegacyMaterialEffects(args: {
 export async function saveNextManutenzioneBusinessRecord(
   payload: NextManutenzioneBusinessSavePayload,
 ): Promise<NextManutenzioniLegacyDatasetRecord> {
-  const nextRecord = sanitizeBusinessRecord(payload);
   const storicoRaw = await readStoredArrayByKey(MANUTENZIONI_KEY);
   const editingSourceId = normalizeOptionalText(payload.editingSourceId);
+  const existingIndex = editingSourceId
+    ? findLegacyRecordIndex(storicoRaw, editingSourceId)
+    : -1;
+  const existingRaw =
+    existingIndex >= 0 && storicoRaw[existingIndex] && typeof storicoRaw[existingIndex] === "object"
+      ? (storicoRaw[existingIndex] as RawRecord)
+      : null;
+  const forcedRecordId =
+    existingRaw !== null
+      ? normalizeOptionalText(existingRaw.id) ?? editingSourceId
+      : editingSourceId;
+  const nextRecord = sanitizeBusinessRecord(payload, forcedRecordId);
+  const nextStoredRecord =
+    existingRaw !== null
+      ? ({ ...existingRaw, ...nextRecord } as NextManutenzioniLegacyDatasetRecord)
+      : nextRecord;
   const nextStorico = storicoRaw.filter((entry, index) => {
     if (!editingSourceId) return true;
     return !matchLegacyRecordById(entry, index, editingSourceId);
   });
 
-  nextStorico.unshift(nextRecord);
+  nextStorico.unshift(nextStoredRecord);
   await setItemSync(MANUTENZIONI_KEY, nextStorico);
 
   if (!editingSourceId) {
@@ -1006,7 +1258,7 @@ export async function saveNextManutenzioneBusinessRecord(
     }
   }
 
-  return nextRecord;
+  return nextStoredRecord;
 }
 
 export async function deleteNextManutenzioneBusinessRecord(recordId: string): Promise<boolean> {

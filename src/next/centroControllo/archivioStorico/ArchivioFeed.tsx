@@ -9,6 +9,7 @@ import type {
   ArchivioStoricoPdfKind,
   ArchivioStoricoPdfRow,
 } from "../../../utils/pdfEngine";
+import type { NextManutenzioneStato } from "../../domain/nextManutenzioniDomain";
 
 import {
   extractTimestamp,
@@ -27,7 +28,6 @@ import { useArchivioHide } from "./hooks/useArchivioHide";
 import { useArchivioSearch } from "./hooks/useArchivioSearch";
 import { useArchivioUrlState } from "./hooks/useArchivioUrlState";
 import { ArchivioRowExpanded } from "./rows/ArchivioRowExpanded";
-import { ArchivioRowLavoro } from "./rows/ArchivioRowLavoro";
 import { ArchivioRowManutenzione } from "./rows/ArchivioRowManutenzione";
 import { ArchivioRowRichiesta } from "./rows/ArchivioRowRichiesta";
 import { ArchivioRowSegnalazione } from "./rows/ArchivioRowSegnalazione";
@@ -185,11 +185,19 @@ type Props = {
 };
 
 const KIND_LABEL: Record<ArchivioRecordKind, string> = {
-  lavoro: "Lavori",
   manutenzione: "Manutenzioni",
   segnalazione: "Segnalazioni",
   richiesta: "Richieste",
 };
+
+function formatManutenzioneStatoLabel(
+  stato: NextManutenzioneStato | null | undefined,
+): string {
+  if (stato === "daFare") return "Da fare";
+  if (stato === "programmata") return "Programmata";
+  if (stato === "chiusa_da_evento") return "Chiusa da evento";
+  return "Eseguita";
+}
 
 function fmtPdfDate(ts: number | null): { data: string; ora: string } {
   if (ts === null || !Number.isFinite(ts) || ts === 0) {
@@ -203,36 +211,6 @@ function fmtPdfDate(ts: number | null): { data: string; ora: string } {
   const hh: string = String(d.getHours()).padStart(2, "0");
   const mi: string = String(d.getMinutes()).padStart(2, "0");
   return { data: `${dd}/${mm}/${yyyy}`, ora: `${hh}:${mi}` };
-}
-
-function mapLavoroToPdfRow(record: ArchivioRecord): ArchivioStoricoPdfRow {
-  if (record.kind !== "lavoro") {
-    return {
-      data: "",
-      ora: "",
-      targa: "",
-      titolo: "",
-      autoreAperto: null,
-      autoreChiuso: null,
-      statoLabel: "",
-      urgenzaLabel: null,
-      noteExtra: null,
-    };
-  }
-  const data = record.data;
-  const dt = fmtPdfDate(data.timestampInserimento);
-  const stato: string = data.eseguito ? "Eseguito" : "Aperto";
-  return {
-    data: dt.data,
-    ora: dt.ora,
-    targa: (data.mezzoTarga ?? data.targa ?? "").toUpperCase(),
-    titolo: data.descrizione || "",
-    autoreAperto: data.segnalatoDa,
-    autoreChiuso: data.chiHaEseguito,
-    statoLabel: stato,
-    urgenzaLabel: data.urgenza,
-    noteExtra: data.dettagli ?? null,
-  };
 }
 
 function mapManutenzioneToPdfRow(record: ArchivioRecord): ArchivioStoricoPdfRow {
@@ -259,7 +237,7 @@ function mapManutenzioneToPdfRow(record: ArchivioRecord): ArchivioStoricoPdfRow 
     titolo: data.descrizione || "",
     autoreAperto: null,
     autoreChiuso: data.fornitore ?? null,
-    statoLabel: "Eseguita",
+    statoLabel: formatManutenzioneStatoLabel(data.stato),
     urgenzaLabel:
       data.tipo === "compressore"
         ? "Compressore"
@@ -289,7 +267,7 @@ function mapSegnalazioneToPdfRow(record: ArchivioRecord): ArchivioStoricoPdfRow 
   const stato: string = data.chiusa
     ? "Chiusa"
     : data.hasLinkedLavoro
-      ? "Lavoro generato"
+      ? "Manutenzione generata"
       : "Aperta";
   return {
     data: dt.data,
@@ -339,8 +317,6 @@ function mapRecordsToPdfRows(
   kind: ArchivioRecordKind,
 ): ArchivioStoricoPdfRow[] {
   switch (kind) {
-    case "lavoro":
-      return records.map(mapLavoroToPdfRow);
     case "manutenzione":
       return records.map(mapManutenzioneToPdfRow);
     case "segnalazione":
@@ -425,7 +401,6 @@ export function ArchivioFeed({
   // Step 1: applica filtri globali (senza search) per kind.
   const filteredByKind = useMemo(() => {
     return {
-      lavoro: filtersState.applyFilters(dataState.records.lavoro, "lavoro"),
       manutenzione: filtersState.applyFilters(
         dataState.records.manutenzione,
         "manutenzione",
@@ -507,6 +482,7 @@ export function ArchivioFeed({
   // (No interactive elements inside row container besides the chevron.)
   useEffect(() => {
     // Quando cambio kind, riduco lo stato espanso allo spazio attivo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedIds(new Set<string>());
   }, [activeKind]);
 
@@ -542,6 +518,7 @@ export function ArchivioFeed({
         setTarga={filtersState.setTarga}
         setPeriodo={filtersState.setPeriodo}
         setSearch={filtersState.setSearch}
+        setStatoManutenzione={filtersState.setStatoManutenzione}
         resetFilters={filtersState.resetFilters}
         countActiveFilters={filtersState.countActiveFilters()}
         resultsTotalCount={searchState.totalCount}
@@ -550,6 +527,8 @@ export function ArchivioFeed({
         onRequestPdfPreview={onRequestPdfPreview ? handleRequestPdf : undefined}
         generatingPdf={generatingPdf ?? false}
         activeKindResultsCount={sortedActive.length}
+        activeKind={activeKind}
+        statoManutenzione={filtersState.statoManutenzione}
       />
       <ArchivioSubTabs
         activeKind={activeKind}
@@ -580,10 +559,7 @@ export function ArchivioFeed({
               {group.records.map((record: ArchivioRecord) => {
                 const id: string = record.data.id;
                 const isExpanded: boolean = expandedIds.has(id);
-                const targaRaw: string | null =
-                  record.kind === "lavoro"
-                    ? (record.data.mezzoTarga ?? record.data.targa ?? null)
-                    : (record.data.targa ?? null);
+                const targaRaw: string | null = record.data.targa ?? null;
                 const targaKey: string | null = targaRaw
                   ? targaRaw.trim().toUpperCase()
                   : null;
@@ -592,15 +568,7 @@ export function ArchivioFeed({
                   : null;
                 return (
                   <div key={id} className="archivio-row-wrap">
-                    {record.kind === "lavoro" ? (
-                      <ArchivioRowLavoro
-                        record={record}
-                        isExpanded={isExpanded}
-                        onToggleExpand={() => handleToggleExpand(id)}
-                        mezzoMeta={mezzoMeta}
-                        onEliminaArchivio={() => handleRequestElimina(record)}
-                      />
-                    ) : record.kind === "manutenzione" ? (
+                    {record.kind === "manutenzione" ? (
                       <ArchivioRowManutenzione
                         record={record}
                         isExpanded={isExpanded}

@@ -481,29 +481,6 @@ const FIRESTORE_INVENTARIO_ALLOWED_FIELDS = Object.freeze([
   "updatedAt",
 ]);
 
-const FIRESTORE_LAVORI_ALLOWED_FIELDS = Object.freeze([
-  "id",
-  "targa",
-  "mezzoTarga",
-  "cantiere",
-  "cantiereId",
-  "stato",
-  "data",
-  "timestamp",
-  "dataInizio",
-  "dataFine",
-  "tipo",
-  "lavorazione",
-  "dataEsecuzione",
-  "dataInserimento",
-  "eseguito",
-  "gruppoId",
-  "sourceRecordId",
-  "sottoElementi",
-  "source",
-  "urgenza",
-]);
-
 const FIRESTORE_LISTINO_PREZZI_ALLOWED_FIELDS = Object.freeze([
   "id",
   "articoloCanonico",
@@ -1151,21 +1128,6 @@ const FIRESTORE_ALLOWED_READS = Object.freeze([
     matchStrategy: "material_code_and_name_exact_match",
     requestLimits: { maxDocumentReadsPerRequest: 1, maxReturnedVehicleRecords: 100 },
     allowedFields: FIRESTORE_INVENTARIO_ALLOWED_FIELDS,
-    forbiddenFields: FIRESTORE_FREE_TEXT_FORBIDDEN_FIELDS,
-  }),
-  Object.freeze({
-    id: "firestore-storage-lavori-doc",
-    label: "Documento lavori minimo",
-    service: "firestore",
-    accessMode: "exact_document",
-    collection: "storage",
-    docId: "@lavori",
-    datasetKey: "@lavori",
-    sourceOfTruth:
-      "Registro Collection Firestore v0.3: lavori relazionati tramite targa/cantiere strutturati.",
-    matchStrategy: "vehicle_or_site_exact_match",
-    requestLimits: { maxDocumentReadsPerRequest: 1, maxReturnedVehicleRecords: 100 },
-    allowedFields: FIRESTORE_LAVORI_ALLOWED_FIELDS,
     forbiddenFields: FIRESTORE_FREE_TEXT_FORBIDDEN_FIELDS,
   }),
   Object.freeze({

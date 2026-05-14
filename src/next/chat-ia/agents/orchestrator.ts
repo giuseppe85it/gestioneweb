@@ -62,7 +62,7 @@ function identifyArguteQuestion(prompt: string): ChatIaArguteQuestionId | null {
   if (normalized.includes("stessa categoria") && normalized.includes("costi totali molto diversi")) return "D6";
   if (normalized.includes("autista percorre piu km al mese")) return "D7";
   if (normalized.includes("per ogni cantiere") && normalized.includes("attrezzature")) return "D8";
-  if (normalized.includes("lavori o in manutenzioni") && normalized.includes("report")) return "D9";
+  if (normalized.includes("manutenzioni") && normalized.includes("report")) return "D9";
   return null;
 }
 
@@ -499,13 +499,12 @@ function buildPlan(questionId: ChatIaArguteQuestionId, prompt: string, nowIso: s
     D9: {
       questionId,
       execution: "parallel",
-      rationale: "Report esecutori richiede sia lavori sia manutenzioni senza confonderli.",
+      rationale: "Report esecutori basato sul modulo manutenzioni.",
       calls: [
         {
           agentKind: "operazioni",
-          task: "Recupera lavori e manutenzioni dell'ultimo mese.",
+          task: "Recupera manutenzioni dell'ultimo mese.",
           toolCalls: [
-            toolCall("search_work_orders", { periodo: lastThirtyDays, limit: 20 }, "d9-works"),
             toolCall("search_maintenances", { periodo: lastThirtyDays, stato: "tutte", limit: 20 }, "d9-maint"),
           ],
         },

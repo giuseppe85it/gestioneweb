@@ -332,30 +332,7 @@ export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS = [
     sourcePaths: ["src/next/NextOrdiniArrivatiPage.tsx", "src/pages/OrdiniArrivati.tsx"],
     notes: ["Lista ordini arrivati con drill-down read-only e preview PDF locale."],
   },
-  {
-    id: "next-lavori-da-eseguire",
-    label: "Lavori Da Eseguire",
-    path: "/next/lavori-da-eseguire",
-    screenType: "operativita_globale",
-    sourcePaths: ["src/next/NextLavoriDaEseguirePage.tsx", "src/pages/LavoriDaEseguire.tsx"],
-    notes: ["Vista backlog clone-safe con soli stati preparatori e writer bloccati."],
-  },
-  {
-    id: "next-lavori-in-attesa",
-    label: "Lavori in Attesa",
-    path: "/next/lavori-in-attesa",
-    screenType: "operativita_globale",
-    sourcePaths: ["src/next/NextLavoriInAttesaPage.tsx", "src/pages/LavoriInAttesa.tsx"],
-    notes: ["Lista globale lavori in attesa con route dettaglio ora leggibile in sola lettura."],
-  },
-  {
-    id: "next-lavori-eseguiti",
-    label: "Lavori Eseguiti",
-    path: "/next/lavori-eseguiti",
-    screenType: "operativita_globale",
-    sourcePaths: ["src/next/NextLavoriEseguitiPage.tsx", "src/pages/LavoriEseguiti.tsx"],
-    notes: ["Lista lavori eseguiti con navigazione clone-safe al dettaglio."],
-  },
+  // SourcePaths di route operative dismesse rimossi in dismissione 2026-05-13.
   {
     id: "next-capo-mezzi",
     label: "Area Capo - Mezzi",
@@ -566,13 +543,6 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
     ],
     safeStateProbes: [
       {
-        id: "modal-lavori-attesa",
-        label: "Dossier - lavori in attesa",
-        kind: "dialog_state",
-        selector: '.dossier-card .dossier-button:has-text("Mostra tutti")',
-        successSelector: ".dossier-modal",
-      },
-      {
         id: "foto-mezzo",
         label: "Dossier - foto mezzo",
         kind: "dialog_state",
@@ -759,23 +729,7 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
     ],
     notes: ["Dettaglio ordine standalone osservato dalla coda ordini in attesa."],
   },
-  {
-    id: "next-dettaglio-lavoro",
-    label: "Dettaglio lavoro",
-    screenType: "operativita_globale",
-    sourcePaths: ["src/next/NextDettaglioLavoroPage.tsx", "src/pages/DettaglioLavoro.tsx"],
-    discoveryFromRouteId: "next-lavori-in-attesa",
-    startPath: "/next/lavori-in-attesa",
-    expectedPathPrefixes: ["/next/dettagliolavori/"],
-    discoverySteps: [
-      {
-        kind: "click_selector",
-        selector: "a.lavori-row",
-        label: "Apri primo dettaglio lavoro",
-      },
-    ],
-    notes: ["Dettaglio lavoro raggiunto dalla lista globale lavori in attesa."],
-  },
+  // Residuo di route operativa dismessa rimosso in cleanup 2026-05-13.
 ];
 
 export const INTERNAL_AI_NEXT_UI_INTEGRATION_GUIDANCE = [
@@ -865,10 +819,6 @@ export const INTERNAL_AI_NEXT_UI_INTEGRATION_GUIDANCE = [
       "next-attrezzature-cantieri",
       "next-manutenzioni",
       "next-materiali-da-ordinare",
-      "next-lavori-da-eseguire",
-      "next-lavori-in-attesa",
-      "next-lavori-eseguiti",
-      "next-dettaglio-lavoro",
     ],
     confidence: "alta",
     antiPatterns: [

@@ -11976,3 +11976,43 @@ La regola corrente da leggere insieme a questo registro e:
 - COSA: Aggiunto il quinto bottone rosso `Elimina` nel pannello dettaglio embedded di `/next/manutenzioni`, con `window.confirm` esplicito sull'irreversibilita e sugli effetti collaterali su inventario e consegne. Il parent richiama il domain `deleteNextManutenzioneBusinessRecord()`, azzera la selezione e ricarica lo snapshot con `refreshData()`.
 - ESITO: FATTO
 - NOTE: nessun tocco a domain delete o barrier; build ed eslint mirati eseguiti, runtime live da riverificare.
+
+### Voce 2026-05-14 1135
+- DATA: 2026-05-14
+- TITOLO: Macchina chiusura ciclo eventi gomme su manutenzioni NEXT
+- FILE TOCCATI: `src/next/domain/nextManutenzioniDomain.ts`, `src/next/writers/nextChiusuraEventoWriter.ts`, `src/next/components/NextImportGommeChiusuraModal.tsx`, `src/next/autistiInbox/NextAutistiAdminNative.tsx`, `src/utils/cloneWriteBarrier.ts`, report in `docs/_live`.
+- COSA: Aggiunto stato `chiusa_da_evento` con campi `chiusura*`, writer/barrier dedicati e modale multi-select nell'import gomme per chiudere manutenzioni, segnalazioni e controlli correlati. UI Manutenzioni, Archivio, Dossier e Chat IA riconoscono lo stato separato.
+- ESITO: FATTO
+- NOTE: `npm run build` OK; lint mirati OK; script retroattivo creato ma non eseguito, quindi Firestore invariato nel prompt.
+
+### Voce 2026-05-14 1225
+- DATA: 2026-05-14
+- TITOLO: Aggancio e sgancio retroattivo evento gomme
+- FILE TOCCATI: `src/next/helpers/eventiCompatibili.ts`, `src/next/components/NextAggancioEventoModal.tsx`, `src/next/writers/nextChiusuraEventoWriter.ts`, `src/next/NextManutenzioniPage.tsx`, `src/next/NextMappaStoricoPage.tsx`, `src/next/autistiInbox/NextAutistiAdminNative.tsx`.
+- COSA: Aggiunti bottoni `Aggancia evento` e `Sgancia evento` su dettaglio manutenzione, segnalazione e controllo KO gomme. La modale cerca cambi gomme gia' importati in `@gomme_eventi`; lo sgancio e' ammesso solo per `chiusuraDi = gomme_evento`.
+- ESITO: FATTO
+- NOTE: Firestore non scritto nel prompt; verifica caso reale lasciata al gate manuale UI.
+
+### Voce 2026-05-14 1325
+- DATA: 2026-05-14
+- TITOLO: Fix parsing data Aggancia evento gomme
+- FILE TOCCATI: `src/next/helpers/parseRobusto.ts`, `src/next/NextManutenzioniPage.tsx`, `src/next/autistiInbox/NextAutistiAdminNative.tsx`.
+- COSA: Aggiunto parser robusto centralizzato per ISO `yyyy-mm-dd`, legacy `dd/mm/yyyy`, timestamp, `Date` e Firestore Timestamp. I chiamanti di `NextAggancioEventoModal` passano ora una data riferimento reale invece di cadere su `Date.now()` quando il record daFare usa formato ISO.
+- ESITO: FATTO
+- NOTE: caso TI298409 8/12 maggio simulato: evento 12 maggio passa il filtro; Firestore non scritto.
+
+### Voce 2026-05-14 1345
+- DATA: 2026-05-14
+- TITOLO: Fix critiche parsing date C1-C4
+- FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/domain/nextSegnalazioniControlliDomain.ts`, `src/next/domain/nextAutistiDomain.ts`, `src/next/domain/nextDocumentiMezzoDomain.ts`, `src/next/NextGommeEconomiaSection.tsx`, `src/next/NextMappaStoricoPage.tsx`.
+- COSA: Applicate le 4 critiche dell'audit propagazione: filtri/grouping manutenzioni, reader timestamp segnalazioni/autisti/documenti, sort gomme e rendering date storico usano ora `parseDataRobusta` per ISO/timestamp/Firestore Timestamp, mantenendo fallback locale solo per legacy con spazi.
+- ESITO: FATTO
+- NOTE: `Date.parse` critici rimossi dai 3 reader domain; build e lint mirati eseguiti.
+
+### Voce 2026-05-14 1413
+- DATA: 2026-05-14
+- TITOLO: Storia unificata e sparizione satellite manutenzioni
+- FILE TOCCATI: `src/next/helpers/storiaRecord.ts`, `src/next/components/StoriaRecordTimeline.tsx`, `src/next/NextManutenzioniPage.tsx`, `src/next/NextMappaStoricoPage.tsx`, `src/next/NextDossierMezzoPage.tsx`, `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextManutenzioniGommeDomain.ts`, `src/next/domain/nextDossierMezzoDomain.ts`, `src/next/centroControllo/archivioStorico/*`.
+- COSA: I record `chiusa_da_evento` da `gomme_evento` non compaiono piu' come satelliti nelle liste storiche normali. Timeline standardizzata in Manutenzioni, Dossier e Archivio; PDF Quadro con sezione separata per risolte tramite eventi esterni.
+- ESITO: FATTO
+- NOTE: `npm run build` OK; lint mirati OK; Firestore invariato.

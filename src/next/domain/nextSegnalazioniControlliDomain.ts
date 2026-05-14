@@ -1,4 +1,5 @@
 import { readNextUnifiedStorageDocument } from "./nextUnifiedReadRegistryDomain";
+import { parseDataRobusta } from "../helpers/parseRobusto";
 
 type RawRecord = Record<string, unknown>;
 
@@ -15,6 +16,14 @@ export const NEXT_SEGNALAZIONI_CONTROLLI_DOMAIN = {
 } as const;
 
 export type NextMezzoSegnalazioniControlliMatchKind = "exact" | "fuzzy" | "none";
+export type NextSegnalazioneAutistaStato = "aperta" | "importata" | "chiusa";
+export type NextControlloMezzoAutistaStato = "aperto" | "importato" | "chiusa";
+
+export type NextChiusuraEventoTrace = {
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
+};
 
 export type NextMezzoSegnalazioneItem = {
   id: string;
@@ -31,6 +40,9 @@ export type NextMezzoSegnalazioneItem = {
   categoria: string | null;
   ambito: string | null;
   stato: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   severita: "info" | "warning" | "critical" | "unknown";
   raw: Record<string, unknown>;
 };
@@ -49,7 +61,11 @@ export type NextMezzoControlloItem = {
   descrizione: string | null;
   target: string | null;
   esito: "ok" | "ko" | "unknown";
+  stato?: string | null;
   note: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   raw: Record<string, unknown>;
 };
 
@@ -137,7 +153,7 @@ function toTimestamp(value: unknown): number | null {
   if (!raw) return null;
   const numeric = Number(raw);
   if (Number.isFinite(numeric)) return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
-  const parsed = Date.parse(raw);
+  const parsed = parseDataRobusta(raw);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -225,6 +241,9 @@ function mapSegnalazioni(records: RawRecord[], target: string, limitations: stri
       categoria: normalizeOptionalText(record.categoria ?? record.tipoProblema ?? record.tipo),
       ambito: normalizeOptionalText(record.ambito),
       stato: normalizeOptionalText(record.stato),
+      chiusuraDi: normalizeOptionalText(record.chiusuraDi),
+      chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),
+      chiusuraData: toTimestamp(record.chiusuraData),
       severita: resolveSegnalazioneSeverity(record),
       raw: record,
     }];
@@ -258,7 +277,11 @@ function mapControlli(records: RawRecord[], target: string, limitations: string[
       descrizione: normalizeOptionalText(record.descrizione ?? record.note),
       target: normalizeOptionalText(record.target),
       esito: resolveControlloEsito(record),
+      stato: normalizeOptionalText(record.stato),
       note: normalizeOptionalText(record.note),
+      chiusuraDi: normalizeOptionalText(record.chiusuraDi),
+      chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),
+      chiusuraData: toTimestamp(record.chiusuraData),
       raw: record,
     }];
   }));

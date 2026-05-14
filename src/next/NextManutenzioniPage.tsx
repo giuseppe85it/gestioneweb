@@ -1,4 +1,5 @@
-﻿import { Fragment, useEffect, useMemo, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
 import {
@@ -7,11 +8,17 @@ import {
 } from "./domain/nextInventarioDomain";
 import {
   deleteNextManutenzioneBusinessRecord,
+  getNextManutenzioneOrigineRecord,
+  readNextManutenzioniDaFareAndProgrammataGlobalSnapshot,
   readNextManutenzioniWorkspaceSnapshot,
   saveNextManutenzioneBusinessRecord,
   type NextManutenzioneGommeInterventoTipo,
   type NextManutenzioneGommePerAsseRecord,
   type NextManutenzioneGommeStraordinarioRecord,
+  type NextManutenzioneOrigineTipo,
+  type NextManutenzioneOrigineRecord,
+  type NextManutenzioneStato,
+  type NextManutenzioneUrgenza,
   type NextManutenzioniLegacyDatasetRecord,
   type NextManutenzioniLegacyMaterialRecord,
   type NextManutenzioniMezzoOption,
@@ -24,21 +31,32 @@ import {
   normalizeNextAssiCoinvolti,
   type NextManutenzioneAsseCoinvoltoId,
 } from "./domain/nextManutenzioniGommeDomain";
-import { readNextLavoriInAttesaSnapshot } from "./domain/nextLavoriDomain";
 import { readNextRifornimentiReadOnlySnapshot } from "./domain/nextRifornimentiDomain";
 import {
   readNextAnagraficheFlottaSnapshot,
   type NextMezzoListItem,
 } from "./nextAnagraficheFlottaDomain";
-import { formatDateTimeUI } from "./nextDateFormat";
+import { formatDateTimeUI, formatDateUI, toNextDateValue } from "./nextDateFormat";
 import { buildNextDossierPath } from "./nextStructuralPaths";
+import { NextAggancioEventoModal } from "./components/NextAggancioEventoModal";
+import type { EventoCompatibile } from "./helpers/eventiCompatibili";
+import { getDataRiferimentoRecord, parseDataRobusta } from "./helpers/parseRobusto";
+import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
+import {
+  chiudiManutenzioneDaEvento,
+  sganciaManutenzioneDaEvento,
+} from "./writers/nextChiusuraEventoWriter";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
 type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 type SottoTipo = "motrice" | "trattore";
-type ViewTab = "dashboard" | "form" | "pdf" | "mappa";
+type ViewTab = "dafare" | "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
+type DaFareUrgenzaFilter = "tutte" | NextManutenzioneUrgenza;
+type DaFareOrigineFilter = "tutte" | NextManutenzioneOrigineTipo;
 type InterventoUiSubtype =
   | "tagliando"
   | "tagliando completo"
@@ -83,6 +101,8 @@ type PdfImageData = {
   dataUrl: string;
   format: "JPEG" | "PNG";
 };
+
+type PdfOriginNotesById = Record<string, string>;
 
 type PdfDocWithPlugins = {
   addFileToVFS(fileName: string, fileData: string): void;
@@ -143,6 +163,22 @@ function normalizeFreeText(value: string) {
 
 function parseLegacyDate(value: string | null | undefined): Date | null {
   if (!value) return null;
+  const spaceLegacy = value.trim().match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})$/);
+  if (spaceLegacy) {
+    const [, dayRaw, monthRaw, yearRaw] = spaceLegacy;
+    const day = Number(dayRaw);
+    const monthIndex = Number(monthRaw) - 1;
+    let year = Number(yearRaw);
+    if (!Number.isFinite(day) || !Number.isFinite(monthIndex) || !Number.isFinite(year)) return null;
+    if (yearRaw.length === 2) year += year >= 70 ? 1900 : 2000;
+    const parsed = new Date(year, monthIndex, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const robustTimestamp = parseDataRobusta(value);
+  if (robustTimestamp !== null) {
+    const robustDate = new Date(robustTimestamp);
+    if (!Number.isNaN(robustDate.getTime())) return robustDate;
+  }
   const normalized = value.trim().replace(/[./-]/g, " ");
   const match = normalized.match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})$/);
   if (!match) return null;
@@ -249,9 +285,11 @@ function resolvePdfListTitle(count: number) {
 function buildPdfPeriodRangeLabel(items: NextManutenzioniLegacyDatasetRecord[]) {
   if (!items.length) return "DA VERIFICARE";
   const sorted = [...items].sort(
-    (left, right) => getLegacyDateTimestamp(left.data) - getLegacyDateTimestamp(right.data),
+    (left, right) =>
+      getMaintenancePdfSortTimestamp(left) -
+      getMaintenancePdfSortTimestamp(right),
   );
-  return `${formatDateFull(sorted[0]?.data)} – ${formatDateFull(sorted[sorted.length - 1]?.data)}`;
+  return `${formatMaintenancePdfDateLabel(sorted[0])} – ${formatMaintenancePdfDateLabel(sorted[sorted.length - 1])}`;
 }
 
 function buildDescrizioneSnippet(value: string, limit = 140) {
@@ -278,6 +316,283 @@ function formatMaintenanceImporto(
     return `€ ${amount}`;
   }
   return amount;
+}
+
+function parseImportoInput(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+const URGENZA_PRIORITY: Record<NextManutenzioneUrgenza, number> = {
+  alta: 3,
+  media: 2,
+  bassa: 1,
+};
+
+const URGENZA_BADGE_STYLE: Record<NextManutenzioneUrgenza, CSSProperties> = {
+  alta: {
+    background: "#fee2e2",
+    color: "#991b1b",
+    borderColor: "#fecaca",
+  },
+  media: {
+    background: "#fef3c7",
+    color: "#92400e",
+    borderColor: "#fde68a",
+  },
+  bassa: {
+    background: "#f3f4f6",
+    color: "#374151",
+    borderColor: "#e5e7eb",
+  },
+};
+
+function resolveMaintenanceStato(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneStato {
+  if (
+    item.stato === "programmata" ||
+    item.stato === "eseguita" ||
+    item.stato === "chiusa_da_evento"
+  ) {
+    return item.stato;
+  }
+  return "daFare";
+}
+
+function formatMaintenanceStatoLabel(stato: NextManutenzioneStato): string {
+  if (stato === "programmata") return "PROGRAMMATA";
+  if (stato === "eseguita") return "ESEGUITA";
+  if (stato === "chiusa_da_evento") return "CHIUSA DA EVENTO";
+  return "DA FARE";
+}
+
+function formatChiusuraEventoTipo(value: string | null | undefined): string {
+  if (value === "gomme_evento") return "cambio gomme";
+  if (value === "manutenzione_eseguita") return "manutenzione eseguita";
+  return value ? value.replace(/_/g, " ") : "evento";
+}
+
+function buildChiusuraDaEventoTitle(item: NextManutenzioniLegacyDatasetRecord): string | undefined {
+  if (resolveMaintenanceStato(item) !== "chiusa_da_evento") return undefined;
+  const evento = formatChiusuraEventoTipo(item.chiusuraDi);
+  const data = item.chiusuraData ? formatDateTimeUI(item.chiusuraData) : "-";
+  return data && data !== "-"
+    ? `Chiusa dal ${evento} del ${data}`
+    : `Chiusa dal ${evento}`;
+}
+
+function getMaintenanceStatoBadgeStyle(stato: NextManutenzioneStato): CSSProperties | undefined {
+  if (stato !== "chiusa_da_evento") return undefined;
+  return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
+}
+
+function resolveMaintenanceUrgenza(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneUrgenza {
+  return item.urgenza ?? "bassa";
+}
+
+function resolveMaintenanceOrigine(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneOrigineTipo {
+  return item.origineTipo ?? "manuale";
+}
+
+function formatMaintenanceOrigineLabel(value: NextManutenzioneOrigineTipo): string {
+  if (value === "controllo") return "Controllo KO";
+  if (value === "segnalazione") return "Segnalazione";
+  return "Manuale";
+}
+
+function readOrigineText(data: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return null;
+}
+
+function readOrigineDateText(data: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = data[key];
+    if (value == null || value === "") continue;
+    const formatted = formatDateTimeUI(value as Parameters<typeof formatDateTimeUI>[0]);
+    if (formatted !== "-") return formatted;
+  }
+  return null;
+}
+
+function readOrigineFotoUrls(data: Record<string, unknown>): string[] {
+  const urls = new Set<string>();
+  const push = (value: unknown) => {
+    if (typeof value === "string" && /^(blob:|data:|https?:)/i.test(value.trim())) {
+      urls.add(value.trim());
+    }
+  };
+  push(data.fotoUrl);
+  push(data.fotoDataUrl);
+  [data.fotoUrls, data.images, data.foto].forEach((value) => {
+    if (!Array.isArray(value)) return;
+    value.forEach((entry) => {
+      if (typeof entry === "string") {
+        push(entry);
+        return;
+      }
+      if (entry && typeof entry === "object") {
+        const record = entry as Record<string, unknown>;
+        push(record.url);
+        push(record.dataUrl);
+      }
+    });
+  });
+  return [...urls];
+}
+
+function buildOrigineDetails(record: NextManutenzioneOrigineRecord): Array<{ label: string; value: string }> {
+  const data = record.data;
+  const details: Array<{ label: string; value: string }> = [];
+  const push = (label: string, keys: string[]) => {
+    const value = readOrigineText(data, keys);
+    if (value) details.push({ label, value });
+  };
+  const pushDate = (label: string, keys: string[]) => {
+    const value = readOrigineDateText(data, keys);
+    if (value) details.push({ label, value });
+  };
+
+  push("Targa", ["targa", "targaCamion", "targaMotrice", "targaRimorchio"]);
+  push("Autista", ["autistaNome", "nomeAutista", "autista", "badgeAutista", "badge"]);
+  pushDate("Data", ["data", "createdAt", "timestamp", "date"]);
+  push("Problema", ["tipoProblema", "tipo", "categoria"]);
+  push("Descrizione", ["descrizione", "note", "messaggio"]);
+  if (record.origineTipo === "controllo") {
+    const check = data.check;
+    if (check && typeof check === "object") {
+      const koList = Object.entries(check as Record<string, unknown>)
+        .filter(([, value]) => value === false)
+        .map(([key]) => key.toUpperCase());
+      if (koList.length > 0) {
+        details.push({ label: "KO", value: koList.join(", ") });
+      }
+    }
+    push("Target", ["target"]);
+  }
+  return details;
+}
+
+function buildPdfOriginNote(
+  item: NextManutenzioniLegacyDatasetRecord,
+  origineRecord: NextManutenzioneOrigineRecord | null,
+): string | null {
+  if (item.origineTipo !== "segnalazione" && item.origineTipo !== "controllo") return null;
+  const data = origineRecord?.data ?? {};
+  const autore =
+    readOrigineText(data, ["autistaNome", "nomeAutista", "autista", "badgeAutista", "badge"]) ??
+    item.segnalatoDa ??
+    null;
+  if (!autore) return null;
+
+  const dateLabel =
+    readOrigineDateText(data, ["data", "createdAt", "timestamp", "date", "dataInserimento"]) ??
+    "data non disponibile";
+
+  if (item.origineTipo === "controllo") {
+    return `Controllo KO di ${autore} del ${dateLabel}`;
+  }
+  return `Segnalato da ${autore} il ${dateLabel}`;
+}
+
+function buildPdfDescrizioneWithOrigin(
+  item: NextManutenzioniLegacyDatasetRecord,
+  notesById: PdfOriginNotesById,
+): string {
+  const originNote = notesById[item.id];
+  return originNote ? `${buildPdfDescrizione(item)}\n${originNote}` : buildPdfDescrizione(item);
+}
+
+function formatDaFareDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
+  return item.dataProgrammata || item.data || item.dataEsecuzione || "-";
+}
+
+function formatMaintenancePdfDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
+  const value = getMaintenancePdfDateValue(item);
+  if (value) return formatDateFull(value);
+  const stato = resolveMaintenanceStato(item);
+  return stato === "daFare" || stato === "programmata" ? "in programma" : "-";
+}
+
+function isPdfOperativeMaintenance(item: NextManutenzioniLegacyDatasetRecord): boolean {
+  const stato = resolveMaintenanceStato(item);
+  return stato === "daFare" || stato === "programmata";
+}
+
+function isPdfClosedByExternalEvent(item: NextManutenzioniLegacyDatasetRecord): boolean {
+  return isSatelliteChiusoDaEvento(item as unknown as Record<string, unknown>);
+}
+
+function normalizePdfDateCandidate(value: unknown): string | null {
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return null;
+    if (/^\d{10,13}$/.test(raw)) {
+      const parsed = toNextDateValue(Number(raw));
+      return parsed ? formatDateUI(parsed) : null;
+    }
+    return raw;
+  }
+  const parsed = toNextDateValue(value);
+  return parsed ? formatDateUI(parsed) : null;
+}
+
+function getMaintenancePdfDateValue(item: NextManutenzioniLegacyDatasetRecord): string | null {
+  const raw = item as unknown as Record<string, unknown>;
+  const candidates = isPdfClosedByExternalEvent(item)
+    ? [
+        raw.chiusuraData,
+        item.dataEsecuzione,
+        item.data,
+        raw.dataInserimento,
+        raw.createdAt,
+        raw.timestamp,
+      ]
+    : isPdfOperativeMaintenance(item)
+    ? [
+        item.dataProgrammata,
+        raw.dataInserimento,
+        raw.createdAt,
+        raw.timestamp,
+        item.data,
+        item.dataEsecuzione,
+      ]
+    : [
+        item.data,
+        item.dataEsecuzione,
+        item.dataProgrammata,
+        raw.dataInserimento,
+        raw.createdAt,
+        raw.timestamp,
+      ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePdfDateCandidate(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function formatPdfChiusuraDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
+  const raw = item as unknown as Record<string, unknown>;
+  const value = normalizePdfDateCandidate(raw.chiusuraData) ?? normalizePdfDateCandidate(item.dataEsecuzione);
+  return value ? formatDateFull(value) : "DA VERIFICARE";
+}
+
+function buildPdfClosedExternalOriginLabel(
+  item: NextManutenzioniLegacyDatasetRecord,
+  notesById: PdfOriginNotesById,
+): string {
+  return notesById[item.id] ?? formatMaintenancePdfDateLabel(item);
+}
+
+function getMaintenancePdfSortTimestamp(item: NextManutenzioniLegacyDatasetRecord): number {
+  return getLegacyDateTimestamp(getMaintenancePdfDateValue(item));
 }
 
 function buildPdfFileName(value: string) {
@@ -726,13 +1041,14 @@ function buildPdfTableMetricValue(
 }
 
 function mapLegacyRecordToGommeReadModel(item: NextManutenzioniLegacyDatasetRecord) {
+  const pdfDate = getMaintenancePdfDateValue(item);
   return {
     id: item.id,
     mezzoTarga: item.targa,
     targa: item.targa,
-    data: item.data ?? null,
-    dataLabel: item.data ?? null,
-    timestamp: getLegacyDateTimestamp(item.data),
+    data: pdfDate,
+    dataLabel: pdfDate,
+    timestamp: getLegacyDateTimestamp(pdfDate),
     descrizione: item.descrizione ?? null,
     tipo: item.tipo ?? null,
     km: item.km ?? null,
@@ -747,6 +1063,15 @@ function mapLegacyRecordToGommeReadModel(item: NextManutenzioniLegacyDatasetReco
       (item.gommePerAsse?.length ?? 0) > 0 ||
       item.descrizione.toUpperCase().includes("GOMME") ||
       item.descrizione.toUpperCase().includes("PNEUM"),
+    stato: resolveMaintenanceStato(item),
+    dataProgrammata: item.dataProgrammata ?? null,
+    origineTipo: item.origineTipo ?? null,
+    origineRefId: item.origineRefId ?? null,
+    origineRefKey: item.origineRefKey ?? null,
+    segnalatoDa: item.segnalatoDa ?? null,
+    chiusuraDi: item.chiusuraDi ?? null,
+    chiusuraRefId: item.chiusuraRefId ?? null,
+    chiusuraData: item.chiusuraData ?? null,
     sourceDataset: "@manutenzioni",
     sourceRecordId: item.id,
     sourceOrigin: "manuale",
@@ -768,12 +1093,12 @@ function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]
 }
 
 async function readPageData(): Promise<PageLoadData> {
-  const [workspace, inventorySnapshot, flottaSnapshot, rifornimentiSnapshot, lavoriSnapshot] = await Promise.all([
+  const [workspace, inventorySnapshot, flottaSnapshot, rifornimentiSnapshot, manutenzioniDaFare] = await Promise.all([
     readNextManutenzioniWorkspaceSnapshot(),
     readNextInventarioSnapshot({ includeCloneOverlays: false }),
     readNextAnagraficheFlottaSnapshot({ includeClonePatches: false }),
     readNextRifornimentiReadOnlySnapshot(),
-    readNextLavoriInAttesaSnapshot({ includeCloneOverlays: false }),
+    readNextManutenzioniDaFareAndProgrammataGlobalSnapshot(),
   ]);
 
   const fallbackByTarga = new Map(
@@ -802,10 +1127,10 @@ async function readPageData(): Promise<PageLoadData> {
     return acc;
   }, {});
 
-  const lavoriInAttesaByTarga = lavoriSnapshot.groups.reduce<Record<string, number>>((acc, group) => {
-    const targa = normalizeText(group.mezzo?.targa || "");
+  const lavoriInAttesaByTarga = manutenzioniDaFare.reduce<Record<string, number>>((acc, item) => {
+    const targa = normalizeText(item.targa || "");
     if (!targa) return acc;
-    acc[targa] = group.counts.total;
+    acc[targa] = (acc[targa] ?? 0) + 1;
     return acc;
   }, {});
 
@@ -826,7 +1151,10 @@ export default function NextManutenzioniPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [view, setView] = useState<ViewTab>("dashboard");
+  const [view, setView] = useState<ViewTab>("dafare");
+  const [origineModalRecord, setOrigineModalRecord] = useState<NextManutenzioneOrigineRecord | null>(null);
+  const [origineModalLoading, setOrigineModalLoading] = useState(false);
+  const [origineModalError, setOrigineModalError] = useState<string | null>(null);
   const [storico, setStorico] = useState<NextManutenzioniLegacyDatasetRecord[]>([]);
   const [mezzi, setMezzi] = useState<NextManutenzioniMezzoOption[]>([]);
   const [mezzoPreview, setMezzoPreview] = useState<MezzoPreview[]>([]);
@@ -836,12 +1164,25 @@ export default function NextManutenzioniPage() {
 
   const [selectedTarga, setSelectedTarga] = useState("");
   const [selectedDetailRecordId, setSelectedDetailRecordId] = useState<string | null>(null);
+  const [aggancioManutenzioneRecord, setAggancioManutenzioneRecord] =
+    useState<NextManutenzioniLegacyDatasetRecord | null>(null);
+  const [aggancioManutenzioneBusy, setAggancioManutenzioneBusy] = useState(false);
   const [ricercaMezzo, setRicercaMezzo] = useState("");
   const [pdfQuickSearch, setPdfQuickSearch] = useState("");
   const [pdfSubjectType, setPdfSubjectType] = useState<TipoVoce>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
+  const [pdfIncludeOperative, setPdfIncludeOperative] = useState(true);
+  const [pdfOriginNotesById, setPdfOriginNotesById] = useState<PdfOriginNotesById>({});
+  const pdfOriginNotesCacheRef = useRef<PdfOriginNotesById>({});
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("quadro-manutenzioni.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF quadro manutenzioni");
   const [modalOpenForTarga, setModalOpenForTarga] = useState<string | null>(null);
   const [pdfModalLayout, setPdfModalLayout] = useState<PdfModalLayout>("data");
+  const [daFareTargaFilter, setDaFareTargaFilter] = useState<string>("tutte");
+  const [daFareUrgenzaFilter, setDaFareUrgenzaFilter] = useState<DaFareUrgenzaFilter>("tutte");
+  const [daFareOrigineFilter, setDaFareOrigineFilter] = useState<DaFareOrigineFilter>("tutte");
 
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
@@ -853,6 +1194,8 @@ export default function NextManutenzioniPage() {
   const [descrizione, setDescrizione] = useState("");
   const [eseguito, setEseguito] = useState("");
   const [data, setData] = useState(todayLabel());
+  const [importo, setImporto] = useState("");
+  const [createAsDaFare, setCreateAsDaFare] = useState(false);
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [assiCoinvolti, setAssiCoinvolti] = useState<AsseCoinvoltoId[]>([]);
@@ -861,6 +1204,7 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [completionRecordId, setCompletionRecordId] = useState<string | null>(null);
   const requestedTarga = useMemo(
     () => normalizeText(new URLSearchParams(location.search).get("targa") ?? ""),
     [location.search],
@@ -921,6 +1265,70 @@ export default function NextManutenzioniPage() {
     setLavoriInAttesaByTarga(pageData.lavoriInAttesaByTarga);
   }
 
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
+  async function resolvePdfOriginNotesForItems(
+    items: NextManutenzioniLegacyDatasetRecord[],
+  ): Promise<PdfOriginNotesById> {
+    const targetItems = items.filter(
+      (item) =>
+        (item.origineTipo === "segnalazione" || item.origineTipo === "controllo") &&
+        item.origineRefKey &&
+        item.origineRefId,
+    );
+    if (targetItems.length === 0) return {};
+
+    const cache = { ...pdfOriginNotesCacheRef.current };
+    let changed = false;
+
+    await Promise.all(
+      targetItems.map(async (item) => {
+        if (cache[item.id]) return;
+        let note = buildPdfOriginNote(item, null);
+        try {
+          const origineRecord = await getNextManutenzioneOrigineRecord(item.origineRefKey, item.origineRefId);
+          note = buildPdfOriginNote(item, origineRecord);
+        } catch (originError) {
+          console.warn("Origine manutenzione non disponibile per PDF:", item.id, originError);
+        }
+        if (!note) return;
+        cache[item.id] = note;
+        changed = true;
+      }),
+    );
+
+    if (changed) {
+      pdfOriginNotesCacheRef.current = cache;
+      setPdfOriginNotesById(cache);
+    }
+
+    return targetItems.reduce<PdfOriginNotesById>((acc, item) => {
+      if (cache[item.id]) acc[item.id] = cache[item.id];
+      return acc;
+    }, {});
+  }
+
+  useEffect(() => {
+    if (view !== "pdf") return;
+    void resolvePdfOriginNotesForItems(storico);
+  }, [storico, view]);
+
+  async function openManutenzioniPdfPreview(blob: Blob, fileName: string, title: string) {
+    const preview = await openPreview({
+      source: blob,
+      fileName,
+      previousUrl: pdfPreviewUrl,
+    });
+    setPdfPreviewUrl(preview.url);
+    setPdfPreviewFileName(preview.fileName);
+    setPdfPreviewTitle(title);
+    setPdfPreviewOpen(true);
+  }
+
   const activeTarga = normalizeText(selectedTarga || targa);
   const mezzoPreviewByTarga = useMemo(
     () => new Map(mezzoPreview.map((mezzo) => [mezzo.targa, mezzo] as const)),
@@ -947,12 +1355,28 @@ export default function NextManutenzioniPage() {
     () => storico.filter((item) => item.targa === activeTarga),
     [activeTarga, storico],
   );
-  const storicoMezzoOrdinato = useMemo(
+  const storicoMezzoSatellitiEvento = useMemo(
     () =>
-      [...storicoMezzo].sort(
-        (left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data),
+      storicoMezzo.filter((item) =>
+        isSatelliteChiusoDaEvento(item as unknown as Record<string, unknown>),
       ),
     [storicoMezzo],
+  );
+  const storicoMezzoVisibile = useMemo(
+    () =>
+      storicoMezzo.filter(
+        (item) => !isSatelliteChiusoDaEvento(item as unknown as Record<string, unknown>),
+      ),
+    [storicoMezzo],
+  );
+  const storicoMezzoOrdinato = useMemo(
+    () =>
+      [...storicoMezzoVisibile].sort(
+        (left, right) =>
+          getLegacyDateTimestamp(right.data || right.dataEsecuzione || right.dataProgrammata) -
+          getLegacyDateTimestamp(left.data || left.dataEsecuzione || left.dataProgrammata),
+      ),
+    [storicoMezzoVisibile],
   );
   const materialiSuggeriti = useMemo(() => {
     const query = normalizeFreeText(materialeSearch).toUpperCase();
@@ -969,10 +1393,56 @@ export default function NextManutenzioniPage() {
   const kmUltimoRifornimento = kmUltimoByTarga[activeTarga] ?? null;
   const latestRecord = storicoMezzoOrdinato[0] ?? null;
   const selectedDetailRecord = useMemo(
-    () => storicoMezzoOrdinato.find((item) => item.id === selectedDetailRecordId) ?? null,
-    [selectedDetailRecordId, storicoMezzoOrdinato],
+    () => storico.find((item) => item.id === selectedDetailRecordId) ?? null,
+    [selectedDetailRecordId, storico],
   );
   const ultimiInterventi = useMemo(() => storicoMezzoOrdinato.slice(0, 5), [storicoMezzoOrdinato]);
+  const manutenzioniOperative = useMemo(
+    () =>
+      storico.filter((item) => {
+        const stato = resolveMaintenanceStato(item);
+        return stato === "daFare" || stato === "programmata";
+      }),
+    [storico],
+  );
+  const daFareTargaOptions = useMemo(() => {
+    const values = new Set<string>();
+    mezzi.forEach((mezzo) => {
+      const value = normalizeText(mezzo.targa);
+      if (value) values.add(value);
+    });
+    manutenzioniOperative.forEach((item) => {
+      const value = normalizeText(item.targa);
+      if (value) values.add(value);
+    });
+    return [...values].sort();
+  }, [manutenzioniOperative, mezzi]);
+  const manutenzioniOperativeFiltrate = useMemo(
+    () =>
+      [...manutenzioniOperative]
+        .filter((item) => {
+          const itemTarga = normalizeText(item.targa);
+          if (daFareTargaFilter !== "tutte" && itemTarga !== daFareTargaFilter) return false;
+          if (daFareUrgenzaFilter !== "tutte" && resolveMaintenanceUrgenza(item) !== daFareUrgenzaFilter) {
+            return false;
+          }
+          if (daFareOrigineFilter !== "tutte" && resolveMaintenanceOrigine(item) !== daFareOrigineFilter) {
+            return false;
+          }
+          return true;
+        })
+        .sort((left, right) => {
+          const priorityDelta =
+            URGENZA_PRIORITY[resolveMaintenanceUrgenza(right)] -
+            URGENZA_PRIORITY[resolveMaintenanceUrgenza(left)];
+          if (priorityDelta !== 0) return priorityDelta;
+          const rightTs = getLegacyDateTimestamp(right.dataProgrammata || right.data || right.dataEsecuzione);
+          const leftTs = getLegacyDateTimestamp(left.dataProgrammata || left.data || left.dataEsecuzione);
+          if (rightTs !== leftTs) return rightTs - leftTs;
+          return right.id.localeCompare(left.id);
+        }),
+    [daFareOrigineFilter, daFareTargaFilter, daFareUrgenzaFilter, manutenzioniOperative],
+  );
   const ultimeManutenzioniMezzo = useMemo(
     () => storicoMezzoOrdinato.filter((item) => item.tipo === "mezzo").slice(0, 4),
     [storicoMezzoOrdinato],
@@ -1027,9 +1497,13 @@ export default function NextManutenzioniPage() {
     const seen = new Set<string>();
     const items: PdfPeriodFilter[] = [];
     [...storico]
-      .sort((left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data))
+      .sort(
+        (left, right) =>
+          getMaintenancePdfSortTimestamp(right) -
+          getMaintenancePdfSortTimestamp(left),
+      )
       .forEach((item) => {
-        const filter = buildMonthFilterKey(item.data);
+        const filter = buildMonthFilterKey(getMaintenancePdfDateValue(item));
         if (!filter || seen.has(filter)) return;
         seen.add(filter);
         items.push(filter);
@@ -1043,16 +1517,30 @@ export default function NextManutenzioniPage() {
     return [...storico]
       .filter((item) => item.tipo === pdfSubjectType)
       .filter((item) => {
-        const timestamp = getLegacyDateTimestamp(item.data);
+        const isOperative = isPdfOperativeMaintenance(item);
+        if (pdfIncludeOperative && isOperative) return true;
+        const pdfDate = getMaintenancePdfDateValue(item);
+        const timestamp = getLegacyDateTimestamp(pdfDate);
         if (pdfPeriodFilter === "tutto") return true;
         if (pdfPeriodFilter === "ultimo-mese") return timestamp >= lastMonthThreshold;
-        return buildMonthFilterKey(item.data) === pdfPeriodFilter;
+        return buildMonthFilterKey(pdfDate) === pdfPeriodFilter;
       })
-      .sort((left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data));
-  }, [pdfPeriodFilter, pdfSubjectType, storico]);
+      .sort((left, right) => {
+        const leftOperative = pdfIncludeOperative && isPdfOperativeMaintenance(left);
+        const rightOperative = pdfIncludeOperative && isPdfOperativeMaintenance(right);
+        if (leftOperative !== rightOperative) return rightOperative ? 1 : -1;
+        const timestampDelta =
+          getMaintenancePdfSortTimestamp(right) -
+          getMaintenancePdfSortTimestamp(left);
+        if (timestampDelta !== 0) return timestampDelta;
+        return right.id.localeCompare(left.id);
+      });
+  }, [pdfIncludeOperative, pdfPeriodFilter, pdfSubjectType, storico]);
   const latestMetricByTargaAndTipo = useMemo(() => {
     const sortedItems = [...storico].sort(
-      (left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data),
+      (left, right) =>
+        getMaintenancePdfSortTimestamp(right) -
+        getMaintenancePdfSortTimestamp(left),
     );
     const byKey = new Map<string, { km: number | null; ore: number | null }>();
 
@@ -1171,7 +1659,7 @@ export default function NextManutenzioniPage() {
     if (!pdfModalResult) return [];
     const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
     pdfModalResult.items.forEach((item) => {
-      const parsed = parseLegacyDate(item.data);
+      const parsed = parseLegacyDate(getMaintenancePdfDateValue(item));
       const key = parsed ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}` : "senza-data";
       const current = grouped.get(key) ?? [];
       current.push(item);
@@ -1233,6 +1721,28 @@ export default function NextManutenzioniPage() {
     }
     setNotice(null);
   }, [mezzi, requestedRecordId, requestedTarga]);
+
+  // Apertura robusta: recordId senza targa ricava il mezzo dal record letto.
+  useEffect(() => {
+    if (!requestedRecordId || loading) {
+      return;
+    }
+
+    const matchedRecord = storico.find((item) => item.id === requestedRecordId);
+    if (!matchedRecord) {
+      setSelectedDetailRecordId(null);
+      setView("dafare");
+      setNotice("Record manutenzione non trovato.");
+      return;
+    }
+
+    const matchedTarga = normalizeText(matchedRecord.targa);
+    setSelectedTarga((current) => (current === matchedTarga ? current : matchedTarga));
+    setTarga((current) => (current === matchedTarga ? current : matchedTarga));
+    setSelectedDetailRecordId((current) => (current === requestedRecordId ? current : requestedRecordId));
+    setView("mappa");
+    setNotice(null);
+  }, [loading, requestedRecordId, storico]);
 
   useEffect(() => {
     if (!requestedTarga || !requestedRecordId) {
@@ -1299,6 +1809,27 @@ export default function NextManutenzioniPage() {
     setView("mappa");
   }
 
+  async function handleOpenOrigineRecord(item: NextManutenzioniLegacyDatasetRecord) {
+    if (!item.origineRefKey || !item.origineRefId) return;
+    try {
+      setOrigineModalLoading(true);
+      setOrigineModalError(null);
+      const record = await getNextManutenzioneOrigineRecord(item.origineRefKey, item.origineRefId);
+      if (!record) {
+        setOrigineModalRecord(null);
+        setOrigineModalError("Origine non trovata.");
+        return;
+      }
+      setOrigineModalRecord(record);
+    } catch (error) {
+      console.error("Errore lettura origine manutenzione:", error);
+      setOrigineModalRecord(null);
+      setOrigineModalError("Lettura origine non riuscita.");
+    } finally {
+      setOrigineModalLoading(false);
+    }
+  }
+
   function renderPdfRows(args: {
     items: NextManutenzioniLegacyDatasetRecord[];
     currentKm: number | null;
@@ -1324,7 +1855,10 @@ export default function NextManutenzioniPage() {
 
       return (
         <tr key={`${item.id}-${args.variant}-${args.showSupplier ? "supplier" : "compact"}`}>
-          <td className={dateClass}>{item.data || "DA VERIFICARE"}</td>
+          <td className={dateClass}>{formatMaintenancePdfDateLabel(item)}</td>
+          <td>
+            <span className="man2-pdf-list__pill">{formatMaintenanceStatoLabel(resolveMaintenanceStato(item))}</span>
+          </td>
           <td className={metricClass}>{buildPdfTableMetricValue(item, args.categoria)}</td>
           <td className={deltaClass}>{rowMetricInfo?.deltaValue ?? "—"}</td>
           {args.showType ? (
@@ -1350,6 +1884,8 @@ export default function NextManutenzioniPage() {
     setDescrizione("");
     setEseguito("");
     setData(todayLabel());
+    setImporto("");
+    setCreateAsDaFare(false);
     setMaterialeSearch("");
     setMaterialiTemp([]);
     setAssiCoinvolti([]);
@@ -1358,6 +1894,7 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioQuantita("");
     setQuantitaTemp("");
     setEditingId(null);
+    setCompletionRecordId(null);
     setTarga(currentTarga);
   }
 
@@ -1393,6 +1930,7 @@ export default function NextManutenzioniPage() {
 
   function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
     setEditingId(item.id);
+    setCompletionRecordId(null);
     setSelectedTarga(item.targa);
     setSelectedDetailRecordId(item.id);
     setTarga(item.targa);
@@ -1405,6 +1943,8 @@ export default function NextManutenzioniPage() {
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
     setData(item.data);
+    setImporto(item.importo != null ? String(item.importo) : "");
+    setCreateAsDaFare(false);
     setMaterialiTemp(toMaterialiTemp(item.materiali));
     setAssiCoinvolti(
       normalizeNextAssiCoinvolti(
@@ -1420,6 +1960,14 @@ export default function NextManutenzioniPage() {
     );
     setView("form");
     setNotice("Modifica caricata dal dataset reale.");
+  }
+
+  function handleCompleteDaFare(item: NextManutenzioniLegacyDatasetRecord) {
+    handleEdit(item);
+    setCompletionRecordId(item.id);
+    setData(todayLabel());
+    setEseguito(item.eseguitoDa ?? item.eseguito ?? "");
+    setNotice("Completamento manutenzione caricato. Inserisci i dati di esecuzione e salva.");
   }
 
   async function handleDelete(record: Pick<NextManutenzioniLegacyDatasetRecord, "id">): Promise<void> {
@@ -1455,6 +2003,58 @@ export default function NextManutenzioniPage() {
     }
   }
 
+  function getManutenzioneAggancioTimestamp(record: NextManutenzioniLegacyDatasetRecord): number {
+    return getDataRiferimentoRecord(record as unknown as Record<string, unknown>);
+  }
+
+  async function handleConfirmAggancioManutenzione(evento: EventoCompatibile): Promise<void> {
+    const record = aggancioManutenzioneRecord;
+    if (!record) return;
+    try {
+      setAggancioManutenzioneBusy(true);
+      setError(null);
+      setNotice(null);
+      const result = await chiudiManutenzioneDaEvento(record.id, "gomme_evento", evento.id);
+      if (!result.ok) {
+        throw new Error(result.error || "Aggancio evento non riuscito.");
+      }
+      setAggancioManutenzioneRecord(null);
+      await refreshData();
+      setSelectedDetailRecordId(record.id);
+      setNotice("Manutenzione chiusa collegandola al cambio gomme selezionato.");
+    } catch (aggancioError) {
+      console.error("Errore aggancio evento manutenzione:", aggancioError);
+      setError("Aggancio evento non riuscito.");
+    } finally {
+      setAggancioManutenzioneBusy(false);
+    }
+  }
+
+  async function handleSganciaManutenzione(record: Pick<NextManutenzioniLegacyDatasetRecord, "id">): Promise<void> {
+    const recordId = String(record.id ?? "").trim();
+    if (!recordId) return;
+    if (!window.confirm("Sganciare il cambio gomme collegato e riaprire la manutenzione come da fare?")) {
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await sganciaManutenzioneDaEvento(recordId, "daFare");
+      if (!result.ok) {
+        throw new Error(result.error || "Sgancio evento non riuscito.");
+      }
+      await refreshData();
+      setSelectedDetailRecordId(recordId);
+      setNotice("Evento sganciato. La manutenzione e' tornata da fare.");
+    } catch (sgancioError) {
+      console.error("Errore sgancio evento manutenzione:", sgancioError);
+      setError("Sgancio evento non riuscito.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleUiSubtypeChange(nextSubtype: InterventoUiSubtype) {
     setUiSubtype(nextSubtype);
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
@@ -1482,28 +2082,36 @@ export default function NextManutenzioniPage() {
     const normalizedTarga = normalizeText(targa);
     const normalizedDescrizione = normalizeFreeText(descrizione);
     const normalizedData = normalizeFreeText(data);
+    const normalizedImporto = parseImportoInput(importo);
+    const sourceRecord = editingId ? storico.find((item) => item.id === editingId) ?? null : null;
+    const isCompletionSave = Boolean(completionRecordId && completionRecordId === editingId);
 
     if (!normalizedTarga || !normalizedDescrizione || !normalizedData) {
       window.alert("Compila almeno TARGA, DESCRIZIONE e DATA.");
       return;
     }
 
-    if (tipo === "mezzo" && categoriaMotorizzata && !km) {
+    if (importo.trim() && normalizedImporto === null) {
+      window.alert("Inserisci un importo valido.");
+      return;
+    }
+
+    if (!createAsDaFare && tipo === "mezzo" && categoriaMotorizzata && !km) {
       const confirmed = window.confirm("Non hai inserito i KM. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
 
-    if (tipo !== "mezzo" && !ore) {
+    if (!createAsDaFare && tipo !== "mezzo" && !ore) {
       const confirmed = window.confirm("Non hai inserito le ORE. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
 
-    if (isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
+    if (!createAsDaFare && isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
       window.alert("Per il cambio gomme ordinario devi selezionare almeno un asse.");
       return;
     }
 
-    if (isUiSubtypeGommeStraordinario(uiSubtype) && !normalizeFreeText(gommeStraordinarioMotivo)) {
+    if (!createAsDaFare && isUiSubtypeGommeStraordinario(uiSubtype) && !normalizeFreeText(gommeStraordinarioMotivo)) {
       window.alert("Per l'evento gomme straordinario seleziona un motivo esplicito.");
       return;
     }
@@ -1512,6 +2120,7 @@ export default function NextManutenzioniPage() {
       setSaving(true);
       setError(null);
       setNotice(null);
+      const wasEditing = Boolean(editingId);
       const savedRecord = await saveNextManutenzioneBusinessRecord({
         editingSourceId: editingId,
         targa: normalizedTarga,
@@ -1523,7 +2132,8 @@ export default function NextManutenzioniPage() {
         descrizione: normalizedDescrizione,
         eseguito: normalizeFreeText(eseguito) || null,
         data: normalizedData,
-        materiali: materialiTemp,
+        importo: normalizedImporto,
+        materiali: createAsDaFare ? [] : materialiTemp,
         assiCoinvolti: isUiSubtypeGommeOrdinario(uiSubtype) ? assiCoinvolti : [],
         gommePerAsse: isUiSubtypeGommeOrdinario(uiSubtype) ? gommePerAsseDraft : [],
         gommeInterventoTipo: isUiSubtypeGomme(uiSubtype)
@@ -1532,14 +2142,48 @@ export default function NextManutenzioniPage() {
             : "ordinario"
           : null,
         gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
+        ...(sourceRecord
+          ? {
+              stato: isCompletionSave ? "eseguita" : sourceRecord.stato ?? null,
+              dataEsecuzione: isCompletionSave ? normalizedData : sourceRecord.dataEsecuzione ?? null,
+              dataProgrammata: sourceRecord.dataProgrammata ?? null,
+              origineTipo: sourceRecord.origineTipo ?? null,
+              origineRefId: sourceRecord.origineRefId ?? null,
+              origineRefKey: sourceRecord.origineRefKey ?? null,
+              segnalatoDa: sourceRecord.segnalatoDa ?? null,
+              eseguitoDa: isCompletionSave
+                ? normalizeFreeText(eseguito) || null
+                : sourceRecord.eseguitoDa ?? null,
+              urgenza: sourceRecord.urgenza ?? null,
+              sourceDocumentId: sourceRecord.sourceDocumentId ?? null,
+            }
+          : {}),
+        ...(createAsDaFare && !sourceRecord
+          ? {
+              stato: "daFare" as const,
+              eseguito: null,
+              dataEsecuzione: null,
+              dataProgrammata: null,
+              origineTipo: "manuale" as const,
+              origineRefId: null,
+              origineRefKey: null,
+              segnalatoDa: null,
+              eseguitoDa: null,
+              urgenza: "media" as const,
+            }
+          : {}),
       });
       await refreshData();
       setSelectedTarga(savedRecord.targa);
       setSelectedDetailRecordId(savedRecord.id);
       resetForm(savedRecord.targa);
-      setView("dashboard");
+      setView(isCompletionSave ? "mappa" : createAsDaFare ? "dafare" : "dashboard");
       setNotice(
-        editingId
+        isCompletionSave
+          ? "Manutenzione completata e marcata come eseguita."
+          : createAsDaFare
+            ? "Manutenzione da fare creata."
+          : wasEditing
           ? "Manutenzione aggiornata in modo compatibile con il legacy."
           : "Manutenzione salvata in modo compatibile con il legacy.",
       );
@@ -1578,12 +2222,27 @@ export default function NextManutenzioniPage() {
     const periodLabel = buildPdfPeriodRangeLabel(items);
     const generatedLabel = formatPdfGenerationDate();
     const misuraColumnLabel = resolvePdfMetricColumnLabel(items);
+    const pdfOriginNotes = {
+      ...pdfOriginNotesById,
+      ...(await resolvePdfOriginNotesForItems(items)),
+    };
+    const fileName = buildPdfFileName(title);
     let y = topMargin;
 
     const groupedItems = orderedTarghe.map((targaKey) => {
       const groupedRecords = items
         .filter((item) => normalizeText(item.targa) === targaKey)
-        .sort((left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data));
+        .sort((left, right) => {
+          const leftOperative = pdfIncludeOperative && isPdfOperativeMaintenance(left);
+          const rightOperative = pdfIncludeOperative && isPdfOperativeMaintenance(right);
+          if (leftOperative !== rightOperative) return rightOperative ? 1 : -1;
+          const timestampDelta =
+            getMaintenancePdfSortTimestamp(right) - getMaintenancePdfSortTimestamp(left);
+          if (timestampDelta !== 0) return timestampDelta;
+          return right.id.localeCompare(left.id);
+        });
+      const closedByExternalRecords = groupedRecords.filter(isPdfClosedByExternalEvent);
+      const visibleRecords = groupedRecords.filter((item) => !isPdfClosedByExternalEvent(item));
       const currentMetrics = latestMetricByTargaAndTipo.get(`${pdfSubjectType}:${targaKey}`) ?? {
         km: null,
         ore: null,
@@ -1591,8 +2250,9 @@ export default function NextManutenzioniPage() {
 
       return {
         targa: targaKey,
-        items: groupedRecords,
-        latest: groupedRecords[0] ?? null,
+        items: visibleRecords,
+        closedByExternalItems: closedByExternalRecords,
+        latest: visibleRecords[0] ?? groupedRecords[0] ?? null,
         mezzo: mezzoPreviewByTarga.get(targaKey) ?? null,
         currentKm: kmUltimoByTarga[targaKey] ?? null,
         currentOre: currentMetrics.ore,
@@ -1637,6 +2297,67 @@ export default function NextManutenzioniPage() {
         doc.addPage();
         y = topMargin;
       }
+    };
+
+    const renderClosedByExternalTable = (
+      closedItems: NextManutenzioniLegacyDatasetRecord[],
+      notesById: PdfOriginNotesById,
+    ) => {
+      if (closedItems.length === 0) return;
+      checkPage(22);
+      setPdfFont("bold");
+      doc.setFontSize(10);
+      doc.setTextColor(55, 65, 81);
+      doc.text(toPdfText("Manutenzioni risolte tramite eventi esterni", fontReady), margin, y);
+      y += 4;
+
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin, top: topMargin, bottom: bottomMargin },
+        head: [[
+          toPdfText("Data origine", fontReady),
+          toPdfText("Data chiusura", fontReady),
+          toPdfText("Descrizione", fontReady),
+          toPdfText("Risolto da", fontReady),
+        ]],
+        body: closedItems.map((item) => [
+          toPdfText(buildPdfClosedExternalOriginLabel(item, notesById), fontReady),
+          toPdfText(formatPdfChiusuraDateLabel(item), fontReady),
+          toPdfText(buildPdfDescrizione(item), fontReady),
+          toPdfText(buildChiusuraDaEventoTitle(item) ?? "Evento esterno", fontReady),
+        ]),
+        styles: {
+          font: pdfBodyFont,
+          fontSize: 8,
+          cellPadding: 2.4,
+          lineColor: [229, 231, 235],
+          lineWidth: 0.1,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: {
+          font: pdfBodyFont,
+          fillColor: [75, 85, 99],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251],
+        },
+        bodyStyles: {
+          font: pdfBodyFont,
+          textColor: [37, 35, 32],
+        },
+        columnStyles: {
+          0: { cellWidth: 48 },
+          1: { cellWidth: 38 },
+          2: { cellWidth: 126 },
+          3: { cellWidth: 54 },
+        },
+        rowPageBreak: "avoid",
+      });
+
+      y = (docWithTable.lastAutoTable?.finalY ?? y) + 8;
     };
 
     if (singleTarga) {
@@ -1718,7 +2439,7 @@ export default function NextManutenzioniPage() {
         },
         {
           label: "Ultima manutenzione",
-          value: group?.latest ? formatDateFull(group.latest.data) : "DA VERIFICARE",
+          value: group?.latest ? formatMaintenancePdfDateLabel(group.latest) : "DA VERIFICARE",
         },
         {
           label: "Interventi periodo",
@@ -1757,6 +2478,7 @@ export default function NextManutenzioniPage() {
         margin: { left: margin, right: margin, top: topMargin, bottom: bottomMargin },
         head: [[
           toPdfText("Data", fontReady),
+          toPdfText("Stato", fontReady),
           toPdfText(misuraColumnLabel, fontReady),
           toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
           toPdfText("Tipo", fontReady),
@@ -1773,11 +2495,12 @@ export default function NextManutenzioniPage() {
           });
 
           return [
-            toPdfText(formatDateFull(item.data), fontReady),
+            toPdfText(formatMaintenancePdfDateLabel(item), fontReady),
+            toPdfText(formatMaintenanceStatoLabel(resolveMaintenanceStato(item)), fontReady),
             toPdfText(buildPdfTableMetricValue(item, group?.mezzo?.categoria ?? null), fontReady),
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
-            toPdfText(buildPdfDescrizione(item), fontReady),
+            toPdfText(buildPdfDescrizioneWithOrigin(item, pdfOriginNotes), fontReady),
             toPdfText(item.fornitore || "—", fontReady),
           ];
         }),
@@ -1805,14 +2528,15 @@ export default function NextManutenzioniPage() {
         },
         columnStyles: {
           0: { cellWidth: 26 },
-          1: { cellWidth: 22 },
+          1: { cellWidth: 24 },
           2: { cellWidth: 22 },
-          3: { cellWidth: 28 },
-          4: { cellWidth: 126 },
-          5: { cellWidth: 32 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 28 },
+          5: { cellWidth: 102 },
+          6: { cellWidth: 32 },
         },
         didParseCell: (hookData) => {
-          if (hookData.section === "body" && hookData.column.index === 2) {
+          if (hookData.section === "body" && hookData.column.index === 3) {
             hookData.cell.styles.textColor = [22, 101, 52];
             hookData.cell.styles.fontStyle = "bold";
           }
@@ -1820,8 +2544,15 @@ export default function NextManutenzioniPage() {
         rowPageBreak: "avoid",
       });
 
+      y = (docWithTable.lastAutoTable?.finalY ?? y) + 8;
+      renderClosedByExternalTable(group?.closedByExternalItems ?? [], pdfOriginNotes);
+
       decoratePages("Scheda manutenzioni mezzo");
-      doc.save(buildPdfFileName(title));
+      await openManutenzioniPdfPreview(
+        doc.output("blob") as Blob,
+        fileName,
+        "Anteprima PDF scheda manutenzioni mezzo",
+      );
       return;
     }
 
@@ -1892,6 +2623,7 @@ export default function NextManutenzioniPage() {
         margin: { left: margin, right: margin, top: topMargin, bottom: bottomMargin },
         head: [[
           toPdfText("Data", fontReady),
+          toPdfText("Stato", fontReady),
           toPdfText(misuraColumnLabel, fontReady),
           toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
           toPdfText("Tipo", fontReady),
@@ -1908,11 +2640,12 @@ export default function NextManutenzioniPage() {
           });
 
           return [
-            toPdfText(formatDateFull(item.data), fontReady),
+            toPdfText(formatMaintenancePdfDateLabel(item), fontReady),
+            toPdfText(formatMaintenanceStatoLabel(resolveMaintenanceStato(item)), fontReady),
             toPdfText(buildPdfTableMetricValue(item, group.mezzo?.categoria ?? null), fontReady),
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
-            toPdfText(buildPdfDescrizione(item), fontReady),
+            toPdfText(buildPdfDescrizioneWithOrigin(item, pdfOriginNotes), fontReady),
             toPdfText(item.fornitore || "—", fontReady),
           ];
         }),
@@ -1940,14 +2673,15 @@ export default function NextManutenzioniPage() {
         },
         columnStyles: {
           0: { cellWidth: 26 },
-          1: { cellWidth: 22 },
+          1: { cellWidth: 24 },
           2: { cellWidth: 22 },
-          3: { cellWidth: 28 },
-          4: { cellWidth: 126 },
-          5: { cellWidth: 32 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 28 },
+          5: { cellWidth: 102 },
+          6: { cellWidth: 32 },
         },
         didParseCell: (hookData) => {
-          if (hookData.section === "body" && hookData.column.index === 2) {
+          if (hookData.section === "body" && hookData.column.index === 3) {
             hookData.cell.styles.textColor = [22, 101, 52];
             hookData.cell.styles.fontStyle = "bold";
           }
@@ -1956,10 +2690,15 @@ export default function NextManutenzioniPage() {
       });
 
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 10;
+      renderClosedByExternalTable(group.closedByExternalItems, pdfOriginNotes);
     });
 
     decoratePages("Quadro manutenzioni");
-    doc.save(buildPdfFileName(title));
+    await openManutenzioniPdfPreview(
+      doc.output("blob") as Blob,
+      fileName,
+      "Anteprima PDF quadro manutenzioni",
+    );
   }
 
   function renderContextBar() {
@@ -2014,9 +2753,123 @@ export default function NextManutenzioniPage() {
     );
   }
 
+  function renderDaFare() {
+    return (
+      <section className="man2-screen">
+        <div className="man2-screen-head man2-screen-head--dashboard">
+          <div>
+            <h2 className="man2-screen-title">Da fare</h2>
+          </div>
+          <button type="button" className="man2-nav-btn man2-nav-btn--primary" onClick={() => setView("form")}>
+            + Nuova manutenzione
+          </button>
+        </div>
+
+        <div className="man2-field-row3">
+          <div className="man2-field">
+            <label className="man2-field__label">Targa</label>
+            <select
+              value={daFareTargaFilter}
+              onChange={(event) => setDaFareTargaFilter(event.target.value)}
+              aria-label="Filtra manutenzioni da fare per targa"
+            >
+              <option value="tutte">Tutte</option>
+              {daFareTargaOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="man2-field">
+            <label className="man2-field__label">Urgenza</label>
+            <select
+              value={daFareUrgenzaFilter}
+              onChange={(event) => setDaFareUrgenzaFilter(event.target.value as DaFareUrgenzaFilter)}
+              aria-label="Filtra manutenzioni da fare per urgenza"
+            >
+              <option value="tutte">Tutte</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="bassa">Bassa</option>
+            </select>
+          </div>
+          <div className="man2-field">
+            <label className="man2-field__label">Origine</label>
+            <select
+              value={daFareOrigineFilter}
+              onChange={(event) => setDaFareOrigineFilter(event.target.value as DaFareOrigineFilter)}
+              aria-label="Filtra manutenzioni da fare per origine"
+            >
+              <option value="tutte">Tutte</option>
+              <option value="controllo">Controllo</option>
+              <option value="segnalazione">Segnalazione</option>
+              <option value="manuale">Manuale</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="man2-section-title">
+          Manutenzioni operative ({manutenzioniOperativeFiltrate.length})
+        </div>
+        <div className="man2-last-list">
+          {manutenzioniOperativeFiltrate.length > 0 ? (
+            manutenzioniOperativeFiltrate.map((item) => {
+              const urgenza = resolveMaintenanceUrgenza(item);
+              const origine = resolveMaintenanceOrigine(item);
+              const stato = resolveMaintenanceStato(item);
+              return (
+                <article key={item.id} className="man2-last-item">
+                  <div className="man2-last-item__row1">
+                    <div>
+                      <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 80)}</span>
+                      <div className="man2-last-item__meta">
+                        {[
+                          item.targa,
+                          `Inserimento ${formatDaFareDateLabel(item)}`,
+                          `Origine ${formatMaintenanceOrigineLabel(origine)}`,
+                          item.segnalatoDa ? `Segnalato da ${item.segnalatoDa}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" - ")}
+                      </div>
+                    </div>
+                    <span className="man2-badge" style={URGENZA_BADGE_STYLE[urgenza]}>
+                      {urgenza.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="man2-last-item__meta">
+                    <span
+                      className={`man2-badge man2-badge--${item.tipo}`}
+                      style={getMaintenanceStatoBadgeStyle(stato)}
+                      title={buildChiusuraDaEventoTitle(item)}
+                    >
+                      {formatMaintenanceStatoLabel(stato)}
+                    </span>
+                    <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+                  </div>
+                  <div className="man2-form-actions">
+                    <button type="button" className="man2-btn" onClick={() => openDetailForRecord(item)}>
+                      Apri
+                    </button>
+                    <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
+                      Completa
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <div className="man-empty">Nessuna manutenzione da fare o programmata con i filtri correnti.</div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderDashboard() {
-    const interventiMezzo = storicoMezzo.filter((item) => item.tipo === "mezzo").length;
-    const interventiCompressore = storicoMezzo.filter((item) => item.tipo === "compressore").length;
+    const interventiMezzo = storicoMezzoVisibile.filter((item) => item.tipo === "mezzo").length;
+    const interventiCompressore = storicoMezzoVisibile.filter((item) => item.tipo === "compressore").length;
 
     return (
       <section className="man2-screen">
@@ -2045,9 +2898,9 @@ export default function NextManutenzioniPage() {
             </div>
           </article>
           <article className="man2-kpi">
-            <div className="man2-kpi__label">Segnalazioni aperte</div>
+            <div className="man2-kpi__label">Manutenzioni da fare</div>
             <div className="man2-kpi__value">{lavoriApertiMezzo}</div>
-            <div className="man2-kpi__sub">{lavoriApertiMezzo === 0 ? "nessuna" : "in attesa"}</div>
+            <div className="man2-kpi__sub">{lavoriApertiMezzo === 0 ? "nessuna" : "da fare"}</div>
           </article>
         </div>
 
@@ -2096,7 +2949,16 @@ export default function NextManutenzioniPage() {
                         .join(" - ")}
                     </div>
                   </div>
-                  <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+                  <div className="man2-last-item__meta">
+                    <span
+                      className={`man2-badge man2-badge--${item.tipo}`}
+                      style={getMaintenanceStatoBadgeStyle(resolveMaintenanceStato(item))}
+                      title={buildChiusuraDaEventoTitle(item)}
+                    >
+                      {formatMaintenanceStatoLabel(resolveMaintenanceStato(item))}
+                    </span>
+                    <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+                  </div>
                 </div>
               </button>
             ))
@@ -2123,6 +2985,22 @@ export default function NextManutenzioniPage() {
               <span>{mezzoPreviewSelezionato?.marcaModello || "Seleziona un mezzo dalla testata superiore"}</span>
             </div>
           </div>
+
+          {!editingId ? (
+            <div className="man2-field-row">
+              <label className="man2-field">
+                <span className="man2-field__label">Stato iniziale</span>
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={createAsDaFare}
+                    onChange={(event) => setCreateAsDaFare(event.target.checked)}
+                  />{" "}
+                  Crea come manutenzione da fare
+                </span>
+              </label>
+            </div>
+          ) : null}
 
           <section className="man2-form-block">
             <div className="man2-section-title">Campi base</div>
@@ -2191,6 +3069,18 @@ export default function NextManutenzioniPage() {
                   value={fornitore}
                   onChange={(event) => setFornitore(event.target.value.toUpperCase())}
                   placeholder="Es. Officina Rossi"
+                />
+              </div>
+              <div className="man2-field man2-metric-group man2-metric-group--supplier">
+                <label className="man2-field__label">Importo</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={importo}
+                  onChange={(event) => setImporto(event.target.value)}
+                  placeholder="Es. 120.00"
+                  inputMode="decimal"
                 />
               </div>
             </div>
@@ -2527,6 +3417,23 @@ export default function NextManutenzioniPage() {
                     </option>
                   ))}
                 </select>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: "#374151",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={pdfIncludeOperative}
+                    onChange={(event) => setPdfIncludeOperative(event.target.checked)}
+                  />
+                  Includi da fare e programmate
+                </label>
               </div>
             </div>
             <div className="man2-pdf-step">
@@ -2636,6 +3543,7 @@ export default function NextManutenzioniPage() {
                             <thead>
                               <tr>
                                 <th>Data</th>
+                                <th>Stato</th>
                                 <th>{metricColumnLabel}</th>
                                 <th>{deltaColumnLabel}</th>
                                 <th>Tipo</th>
@@ -2829,6 +3737,7 @@ export default function NextManutenzioniPage() {
                       <thead>
                         <tr>
                           <th>Data</th>
+                          <th>Stato</th>
                           <th>{resolvePdfMetricColumnLabel(pdfModalResult.items)}</th>
                           <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
                           <th>Tipo</th>
@@ -2860,6 +3769,7 @@ export default function NextManutenzioniPage() {
                             <thead>
                               <tr>
                                 <th>Data</th>
+                                <th>Stato</th>
                                 <th>{resolvePdfMetricColumnLabel(group.items)}</th>
                                 <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
                                 <th>Tipo</th>
@@ -2916,10 +3826,105 @@ export default function NextManutenzioniPage() {
       </section>
     );
   }
+
+  function renderOriginePanel() {
+    if (!selectedDetailRecord?.origineRefKey || !selectedDetailRecord.origineRefId) {
+      return null;
+    }
+    const label =
+      selectedDetailRecord.origineTipo === "segnalazione"
+        ? "Vedi segnalazione"
+        : selectedDetailRecord.origineTipo === "controllo"
+          ? "Vedi controllo"
+          : "Vedi origine";
+    return (
+      <section className="man2-screen">
+        <div className="man2-screen-head man2-screen-head--dashboard">
+          <div>
+            <h2 className="man2-screen-title">Origine manutenzione</h2>
+          </div>
+          <button
+            type="button"
+            className="man2-nav-btn"
+            onClick={() => void handleOpenOrigineRecord(selectedDetailRecord)}
+            disabled={origineModalLoading}
+          >
+            {origineModalLoading ? "Caricamento..." : label}
+          </button>
+        </div>
+        {origineModalError ? <div className="man2-feedback man2-feedback--error">{origineModalError}</div> : null}
+      </section>
+    );
+  }
+
+  function renderOrigineModal() {
+    if (!origineModalLoading && !origineModalError && !origineModalRecord) {
+      return null;
+    }
+    const details = origineModalRecord ? buildOrigineDetails(origineModalRecord) : [];
+    const fotoUrls = origineModalRecord ? readOrigineFotoUrls(origineModalRecord.data) : [];
+    const close = () => {
+      setOrigineModalRecord(null);
+      setOrigineModalError(null);
+      setOrigineModalLoading(false);
+    };
+
+    return (
+      <div className="man2-pdf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Origine manutenzione">
+        <div className="man2-pdf-modal">
+          <div className="man2-pdf-modal__head">
+            <div>
+              <h3>
+                {origineModalRecord?.origineTipo === "segnalazione"
+                  ? "Segnalazione origine"
+                  : origineModalRecord?.origineTipo === "controllo"
+                    ? "Controllo origine"
+                    : "Origine"}
+              </h3>
+              <p>{origineModalRecord?.origineRefId ?? "Lettura in corso"}</p>
+            </div>
+            <button type="button" className="man2-pdf-modal__close" aria-label="Chiudi origine" onClick={close}>
+              x
+            </button>
+          </div>
+          <div className="man2-pdf-modal__content">
+            {origineModalLoading ? <div className="man-empty">Caricamento origine...</div> : null}
+            {origineModalError ? <div className="man2-feedback man2-feedback--error">{origineModalError}</div> : null}
+            {!origineModalLoading && origineModalRecord ? (
+              <div className="man2-last-list">
+                {details.length > 0 ? (
+                  details.map((detail) => (
+                    <div key={`${detail.label}:${detail.value}`} className="man2-last-item">
+                      <div className="man2-last-item__row1">
+                        <span className="man2-last-item__title">{detail.label}</span>
+                        <span className="man2-last-item__meta">{detail.value}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="man-empty">Nessun dettaglio origine disponibile.</div>
+                )}
+                {fotoUrls.length > 0 ? (
+                  <div className="man2-material-list">
+                    {fotoUrls.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer" className="man2-material-row">
+                        Foto origine
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
   function renderActiveSurface() {
     if (loading) {
       return <div className="man-empty">Caricamento manutenzioni in corso...</div>;
     }
+    if (view === "dafare") return renderDaFare();
     if (view === "dashboard") return renderDashboard();
     if (view === "form") return renderForm();
     if (view === "pdf") return renderPdfPanel();
@@ -2961,6 +3966,7 @@ export default function NextManutenzioniPage() {
 
       <nav className="man2-tabs">
         {[
+          { key: "dafare", label: "Da fare" },
           { key: "dashboard", label: "Dashboard" },
           { key: "form", label: "Nuova / Modifica" },
           { key: "mappa", label: "Dettaglio" },
@@ -2989,50 +3995,80 @@ export default function NextManutenzioniPage() {
       {error ? <div className="man2-feedback man2-feedback--error">{error}</div> : null}
 
       {view === "mappa" ? (
-        <NextMappaStoricoPage
-          targa={activeTarga}
-          embedded={true}
-          selectedMaintenance={selectedDetailRecord ? { ...selectedDetailRecord } : null}
-          storicoManutenzioni={storicoMezzoOrdinato}
-          kmAttuali={kmUltimoByTarga[activeTarga] ?? null}
-          mezzoInfo={{
-            targa: mezzoPreviewSelezionato?.targa || activeTarga,
-            mezzoLabel: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "DA VERIFICARE",
-            autistaNome: mezzoPreviewSelezionato?.autistaNome ?? null,
-            categoria: mezzoPreviewSelezionato?.categoria ?? null,
-            kmAttuali: kmUltimoRifornimento,
-            latestGommeKmCambio,
-            ultimaManutenzione: latestRecord?.data ?? null,
-            ultimoInterventoMezzo: ultimeManutenzioniMezzo[0]?.descrizione ?? null,
-            ultimoInterventoCompressore: ultimeManutenzioniCompressore[0]?.descrizione ?? null,
-            ultimeManutenzioniMezzo: ultimeManutenzioniMezzoSenzaUltimo.map((item) => ({
-              id: item.id,
-              data: item.data,
-              title: buildDescrizioneSnippet(item.descrizione, 78),
-            })),
-            ultimeManutenzioniCompressore: ultimeManutenzioniCompressoreSenzaUltimo.map((item) => ({
-              id: item.id,
-              data: item.data,
-              title: buildDescrizioneSnippet(item.descrizione, 78),
-            })),
-          }}
-          onOpenDossier={() => {
-            if (mezzoPreviewSelezionato) navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa));
-          }}
-          onOpenDocument={(record) => {
-            if (!record.sourceDocumentFileUrl) return;
-            window.open(record.sourceDocumentFileUrl, "_blank", "noopener,noreferrer");
-          }}
-          onDownloadPdfSingle={(record) => void exportPdfForItems([record], `PDF dettaglio - ${record.targa}`)}
-          onSelectMaintenance={(recordId) => setSelectedDetailRecordId(recordId)}
-          onEditLatest={() => {
-            if (selectedDetailRecord) handleEdit(selectedDetailRecord);
-          }}
-          onDelete={handleDelete}
-        />
+        <Fragment>
+          {renderOriginePanel()}
+          <NextMappaStoricoPage
+            targa={activeTarga}
+            embedded={true}
+            selectedMaintenance={selectedDetailRecord ? { ...selectedDetailRecord } : null}
+            storicoManutenzioni={storicoMezzoOrdinato}
+            storiaSatelliteRecords={storicoMezzoSatellitiEvento}
+            kmAttuali={kmUltimoByTarga[activeTarga] ?? null}
+            mezzoInfo={{
+              targa: mezzoPreviewSelezionato?.targa || activeTarga,
+              mezzoLabel: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "DA VERIFICARE",
+              autistaNome: mezzoPreviewSelezionato?.autistaNome ?? null,
+              categoria: mezzoPreviewSelezionato?.categoria ?? null,
+              kmAttuali: kmUltimoRifornimento,
+              latestGommeKmCambio,
+              ultimaManutenzione: latestRecord?.data ?? null,
+              ultimoInterventoMezzo: ultimeManutenzioniMezzo[0]?.descrizione ?? null,
+              ultimoInterventoCompressore: ultimeManutenzioniCompressore[0]?.descrizione ?? null,
+              ultimeManutenzioniMezzo: ultimeManutenzioniMezzoSenzaUltimo.map((item) => ({
+                id: item.id,
+                data: item.data,
+                title: buildDescrizioneSnippet(item.descrizione, 78),
+              })),
+              ultimeManutenzioniCompressore: ultimeManutenzioniCompressoreSenzaUltimo.map((item) => ({
+                id: item.id,
+                data: item.data,
+                title: buildDescrizioneSnippet(item.descrizione, 78),
+              })),
+            }}
+            onOpenDossier={() => {
+              if (mezzoPreviewSelezionato) navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa));
+            }}
+            onOpenDocument={(record) => {
+              if (!record.sourceDocumentFileUrl) return;
+              window.open(record.sourceDocumentFileUrl, "_blank", "noopener,noreferrer");
+            }}
+            onDownloadPdfSingle={(record) => void exportPdfForItems([record], `PDF dettaglio - ${record.targa}`)}
+            onSelectMaintenance={(recordId) => setSelectedDetailRecordId(recordId)}
+            onEditLatest={() => {
+              if (selectedDetailRecord) handleEdit(selectedDetailRecord);
+            }}
+            onDelete={handleDelete}
+            onAgganciaEvento={(record) => setAggancioManutenzioneRecord(record as NextManutenzioniLegacyDatasetRecord)}
+            onSganciaEvento={(record) => void handleSganciaManutenzione(record)}
+          />
+        </Fragment>
       ) : (
         renderActiveSurface()
       )}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        onClose={() => setPdfPreviewOpen(false)}
+      />
+      {aggancioManutenzioneRecord ? (
+        <NextAggancioEventoModal
+          record={{
+            id: aggancioManutenzioneRecord.id,
+            targa: aggancioManutenzioneRecord.targa,
+            dataRiferimento: getManutenzioneAggancioTimestamp(aggancioManutenzioneRecord),
+            titolo: buildDescrizioneSnippet(aggancioManutenzioneRecord.descrizione, 90),
+          }}
+          tipoRecord="manutenzione"
+          busy={aggancioManutenzioneBusy}
+          onCancel={() => {
+            if (!aggancioManutenzioneBusy) setAggancioManutenzioneRecord(null);
+          }}
+          onConfirm={(evento) => void handleConfirmAggancioManutenzione(evento)}
+        />
+      ) : null}
+      {renderOrigineModal()}
     </div>
   );
 }

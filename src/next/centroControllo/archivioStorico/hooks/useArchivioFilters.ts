@@ -21,6 +21,7 @@ import {
   type ArchivioRecordKind,
   type ArchivioRecordsByKind,
 } from "../archivioTypes";
+import { isSatelliteChiusoDaEvento } from "../../../helpers/storiaRecord";
 import type {
   ArchivioUrlPeriodPreset,
   ArchivioUrlState,
@@ -80,10 +81,12 @@ function periodToUrl(
 export type UseArchivioFiltersState = {
   filters: ArchivioFilters;
   defaultPeriodo: ArchivioPeriodo;
+  statoManutenzione: ArchivioManutenzioneStatoFilter;
   setAutista: (value: string | null) => void;
   setTarga: (value: string | null) => void;
   setPeriodo: (periodo: ArchivioPeriodo) => void;
   setSearch: (value: string) => void;
+  setStatoManutenzione: (value: ArchivioManutenzioneStatoFilter) => void;
   applyFilters: (
     records: ArchivioRecord[],
     kind: ArchivioRecordKind,
@@ -93,6 +96,13 @@ export type UseArchivioFiltersState = {
   getAutistaOptions: (allRecords: ArchivioRecordsByKind) => string[];
   getTargaOptions: (allRecords: ArchivioRecordsByKind) => string[];
 };
+
+export type ArchivioManutenzioneStatoFilter =
+  | "tutti"
+  | "daFare"
+  | "programmata"
+  | "eseguita"
+  | "chiusa_da_evento";
 
 function buildDefaultPeriodo(): ArchivioPeriodo {
   const now: number = Date.now();
@@ -118,9 +128,6 @@ function containsCaseInsensitive(
 
 function extractTargaForKind(record: ArchivioRecord): string | null {
   switch (record.kind) {
-    case "lavoro": {
-      return record.data.mezzoTarga ?? record.data.targa ?? null;
-    }
     case "manutenzione": {
       return record.data.targa ?? null;
     }
@@ -135,14 +142,6 @@ function extractTargaForKind(record: ArchivioRecord): string | null {
 
 function extractAutistiForKind(record: ArchivioRecord): string[] {
   switch (record.kind) {
-    case "lavoro": {
-      const list: string[] = [];
-      const segnalatoDa: string | null = record.data.segnalatoDa ?? null;
-      const chiHaEseguito: string | null = record.data.chiHaEseguito ?? null;
-      if (segnalatoDa) list.push(segnalatoDa);
-      if (chiHaEseguito) list.push(chiHaEseguito);
-      return list;
-    }
     case "manutenzione": {
       // D5: il filtro Autista non si applica alle manutenzioni.
       // L'helper getAutistaOptions esclude le manutenzioni; qui
@@ -176,7 +175,7 @@ export type UseArchivioFiltersOptions = {
 export const useArchivioFilters = (
   options?: UseArchivioFiltersOptions,
 ): UseArchivioFiltersState => {
-  const defaultPeriodo: ArchivioPeriodo = useMemo(buildDefaultPeriodo, []);
+  const defaultPeriodo: ArchivioPeriodo = useMemo(() => buildDefaultPeriodo(), []);
   const urlState: ArchivioUrlState | undefined = options?.urlState;
   const onChange = options?.onChange;
 
@@ -189,6 +188,8 @@ export const useArchivioFilters = (
     urlState ? periodFromUrl(urlState, defaultPeriodo) : defaultPeriodo,
   );
   const [search, setSearchState] = useState<string>(urlState?.q ?? "");
+  const [statoManutenzione, setStatoManutenzioneState] =
+    useState<ArchivioManutenzioneStatoFilter>("tutti");
 
   const filters: ArchivioFilters = useMemo(
     () => ({ autista, targa, periodo, search }),
@@ -230,11 +231,19 @@ export const useArchivioFilters = (
     [onChange],
   );
 
+  const setStatoManutenzione = useCallback(
+    (value: ArchivioManutenzioneStatoFilter): void => {
+      setStatoManutenzioneState(value);
+    },
+    [],
+  );
+
   const resetFilters = useCallback((): void => {
     setAutistaState(null);
     setTargaState(null);
     setPeriodoState(defaultPeriodo);
     setSearchState("");
+    setStatoManutenzioneState("tutti");
     if (onChange) {
       onChange({
         autista: null,
@@ -276,10 +285,22 @@ export const useArchivioFilters = (
           if (!matched) return false;
         }
 
+        if (kind === "manutenzione" && record.kind === "manutenzione") {
+          const stato = record.data.stato ?? "eseguita";
+          if (
+            statoManutenzione === "tutti" &&
+            isSatelliteChiusoDaEvento(record.data as unknown as Record<string, unknown>)
+          ) {
+            return false;
+          }
+          if (statoManutenzione === "tutti") return true;
+          if (stato !== statoManutenzione) return false;
+        }
+
         return true;
       });
     },
-    [autista, targa, periodo],
+    [autista, targa, periodo, statoManutenzione],
   );
 
   const countActiveFilters = useCallback((): number => {
@@ -287,9 +308,10 @@ export const useArchivioFilters = (
     if (autista) count += 1;
     if (targa) count += 1;
     if (search.trim()) count += 1;
+    if (statoManutenzione !== "tutti") count += 1;
     if (!isPeriodoDefault(periodo, defaultPeriodo)) count += 1;
     return count;
-  }, [autista, targa, search, periodo, defaultPeriodo]);
+  }, [autista, targa, search, statoManutenzione, periodo, defaultPeriodo]);
 
   const getAutistaOptions = useCallback(
     (allRecords: ArchivioRecordsByKind): string[] => {
@@ -303,7 +325,6 @@ export const useArchivioFilters = (
           }
         }
       };
-      collect(allRecords.lavoro);
       collect(allRecords.segnalazione);
       collect(allRecords.richiesta);
       return Array.from(set).sort((a, b) =>
@@ -322,7 +343,6 @@ export const useArchivioFilters = (
           if (t) set.add(t);
         }
       };
-      collect(allRecords.lavoro);
       collect(allRecords.manutenzione);
       collect(allRecords.segnalazione);
       collect(allRecords.richiesta);
@@ -335,10 +355,12 @@ export const useArchivioFilters = (
     () => ({
       filters,
       defaultPeriodo,
+      statoManutenzione,
       setAutista,
       setTarga,
       setPeriodo,
       setSearch,
+      setStatoManutenzione,
       applyFilters,
       countActiveFilters,
       resetFilters,
@@ -348,10 +370,12 @@ export const useArchivioFilters = (
     [
       filters,
       defaultPeriodo,
+      statoManutenzione,
       setAutista,
       setTarga,
       setPeriodo,
       setSearch,
+      setStatoManutenzione,
       applyFilters,
       countActiveFilters,
       resetFilters,

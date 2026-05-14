@@ -40,7 +40,7 @@ export type SinotticaManutenzioneRecord = {
   } | null;
 };
 
-export type SinotticaLavoroRow = {
+export type SinotticaManutenzioneDaFareRow = {
   id: string;
   targa: string | null;
   urgenza: "alta" | "media" | "bassa" | null;
@@ -90,7 +90,7 @@ type Props = {
   refuelRows: RefuelRow[];
   refuelSeedIndex: RefuelSeedIndex;
   manutenzioniStorico: SinotticaManutenzioneRecord[];
-  lavoriAperti: SinotticaLavoroRow[];
+  manutenzioniDaFare: SinotticaManutenzioneDaFareRow[];
   segnalazioniAperte: SinotticaSegnalazioneRow[];
   controlliKo: SinotticaControlloRow[];
   richiesteAperte: SinotticaRichiestaRow[];
@@ -103,11 +103,11 @@ type Props = {
   onContrattoClick: (targa: string) => void;
   onFotoClick: (targa: string) => void;
   onFotoDelete: (targa: string) => void;
-  onLavoroClick: (lavoroId: string) => void;
+  onManutenzioneClick: (recordId: string) => void;
   onEventoChipClick: (event: HomeEvent) => void;
   onChipListOpen: (
     anchorRect: DOMRect,
-    kind: "lavori" | "segnalazione" | "controllo" | "richiesta",
+    kind: "manutenzione" | "segnalazione" | "controllo" | "richiesta",
     targa: string,
     ids: string[],
     tipoSegnalazione?: "freni" | "gomme" | "elettrico" | "altro",
@@ -119,11 +119,11 @@ type TabKey = "motrici" | "rimorchi";
 type KpiFilterKey =
   | "manut-scadute"
   | "scadenza-30"
-  | "lavori-urgenti"
+  | "manutenzioni-urgenti"
   | "anomalie-rifor";
 
 type SegnaleChip =
-  | { kind: "lavori"; total: number; urgenti: number; ids: string[] }
+  | { kind: "manutenzione"; total: number; urgenti: number; ids: string[] }
   | {
       kind: "segn-tipo";
       tipo: "freni" | "gomme" | "elettrico" | "altro";
@@ -486,7 +486,7 @@ export default function NextCentroControlloSinottica({
   refuelRows,
   refuelSeedIndex,
   manutenzioniStorico,
-  lavoriAperti,
+  manutenzioniDaFare,
   segnalazioniAperte,
   controlliKo,
   richiesteAperte,
@@ -499,7 +499,7 @@ export default function NextCentroControlloSinottica({
   onContrattoClick,
   onFotoClick,
   onFotoDelete,
-  onLavoroClick,
+  onManutenzioneClick,
   onEventoChipClick,
   onChipListOpen,
 }: Props) {
@@ -553,16 +553,16 @@ export default function NextCentroControlloSinottica({
     return map;
   }, [richiesteAperte]);
 
-  const lavoriByTarga = useMemo(() => {
-    const map = new Map<string, SinotticaLavoroRow[]>();
-    for (const r of lavoriAperti) {
+  const manutenzioniDaFareByTarga = useMemo(() => {
+    const map = new Map<string, SinotticaManutenzioneDaFareRow[]>();
+    for (const r of manutenzioniDaFare) {
       if (!r.targa) continue;
       const t = r.targa.toUpperCase();
       if (!map.has(t)) map.set(t, []);
       map.get(t)!.push(r);
     }
     return map;
-  }, [lavoriAperti]);
+  }, [manutenzioniDaFare]);
 
   const refuelByTarga = useMemo(() => {
     const map = new Map<string, RefuelRow[]>();
@@ -698,7 +698,7 @@ export default function NextCentroControlloSinottica({
         ? { asseId: gommeAxleProblemaAsseId, severity: "warn" }
         : null;
 
-      const lvList = lavoriByTarga.get(targaUp) ?? [];
+      const lvList = manutenzioniDaFareByTarga.get(targaUp) ?? [];
       const lvUrg = lvList.filter((l) => l.urgenza === "alta").length;
       const lvTot = lvList.length;
 
@@ -719,10 +719,10 @@ export default function NextCentroControlloSinottica({
       const chips: SegnaleChip[] = [];
       if (lvTot > 0) {
         chips.push({
-          kind: "lavori",
+          kind: "manutenzione",
           total: lvTot,
           urgenti: lvUrg,
-          ids: lvList.map((l: SinotticaLavoroRow) => l.id).filter((x): x is string => Boolean(x)),
+          ids: lvList.map((l: SinotticaManutenzioneDaFareRow) => l.id).filter((x): x is string => Boolean(x)),
         });
       }
       for (const [tipoKey, items] of segnByTipo.entries()) {
@@ -819,7 +819,7 @@ export default function NextCentroControlloSinottica({
     flotta30gAvg,
     refuelSeedIndex,
     manutByTarga,
-    lavoriByTarga,
+    manutenzioniDaFareByTarga,
     segnalazioniByTarga,
     controlliByTarga,
     richiesteByTarga,
@@ -837,8 +837,8 @@ export default function NextCentroControlloSinottica({
   const kpiCounts = useMemo(() => {
     let scadute = 0;
     let inScadenza = 0;
-    let lavoriUrg = 0;
-    const lavoriUrgMezzi = new Set<string>();
+    let manutenzioniUrg = 0;
+    const manutenzioniUrgMezzi = new Set<string>();
     let anomalieRifor = 0;
     let mezziAttivi = 0;
     let motrici = 0;
@@ -853,12 +853,12 @@ export default function NextCentroControlloSinottica({
       else if (r.contrattoStatus === "IN_SCADENZA") inScadenza += 1;
 
       const lvUrgChip = r.segnali.find(
-        (c): c is Extract<SegnaleChip, { kind: "lavori" }> =>
-          c.kind === "lavori",
+        (c): c is Extract<SegnaleChip, { kind: "manutenzione" }> =>
+          c.kind === "manutenzione",
       );
       if (lvUrgChip && lvUrgChip.urgenti > 0) {
-        lavoriUrg += lvUrgChip.urgenti;
-        lavoriUrgMezzi.add(r.targa);
+        manutenzioniUrg += lvUrgChip.urgenti;
+        manutenzioniUrgMezzi.add(r.targa);
       }
       if (r.anomalieCount > 0) anomalieRifor += r.anomalieCount;
     }
@@ -866,8 +866,8 @@ export default function NextCentroControlloSinottica({
     return {
       scadute,
       inScadenza,
-      lavoriUrg,
-      lavoriUrgMezzi: lavoriUrgMezzi.size,
+      manutenzioniUrg,
+      manutenzioniUrgMezzi: manutenzioniUrgMezzi.size,
       anomalieRifor,
       mezziAttivi,
       motrici,
@@ -905,10 +905,10 @@ export default function NextCentroControlloSinottica({
           case "scadenza-30":
             if (r.contrattoStatus !== "IN_SCADENZA") return false;
             break;
-          case "lavori-urgenti": {
+          case "manutenzioni-urgenti": {
             const ch = r.segnali.find(
-              (c): c is Extract<SegnaleChip, { kind: "lavori" }> =>
-                c.kind === "lavori",
+              (c): c is Extract<SegnaleChip, { kind: "manutenzione" }> =>
+                c.kind === "manutenzione",
             );
             if (!ch || ch.urgenti === 0) return false;
             break;
@@ -937,10 +937,10 @@ export default function NextCentroControlloSinottica({
           case "scadenza-30":
             if (r.contrattoStatus !== "IN_SCADENZA") return false;
             break;
-          case "lavori-urgenti": {
+          case "manutenzioni-urgenti": {
             const ch = r.segnali.find(
-              (c): c is Extract<SegnaleChip, { kind: "lavori" }> =>
-                c.kind === "lavori",
+              (c): c is Extract<SegnaleChip, { kind: "manutenzione" }> =>
+                c.kind === "manutenzione",
             );
             if (!ch || ch.urgenti === 0) return false;
             break;
@@ -967,10 +967,10 @@ export default function NextCentroControlloSinottica({
     setActiveKpiFilters(new Set<KpiFilterKey>());
   }
 
-  function handleChipLavori(targa: string) {
-    const list = lavoriByTarga.get(targa) ?? [];
+  function handleChipManutenzioni(targa: string) {
+    const list = manutenzioniDaFareByTarga.get(targa) ?? [];
     const first = list[0];
-    if (first?.id) onLavoroClick(first.id);
+    if (first?.id) onManutenzioneClick(first.id);
     else onTargaClick(targa);
   }
 
@@ -1001,7 +1001,7 @@ export default function NextCentroControlloSinottica({
 
   function renderContrattoCell(r: SinotticaRow) {
     const ts: number | null = r.contrattoDataFine;
-    const nowMs: number = Date.now();
+    const nowMs: number = today.getTime();
     const isAttivo: boolean = ts !== null && ts > nowMs;
     const isScaduto: boolean = ts !== null && ts <= nowMs;
     let pillClass: string;
@@ -1279,16 +1279,16 @@ export default function NextCentroControlloSinottica({
       <td>
         <div className="ccs-c-aperti">
           {r.segnali.map((c, idx) => {
-            if (c.kind === "lavori") {
+            if (c.kind === "manutenzione") {
               const cls = c.urgenti > 0 ? "ccs-sig urg" : "ccs-sig";
               const tag =
                 c.urgenti > 0
                   ? c.total === 1
-                    ? "Lavoro urg."
-                    : `Lavori · ${c.urgenti} urg.`
+                    ? "Manutenzione urg."
+                    : `Manutenzioni · ${c.urgenti} urg.`
                   : c.total === 1
-                  ? "Lavoro"
-                  : "Lavori";
+                  ? "Manutenzione"
+                  : "Manutenzioni";
               return (
                 <span
                   key={`lv-${idx}`}
@@ -1296,14 +1296,14 @@ export default function NextCentroControlloSinottica({
                   onClick={(e: ReactMouseEvent<HTMLSpanElement>) => {
                     e.stopPropagation();
                     if (c.total <= 1) {
-                      handleChipLavori(r.targa);
+                      handleChipManutenzioni(r.targa);
                     } else {
                       const rect: DOMRect =
                         e.currentTarget.getBoundingClientRect();
-                      onChipListOpen(rect, "lavori", r.targa, c.ids);
+                      onChipListOpen(rect, "manutenzione", r.targa, c.ids);
                     }
                   }}
-                  title={c.total === 1 ? "Apri lavoro" : `${c.total} lavori`}
+                  title={c.total === 1 ? "Apri manutenzione" : `${c.total} manutenzioni`}
                 >
                   <span className="n">{c.total}</span>
                   <span className="tag">{tag}</span>
@@ -1516,17 +1516,17 @@ export default function NextCentroControlloSinottica({
         </button>
         <button
           className={
-            activeKpiFilters.has("lavori-urgenti")
+            activeKpiFilters.has("manutenzioni-urgenti")
               ? "ccs-kpi is-bad is-active"
               : "ccs-kpi is-bad"
           }
           type="button"
-          onClick={() => toggleKpi("lavori-urgenti")}
+          onClick={() => toggleKpi("manutenzioni-urgenti")}
         >
           <span className="filter-mark">✓</span>
-          <span className="label">Lavori urgenti</span>
-          <span className="value">{kpiCounts.lavoriUrg}</span>
-          <span className="sub">Su {kpiCounts.lavoriUrgMezzi} mezzi</span>
+          <span className="label">Manutenzioni urgenti</span>
+          <span className="value">{kpiCounts.manutenzioniUrg}</span>
+          <span className="sub">Su {kpiCounts.manutenzioniUrgMezzi} mezzi</span>
         </button>
         <button
           className={

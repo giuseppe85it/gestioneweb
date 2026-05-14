@@ -1,10 +1,4 @@
 const CLONE_PREFIX = "/next";
-const LAVORI_ALLOWED_WRITE_PATHS = [
-  "/next/lavori-da-eseguire",
-  "/next/lavori-in-attesa",
-  "/next/lavori-eseguiti",
-  "/next/dettagliolavori",
-] as const;
 const MAGAZZINO_ALLOWED_WRITE_PATHS = ["/next/magazzino"] as const;
 const MAGAZZINO_ALLOWED_STORAGE_KEYS = new Set([
   "@inventario",
@@ -133,7 +127,6 @@ const DELETE_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@rifornimenti",
   "@rifornimenti_autisti_tmp",
   "@manutenzioni",
-  "@lavori",
   "@segnalazioni_autisti_tmp",
   "@controlli_mezzo_autisti",
   "@richieste_attrezzature_autisti_tmp",
@@ -142,13 +135,29 @@ const DELETE_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@autisti_sessione_attive",
 ]);
 const DELETE_MEZZO_WRITE_SCOPE = "centro_controllo_delete_mezzo_write";
-const LAVORO_CREATE_ALLOWED_WRITE_PATH = "/next/centro-controllo";
-const LAVORO_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
-  "@lavori",
+const MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS = [
+  "/next/centro-controllo",
+  "/next/autisti-admin",
+  "/next/autisti-inbox",
+] as const;
+const MANUTENZIONE_DAFARE_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@manutenzioni",
   "@segnalazioni_autisti_tmp",
   "@controlli_mezzo_autisti",
 ]);
-const LAVORO_CREATE_WRITE_SCOPE = "centro_controllo_lavoro_create_write";
+const MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE =
+  "centro_controllo_manutenzione_dafare_create_write";
+const CHIUSURA_DA_EVENTO_ALLOWED_WRITE_PATHS = [
+  "/next/manutenzioni",
+  "/next/autisti-inbox",
+  "/next/centro-controllo",
+] as const;
+const CHIUSURA_DA_EVENTO_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@manutenzioni",
+  "@segnalazioni_autisti_tmp",
+  "@controlli_mezzo_autisti",
+]);
+const CHIUSURA_DA_EVENTO_WRITE_SCOPE = "next_chiusura_da_evento_write_scope";
 // PROMPT 31.1 — deroga ristretta per il flag `nascostoInArchivio` su 4
 // collezioni Archivio Storico. Il modulo Archivio era dichiarato
 // sola-lettura nello SPEC; questa deroga abilita SOLO la patch del flag
@@ -156,7 +165,6 @@ const LAVORO_CREATE_WRITE_SCOPE = "centro_controllo_lavoro_create_write";
 // campo applicativamente (vedi nextArchivioHideWriter.ts).
 const ARCHIVIO_HIDE_ALLOWED_WRITE_PATH = "/next/centro-controllo";
 const ARCHIVIO_HIDE_ALLOWED_STORAGE_KEYS = new Set<string>([
-  "@lavori",
   "@manutenzioni",
   "@segnalazioni_autisti_tmp",
   "@richieste_attrezzature_autisti_tmp",
@@ -237,15 +245,20 @@ function getCurrentPathname(): string {
   return normalizePathname(window.location.pathname);
 }
 
-function isAllowedLavoriCloneWritePath(pathname: string): boolean {
-  return (
-    LAVORI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry) ||
-    pathname.startsWith("/next/dettagliolavori/")
+function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
+  return MANUTENZIONI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
+}
+
+function isAllowedManutenzioneDaFareCreateWritePath(pathname: string): boolean {
+  return MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
 
-function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
-  return MANUTENZIONI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
+function isAllowedChiusuraDaEventoWritePath(pathname: string): boolean {
+  return CHIUSURA_DA_EVENTO_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
 }
 
 function isAllowedMagazzinoCloneWritePath(pathname: string): boolean {
@@ -449,7 +462,8 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof CONTROLLI_WRITE_SCOPE
     | typeof RICHIESTE_WRITE_SCOPE
     | typeof DELETE_MEZZO_WRITE_SCOPE
-    | typeof LAVORO_CREATE_WRITE_SCOPE
+    | typeof MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE
+    | typeof CHIUSURA_DA_EVENTO_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
@@ -518,11 +532,19 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
   }
 
   if (
-    pathname === LAVORO_CREATE_ALLOWED_WRITE_PATH &&
-    hasCloneWriteScopedAllowance(LAVORO_CREATE_WRITE_SCOPE) &&
+    isAllowedManutenzioneDaFareCreateWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE) &&
     kind === "storageSync.setItemSync"
   ) {
-    return LAVORO_CREATE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    return MANUTENZIONE_DAFARE_CREATE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    isAllowedChiusuraDaEventoWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(CHIUSURA_DA_EVENTO_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return CHIUSURA_DA_EVENTO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   // PROMPT 31.1 — deroga hide flag su Archivio Storico (4 collezioni).
@@ -684,10 +706,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
       kind === "storageSync.setItemSync" &&
       DOSSIER_MEZZO_EDIT_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta))
     );
-  }
-
-  if (isAllowedLavoriCloneWritePath(pathname)) {
-    return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
   }
 
   if (isAllowedEuromeccCloneWritePath(pathname)) {

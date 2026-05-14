@@ -1,5 +1,5 @@
 // PROMPT 31.1 — writer hide flag Archivio Storico.
-// Soft-hide di un record (lavoro/manutenzione/segnalazione/richiesta)
+// Soft-hide di un record (manutenzione/segnalazione/richiesta)
 // patch UN SOLO campo: `nascostoInArchivio: boolean`.
 // Riusa il pattern dei writer NEXT esistenti (markSegnalazioneChiusa,
 // markRichiestaEvasa) basato su storageSync + cloneWriteBarrier.
@@ -16,20 +16,16 @@ export const ARCHIVIO_HIDE_WRITE_SCOPE =
   "centro_controllo_archivio_hide_write";
 
 export type ArchivioHideKind =
-  | "lavoro"
   | "manutenzione"
   | "segnalazione"
   | "richiesta";
 
-const LAVORI_KEY = "@lavori";
 const MANUTENZIONI_KEY = "@manutenzioni";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const RICHIESTE_KEY = "@richieste_attrezzature_autisti_tmp";
 
 function storageKeyForKind(kind: ArchivioHideKind): string {
   switch (kind) {
-    case "lavoro":
-      return LAVORI_KEY;
     case "manutenzione":
       return MANUTENZIONI_KEY;
     case "segnalazione":
@@ -117,14 +113,12 @@ export async function readArchivioHiddenIdsByKind(): Promise<
   Record<ArchivioHideKind, Set<string>>
 > {
   const empty: Record<ArchivioHideKind, Set<string>> = {
-    lavoro: new Set<string>(),
     manutenzione: new Set<string>(),
     segnalazione: new Set<string>(),
     richiesta: new Set<string>(),
   };
   try {
-    const [lavoriRaw, manutRaw, segnRaw, richRaw] = await Promise.all([
-      getItemSync(LAVORI_KEY),
+    const [manutRaw, segnRaw, richRaw] = await Promise.all([
       getItemSync(MANUTENZIONI_KEY),
       getItemSync(SEGNALAZIONI_KEY),
       getItemSync(RICHIESTE_KEY),
@@ -138,7 +132,6 @@ export async function readArchivioHiddenIdsByKind(): Promise<
         }
       }
     };
-    collectHidden(lavoriRaw, empty.lavoro);
     collectHidden(manutRaw, empty.manutenzione);
     collectHidden(segnRaw, empty.segnalazione);
     collectHidden(richRaw, empty.richiesta);

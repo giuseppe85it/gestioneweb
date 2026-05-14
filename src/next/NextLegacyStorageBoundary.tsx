@@ -17,7 +17,6 @@ import {
   type NextProcurementMaterialItem,
   type NextProcurementOrderItem,
 } from "./domain/nextProcurementDomain";
-import { readNextLavoriLegacyDataset } from "./domain/nextLavoriDomain";
 import { readNextManutenzioniLegacyDataset } from "./domain/nextManutenzioniDomain";
 import { pushNextLegacyStorageOverrides } from "./nextLegacyStorageOverlay";
 import { readNextAutistiLegacyStorageOverrides } from "./nextLegacyAutistiOverlay";
@@ -29,7 +28,6 @@ export type NextLegacyStoragePreset =
   | "attrezzature"
   | "procurement"
   | "manutenzioni"
-  | "lavori"
   | "autisti";
 
 type NextLegacyStorageBoundaryProps = {
@@ -207,10 +205,6 @@ async function buildOverrides(
 
   if (requested.has("manutenzioni")) {
     overrides["@manutenzioni"] = await readNextManutenzioniLegacyDataset();
-  }
-
-  if (requested.has("lavori")) {
-    overrides["@lavori"] = await readNextLavoriLegacyDataset();
   }
 
   if (requested.has("autisti") && !isOfficialNextAutistiPath(pathname)) {

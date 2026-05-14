@@ -50,13 +50,6 @@ function routeForManutenzione(targa: unknown, id: unknown): string | null {
   return serialized ? `/next/manutenzioni?${serialized}` : "/next/manutenzioni";
 }
 
-function routeForLavoro(id: unknown, stato: unknown): string {
-  const value = text(id, "");
-  if (value) return `/next/dettagliolavori/${encodeURIComponent(value)}`;
-  const normalizedStatus = text(stato, "").toLowerCase();
-  return normalizedStatus.includes("eseg") ? "/next/lavori-eseguiti" : "/next/lavori-in-attesa";
-}
-
 function routeForDocument(targa: unknown): string {
   return routeForTarga(targa) ?? "/next/ia/documenti";
 }
@@ -708,10 +701,13 @@ function analyzeSiteEquipment(agentResults: ChatIaAgentResult[]): ChatIaAnalytic
 }
 
 function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyticsResult {
-  const maintenances: AnyRecord[] = rowsFromData(allToolData(agentResults, "search_maintenances")[0] ?? null).map((row) => ({ ...row, ambito: "manutenzione" }));
-  const works: AnyRecord[] = rowsFromData(allToolData(agentResults, "search_work_orders")[0] ?? null).map((row) => ({ ...row, ambito: "lavoro" }));
-  const rows: AnyRecord[] = [...maintenances, ...works];
-  if (rows.length === 0) return emptyResult("D9", "Report esecutori lavori e manutenzioni", agentResults);
+  const maintenances: AnyRecord[] = rowsFromData(
+    allToolData(agentResults, "search_maintenances")[0] ?? null,
+  ).map((row) => ({ ...row, ambito: "manutenzione" }));
+  const rows: AnyRecord[] = maintenances;
+  if (rows.length === 0) {
+    return emptyResult("D9", "Report esecutori manutenzioni", agentResults);
+  }
   const buckets = new Map<string, { label: string; value: number; detail: string }>();
   for (const row of rows) {
     const label = text(row.assegnato_a ?? row.fornitore ?? row.targa, "esecutore n.d.");
@@ -722,17 +718,15 @@ function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyti
   }
   const ranking = Array.from(buckets.values()).sort((left, right) => right.value - left.value);
   const rowFingerprint = (row: AnyRecord, index = 0) => fingerprint(row._id ?? row.id, `${text(row.ambito, "record")}:${text(row.id, "") || index + 1}`);
-  const rowAction = (row: AnyRecord) => text(row.ambito, "") === "manutenzione"
-    ? action("Apri manutenzione", routeForManutenzione(row.targa, row.id), "manutenzione", text(row.id, ""))
-    : action("Apri lavoro", routeForLavoro(row.id, row.stato), "lavoro", text(row.id, ""));
+  const rowAction = (row: AnyRecord) =>
+    action("Apri manutenzione", routeForManutenzione(row.targa, row.id), "manutenzione", text(row.id, ""));
   return {
     questionId: "D9",
-    title: "Report esecutori ultimi mese",
-    narrative: `Ho raggruppato ${rows.length} record tra lavori e manutenzioni per esecutore o referente disponibile.`,
+    title: "Report esecutori ultimo mese",
+    narrative: `Ho raggruppato ${rows.length} manutenzioni per esecutore o referente disponibile.`,
     metrics: [
       { label: "Totale record", value: rows.length },
       { label: "Manutenzioni", value: maintenances.length },
-      { label: "Lavori", value: works.length },
     ],
     rankings: ranking.map((row) => ({
       label: row.label,
@@ -744,7 +738,6 @@ function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyti
     })),
     comparison: [
       { label: "Manutenzioni", value: maintenances.length, unit: "record", detail: "Storico manutenzioni" },
-      { label: "Lavori", value: works.length, unit: "record", detail: "Ordini tecnici e segnalazioni" },
     ],
     trend: [],
     tables: [
@@ -782,7 +775,7 @@ function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyti
       {
         tone: "ok",
         title: "Report pronto",
-        text: "I record sono separati per lavori e manutenzioni, senza confondere le due entita operative.",
+        text: "I record sono aggregati sul modulo manutenzioni, unica entita operativa tecnica della NEXT.",
       },
     ],
     sources: sourceList(agentResults),

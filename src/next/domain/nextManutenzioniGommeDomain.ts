@@ -134,6 +134,15 @@ export type NextManutenzioneReadOnlyItem = {
   gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
   isCambioGommeDerived: boolean;
+  stato: NextMaintenanceHistoryItem["stato"];
+  dataProgrammata: string | null;
+  origineTipo?: NextMaintenanceHistoryItem["origineTipo"];
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   sourceDataset: string;
   sourceRecordId: string;
   sourceOrigin: string;
@@ -195,6 +204,14 @@ export type NextManutenzioneLegacyViewItem = {
   km?: number;
   ore?: number;
   descrizione?: string;
+  stato?: NextMaintenanceHistoryItem["stato"];
+  origineTipo?: NextMaintenanceHistoryItem["origineTipo"];
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   sourceDocumentId?: string | null;
 };
 
@@ -987,6 +1004,15 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     gommeInterventoTipo: item.gommeInterventoTipo,
     gommeStraordinario: item.gommeStraordinario,
     isCambioGommeDerived: item.isCambioGommeDerived,
+    stato: item.stato,
+    dataProgrammata: item.dataProgrammata,
+    origineTipo: item.origineTipo,
+    origineRefId: item.origineRefId,
+    origineRefKey: item.origineRefKey,
+    segnalatoDa: item.segnalatoDa,
+    chiusuraDi: item.chiusuraDi,
+    chiusuraRefId: item.chiusuraRefId,
+    chiusuraData: item.chiusuraData,
     sourceDataset: item.sourceDataset,
     sourceRecordId: item.id,
     sourceOrigin: item.sourceOrigin,
@@ -1430,7 +1456,9 @@ function dedupeExternalAgainstMaintenance(args: {
 export function mapNextManutenzioniItemsToLegacyView(
   items: NextManutenzioneReadOnlyItem[],
 ): NextManutenzioneLegacyViewItem[] {
-  return items.map((item) => ({
+  return items
+    .filter((item) => !(item.stato === "chiusa_da_evento" && item.chiusuraDi === "gomme_evento"))
+    .map((item) => ({
     id: item.id,
     targa: item.mezzoTarga,
     tipo: item.tipo ?? undefined,
@@ -1439,6 +1467,14 @@ export function mapNextManutenzioniItemsToLegacyView(
     km: item.km ?? undefined,
     ore: item.ore ?? undefined,
     descrizione: buildStructuredMaintenanceDescription(item) ?? undefined,
+    stato: item.stato,
+    origineTipo: item.origineTipo,
+    origineRefId: item.origineRefId,
+    origineRefKey: item.origineRefKey,
+    segnalatoDa: item.segnalatoDa,
+    chiusuraDi: item.chiusuraDi,
+    chiusuraRefId: item.chiusuraRefId,
+    chiusuraData: item.chiusuraData,
     sourceDocumentId: item.sourceDocumentId ?? undefined,
   }));
 }

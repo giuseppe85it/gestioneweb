@@ -1,5 +1,5 @@
 // Archivio Storico NEXT — Step 5 (PROMPT 29.9) — ArchivioSubTabs.
-// 4 sub-tab (Lavori | Manutenzioni | Segnalazioni | Richieste) con
+// 3 sub-tab (Manutenzioni | Segnalazioni | Richieste) con
 // count badge dinamico + density toggle a destra.
 
 import type { ReactElement } from "react";
@@ -24,7 +24,6 @@ type SubTabDef = {
 };
 
 const SUBTABS: ReadonlyArray<SubTabDef> = [
-  { kind: "lavoro", label: "Lavori" },
   { kind: "manutenzione", label: "Manutenzioni" },
   { kind: "segnalazione", label: "Segnalazioni" },
   { kind: "richiesta", label: "Richieste" },

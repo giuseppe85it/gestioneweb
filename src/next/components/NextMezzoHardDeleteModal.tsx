@@ -20,7 +20,6 @@ const ZERO_PREVIEW: HardDeletePreview = {
   rifornimentiDossier: 0,
   rifornimentiTmp: 0,
   manutenzioni: 0,
-  lavori: 0,
   segnalazioni: 0,
   controlli: 0,
   richieste: 0,
@@ -158,7 +157,7 @@ export default function NextMezzoHardDeleteModal({
           >
             <strong>Operazione IRREVERSIBILE.</strong> Questa azione cancella
             TUTTI i dati legati al mezzo: anagrafica, rifornimenti, manutenzioni,
-            lavori, segnalazioni, controlli, richieste attrezzature, gomme,
+            segnalazioni, controlli, richieste attrezzature, gomme,
             sessioni autisti.
           </div>
 
@@ -192,7 +191,6 @@ export default function NextMezzoHardDeleteModal({
                 <li>Rifornimenti (dossier): {preview.rifornimentiDossier}</li>
                 <li>Rifornimenti (tmp autisti): {preview.rifornimentiTmp}</li>
                 <li>Manutenzioni: {preview.manutenzioni}</li>
-                <li>Lavori: {preview.lavori}</li>
                 <li>Segnalazioni: {preview.segnalazioni}</li>
                 <li>Controlli: {preview.controlli}</li>
                 <li>Richieste attrezzature: {preview.richieste}</li>

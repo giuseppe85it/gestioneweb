@@ -1,19 +1,29 @@
 import type { HomeEvent } from "../../utils/homeEvents";
-import AutistiEventoModal from "../../components/AutistiEventoModal";
+import NextHomeAutistiEventoModal, {
+  type CreateManutenzioneDaFareSubmitInput,
+  type CreateManutenzioneDaFareSubmitResult,
+} from "./NextHomeAutistiEventoModal";
 
 type NextAutistiEventoModalProps = {
   event: HomeEvent | null;
   onClose: () => void;
   onAfterGommeImport?: () => void | Promise<void>;
+  onCreateManutenzioneDaFare?: (
+    input: CreateManutenzioneDaFareSubmitInput,
+  ) => Promise<CreateManutenzioneDaFareSubmitResult>;
 };
 
-function NextAutistiEventoModal(props: NextAutistiEventoModalProps) {
+function NextAutistiEventoModal({
+  event,
+  onClose,
+  onCreateManutenzioneDaFare,
+}: NextAutistiEventoModalProps) {
   return (
-    <AutistiEventoModal
-      {...props}
-      buildCloneLavoroDetailPath={(lavoroId) =>
-        lavoroId ? `/next/dettagliolavori/${encodeURIComponent(lavoroId)}` : null
-      }
+    <NextHomeAutistiEventoModal
+      event={event}
+      onClose={onClose}
+      editable
+      onCreateManutenzioneDaFare={onCreateManutenzioneDaFare}
     />
   );
 }

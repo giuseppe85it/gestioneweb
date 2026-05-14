@@ -6,7 +6,7 @@ const FALLBACKS: Record<ChatIaSectorId, string> = {
   autisti:
     "Ho riconosciuto un contesto autista. Nell'ossatura posso restare su badge, nome e sessioni autista senza aprire altri settori.",
   manutenzioni_scadenze:
-    "Ho riconosciuto manutenzioni o scadenze. Nell'ossatura posso restare su lavori, gomme, revisioni e collaudi.",
+    "Ho riconosciuto manutenzioni o scadenze. Nell'ossatura posso restare su manutenzioni, gomme, revisioni e collaudi.",
   materiali:
     "Ho riconosciuto un contesto materiali. Nell'ossatura posso restare su magazzino, stock, attrezzature e inventario.",
   costi_fatture:

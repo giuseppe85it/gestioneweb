@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { formatDateTimeUI, formatDateUI } from "./nextDateFormat";
@@ -14,20 +14,22 @@ import {
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import NextMezzoEditModal from "./components/NextMezzoEditModal";
+import { StoriaRecordTimeline } from "./components/StoriaRecordTimeline";
 import {
   buildNextDossierMezzoLegacyView,
   readNextDossierMezzoCompositeSnapshot,
   type NextDossierFatturaPreventivoLegacyItem,
+  type NextDossierLegacyWorkItem,
   type NextDossierManutenzioneLegacyItem,
   type NextDossierMezzoLegacyViewState,
 } from "./domain/nextDossierMezzoDomain";
+import { getStoriaRecord } from "./helpers/storiaRecord";
 import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
   buildNextAnalisiEconomicaPath,
   buildNextDossierGommePath,
   buildNextManutenzioniPath,
   buildNextDossierRifornimentiPath,
-  NEXT_DETTAGLIO_LAVORI_PATH,
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
@@ -66,6 +68,34 @@ function parseDateFlexible(value: string | number | null | undefined): Date | nu
 
 function formatDateTime(value: string | number | null | undefined) {
   return formatDateTimeUI(parseDateFlexible(value));
+}
+
+function formatChiusuraEventoTipo(value: string | null | undefined): string {
+  if (value === "gomme_evento") return "cambio gomme";
+  if (value === "manutenzione_eseguita") return "manutenzione eseguita";
+  return value ? value.replace(/_/g, " ") : "evento";
+}
+
+function dossierWorkBadgeLabel(item: NextDossierLegacyWorkItem, fallback: string): string {
+  return item.stato === "chiusa_da_evento" ? "CHIUSA DA EVENTO" : fallback;
+}
+
+function dossierWorkBadgeClass(item: NextDossierLegacyWorkItem, fallback: string): string {
+  return item.stato === "chiusa_da_evento" ? "badge-info" : fallback;
+}
+
+function dossierWorkBadgeStyle(item: NextDossierLegacyWorkItem): CSSProperties | undefined {
+  if (item.stato !== "chiusa_da_evento") return undefined;
+  return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
+}
+
+function dossierWorkBadgeTitle(item: NextDossierLegacyWorkItem): string | undefined {
+  if (item.stato !== "chiusa_da_evento") return undefined;
+  const evento = formatChiusuraEventoTipo(item.chiusuraDi);
+  const data = item.chiusuraData ? formatDateTimeUI(item.chiusuraData) : "-";
+  return data && data !== "-"
+    ? `Chiusa dal ${evento} del ${data}`
+    : `Chiusa dal ${evento}`;
 }
 
 function detectCurrency(input: unknown): Currency {
@@ -387,7 +417,9 @@ export default function NextDossierMezzoPage() {
     }
   };
 
-  const openLavoro = (id: string) => navigate(`${NEXT_DETTAGLIO_LAVORI_PATH}/${encodeURIComponent(id)}`);
+  const openManutenzioneWorkItem = (item: { id: string; targa?: string | null; mezzoTarga?: string | null }) => {
+    navigate(buildNextManutenzioniPath(item.targa ?? item.mezzoTarga ?? mezzo?.targa, item.id));
+  };
   const openManutenzione = (item: NextDossierManutenzioneLegacyItem) => {
     setModal(null);
     navigate(buildNextManutenzioniPath(item.targa, item.id));
@@ -428,6 +460,17 @@ export default function NextDossierMezzoPage() {
     eseguiti: legacy.lavoriEseguiti,
     manutenzioni: legacy.manutenzioni,
   } as const;
+
+  const renderWorkItem = (item: NextDossierLegacyWorkItem, badge: string, label: string) => (
+    <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}>
+      <div className="dossier-list-main">
+        <span className={`dossier-badge ${dossierWorkBadgeClass(item, badge)}`} style={dossierWorkBadgeStyle(item)} title={dossierWorkBadgeTitle(item)}>{dossierWorkBadgeLabel(item, label)}</span>
+        <strong>{item.descrizione}</strong>
+      </div>
+      <div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{item.dataInserimento || "-"}</span></div>
+      <StoriaRecordTimeline storia={getStoriaRecord(item as unknown as Record<string, unknown>)} compact />
+    </li>
+  );
 
   const renderDocList = (items: NextDossierFatturaPreventivoLegacyItem[], kind: "preventivo" | "fattura") => (
     items.length === 0 ? <p className="dossier-empty">{kind === "preventivo" ? "Nessun preventivo registrato." : "Nessuna fattura registrata."}</p> : (
@@ -547,13 +590,13 @@ export default function NextDossierMezzoPage() {
 
         <section className="dossier-card dossier-photo-card"><div className="dossier-card-header"><h2>Foto mezzo</h2></div><div className="dossier-card-body dossier-photo-body">{mezzo.fotoUrl ? <div className="dossier-photo-thumb" role="button" tabIndex={0} onClick={() => setModal("foto")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setModal("foto"); } }}><div className="dossier-mezzo-photo-frame"><div className="dossier-mezzo-photo-bg" style={{ backgroundImage: `url(${mezzo.fotoUrl})` }} /><img src={mezzo.fotoUrl} alt={mezzo.targa} className="dossier-mezzo-photo" /></div></div> : <div className="dossier-photo-placeholder">Nessuna foto caricata</div>}</div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Lavori</h2></div><div className="dossier-card-body dossier-work-grid">
-          {[{ title: "In attesa", items: legacy.lavoriInAttesa.slice(0, 3), badge: "badge-info", label: "IN ATTESA", modalKey: "attesa" as const }, { title: "Eseguiti", items: legacy.lavoriEseguiti.slice(0, 3), badge: "badge-success", label: "ESEGUITO", modalKey: "eseguiti" as const }].map((group) => (
-            <div key={group.title}><h3>{group.title}</h3>{group.items.length === 0 ? <p className="dossier-empty">{group.title === "In attesa" ? "Nessun lavoro in attesa." : "Nessun lavoro eseguito."}</p> : <ul className="dossier-list">{group.items.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openLavoro(item.id)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className={`dossier-badge ${group.badge}`}>{group.label}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{item.dataInserimento || "-"}</span></div></li>)}</ul>}<button className="dossier-button" type="button" onClick={() => setModal(group.modalKey)} style={{ marginTop: 12 }}>Mostra tutti</button></div>
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2></div><div className="dossier-card-body dossier-work-grid">
+          {[{ title: "Da fare", items: legacy.lavoriInAttesa.slice(0, 3), badge: "badge-info", label: "DA FARE", modalKey: "attesa" as const }, { title: "Eseguite", items: legacy.lavoriEseguiti.slice(0, 3), badge: "badge-success", label: "ESEGUITA", modalKey: "eseguiti" as const }].map((group) => (
+            <div key={group.title}><h3>{group.title}</h3>{group.items.length === 0 ? <p className="dossier-empty">{group.title === "Da fare" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{group.items.map((item) => renderWorkItem(item, group.badge, group.label))}</ul>}<button className="dossier-button" type="button" onClick={() => setModal(group.modalKey)} style={{ marginTop: 12 }}>Mostra tutti</button></div>
           ))}
         </div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Storico manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Stato gomme per asse</h2></div><div className="dossier-card-body">{legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}</div></section>
 
@@ -572,14 +615,14 @@ export default function NextDossierMezzoPage() {
           <div key={key} className="dossier-modal-overlay">
             <div className="dossier-modal">
               <div className="dossier-modal-header">
-                <h2>{key === "attesa" ? "Lavori in attesa" : key === "eseguiti" ? "Lavori eseguiti" : "Manutenzioni"} - {mezzo.targa}</h2>
+                <h2>{key === "attesa" ? "Manutenzioni da fare" : key === "eseguiti" ? "Manutenzioni eseguite" : "Storico manutenzioni"} - {mezzo.targa}</h2>
                 <button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button>
               </div>
               <div className="dossier-modal-body">
                 {key === "manutenzioni" ? (
                   lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
                 ) : (
-                  lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessun lavoro in attesa." : "Nessun lavoro eseguito."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openLavoro(item.id)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className={`dossier-badge ${key === "attesa" ? "badge-info" : "badge-success"}`}>{key === "attesa" ? "IN ATTESA" : "ESEGUITO"}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{item.dataInserimento || "-"}</span></div></li>)}</ul>
+                  lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => renderWorkItem(item, key === "attesa" ? "badge-info" : "badge-success", key === "attesa" ? "DA FARE" : "ESEGUITA"))}</ul>
                 )}
               </div>
             </div>

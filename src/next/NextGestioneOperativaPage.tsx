@@ -3,9 +3,6 @@ import "../pages/GestioneOperativa.css";
 import {
   NEXT_ATTREZZATURE_CANTIERI_PATH,
   NEXT_INVENTARIO_PATH,
-  NEXT_LAVORI_DA_ESEGUIRE_PATH,
-  NEXT_LAVORI_ESEGUITI_PATH,
-  NEXT_LAVORI_IN_ATTESA_PATH,
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_CONSEGNATI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
@@ -56,8 +53,6 @@ export default function NextGestioneOperativaPage() {
   const ordiniArrivati = snapshot?.procurement.counts.arrivedOrders ?? 0;
   const manutenzioniTotali = snapshot?.manutenzioni.counts.total ?? 0;
   const manutenzioniConMateriali = snapshot?.manutenzioni.counts.withMateriali ?? 0;
-  const attrezzatureMovimenti = snapshot?.attrezzature.counts.totalMovements ?? 0;
-
   const cards: FamilyCard[] = [
     {
       id: "magazzino-materiali",
@@ -133,28 +128,6 @@ export default function NextGestioneOperativaPage() {
         : ["Nessuna manutenzione leggibile"],
       toneClassName: "manutenzione",
     },
-    {
-      id: "lavori",
-      title: "Lavori",
-      description: "Hub delle code lavori con accesso diretto a esecuzione, attesa e storico.",
-      summary: loading
-        ? "Caricamento stato lavori..."
-        : [
-            "3 ingressi lavori",
-            formatCountLabel(
-              attrezzatureMovimenti,
-              "movimento attrezzature",
-              "movimenti attrezzature",
-            ),
-          ].join(" - "),
-      ctaLabel: "Apri modulo",
-      ctaPath: NEXT_LAVORI_DA_ESEGUIRE_PATH,
-      secondaryLinks: [
-        { label: "Lavori in attesa", to: NEXT_LAVORI_IN_ATTESA_PATH },
-        { label: "Lavori eseguiti", to: NEXT_LAVORI_ESEGUITI_PATH },
-      ],
-      previewItems: ["Da eseguire", "In attesa", "Eseguiti"],
-    },
   ];
 
   const statusBadges = [
@@ -213,12 +186,6 @@ export default function NextGestioneOperativaPage() {
         ? "Lettura manutenzioni in corso"
         : `${manutenzioniConMateriali} con materiali`,
     },
-    {
-      id: "lavori",
-      label: "Lavori",
-      value: "3",
-      detail: "Da eseguire, in attesa, eseguiti",
-    },
   ];
 
   return (
@@ -235,7 +202,7 @@ export default function NextGestioneOperativaPage() {
             <div>
               <h1 className="go-title">Gestione Operativa</h1>
               <p className="go-subtitle">
-                Hub operativo delle 4 famiglie approvate: magazzino, acquisti, manutenzioni e lavori.
+                Hub operativo delle famiglie approvate: magazzino, acquisti e manutenzioni.
               </p>
             </div>
           </div>

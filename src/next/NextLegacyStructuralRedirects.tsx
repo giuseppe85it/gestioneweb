@@ -1,7 +1,7 @@
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import {
   buildNextDossierPath,
-  NEXT_DETTAGLIO_LAVORI_PATH,
+  NEXT_MANUTENZIONI_PATH,
   NEXT_MEZZI_PATH,
   resolveNextOperativitaLegacyPath,
 } from "./nextStructuralPaths";
@@ -43,11 +43,17 @@ export function NextDettaglioLavoroLegacyRedirect() {
   const params = new URLSearchParams(location.search);
   const lavoroId = params.get("lavoroId");
   if (!lavoroId) {
-    return <Navigate replace to="/next/lavori-in-attesa" />;
+    return <Navigate replace to={NEXT_MANUTENZIONI_PATH} />;
   }
   const next = new URLSearchParams(location.search);
   next.delete("lavoroId");
+  next.set(
+    "recordId",
+    lavoroId.startsWith("from-lavoro-")
+      ? lavoroId
+      : `from-lavoro-${lavoroId}`,
+  );
   const serialized = next.toString();
-  const target = `${NEXT_DETTAGLIO_LAVORI_PATH}/${encodeURIComponent(lavoroId)}`;
+  const target = NEXT_MANUTENZIONI_PATH;
   return <Navigate replace to={serialized ? `${target}?${serialized}` : target} />;
 }

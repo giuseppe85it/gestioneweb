@@ -9,6 +9,25 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-05-14 Manutenzioni: chiusura ciclo eventi gomme
+- NEXT Manutenzioni ora supporta lo stato esplicito `chiusa_da_evento` con tracciabilita `chiusuraDi`, `chiusuraRefId`, `chiusuraData`, preservando il fallback storico dei record senza stato come `eseguita`.
+- `@segnalazioni_autisti_tmp` e `@controlli_mezzo_autisti` accettano lo stato `chiusa` e gli stessi campi di chiusura, usati per collegare il ciclo a un evento esterno.
+- `/next/autisti-inbox`: l'import cambio gomme passa da una modale multi-select che propone manutenzioni/segnalazioni/controlli gomme aperti per targa, con suggeriti entro 30 giorni pre-selezionati e altre aperte selezionabili manualmente.
+- Aggiunto writer NEXT `nextChiusuraEventoWriter` e allowance stretta in `cloneWriteBarrier.ts` per aggiornare solo `stato` e campi `chiusura*` sulle tre collection autorizzate.
+- Manutenzioni, Archivio Storico e Dossier Mezzo mostrano badge/timeline per `CHIUSA DA EVENTO` dove il record e' aperto direttamente; KPI e tab `Da fare` escludono questi record.
+- Dal PROMPT 38d i record `chiusa_da_evento` collegati a `gomme_evento` sono trattati come satelliti: non compaiono nelle liste storiche normali, riappaiono solo con filtro esplicito `Chiusa da evento` in Archivio o tramite dettaglio diretto/sgancio.
+- PDF Quadro manutenzioni separa i satelliti nella sezione `Manutenzioni risolte tramite eventi esterni`, senza duplicarli nella tabella storica principale.
+- Chat IA manutenzioni riconosce `chiusa_da_evento` come stato separato: non lo conta come da fare ne come eseguita classica.
+- Creato script una-tantum `scripts/oneoff/chiudi-dafare-gomme-orfana-2026-05-14.cjs` per chiudere il singolo caso retroattivo individuato dalla discovery, ma non eseguito in questo prompt.
+- Verifiche tecniche: `npm run build` OK e lint mirati OK; Firestore invariato durante l'implementazione.
+
+## 0.0 Aggiornamento operativo 2026-05-14 Manutenzioni: aggancio retroattivo evento gomme
+- Aggiunto il pattern retroattivo `Aggancia evento` / `Sgancia evento` per collegare una manutenzione, segnalazione o controllo KO gomme a un cambio gomme gia' presente in `@gomme_eventi`.
+- Nuovo helper read-only `src/next/helpers/eventiCompatibili.ts`: oggi supporta solo `gomme_evento`, con sezione suggeriti entro 30 giorni e predisposizione a registry futuro per altri tipi evento.
+- Nuova modale `src/next/components/NextAggancioEventoModal.tsx`, usata da `/next/manutenzioni` e `/next/autisti-inbox`.
+- `nextChiusuraEventoWriter.ts` ora espone anche `sganciaManutenzioneDaEvento`, `sganciaSegnalazioneDaEvento`, `sganciaControlloDaEvento`; lo sgancio rifiuta record non chiusi da `gomme_evento`.
+- Firestore invariato nel prompt: le scritture avverranno solo da UI runtime dopo gate manuale.
+
 ## 0.0 Aggiornamento operativo 2026-05-06 Chat IA NEXT V1 100%
 - Chat IA NEXT chiusa V1 100% sulle 5 viste `Driver360`, `Vehicle360`, `Site360`, `Euromecc360`, `Ricerca360` e fallback parametrico fuori catalogo.
 - #4 chiusa con Opzione A: `Cantiere` resta entita derivata/aggregata, nessuna collection canonica `@cantieri`, nessun writer cantieri, nessuna nuova collection Firestore.

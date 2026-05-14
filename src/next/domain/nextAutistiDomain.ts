@@ -17,6 +17,7 @@ import {
   readNextUnifiedStorageDocument,
 } from "./nextUnifiedReadRegistryDomain";
 import { readNextAutistiStorageOverlay } from "../autisti/nextAutistiStorageSync";
+import { parseDataRobusta } from "../helpers/parseRobusto";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const EVENTI_KEY = "@storico_eventi_operativi";
@@ -83,6 +84,12 @@ export type NextAutistiSignalKind =
   | "clone_controllo"
   | "clone_richiesta_attrezzature";
 
+export type NextAutistiChiusuraEventoTrace = {
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
+};
+
 export type NextAutistiCanonicalAssignment = {
   id: string;
   autistaNome: string | null;
@@ -140,6 +147,9 @@ export type NextAutistiSegnalazioneSectionItem = {
   chiusa: boolean;
   dataChiusura: number | null;
   chiusaBy: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   linkedLavoroId: string | null;
   hasLinkedLavoro: boolean;
   sourceDataset: string;
@@ -160,6 +170,10 @@ export type NextAutistiControlloSectionItem = {
   chiuso: boolean;
   dataChiusura: number | null;
   chiusoBy: string | null;
+  stato?: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
   linkedLavoroIds: string[];
   hasLinkedLavoro: boolean;
   sourceDataset: string;
@@ -271,7 +285,7 @@ function toTimestamp(value: unknown): number | null {
     if (numeric > 1_000_000_000) return numeric * 1000;
   }
 
-  const parsed = Date.parse(raw);
+  const parsed = parseDataRobusta(raw);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -548,6 +562,9 @@ function normalizeSegnalazioneSectionItem(
     chiusa: record.chiusa === true,
     dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
     chiusaBy: normalizeOptionalText(record.chiusa_by),
+    chiusuraDi: normalizeOptionalText(record.chiusuraDi),
+    chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),
+    chiusuraData: toTimestamp(record.chiusuraData),
     linkedLavoroId: normalizeOptionalText(record.linkedLavoroId),
     hasLinkedLavoro: Boolean(normalizeOptionalText(record.linkedLavoroId)),
     sourceDataset: SEGNALAZIONI_KEY,
@@ -677,6 +694,10 @@ function normalizeControlloSectionItem(
     chiuso: record.chiuso === true,
     dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
     chiusoBy: normalizeOptionalText(record.chiuso_by),
+    stato: normalizeOptionalText(record.stato),
+    chiusuraDi: normalizeOptionalText(record.chiusuraDi),
+    chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),
+    chiusuraData: toTimestamp(record.chiusuraData),
     linkedLavoroIds: (() => {
       const ids: string[] = [];
       const single: string | null = normalizeOptionalText(record.linkedLavoroId);

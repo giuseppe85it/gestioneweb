@@ -16,7 +16,6 @@ function fallbackHref(action: ChatIaActionLink): string | null {
   if (kind === "mezzo" || kind === "targa") return `/next/dossier/${encodeURIComponent(normalizePlate(entityId))}`;
   if (kind === "rifornimento") return `/next/dossiermezzi?refuelingId=${encodeURIComponent(entityId)}`;
   if (kind === "manutenzione") return `/next/manutenzioni?recordId=${encodeURIComponent(entityId)}`;
-  if (kind === "lavoro") return `/next/lavori-da-eseguire?recordId=${encodeURIComponent(entityId)}`;
   if (kind === "documento" || kind === "fattura") return `/next/ia/documenti?docId=${encodeURIComponent(entityId)}`;
   if (kind === "cantiere") return `/next/attrezzature-cantieri?cantiere=${encodeURIComponent(entityId)}`;
   if (kind === "autista") return "/next/anagrafiche?tab=colleghi";

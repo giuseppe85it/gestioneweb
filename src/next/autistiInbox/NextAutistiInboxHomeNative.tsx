@@ -9,8 +9,13 @@ import type { ActiveSession, HomeEvent } from "../autisti/nextAutistiHomeEvents"
 import NextRifornimentiCard from "./components/NextRifornimentiCard";
 import NextSessioniAttiveCard from "./components/NextSessioniAttiveCard";
 import AutistiEventoModal from "../components/NextAutistiEventoModal";
+import type {
+  CreateManutenzioneDaFareSubmitInput,
+  CreateManutenzioneDaFareSubmitResult,
+} from "../components/NextHomeAutistiEventoModal";
 import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import { getItemSync } from "../autisti/nextAutistiStorageSync";
+import { createManutenzioneDaFareFromEvento } from "../writers/nextManutenzioneDaFareCreateWriter";
 
 type ModalKind =
   | null
@@ -39,6 +44,9 @@ type AutistiEventoModalLikeProps = {
   event: HomeEvent | null;
   onClose: () => void;
   onAfterGommeImport?: () => void | Promise<void>;
+  onCreateManutenzioneDaFare?: (
+    input: CreateManutenzioneDaFareSubmitInput,
+  ) => Promise<CreateManutenzioneDaFareSubmitResult>;
 };
 
 type AutistiInboxHomeCloneConfig = {
@@ -200,6 +208,19 @@ useEffect(() => {
 
   function closeDetails() {
     setSelectedEvent(null);
+  }
+
+  async function handleCreateManutenzioneDaFare(
+    input: CreateManutenzioneDaFareSubmitInput,
+  ): Promise<CreateManutenzioneDaFareSubmitResult> {
+    const result = await createManutenzioneDaFareFromEvento(input);
+    if (!result.ok) return result;
+
+    const updatedEvents = await loadHomeEvents(day);
+    setEvents(updatedEvents);
+    closeDetails();
+    window.alert("Manutenzione da fare creata.");
+    return result;
   }
 
   function scrollToTab(tab: ActiveTab) {
@@ -933,6 +954,7 @@ useEffect(() => {
             const updatedEvents = await loadHomeEvents(day);
             setEvents(updatedEvents);
           }}
+          onCreateManutenzioneDaFare={handleCreateManutenzioneDaFare}
         />
       </div>
     </div>

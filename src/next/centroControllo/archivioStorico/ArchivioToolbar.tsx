@@ -5,7 +5,8 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import type { ArchivioFilters, ArchivioPeriodo } from "./archivioTypes";
+import type { ArchivioFilters, ArchivioPeriodo, ArchivioRecordKind } from "./archivioTypes";
+import type { ArchivioManutenzioneStatoFilter } from "./hooks/useArchivioFilters";
 import "./styles/archivioStorico.css";
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
   setTarga: (value: string | null) => void;
   setPeriodo: (periodo: ArchivioPeriodo) => void;
   setSearch: (value: string) => void;
+  setStatoManutenzione: (value: ArchivioManutenzioneStatoFilter) => void;
   resetFilters: () => void;
   countActiveFilters: number;
   resultsTotalCount: number;
@@ -24,6 +26,8 @@ type Props = {
   onRequestPdfPreview?: () => void;
   generatingPdf?: boolean;
   activeKindResultsCount?: number;
+  activeKind: ArchivioRecordKind;
+  statoManutenzione: ArchivioManutenzioneStatoFilter;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,6 +88,7 @@ export function ArchivioToolbar({
   setTarga,
   setPeriodo,
   setSearch,
+  setStatoManutenzione,
   resetFilters,
   countActiveFilters,
   resultsTotalCount,
@@ -92,6 +97,8 @@ export function ArchivioToolbar({
   onRequestPdfPreview,
   generatingPdf,
   activeKindResultsCount,
+  activeKind,
+  statoManutenzione,
 }: Props): ReactElement {
   const [searchLocal, setSearchLocal] = useState<string>(filters.search);
   const [periodOpen, setPeriodOpen] = useState<boolean>(false);
@@ -118,9 +125,9 @@ export function ArchivioToolbar({
   // prima che il debounce abbia tempo di propagarlo a `filters.search`.
   useEffect(() => {
     if (filters.search === "") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchLocal("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search]);
 
   const periodoLabel: string = formatPeriodoLabel(filters.periodo, defaultPeriodo);
@@ -166,6 +173,25 @@ export function ArchivioToolbar({
           ))}
         </select>
       </label>
+
+      {activeKind === "manutenzione" ? (
+        <label className="archivio-ff">
+          <span className="archivio-ff-label">Stato</span>
+          <select
+            className="archivio-ff-select"
+            value={statoManutenzione}
+            onChange={(e) =>
+              setStatoManutenzione(e.target.value as ArchivioManutenzioneStatoFilter)
+            }
+          >
+            <option value="tutti">Tutti</option>
+            <option value="daFare">Da fare</option>
+            <option value="programmata">Programmata</option>
+            <option value="eseguita">Eseguita</option>
+            <option value="chiusa_da_evento">Chiusa da evento</option>
+          </select>
+        </label>
+      ) : null}
 
       <label className="archivio-ff archivio-ff-search">
         <svg

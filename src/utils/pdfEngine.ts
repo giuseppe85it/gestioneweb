@@ -1,4 +1,5 @@
-ï»¿import jsPDF from "jspdf";
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-useless-escape -- Baseline storico del motore PDF condiviso; in questa fase si modifica solo il payload Dossier. */
+import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getDownloadURL, ref } from "firebase/storage";
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
@@ -59,7 +60,6 @@ export const buildDocId = (prefix: string): string => {
   const yyyy = String(now.getFullYear());
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c: any = globalThis.crypto;
   const rand = c?.randomUUID
     ? c.randomUUID().slice(0, 8)
@@ -76,6 +76,10 @@ export interface LavoroLike {
   descrizione: string;
   dataInserimento?: string;
   data?: string;
+  dataEsecuzione?: string | null;
+  dataProgrammata?: string | null;
+  stato?: string | null;
+  eseguito?: boolean | null;
   urgenza?: string;
   targa?: string;
   magazzino?: string;
@@ -83,6 +87,27 @@ export interface LavoroLike {
   chiHaEseguito?: string;
   note?: string;
 }
+
+const resolveManutenzionePdfStato = (item: any): string => {
+  const stato = safeStr(item?.stato).toLowerCase();
+  if (stato === "programmata") return "PROGRAMMATA";
+  if (stato === "eseguita") return "ESEGUITA";
+  if (stato === "dafare" || stato === "da_fare" || stato === "da fare") return "DA FARE";
+  if (item?.eseguito === true || safeStr(item?.dataEsecuzione) || safeStr(item?.chiHaEseguito)) {
+    return "ESEGUITA";
+  }
+  return "DA FARE";
+};
+
+const resolveManutenzionePdfDateLabel = (item: any): string => {
+  const rawDate =
+    safeStr(item?.data) ||
+    safeStr(item?.dataInserimento) ||
+    safeStr(item?.dataEsecuzione) ||
+    safeStr(item?.dataProgrammata);
+  if (rawDate) return formatGGMMYYYY(rawDate) || rawDate;
+  return resolveManutenzionePdfStato(item) === "ESEGUITA" ? "-" : "in programma";
+};
 
 export interface MezzoLike {
   targa?: string;
@@ -218,7 +243,7 @@ function detectKind(input: PdfInput): "lavori" | "mezzo" | "table" {
 }
 
 // --------------------------------------------------------
-// ðŸ§  IA PDF â€“ ModalitÃ  disponibili
+// ?? IA PDF – Modalità disponibili
 // --------------------------------------------------------
 
 type PdfKind = "lavori" | "mezzo" | "table";
@@ -242,7 +267,7 @@ function buildRawSummary(kind: PdfKind, input: any): string {
       const note = l.note || "";
 
       const head = `${i + 1}. (${urg}) ${date}`;
-      const info = [targa, mag].filter(Boolean).join(" â€“ ");
+      const info = [targa, mag].filter(Boolean).join(" – ");
 
       return [head, info, desc, note].filter(Boolean).join("\n");
     });
@@ -309,14 +334,14 @@ function buildRawSummary(kind: PdfKind, input: any): string {
 }
 
 /**
- * ðŸ”¥ IA FULL MODE â€” integrazione ufficiale
+ * ?? IA FULL MODE — integrazione ufficiale
  * Usa la IA centrale (Cloud Functions aiCore, task "pdf_ia") per ottenere contenuto migliorato
  */
 async function enhancePDFTextFull(kind: string, rawData: any) {
   try {
     // Usa la IA centrale tramite Firebase Functions (aiCore)
     // kind: "lavori" | "mezzo" | "table"
-    // rawData: stringa giÃ  pronta con il contenuto riassunto
+    // rawData: stringa già pronta con il contenuto riassunto
     const iaResult: any = await generaPDFconIA(kind, { raw: rawData });
 
     if (!iaResult) {
@@ -405,12 +430,12 @@ async function generateLavoriPdf(
   const titoloBase =
     input.title ??
     (input.groupLabel
-      ? `Lavori in Attesa â€“ ${input.groupLabel}`
+      ? `Lavori in Attesa – ${input.groupLabel}`
       : "Lavori in Attesa");
 
   const kind: PdfKind = "lavori";
 
-  // ðŸ”¥ IA FULL MODE
+  // ?? IA FULL MODE
   const raw = buildRawSummary(kind, {
     lavori,
     groupLabel: input.groupLabel,
@@ -426,12 +451,13 @@ async function generateLavoriPdf(
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // TABELLA LAVORI (layout originale)
+  // TABELLA LAVORI (layout originale); colonna stato e fallback data per manutenzioni da fare.
   autoTable(doc, {
     startY: currentY,
     margin: { left: 14, right: 14 },
     head: [[
       "Data",
+      "Stato",
       "Targa",
       "Tipo",
       "Urgenza",
@@ -440,20 +466,19 @@ async function generateLavoriPdf(
       "Note",
     ]],
     body: lavori.map((l) => {
-      const rawDate = l.dataInserimento ?? l.data ?? "";
-      const date = rawDate ? formatGGMMYYYY(rawDate) : "";
+      const date = resolveManutenzionePdfDateLabel(l);
+      const statoLabel = resolveManutenzionePdfStato(l);
       const desc = l.descrizione || "";
       const urg = String(l.urgenza || "").toUpperCase();
       const mag = l.magazzino || "";
       const targa = l.targa || "";
       const esecutore = l.chiHaEseguito || "";
       const note = l.note || "";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tipo = (l as any)?.tipo;
       const targaLabel = targa || mag || "";
       const tipoLabel = tipo === "magazzino" ? "MAGAZZINO" : "MEZZO";
 
-      return [date, targaLabel, tipoLabel, urg, desc, esecutore, note];
+      return [date, statoLabel, targaLabel, tipoLabel, urg, desc, esecutore, note];
     }),
     styles: {
       font: "helvetica",
@@ -462,12 +487,13 @@ async function generateLavoriPdf(
     },
     columnStyles: {
       0: { cellWidth: 20 },
-      1: { cellWidth: 26 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 22, halign: "center" },
-      4: { cellWidth: 58 },
-      5: { cellWidth: 28 },
-      6: { cellWidth: 28 },
+      1: { cellWidth: 24, halign: "center" },
+      2: { cellWidth: 26 },
+      3: { cellWidth: 22 },
+      4: { cellWidth: 22, halign: "center" },
+      5: { cellWidth: 40 },
+      6: { cellWidth: 24 },
+      7: { cellWidth: 24 },
     },
     headStyles: {
       fillColor: COLORS.tableHeaderBg,
@@ -478,7 +504,7 @@ async function generateLavoriPdf(
       fillColor: COLORS.rowAlt,
     },
     didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 3) {
+      if (data.section === "body" && data.column.index === 4) {
         const urgency = String(data.cell.raw || "").toUpperCase();
         if (!urgency) return;
 
@@ -512,7 +538,7 @@ async function generateTablePdf(
 
   const kind: PdfKind = "table";
 
-  // ðŸ”¥ IA FULL MODE
+  // ?? IA FULL MODE
   const raw = buildRawSummary(kind, {
     rows,
     columns: input.columns,
@@ -546,7 +572,7 @@ async function generateTablePdf(
     })
   );
   let supplierLabel = "Fornitore prezzi di riferimento:";
-  let supplierValue = "â€”";
+  let supplierValue = "—";
 
   if (isInternalOrderSummary) {
     const supplierRowIndex = bodyRows.findIndex((cells) =>
@@ -608,7 +634,7 @@ async function generateMezzoPdf(
   const titolo = input.title || "Rapporto di Controllo Mezzo";
   const kind: PdfKind = "mezzo";
 
-  // ðŸ”¥ IA FULL MODE
+  // ?? IA FULL MODE
   const raw = buildRawSummary(kind, { mezzo, domande });
   const ai = await enhancePDFTextFull(kind, raw);
   const iaText = ai.summary || ai.enhanced || "";
@@ -1146,8 +1172,7 @@ async function renderBlocks(
           data.cell.styles.fontSize = 11;
         },
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const finalY = (doc as any).lastAutoTable?.finalY || currentY;
+          const finalY = (doc as any).lastAutoTable?.finalY || currentY;
       currentY = finalY + 8;
     }
 
@@ -2233,29 +2258,29 @@ async function buildDossierMezzoPdfDocument(
   ) {
     if (lavori.length) {
       const rows = lavori.map((l: any) => [
-        l?.eseguito ? "ESEGUITO" : "IN ATTESA",
+        resolveManutenzionePdfStato(l),
         safeStr(l?.descrizione) || "-",
         safeStr(l?.urgenza) || "-",
-        safeStr(l?.dataInserimento || l?.data) || "-",
-        safeStr(l?.targa || l?.magazzino) || "-",
+        resolveManutenzionePdfDateLabel(l),
+        safeStr(l?.targa || l?.mezzoTarga) || "-",
       ]);
       blocks.push({
         kind: "table",
-        title: "Lavori",
-        columns: ["Stato", "Descrizione", "Urgenza", "Data", "Targa/Magazzino"],
+        title: "Manutenzioni",
+        columns: ["Stato", "Descrizione", "Urgenza", "Data", "Targa"],
         rows,
       });
     } else {
       blocks.push({
         kind: "text",
-        title: "Lavori",
-        text: "Nessun lavoro disponibile.",
+        title: "Manutenzioni",
+        text: "Nessuna manutenzione disponibile.",
       });
     }
   } else {
     blocks.push({
       kind: "text",
-      title: "Lavori",
+      title: "Manutenzioni",
       text: "Dati non disponibili in questa esportazione.",
     });
   }
@@ -2967,7 +2992,7 @@ const buildRifornimentiMensiliPayload = (input: RifornimentiMensiliPdfInput) => 
   const rows = list.map((item) => [
     safeStr(item?.data) || "-",
     fmtTarga(item?.targa) || "-",
-    safeStr(item?.autistaNome) || "â€”",
+    safeStr(item?.autistaNome) || "—",
     formatPdfNumber(item?.litri, 2),
     formatPdfNumber(item?.km, 0),
     formatPdfNumber(item?.costo, 2),
@@ -2976,7 +3001,7 @@ const buildRifornimentiMensiliPayload = (input: RifornimentiMensiliPdfInput) => 
   ]);
 
   if (rows.length === 0) {
-    rows.push(["-", "-", "â€”", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
+    rows.push(["-", "-", "—", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
   }
 
   rows.push(["", "", "", "", "", "", "", ""]);
@@ -3040,7 +3065,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
       mediaFlotta.sogliaSotto !== null && mediaFlotta.sogliaSopra !== null
         ? `Range tipico: ${mediaFlotta.sogliaSotto
             .toFixed(2)
-            .replace(".", ",")} â€“ ${mediaFlotta.sogliaSopra
+            .replace(".", ",")} – ${mediaFlotta.sogliaSopra
             .toFixed(2)
             .replace(".", ",")} km/L`
         : "";
@@ -3080,7 +3105,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
       safeStr(item?.distributore) ||
       safeStr(item?.source) ||
       "-";
-    const mediaLabel = safeStr(item?.mediaKmLLabel) || "â€”";
+    const mediaLabel = safeStr(item?.mediaKmLLabel) || "—";
     const litriText = formatPdfNumber(item?.litri, 2);
     const kmText = formatPdfNumber(item?.km, 0);
     const litriCell =
@@ -3090,7 +3115,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     return [
       safeStr(item?.data) || "-",
       fmtTarga(item?.targa) || "-",
-      safeStr(item?.autistaNome) || "â€”",
+      safeStr(item?.autistaNome) || "—",
       litriCell,
       kmCell,
       fonte,
@@ -3099,7 +3124,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
   });
 
   if (body.length === 0) {
-    body.push(["â€”", "â€”", "â€”", "â€”", "â€”", "â€”", "Nessun rifornimento nel periodo selezionato"]);
+    body.push(["—", "—", "—", "—", "—", "—", "Nessun rifornimento nel periodo selezionato"]);
   }
 
   const anomalaFlags = items.map((item) => Boolean(item?.isAnomala));
@@ -3163,7 +3188,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     doc.setTextColor(80, 80, 80);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti Â· ${anomalie.litriRows} litri sospetti`;
+    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti · ${anomalie.litriRows} litri sospetti`;
     doc.text(anomalieText, 14, summaryY);
   }
 
@@ -3202,7 +3227,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
 
     for (const entry of dettaglio) {
       const wrappedBullets: string[][] = entry.messages.map((m) =>
-        doc.splitTextToSize(`â€¢ ${m}`, usableWidth - BULLET_INDENT) as string[],
+        doc.splitTextToSize(`• ${m}`, usableWidth - BULLET_INDENT) as string[],
       );
       const bulletsLineCount = wrappedBullets.reduce(
         (sum, lines) => sum + lines.length,
@@ -3272,9 +3297,9 @@ const buildManutenzioniProgrammatePayload = (input: ManutenzioniProgrammatePdfIn
     return [
       fmtTarga(item?.targa) || "-",
       dataFine,
-      safeStr(item?.kmMax) || "â€”",
-      safeStr(item?.contratto) || "â€”",
-      safeStr(item?.revisione) || "â€”",
+      safeStr(item?.kmMax) || "—",
+      safeStr(item?.contratto) || "—",
+      safeStr(item?.revisione) || "—",
     ];
   });
 
@@ -3412,7 +3437,6 @@ async function buildPreventiviCapoPdfDocument(
     },
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const finalY = (doc as any).lastAutoTable?.finalY || currentY;
   currentY = finalY + 8;
 
@@ -3575,7 +3599,7 @@ export async function stampOriginalPdfWithStatus(
 }
 
 // =========================================================
-// PROMPT 30.5 â€” Archivio Storico (lista corrente per sub-tab)
+// PROMPT 30.5 — Archivio Storico (lista corrente per sub-tab)
 // =========================================================
 
 export type ArchivioStoricoPdfKind =
@@ -3679,7 +3703,7 @@ function buildArchivioStoricoFiltersLabel(
   if (filters.targa) parts.push(`Targa: ${filters.targa}`);
   const q: string = (filters.searchQuery || "").trim();
   if (q) parts.push(`Cerca: "${q}"`);
-  return parts.length > 0 ? parts.join(" Â· ") : "Nessun filtro applicato";
+  return parts.length > 0 ? parts.join(" · ") : "Nessun filtro applicato";
 }
 
 function formatArchivioStoricoTimestamp(ts: number): string {
@@ -3706,7 +3730,7 @@ export async function generateArchivioStoricoPDFBlob(
   doc.setTextColor(40, 40, 40);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.text(`Archivio Storico â€” ${input.kindLabel}`, marginX, 11);
+  doc.text(`Archivio Storico — ${input.kindLabel}`, marginX, 11);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -3718,7 +3742,7 @@ export async function generateArchivioStoricoPDFBlob(
   let currentY: number = 24;
   doc.setTextColor(60, 60, 60);
   doc.setFontSize(10);
-  // PROMPT 31.2: riga "Periodo" in grassetto per maggiore visibilitÃ .
+  // PROMPT 31.2: riga "Periodo" in grassetto per maggiore visibilità.
   doc.setFont("helvetica", "bold");
   doc.text(`Periodo: ${input.filters.periodoLabel}`, marginX, currentY);
   doc.setFont("helvetica", "normal");
@@ -3766,7 +3790,7 @@ export async function generateArchivioStoricoPDFBlob(
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
       doc.text(
-        "GestioneManutenzione Â· Archivio Storico",
+        "GestioneManutenzione · Archivio Storico",
         marginX,
         pageHeight - 8,
       );

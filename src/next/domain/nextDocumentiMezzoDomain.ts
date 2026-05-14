@@ -1,4 +1,5 @@
 import { readNextUnifiedCollection } from "./nextUnifiedReadRegistryDomain";
+import { parseDataRobusta } from "../helpers/parseRobusto";
 
 /*
  * Riferimento correlato: readNextMezzoDocumentiCostiSnapshot
@@ -117,7 +118,7 @@ function toTimestamp(value: unknown): number | null {
   if (!raw) return null;
   const numeric = Number(raw.replace(",", "."));
   if (Number.isFinite(numeric)) return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
-  const parsed = Date.parse(raw);
+  const parsed = parseDataRobusta(raw);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

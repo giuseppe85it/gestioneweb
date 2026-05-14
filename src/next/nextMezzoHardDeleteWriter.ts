@@ -7,7 +7,6 @@ const MEZZI_KEY = "@mezzi_aziendali";
 const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
 const RIFORNIMENTI_TMP_KEY = "@rifornimenti_autisti_tmp";
 const MANUTENZIONI_KEY = "@manutenzioni";
-const LAVORI_KEY = "@lavori";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
 const RICHIESTE_KEY = "@richieste_attrezzature_autisti_tmp";
@@ -69,7 +68,6 @@ export type HardDeleteResult = {
     rifornimentiDossier: number;
     rifornimentiTmp: number;
     manutenzioni: number;
-    lavori: number;
     segnalazioni: number;
     controlli: number;
     richieste: number;
@@ -101,7 +99,6 @@ export async function previewHardDeleteCounts(
     rifornimentiDossier: await countByMezzo(DOSSIER_RIFORNIMENTI_KEY),
     rifornimentiTmp: await countByMezzo(RIFORNIMENTI_TMP_KEY),
     manutenzioni: await countByMezzo(MANUTENZIONI_KEY),
-    lavori: await countByMezzo(LAVORI_KEY),
     segnalazioni: await countByMezzo(SEGNALAZIONI_KEY),
     controlli: await countByMezzo(CONTROLLI_KEY),
     richieste: await countByMezzo(RICHIESTE_KEY),
@@ -161,7 +158,6 @@ export async function hardDeleteMezzo(
         rifornimentiDossier: 0,
         rifornimentiTmp: 0,
         manutenzioni: 0,
-        lavori: 0,
         segnalazioni: 0,
         controlli: 0,
         richieste: 0,
@@ -188,11 +184,6 @@ export async function hardDeleteMezzo(
           );
           const manutenzioni: number = await deleteByMezzoInDataset(
             MANUTENZIONI_KEY,
-            targaUp,
-            idTrim,
-          );
-          const lavori: number = await deleteByMezzoInDataset(
-            LAVORI_KEY,
             targaUp,
             idTrim,
           );
@@ -232,7 +223,6 @@ export async function hardDeleteMezzo(
             rifornimentiDossier,
             rifornimentiTmp,
             manutenzioni,
-            lavori,
             segnalazioni,
             controlli,
             richieste,
@@ -254,7 +244,6 @@ export async function hardDeleteMezzo(
         rifornimentiDossier: 0,
         rifornimentiTmp: 0,
         manutenzioni: 0,
-        lavori: 0,
         segnalazioni: 0,
         controlli: 0,
         richieste: 0,

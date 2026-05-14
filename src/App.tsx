@@ -35,10 +35,6 @@ import NextAutistiInboxSegnalazioniPage from "./next/NextAutistiInboxSegnalazion
 import NextAutistiInboxRichiestaAttrezzaturePage from "./next/NextAutistiInboxRichiestaAttrezzaturePage";
 import NextAutistiInboxHomePage from "./next/NextAutistiInboxHomePage";
 import NextAutistiAdminPage from "./next/NextAutistiAdminPage";
-import NextLavoriInAttesaPage from "./next/NextLavoriInAttesaPage";
-import NextLavoriEseguitiPage from "./next/NextLavoriEseguitiPage";
-import NextLavoriDaEseguirePage from "./next/NextLavoriDaEseguirePage";
-import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
 import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
 import NextMagazzinoPage from "./next/NextMagazzinoPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
@@ -56,8 +52,8 @@ import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
 import NextDossierListaPage from "./next/NextDossierListaPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
+import NextDettaglioLavoroLegacyRedirect from "./next/redirects/NextDettaglioLavoroLegacyRedirect";
 import {
-  NextDettaglioLavoroLegacyRedirect,
   NextMezziDossierDetailLegacyRedirect,
   NextMezziDossierLegacyRedirect,
   NextOperativitaLegacyRedirect,
@@ -325,7 +321,7 @@ function App() {
           path="lavori-da-eseguire"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextLavoriDaEseguirePage />
+              <Navigate to="/next/manutenzioni" replace />
             </NextRoleGuard>
           }
         />
@@ -379,7 +375,7 @@ function App() {
           path="lavori-in-attesa"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextLavoriInAttesaPage />
+              <Navigate to="/next/manutenzioni" replace />
             </NextRoleGuard>
           }
         />
@@ -387,7 +383,7 @@ function App() {
           path="lavori-eseguiti"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextLavoriEseguitiPage />
+              <Navigate to="/next/manutenzioni" replace />
             </NextRoleGuard>
           }
         />
@@ -395,7 +391,7 @@ function App() {
           path="dettagliolavori/:lavoroId"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextDettaglioLavoroPage />
+              <NextDettaglioLavoroLegacyRedirect />
             </NextRoleGuard>
           }
         />
@@ -403,7 +399,7 @@ function App() {
           path="dettagliolavori"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextDettaglioLavoroLegacyRedirect />
+              <Navigate to="/next/manutenzioni" replace />
             </NextRoleGuard>
           }
         />

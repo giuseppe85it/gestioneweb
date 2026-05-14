@@ -16,6 +16,13 @@ import {
   getNextMezzoHotspotAreasByVista,
   type NextMappaStoricoVista,
 } from "./mezziHotspotAreas";
+import { formatDateTimeUI } from "./nextDateFormat";
+import { parseDataRobusta } from "./helpers/parseRobusto";
+import { StoriaRecordTimeline } from "./components/StoriaRecordTimeline";
+import {
+  findSatelliteChiusoDaEventoForRecord,
+  getStoriaRecord,
+} from "./helpers/storiaRecord";
 import "./next-mappa-storico.css";
 
 type ManutenzioneLegacy = NextManutenzioniLegacyDatasetRecord;
@@ -41,6 +48,7 @@ type NextMappaStoricoPageProps = {
   embedded?: boolean;
   photoManager?: boolean;
   selectedMaintenance?: SelectedMaintenance | null;
+  storiaSatelliteRecords?: ManutenzioneLegacy[];
   mezzoInfo?: MezzoInfo;
   storicoManutenzioni: ManutenzioneLegacy[];
   kmAttuali?: number | null;
@@ -48,6 +56,8 @@ type NextMappaStoricoPageProps = {
   onOpenDossier?: () => void;
   onEditLatest?: () => void;
   onDelete?: (record: SelectedMaintenance) => void;
+  onAgganciaEvento?: (record: SelectedMaintenance) => void;
+  onSganciaEvento?: (record: SelectedMaintenance) => void;
   onSelectMaintenance?: (recordId: string | null) => void;
   onOpenDocument?: (record: ManutenzioneLegacy) => void;
   onDownloadPdfSingle?: (record: ManutenzioneLegacy) => void;
@@ -99,16 +109,25 @@ function parseLegacyDateParts(value: string | null | undefined): {
   monthYear: string;
 } {
   const normalized = value?.trim() ?? "";
-  const match = normalized.match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
-  if (!match) {
-    return { day: "—", monthYear: normalized || "—" };
+  const legacyMatch = normalized.match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
+  if (legacyMatch) {
+    const [, dayRaw, monthRaw, yearRaw] = legacyMatch;
+    return {
+      day: dayRaw.padStart(2, "0"),
+      monthYear: `${monthRaw.padStart(2, "0")}/${yearRaw.slice(-2)}`,
+    };
   }
-
-  const [, dayRaw, monthRaw, yearRaw] = match;
-  return {
-    day: dayRaw.padStart(2, "0"),
-    monthYear: `${monthRaw.padStart(2, "0")}/${yearRaw.slice(-2)}`,
-  };
+  const robustTimestamp = parseDataRobusta(normalized);
+  if (robustTimestamp !== null) {
+    const parsed = new Date(robustTimestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      const day = String(parsed.getDate()).padStart(2, "0");
+      const month = String(parsed.getMonth() + 1).padStart(2, "0");
+      const year = String(parsed.getFullYear()).slice(-2);
+      return { day, monthYear: `${month}/${year}` };
+    }
+  }
+  return { day: "—", monthYear: normalized || "—" };
 }
 
 function formatKmDeltaLabel(delta: number | null): string | null {
@@ -120,6 +139,21 @@ function formatMaintenanceMetricInline(record: SelectedMaintenance | Manutenzion
   if (record.km != null) return `Km ${formatNumberOptional(record.km)}`;
   if (record.ore != null) return `${formatNumberOptional(record.ore)} ore`;
   return "—";
+}
+
+function formatChiusuraEventoTipo(value: string | null | undefined): string {
+  if (value === "gomme_evento") return "cambio gomme";
+  if (value === "manutenzione_eseguita") return "manutenzione eseguita";
+  return value ? value.replace(/_/g, " ") : "evento";
+}
+
+function buildChiusuraDaEventoTitle(record: SelectedMaintenance | ManutenzioneLegacy): string | undefined {
+  if (record.stato !== "chiusa_da_evento") return undefined;
+  const evento = formatChiusuraEventoTipo(record.chiusuraDi);
+  const data = record.chiusuraData ? formatDateTimeUI(record.chiusuraData) : "-";
+  return data && data !== "-"
+    ? `Chiusa dal ${evento} del ${data}`
+    : `Chiusa dal ${evento}`;
 }
 
 function formatMaintenanceTitle(record: SelectedMaintenance | ManutenzioneLegacy): string {
@@ -196,6 +230,7 @@ export default function NextMappaStoricoPage({
   embedded = false,
   photoManager = false,
   selectedMaintenance = null,
+  storiaSatelliteRecords = [],
   mezzoInfo,
   storicoManutenzioni,
   kmAttuali,
@@ -203,6 +238,8 @@ export default function NextMappaStoricoPage({
   onOpenDossier,
   onEditLatest,
   onDelete,
+  onAgganciaEvento,
+  onSganciaEvento,
   onSelectMaintenance,
   onOpenDocument,
   onDownloadPdfSingle,
@@ -278,6 +315,28 @@ export default function NextMappaStoricoPage({
     return storicoManutenzioni.find((item) => item.id === selectedMaintenance.id) ?? null;
   }, [selectedMaintenance, storicoManutenzioni]);
   const selectedRecord = selectedLegacyRecord ?? selectedMaintenance;
+  const selectedSatelliteRecord = useMemo(
+    () =>
+      selectedRecord
+        ? findSatelliteChiusoDaEventoForRecord(
+            selectedRecord as Record<string, unknown>,
+            storiaSatelliteRecords,
+          )
+        : null,
+    [selectedRecord, storiaSatelliteRecords],
+  );
+  const selectedRecordStoria = useMemo(
+    () =>
+      selectedRecord
+        ? getStoriaRecord(
+            (selectedSatelliteRecord ?? selectedRecord) as Record<string, unknown>,
+            selectedSatelliteRecord
+              ? { eventoRecord: selectedRecord as Record<string, unknown> }
+              : {},
+          )
+        : null,
+    [selectedRecord, selectedSatelliteRecord],
+  );
   const selectedCategory = useMemo(
     () => (selectedRecord ? resolveDetailCategory(selectedRecord) : null),
     [selectedRecord],
@@ -641,7 +700,45 @@ export default function NextMappaStoricoPage({
                 <div className="man2-detail-v2__detail-header">
                   <div className="man2-detail-v2__detail-head-top">
                     <h2 className="man2-detail-v2__detail-title">{formatMaintenanceTitle(selectedRecord)}</h2>
+                    {selectedRecord.stato === "chiusa_da_evento" ? (
+                      <span
+                        className="man2-detail-v2__section-badge"
+                        style={{ background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" }}
+                        title={buildChiusuraDaEventoTitle(selectedRecord)}
+                      >
+                        CHIUSA DA EVENTO
+                      </span>
+                    ) : null}
                     <div className="man2-detail-v2__actions">
+                      {selectedMaintenance &&
+                      (selectedMaintenance.stato === "daFare" || selectedMaintenance.stato === "programmata") &&
+                      resolveDetailCategory(selectedMaintenance) === "gomme" ? (
+                        <button
+                          type="button"
+                          className="man2-detail-v2__action"
+                          onClick={() => {
+                            if (selectedMaintenance && onAgganciaEvento) onAgganciaEvento(selectedMaintenance);
+                          }}
+                          disabled={!selectedMaintenance || !onAgganciaEvento}
+                          aria-disabled={!selectedMaintenance || !onAgganciaEvento}
+                        >
+                          Aggancia evento
+                        </button>
+                      ) : null}
+                      {selectedMaintenance?.stato === "chiusa_da_evento" &&
+                      selectedMaintenance.chiusuraDi === "gomme_evento" ? (
+                        <button
+                          type="button"
+                          className="man2-detail-v2__action"
+                          onClick={() => {
+                            if (selectedMaintenance && onSganciaEvento) onSganciaEvento(selectedMaintenance);
+                          }}
+                          disabled={!selectedMaintenance || !onSganciaEvento}
+                          aria-disabled={!selectedMaintenance || !onSganciaEvento}
+                        >
+                          Sgancia evento
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="man2-detail-v2__action man2-detail-v2__action--primary"
@@ -768,6 +865,7 @@ export default function NextMappaStoricoPage({
                     <div className="man2-detail-v2__description-box">
                       {selectedRecord.descrizione?.trim() || "Nessuna descrizione inserita"}
                     </div>
+                    <StoriaRecordTimeline storia={selectedRecordStoria} />
                   </section>
 
                   {showTyreSection ? (

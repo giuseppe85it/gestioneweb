@@ -477,3 +477,110 @@ I record `@lavori` migrati portano i campi `km` e `ore` solo se gia' presenti ne
 **Riferimento audit**: [docs/_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md](_live/AUDIT_DISMISSIONE_LAVORI_NEXT_2026-05-12.md)
 
 **Prossimo passo**: redazione di `docs/product/SPEC_DISMISSIONE_LAVORI_NEXT.md` basata su queste 12 decisioni piu' i conteggi Firestore reali (capitolo E dell'audit).
+
+## 2026-05-13 - Chiusura totale dismissione Lavori NEXT + override J.10
+
+La dismissione Lavori NEXT e' completata in 16 prompt operativi (PROMPT 9-25). L'esito finale e' documentato in `docs/_live/REPORT_FINALE_DISMISSIONE_LAVORI_NEXT_2026-05-13.md`.
+
+Decisioni finali:
+- 13 buchi audit chiusi su 14; resta deferred solo il buco #10 sulle programmate fuse con daFare nel Dossier.
+- Override J.10 totale autorizzato: chat IA sanificata anche nei tool runtime, registry, boundary e metadata. Totale file Categoria F toccati: 15.
+- Opzione alfa confermata: `src/components/AutistiEventoModal.tsx` shared con madre lasciato invariato.
+- Strategia 3a confermata: `@lavori` Firestore resta vivo per la madre; NEXT non lo legge piu' come modulo Lavori e non lo cancella.
+- Decisione J.7 confermata: `linkedLavoroId` / `linkedLavoroIds` mantengono il nome.
+- 24 backlink orfani preesistenti restano documentati e non toccati.
+- File eliminati effettivi: 15. Il conteggio precedente 14 sottostimava i file `.bak`: nel repo i `.bak` eliminati sono 5.
+
+Verifiche finali:
+- `npm run build`: PASS.
+- `npx eslint` sui file Z5-BIS: PASS.
+- Residui funzionali Lavori NEXT: zero fuori dalle eccezioni madre/alfa/J.7.
+
+Prossimo passo: cross-audit Claude Code (PROMPT 26) + gate manuale runtime Giuseppe.
+
+## 2026-05-14 - Chiusura definitiva dismissione Lavori NEXT + raffinamenti UX post-gate
+
+Dismissione Lavori NEXT completata e validata in produzione.
+
+### Cronologia finale
+18 prompt operativi (9-29 + 30), 4 cross-audit, 2 gate manuali runtime di Giuseppe.
+
+### Raffinamenti post-gate (PROMPT 28-29-30)
+- P1: pulsante Conferma admin autisti (NextHomeAutistiEventoModal) sanificato - modale NEXT autonoma, non piu' wrappa AutistiEventoModal madre, scrive @manutenzioni daFare via createManutenzioneDaFareFromEvento.
+- P2: PDF Quadro manutenzioni include record daFare/programmata con toggle "Includi da fare e programmate" default ON.
+- P3: PDF Quadro manutenzioni passa da doc.save a Blob+PdfPreviewModal coerente con altri PDF NEXT.
+- P4: modale "Vedi origine" formatta correttamente i timestamp via formatDateTimeUI.
+- P5: PDF Quadro mostra per ogni record con origine segnalazione/controllo riga naturale "Segnalato da X il Y" / "Controllo KO di X del Y".
+- P6: PdfPreviewModal ha pulsante Condividi via Web Share API + fallback WhatsApp Web (PROMPT 30).
+
+### Stato finale del sistema
+- @lavori Firestore: 18 record invariati (strategia 3a, madre continua).
+- @manutenzioni Firestore: 74 record (56 originali + 18 from-lavoro-* con stato esplicito).
+- 17 backlink validi riscritti, 24 orfani preesistenti documentati.
+- Sidebar NEXT: voce "Lavori" rimossa.
+- Route NEXT /next/lavori-* e /next/dettagliolavori: redirect compat attivi.
+- Chat IA: sanificata in 15 file Categoria F (override J.10 totale autorizzato 2026-05-13).
+- Build: PASS continuativo durante tutta la dismissione.
+
+### Eccezioni mantenute
+- src/components/AutistiEventoModal.tsx (opzione alfa): shared con madre, lasciato invariato. Wrapper NEXT autonomi.
+- src/autistiInbox/AutistiAdmin.tsx (madre): non toccato.
+- src/pages/ (madre completa): non toccato.
+- linkedLavoroId/linkedLavoroIds (J.7): nome campo invariato, semantica aggiornata.
+
+### Debito tecnico residuo riconosciuto
+- Buco audit user-journey #10: "programmate fuse con daFare nel Dossier" - deferred (0 record programmata oggi in Firestore).
+- Problema chiusura ciclo segnalazione -> manutenzione eseguita: l'app autista crea record paralleli (es. cambio gomme) che non collegano automaticamente le daFare esistenti. Sara' affrontato in audit-first dedicato post-dismissione (PROMPT 31 a venire).
+
+### Cosa chiude questa voce
+Da oggi 2026-05-14 il modulo Lavori NEXT e' considerato DISMESSO. Tutte le operazioni utente passano da @manutenzioni con tab "Da fare" e flussi completamento espliciti. La saga della dismissione e' chiusa. Il problema residuo "chiusura ciclo daFare -> eseguita" e' tracciato come task indipendente in roadmap.
+
+## 2026-05-14 - Macchina chiusura ciclo eventi per segnalazioni/manutenzioni
+
+Decisione: introdotta una macchina di chiusura ciclo per evitare che segnalazioni o controlli trasformati in manutenzioni da fare restino aperti quando un evento successivo risolve il problema.
+
+Scelte operative:
+- `@manutenzioni` esteso con stato `chiusa_da_evento`.
+- `@segnalazioni_autisti_tmp` e `@controlli_mezzo_autisti` estesi con stato `chiusa`.
+- Tracciabilita' standard tramite `chiusuraDi`, `chiusuraRefId`, `chiusuraData`.
+- Primo evento supportato: `gomme_evento`.
+- Finestra suggerimento UI: 30 giorni, con multi-select sempre disponibile.
+- Match suggeriti pre-selezionati, altre aperte non pre-selezionate.
+
+Implementazione:
+- Nuovo writer `nextChiusuraEventoWriter.ts` con scope barrier `next_chiusura_da_evento_write_scope`.
+- Modale import gomme in `/next/autisti-inbox` prima della scrittura su `@gomme_eventi`.
+- Badge e tooltip `CHIUSA DA EVENTO` in Manutenzioni, Archivio Storico e Dossier Mezzo.
+- Script one-shot creato ma non eseguito: `scripts/oneoff/chiudi-dafare-gomme-orfana-2026-05-14.cjs`.
+
+Stato Firestore nel prompt: invariato. Lo script retroattivo sara' lanciato manualmente da Giuseppe prima in `DRY_RUN=true`, poi eventualmente in reale.
+
+Riferimento: `docs/_live/REPORT_MACCHINA_CHIUSURA_CICLO_EVENTI_2026-05-14.md`.
+
+## 2026-05-14 - Aggancio/Sgancio retroattivo evento gomme
+
+Decisione: aggiungere una chiusura retroattiva manuale per i casi in cui il cambio gomme esiste gia' in `@gomme_eventi` ma la segnalazione, il controllo KO o la manutenzione da fare sono rimasti aperti perche' creati prima della modale multi-select.
+
+Scope:
+- evento supportato oggi: solo `gomme_evento`;
+- superfici: dettaglio manutenzione, dettaglio segnalazione autista, dettaglio controllo KO;
+- azioni: `Aggancia evento` e `Sgancia evento`;
+- sgancio consentito solo quando `chiusuraDi === "gomme_evento"`.
+
+Conseguenze:
+- `Aggancia evento` e' il caso parallelo di `Completa`: invece di creare un evento, collega un evento gia' esistente.
+- `Sgancia evento` ripristina il record aperto e azzera `chiusuraDi`, `chiusuraRefId`, `chiusuraData`.
+- Helper nuovo `eventiCompatibili.ts` predisposto per un registry futuro quando esisteranno collection evento per olio, freni o altri cicli.
+
+Firestore nel prompt: zero scritture. Le chiusure avverranno solo da UI dopo gate manuale Giuseppe.
+
+## 2026-05-14 - Storia unificata record + sparizione satellite
+
+Decisione: una manutenzione `chiusa_da_evento` collegata a `gomme_evento` non deve piu' comparire come voce storica autonoma quando esiste il record evento principale. Il record satellite resta in Firestore e resta recuperabile per audit, dettaglio diretto e sgancio.
+
+Conseguenze:
+- `/next/manutenzioni` nasconde i satelliti nella sidebar `Storico Manutenzioni` e negli ultimi interventi, ma mostra una timeline unificata nel dettaglio del record evento.
+- Dossier Mezzo e Archivio Storico non duplicano i satelliti nelle liste storiche normali; l'Archivio li fa riapparire se Giuseppe usa il filtro stato `Chiusa da evento`.
+- Il PDF Quadro separa i record risolti tramite evento esterno nella sezione `Manutenzioni risolte tramite eventi esterni`.
+
+Firestore nel prompt: zero scritture. La reversibilita' resta affidata a `Sgancia evento`, che riporta il satellite a stato aperto/daFare.

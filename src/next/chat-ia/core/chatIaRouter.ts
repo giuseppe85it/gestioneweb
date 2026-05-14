@@ -28,7 +28,7 @@ const SECTOR_KEYWORDS: Record<ChatIaSectorId, { primary: string[]; secondary: st
     secondary: ["sessione autista", "eventi autisti"],
   },
   manutenzioni_scadenze: {
-    primary: ["manutenzioni", "manutenzione", "scadenze", "lavori"],
+    primary: ["manutenzioni", "manutenzione", "scadenze"],
     secondary: ["gomme", "collaudo", "attenzione oggi", "precollaudo"],
   },
   materiali: {

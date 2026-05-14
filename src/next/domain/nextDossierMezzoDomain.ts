@@ -17,12 +17,12 @@ import {
   readNextMezzoDocumentiCostiSnapshot,
 } from "./nextDocumentiCostiDomain";
 import {
-  buildNextLavoriLegacyDossierView,
-  type NextLavoriLegacyViewItem,
-  type NextMezzoLavoriSnapshot,
-  readNextMezzoLavoriSnapshot,
-} from "./nextLavoriDomain";
-import type { NextScheduledMaintenance } from "./nextManutenzioniDomain";
+  readNextMezzoManutenzioniSnapshot,
+  type NextMaintenanceHistoryItem,
+  type NextManutenzioneStato,
+  type NextMezzoManutenzioniSnapshot,
+  type NextScheduledMaintenance,
+} from "./nextManutenzioniDomain";
 import {
   buildNextGommeStateByAsse,
   buildNextGommeStraordinarieEvents,
@@ -161,11 +161,32 @@ export type NextDossierFatturaPreventivoLegacyItem =
 export type NextDossierManutenzioneLegacyItem =
   NextManutenzioneLegacyViewItem;
 
+export type NextDossierLegacyWorkItem = {
+  id: string;
+  targa?: string | null;
+  mezzoTarga?: string | null;
+  descrizione?: string | null;
+  dettagli?: string | null;
+  dataInserimento?: string | null;
+  dataEsecuzione?: string | null;
+  eseguito?: boolean;
+  stato?: NextManutenzioneStato;
+  origineTipo?: string | null;
+  origineRefId?: string | null;
+  origineRefKey?: string | null;
+  segnalatoDa?: string | null;
+  urgenza?: string | null;
+  chiHaEseguito?: string | null;
+  chiusuraDi?: string | null;
+  chiusuraRefId?: string | null;
+  chiusuraData?: number | null;
+};
+
 export type NextDossierMezzoLegacyViewState = {
   mezzo: NextDossierMezzoIdentity | null;
-  lavoriDaEseguire: NextLavoriLegacyViewItem[];
-  lavoriInAttesa: NextLavoriLegacyViewItem[];
-  lavoriEseguiti: NextLavoriLegacyViewItem[];
+  lavoriDaEseguire: NextDossierLegacyWorkItem[];
+  lavoriInAttesa: NextDossierLegacyWorkItem[];
+  lavoriEseguiti: NextDossierLegacyWorkItem[];
   movimentiMateriali: NextMaterialiMovimentiLegacyDossierItem[];
   rifornimenti: NextDossierRifornimentoLegacyItem[];
   documentiCosti: NextDossierFatturaPreventivoLegacyItem[];
@@ -184,7 +205,7 @@ export type NextAnalisiEconomicaLegacyViewState = {
 export type NextDossierMezzoCompositeSnapshot = {
   mezzo: NextDossierMezzoIdentity;
   technical: NextDossierDomainSectionState<NextMezzoOperativitaTecnicaSnapshot>;
-  lavori: NextDossierDomainSectionState<NextMezzoLavoriSnapshot>;
+  lavori: NextDossierDomainSectionState<NextMezzoManutenzioniSnapshot>;
   materialiMovimenti: NextDossierDomainSectionState<NextMezzoMaterialiMovimentiSnapshot>;
   maintenance: NextDossierDomainSectionState<NextMezzoManutenzioniGommeSnapshot>;
   refuels: NextDossierDomainSectionState<NextMezzoRifornimentiSnapshot>;
@@ -573,7 +594,7 @@ function buildSectionState<TSnapshot>(args: {
 function buildOverview(args: {
   mezzo: NextDossierMezzoIdentity;
   technical: NextDossierDomainSectionState<NextMezzoOperativitaTecnicaSnapshot>;
-  lavori: NextDossierDomainSectionState<NextMezzoLavoriSnapshot>;
+  lavori: NextDossierDomainSectionState<NextMezzoManutenzioniSnapshot>;
   materialiMovimenti: NextDossierDomainSectionState<NextMezzoMaterialiMovimentiSnapshot>;
   maintenance: NextDossierDomainSectionState<NextMezzoManutenzioniGommeSnapshot>;
   refuels: NextDossierDomainSectionState<NextMezzoRifornimentiSnapshot>;
@@ -595,7 +616,7 @@ function buildOverview(args: {
 
   const importedBlockLabels = [
     "Scheda identita mezzo",
-    lavori.status === "success" ? "Lavori mezzo-centrici" : null,
+    lavori.status === "success" ? "Manutenzioni mezzo-centriche" : null,
     materialiMovimenti.status === "success"
       ? "Materiali e movimenti mezzo-centrici"
       : null,
@@ -622,7 +643,7 @@ function buildOverview(args: {
 
   const readerLabels = [
     `Identita mezzo: ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}`,
-    "Lavori: layer read-only @lavori",
+    "Manutenzioni: layer read-only @manutenzioni",
     "Materiali/movimenti: layer read-only @materialiconsegnati",
     "Manutenzioni/gomme: layer read-only @manutenzioni + @mezzi_aziendali con convergenza prudente di @cambi_gomme_autisti_tmp e @gomme_eventi",
     "Rifornimenti: ricostruzione read-only da @rifornimenti e feed campo",
@@ -633,10 +654,10 @@ function buildOverview(args: {
 
   const keySignals = [
     lavori.status === "success"
-      ? lavori.snapshot?.counts.total
-        ? `Lavori collegati: ${lavori.snapshot.counts.total} record, ${lavori.snapshot.counts.inAttesa} in attesa.`
-        : "Nessun lavoro letto per questa targa."
-      : "Lavori non disponibili dal layer read-only.",
+      ? lavori.snapshot?.historyItems.length
+        ? `Manutenzioni collegate: ${lavori.snapshot.historyItems.length} record, ${lavori.snapshot.historyItems.filter((item) => item.stato === "daFare" || item.stato === "programmata").length} da fare/programmate.`
+        : "Nessuna manutenzione letta per questa targa."
+      : "Manutenzioni non disponibili dal layer read-only.",
     materialiMovimenti.status === "success"
       ? materialiMovimenti.snapshot?.counts.total
         ? `Movimenti materiali collegati: ${materialiMovimenti.snapshot.counts.total} record (${materialiMovimenti.snapshot.counts.matchedStrong} match forti, ${materialiMovimenti.snapshot.counts.matchedPlausible} plausibili).`
@@ -768,7 +789,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
     savedAnalysisResult,
   ] = await Promise.allSettled([
     readNextMezzoOperativitaTecnicaSnapshot(mezzoTarga),
-    readNextMezzoLavoriSnapshot(mezzoTarga),
+    readNextMezzoManutenzioniSnapshot(mezzoTarga),
     readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false }),
     readNextMezzoManutenzioniGommeSnapshot(mezzoTarga),
     readNextMezzoRifornimentiSnapshot(mezzoTarga),
@@ -783,7 +804,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
   });
   const lavori = buildSectionState({
     settled: lavoriResult,
-    error: "Impossibile leggere il blocco lavori dal layer read-only dedicato.",
+    error: "Impossibile leggere il blocco manutenzioni dal layer read-only dedicato.",
   });
   const maintenance = buildSectionState({
     settled: maintenanceResult,
@@ -871,11 +892,58 @@ export async function readNextDossierMezzoCompositeSnapshot(
   };
 }
 
+function mapManutenzioneToLegacyWorkItem(
+  item: NextMaintenanceHistoryItem,
+): NextDossierLegacyWorkItem {
+  const eseguita = item.stato === "eseguita" || item.stato === "chiusa_da_evento";
+  return {
+    id: item.id,
+    targa: item.mezzoTarga,
+    mezzoTarga: item.mezzoTarga,
+    descrizione: item.descrizione ?? "Manutenzione",
+    dettagli: item.tipo ?? undefined,
+    dataInserimento: item.dataProgrammata ?? item.dataRaw ?? undefined,
+    dataEsecuzione: eseguita ? item.dataRaw ?? undefined : undefined,
+    eseguito: eseguita,
+    stato: item.stato,
+    origineTipo: item.origineTipo ?? undefined,
+    origineRefId: item.origineRefId ?? undefined,
+    origineRefKey: item.origineRefKey ?? undefined,
+    segnalatoDa: item.segnalatoDa ?? undefined,
+    urgenza: item.urgenza ?? undefined,
+    chiHaEseguito: item.eseguitoLabel ?? undefined,
+    chiusuraDi: item.chiusuraDi ?? undefined,
+    chiusuraRefId: item.chiusuraRefId ?? undefined,
+    chiusuraData: item.chiusuraData ?? undefined,
+  };
+}
+
+function buildNextManutenzioniLegacyDossierWorkView(
+  snapshot: NextMezzoManutenzioniSnapshot,
+): {
+  lavoriDaEseguire: NextDossierLegacyWorkItem[];
+  lavoriInAttesa: NextDossierLegacyWorkItem[];
+  lavoriEseguiti: NextDossierLegacyWorkItem[];
+} {
+  const pending = snapshot.historyItems
+    .filter((item) => item.stato === "daFare" || item.stato === "programmata")
+    .map(mapManutenzioneToLegacyWorkItem);
+  const done = snapshot.historyItems
+    .filter((item) => item.stato === "eseguita")
+    .map(mapManutenzioneToLegacyWorkItem);
+
+  return {
+    lavoriDaEseguire: [],
+    lavoriInAttesa: pending,
+    lavoriEseguiti: done,
+  };
+}
+
 export function buildNextDossierMezzoLegacyView(
   snapshot: NextDossierMezzoCompositeSnapshot
 ): NextDossierMezzoLegacyViewState {
   const lavori = snapshot.lavori.snapshot
-    ? buildNextLavoriLegacyDossierView(snapshot.lavori.snapshot)
+    ? buildNextManutenzioniLegacyDossierWorkView(snapshot.lavori.snapshot)
     : {
         lavoriDaEseguire: [],
         lavoriInAttesa: [],

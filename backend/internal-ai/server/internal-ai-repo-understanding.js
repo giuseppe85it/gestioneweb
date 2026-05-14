@@ -198,11 +198,6 @@ const CURATED_SCREEN_RELATIONS = [
     summary: "Il workbench operativo globale instrada il procurement sulle route dedicate, senza comprimere tutto in una sola pagina hub.",
   },
   {
-    from: "/next/gestione-operativa",
-    to: "/next/lavori-in-attesa",
-    summary: "Le code lavori vivono come route autonome leggibili e non piu solo come sotto-stato di una pagina globale.",
-  },
-  {
     from: "/next/acquisti",
     to: "/next/dettaglio-ordine/:ordineId",
     summary: "Il procurement apre il dettaglio ordine come vista propria read-only, distinta dal tab principale.",
@@ -259,7 +254,7 @@ const CURATED_ROUTES = [
   {
     label: "Gestione Operativa",
     path: "/next/gestione-operativa",
-    summary: "Hub operativo globale con pagine figlie autonome per stock, procurement e backlog lavori.",
+    summary: "Hub operativo globale con pagine figlie autonome per stock, procurement e manutenzioni.",
   },
   {
     label: "Acquisti",
@@ -270,16 +265,6 @@ const CURATED_ROUTES = [
     label: "Dettaglio ordine",
     path: "/next/dettaglio-ordine/:ordineId",
     summary: "Drill-down ordine standalone osservabile in sola lettura dalle code procurement.",
-  },
-  {
-    label: "Lavori in attesa",
-    path: "/next/lavori-in-attesa",
-    summary: "Lista globale lavori aperti con percorso dedicato al dettaglio.",
-  },
-  {
-    label: "Dettaglio lavoro",
-    path: "/next/dettagliolavori/:lavoroId",
-    summary: "Drill-down del singolo lavoro raggiunto dalle liste globali clone-safe.",
   },
   {
     label: "Area Capo",

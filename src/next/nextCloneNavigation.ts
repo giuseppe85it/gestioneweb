@@ -23,9 +23,6 @@ import {
   NEXT_IA_LIBRETTO_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
-  NEXT_LAVORI_DA_ESEGUIRE_PATH,
-  NEXT_LAVORI_ESEGUITI_PATH,
-  NEXT_LAVORI_IN_ATTESA_PATH,
   NEXT_MATERIALI_CONSEGNATI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
   NEXT_MANUTENZIONI_PATH,
@@ -83,9 +80,9 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
   if (normalizedPath === "/materiali-da-ordinare") return NEXT_MATERIALI_DA_ORDINARE_PATH;
   if (normalizedPath === "/ordini-in-attesa") return NEXT_ORDINI_IN_ATTESA_PATH;
   if (normalizedPath === "/ordini-arrivati") return NEXT_ORDINI_ARRIVATI_PATH;
-  if (normalizedPath === "/lavori-da-eseguire") return NEXT_LAVORI_DA_ESEGUIRE_PATH;
-  if (normalizedPath === "/lavori-in-attesa") return NEXT_LAVORI_IN_ATTESA_PATH;
-  if (normalizedPath === "/lavori-eseguiti") return NEXT_LAVORI_ESEGUITI_PATH;
+  if (normalizedPath === "/lavori-da-eseguire") return NEXT_MANUTENZIONI_PATH;
+  if (normalizedPath === "/lavori-in-attesa") return NEXT_MANUTENZIONI_PATH;
+  if (normalizedPath === "/lavori-eseguiti") return NEXT_MANUTENZIONI_PATH;
   if (normalizedPath === "/mezzi") return NEXT_MEZZI_PATH;
   if (normalizedPath === "/dossiermezzi") return NEXT_DOSSIER_LISTA_PATH;
   if (normalizedPath === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
@@ -134,12 +131,17 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
     const params = new URLSearchParams(search);
     const lavoroId = params.get("lavoroId");
     if (!lavoroId) {
-      return NEXT_LAVORI_IN_ATTESA_PATH;
+      return NEXT_MANUTENZIONI_PATH;
     }
     params.delete("lavoroId");
+    params.set(
+      "recordId",
+      lavoroId.startsWith("from-lavoro-")
+        ? lavoroId
+        : `from-lavoro-${lavoroId}`,
+    );
     const serialized = params.toString();
-    const nextPath = `/next/dettagliolavori/${encodeURIComponent(lavoroId)}`;
-    return serialized ? `${nextPath}?${serialized}` : nextPath;
+    return serialized ? `${NEXT_MANUTENZIONI_PATH}?${serialized}` : NEXT_MANUTENZIONI_PATH;
   }
 
   if (normalizedPath.startsWith("/capo/costi/")) {

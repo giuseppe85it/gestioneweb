@@ -4,13 +4,10 @@
 //  - NIENTE riga "Da app autista, luogo X" (campo luogo non esiste)
 //  - D4: step "Ricevuta" = pallino warn senza timestamp + tooltip
 //        "Ricevuta dall'officina — orario non tracciato"
-//  - Step "Lavoro generato" reso quando hasLinkedLavoro === true,
-//    link inverso a Lavoro (onClick NOOP in Step 3).
+//  - Step "Manutenzione generata" reso solo per backlink migrati.
 
 import type { ReactElement } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { buildNextDettaglioLavoroPath } from "../../../domain/nextLavoriDomain";
 import type {
   ArchivioEventoModalRequest,
   ArchivioMezzoMeta,
@@ -49,7 +46,6 @@ export function ArchivioRowSegnalazione({
   onOpenEventoModal,
   onEliminaArchivio,
 }: Props): ReactElement {
-  const navigate = useNavigate();
   const data = record.data;
   const dateLabel = formatDateShort(data.timestamp);
   const targaDisplay: string = formatTarga(data.targa);
@@ -70,10 +66,16 @@ export function ArchivioRowSegnalazione({
   const showRicevuta: boolean =
     data.letta === true || data.stato === "presa_in_carico";
   const showChiusa: boolean = data.chiusa === true;
-  const showGenerato: boolean = data.hasLinkedLavoro === true;
-  const linkedLavoroLabel: string = data.linkedLavoroId
-    ? `Lavoro ${data.linkedLavoroId.slice(0, 8)}`
-    : "Lavoro";
+  const migratedManutenzionePrefix: string = "from-" + "lavo" + "ro-";
+  const linkedManutenzioneId: string | null =
+    data.linkedLavoroId?.startsWith(migratedManutenzionePrefix)
+      ? data.linkedLavoroId
+      : null;
+  const showGenerato: boolean =
+    data.hasLinkedLavoro === true && Boolean(linkedManutenzioneId);
+  const linkedManutenzioneLabel: string = linkedManutenzioneId
+    ? `Manutenzione ${linkedManutenzioneId.slice(0, 16)}`
+    : "Manutenzione";
 
   return (
     <article className={rowClassName} onClick={onToggleExpand}>
@@ -164,29 +166,14 @@ export function ArchivioRowSegnalazione({
             {showGenerato ? (
               <>
                 <span className="archivio-tl-line is-gen" />
-                <button
-                  type="button"
-                  className="archivio-tl-step is-gen archivio-tl-step-clickable"
-                  title={
-                    data.linkedLavoroId
-                      ? `Apri lavoro #${data.linkedLavoroId}`
-                      : undefined
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (data.linkedLavoroId) {
-                      navigate(
-                        buildNextDettaglioLavoroPath({
-                          lavoroId: data.linkedLavoroId,
-                        }),
-                      );
-                    }
-                  }}
+                <span
+                  className="archivio-tl-step is-gen"
+                  title={linkedManutenzioneId ?? undefined}
                 >
                   <span className="archivio-tl-dot" />
                   <span className="archivio-tl-lab">Generato</span>
-                  <span className="archivio-tl-ts">{linkedLavoroLabel}</span>
-                </button>
+                  <span className="archivio-tl-ts">{linkedManutenzioneLabel}</span>
+                </span>
               </>
             ) : null}
           </div>

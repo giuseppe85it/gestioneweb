@@ -86,7 +86,6 @@ export const VIEW_CONFIGS: Record<ViewEnum, ViewConfig> = {
     title: "Profilo cantiere",
     status: "ready",
     entryBoundaryIds: [
-      "firestore-storage-lavori-doc",
       "firestore-storage-materiali-consegnati-doc",
       "firestore-storage-attrezzature-cantieri-doc",
       "firestore-storage-inventario-doc",
@@ -101,18 +100,6 @@ export const VIEW_CONFIGS: Record<ViewEnum, ViewConfig> = {
     maxRecords: 20,
     relationsToShow: ["site_equipment", "material_supplier"],
     sections: [
-      {
-        id: "site_jobs",
-        title: "Lavori e cantieri",
-        entryBoundaryId: "firestore-storage-lavori-doc",
-        fields: [
-          { field: "cantiere", label: "Cantiere" },
-          { field: "stato", label: "Stato" },
-          { field: "tipo", label: "Tipo" },
-          { field: "data", label: "Data" },
-        ],
-        emptyText: "dato non trovato nelle fonti autorizzate",
-      },
       {
         id: "site_materials",
         title: "Materiali consegnati",
@@ -274,7 +261,6 @@ export const VIEW_CONFIGS: Record<ViewEnum, ViewConfig> = {
     status: "ready",
     entryBoundaryIds: [
       "firestore-storage-mezzi-aziendali-doc",
-      "firestore-storage-lavori-doc",
       "firestore-storage-manutenzioni-doc",
       "firestore-documenti-mezzi-root",
       "firestore-documenti-magazzino-root",

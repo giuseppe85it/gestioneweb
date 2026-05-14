@@ -13,7 +13,6 @@ import {
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
-  NEXT_LAVORI_DA_ESEGUIRE_PATH,
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
 } from "./nextStructuralPaths";
@@ -156,7 +155,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "operativita",
     title: "OPERATIVITA'",
     items: [
-      { id: "lavori", label: "Lavori", path: NEXT_LAVORI_DA_ESEGUIRE_PATH },
       { id: "manutenzioni", label: "Manutenzioni", path: NEXT_MANUTENZIONI_PATH },
     ],
   },
@@ -315,7 +313,7 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/gestione-operativa",
     label: "Operativita Globale",
     status: "ACTIVE_PARTIAL",
-    note: "Famiglia NEXT riallineata a route autonome per `Gestione Operativa`, `Magazzino`, `Attrezzature Cantieri`, `Manutenzioni`, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin`; `/next/magazzino` governa il contratto stock lato NEXT, mentre `/next/inventario` e `/next/materiali-consegnati` restano solo redirect di compatibilita.",
+    note: "Famiglia NEXT riallineata a route autonome per `Gestione Operativa`, `Magazzino`, `Attrezzature Cantieri`, `Manutenzioni`, procurement, `Autisti Inbox` e `Autisti Admin`; `/next/magazzino` governa il contratto stock lato NEXT, mentre `/next/inventario` e `/next/materiali-consegnati` restano solo redirect di compatibilita.",
   },
   {
     id: "euromecc",
@@ -458,7 +456,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Gap ancora espliciti",
         description:
-          "Restano visibili ma non risolti i quick link verso `Lavori Da Eseguire` e i figli IA ancora unsafe; le aree autisti gia attive sono ora riallineate al perimetro clone.",
+          "Restano visibili ma non risolti i figli IA ancora unsafe; le aree autisti gia attive sono ora riallineate al perimetro clone.",
         tone: "warning",
       },
     ],
@@ -495,7 +493,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Dossier",
         value: "Attivo",
-        meta: "Il clone aggrega anagrafica, lavori, materiali, manutenzioni, rifornimenti, documenti e costi in sola lettura.",
+        meta: "Il clone aggrega anagrafica, materiali, manutenzioni, rifornimenti, documenti e costi in sola lettura.",
         tone: "success",
       },
       {
@@ -546,10 +544,6 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       "/next/ordini-in-attesa",
       "/next/ordini-arrivati",
       "/next/dettaglio-ordine/:ordineId",
-      "/next/lavori-da-eseguire",
-      "/next/lavori-in-attesa",
-      "/next/lavori-eseguiti",
-      "/next/dettagliolavori/:lavoroId",
       "/next/autisti-inbox",
       "/next/autisti-inbox/cambio-mezzo",
       "/next/autisti-inbox/log-accessi",
@@ -564,7 +558,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     eyebrow: "Workflow e code",
     title: "Operativita Globale",
     description:
-      "Famiglia NEXT riallineata alla madre con ingresso unificato `Magazzino`, pagine autonome per attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin`; il contratto stock lato NEXT e governato da `/next/magazzino`, mentre procurement e documenti restano superfici di supporto o preview.",
+      "Famiglia NEXT riallineata alla madre con ingresso unificato `Magazzino`, pagine autonome per attrezzature, manutenzioni, procurement, `Autisti Inbox` e `Autisti Admin`; il contratto stock lato NEXT e governato da `/next/magazzino`, mentre procurement e documenti restano superfici di supporto o preview.",
     phase: "Operativo parziale",
     primaryGrammar: "Workflow operativo",
     searchPlaceholder: "Fornitore, ordine, materiale",
@@ -574,7 +568,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Sezioni attive",
         value: "8+",
-        meta: "`Magazzino` unifica inventario, materiali consegnati, cisterne AdBlue e supporti documentali/costi; attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` restano navigabili come superfici dedicate.",
+        meta: "`Magazzino` unifica inventario, materiali consegnati, cisterne AdBlue e supporti documentali/costi; attrezzature, manutenzioni, procurement, `Autisti Inbox` e `Autisti Admin` restano navigabili come superfici dedicate.",
         tone: "accent",
       },
       {

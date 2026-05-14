@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- Baseline storico: la pagina esporta helper usati dalla Sinottica. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
@@ -25,7 +26,11 @@ import {
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
-import { buildNextDossierPath, buildNextDossierGommePath } from "./nextStructuralPaths";
+import {
+  buildNextDossierPath,
+  buildNextDossierGommePath,
+  buildNextManutenzioniPath,
+} from "./nextStructuralPaths";
 import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
 import NextCentroControlloIndagineModal from "./components/NextCentroControlloIndagineModal";
 import NextCentroControlloAnalisiModal from "./components/NextCentroControlloAnalisiModal";
@@ -37,15 +42,13 @@ import NextMezzoHardDeleteModal from "./components/NextMezzoHardDeleteModal";
 import { markRichiestaEvasa } from "./nextRichiesteAttrezzatureWriter";
 import { markSegnalazioneChiusa } from "./nextSegnalazioniWriter";
 import { markControlloChiuso } from "./nextControlliWriter";
-import {
-  createLavoroFromEvento,
-  type LavoroCreateInput,
-  type LavoroCreateResult,
-} from "./nextLavoroCreateWriter";
+import { createManutenzioneDaFareFromEvento } from "./writers/nextManutenzioneDaFareCreateWriter";
 import { NextArchivioStoricoTab } from "./centroControllo/archivioStorico/NextArchivioStoricoTab";
 import type { ArchivioEventoModalRequest } from "./centroControllo/archivioStorico/archivioTypes";
-import { readNextLavoriInAttesaSnapshot, buildNextDettaglioLavoroPath } from "./domain/nextLavoriDomain";
-import { readNextManutenzioniLegacyDataset } from "./domain/nextManutenzioniDomain";
+import {
+  readNextManutenzioniDaFareSnapshot,
+  readNextManutenzioniLegacyDataset,
+} from "./domain/nextManutenzioniDomain";
 import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
 import type {
   Anomaly,
@@ -766,7 +769,7 @@ export default function NextCentroControlloParityPage() {
   // false aprendo il modale via `handleOpenEventoFromArchivio`.
   const [sinotticaEventoModalEditable, setSinotticaEventoModalEditable] =
     useState<boolean>(true);
-  const [lavoriAperti, setLavoriAperti] = useState<
+  const [manutenzioniDaFare, setManutenzioniDaFare] = useState<
     Array<{
       id: string;
       targa: string | null;
@@ -985,29 +988,26 @@ export default function NextCentroControlloParityPage() {
     }
   };
 
-  const loadLavoriAperti = async () => {
+  const loadManutenzioniDaFare = async () => {
     try {
-      const snapshot = await readNextLavoriInAttesaSnapshot();
+      const manutenzioniDaFare = await readNextManutenzioniDaFareSnapshot();
       const rows: Array<{
         id: string;
         targa: string | null;
         urgenza: "alta" | "media" | "bassa" | null;
         eseguito: boolean;
       }> = [];
-      for (const group of snapshot.groups) {
-        for (const item of group.items) {
-          if (item.eseguito) continue;
-          rows.push({
-            id: item.id,
-            targa: item.targa ? normalizeTarga(item.targa) : null,
-            urgenza: item.urgenza,
-            eseguito: item.eseguito,
-          });
-        }
+      for (const item of manutenzioniDaFare) {
+        rows.push({
+          id: item.id,
+          targa: item.targa ? normalizeTarga(item.targa) : null,
+          urgenza: item.urgenza ?? null,
+          eseguito: false,
+        });
       }
-      setLavoriAperti(rows);
+      setManutenzioniDaFare(rows);
     } catch {
-      setLavoriAperti([]);
+      setManutenzioniDaFare([]);
     }
   };
 
@@ -1057,7 +1057,7 @@ export default function NextCentroControlloParityPage() {
   }, []);
 
   useEffect(() => {
-    void loadLavoriAperti();
+    void loadManutenzioniDaFare();
     void loadManutenzioniStorico();
   }, []);
 
@@ -1517,7 +1517,7 @@ export default function NextCentroControlloParityPage() {
           refuelRows={refuelRows}
           refuelSeedIndex={refuelSeedIndex}
           manutenzioniStorico={manutenzioniStorico}
-          lavoriAperti={lavoriAperti}
+          manutenzioniDaFare={manutenzioniDaFare}
           activeSessions={activeSessions}
           segnalazioniAperte={segnalazioniRows
             .filter(
@@ -1620,15 +1620,15 @@ export default function NextCentroControlloParityPage() {
           }}
           onChipListOpen={(
             _anchorRect: DOMRect,
-            kind: "lavori" | "segnalazione" | "controllo" | "richiesta",
+            kind: "manutenzione" | "segnalazione" | "controllo" | "richiesta",
             targa: string,
             ids: string[],
           ) => {
             const targaUp: string = targa.toUpperCase();
             const idSet: Set<string> = new Set(ids);
-            if (kind === "lavori") {
+            if (kind === "manutenzione") {
               const first: string | undefined = ids[0];
-              if (first) navigate(buildNextDettaglioLavoroPath({ lavoroId: first }));
+              if (first) navigate(buildNextManutenzioniPath(targa, first));
               return;
             }
             const list: HomeEvent[] = [];
@@ -1723,8 +1723,8 @@ export default function NextCentroControlloParityPage() {
               setMezzoEditModalOpen(true);
             }
           }}
-          onLavoroClick={(lavoroId) =>
-            navigate(buildNextDettaglioLavoroPath({ lavoroId }))
+          onManutenzioneClick={(recordId) =>
+            navigate(buildNextManutenzioniPath(undefined, recordId))
           }
           onEventoChipClick={(event) => {
             setSinotticaEventoModalEvent(event);
@@ -1756,7 +1756,7 @@ export default function NextCentroControlloParityPage() {
             void loadScheduledMaintenances();
             void loadRefuels();
             void loadAutistiReadOnlySections();
-            void loadLavoriAperti();
+            void loadManutenzioniDaFare();
             void loadManutenzioniStorico();
             void loadActiveSessionsCC();
           }}
@@ -2407,13 +2407,10 @@ export default function NextCentroControlloParityPage() {
             await loadAutistiReadOnlySections();
             advanceAfterMark(id);
           }}
-          onCreateLavoro={async (
-            input: LavoroCreateInput,
-          ): Promise<LavoroCreateResult> => {
-            const result: LavoroCreateResult =
-              await createLavoroFromEvento(input);
+          onCreateManutenzioneDaFare={async (input) => {
+            const result = await createManutenzioneDaFareFromEvento(input);
             if (!result.ok) return result;
-            await loadLavoriAperti();
+            await loadManutenzioniDaFare();
             await loadAutistiReadOnlySections();
             advanceAfterMark(input.origineId);
             return result;

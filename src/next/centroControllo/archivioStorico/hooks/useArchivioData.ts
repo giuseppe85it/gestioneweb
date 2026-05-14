@@ -4,14 +4,12 @@
 // in `ArchivioRecordsByKind` (4 array discriminati). Sola lettura.
 //
 // Reader autorizzati (R0):
-//   - readNextLavoriArchivioSnapshot     (nextLavoriDomain — Step 1)
 //   - readNextManutenzioniLegacyDataset  (nextManutenzioniDomain)
 //   - readNextAutistiReadOnlySnapshot    (nextAutistiDomain)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { readNextAutistiReadOnlySnapshot } from "../../../domain/nextAutistiDomain";
-import { readNextLavoriArchivioSnapshot } from "../../../domain/nextLavoriDomain";
 import { readNextManutenzioniLegacyDataset } from "../../../domain/nextManutenzioniDomain";
 import { readNextAnagraficheFlottaSnapshot } from "../../../nextAnagraficheFlottaDomain";
 import {
@@ -39,7 +37,6 @@ export type UseArchivioDataState = {
 };
 
 const EMPTY_RECORDS: ArchivioRecordsByKind = {
-  lavoro: [],
   manutenzione: [],
   segnalazione: [],
   richiesta: [],
@@ -58,13 +55,11 @@ export const useArchivioData = (): UseArchivioDataState => {
     setError(null);
     try {
       const [
-        lavoriSnapshot,
         manutenzioniList,
         autistiSnapshot,
         flottaSnapshot,
         hiddenIdsByKind,
       ] = await Promise.all([
-        readNextLavoriArchivioSnapshot(),
         readNextManutenzioniLegacyDataset(),
         readNextAutistiReadOnlySnapshot(Date.now()),
         readNextAnagraficheFlottaSnapshot(),
@@ -75,16 +70,6 @@ export const useArchivioData = (): UseArchivioDataState => {
       // Pattern: ID-set per kind costruito leggendo il raw storage.
       const isHidden = (kind: ArchivioHideKind, id: string): boolean =>
         hiddenIdsByKind[kind].has(id);
-
-      const lavoroRecords: ArchivioRecord[] = lavoriSnapshot.groups.flatMap(
-        (group) =>
-          group.items
-            .filter((item) => !isHidden("lavoro", item.id))
-            .map((item) => ({
-              kind: "lavoro" as const,
-              data: item,
-            })),
-      );
 
       const manutenzioneRecords: ArchivioRecord[] = manutenzioniList
         .filter((item) => !isHidden("manutenzione", item.id))
@@ -122,7 +107,6 @@ export const useArchivioData = (): UseArchivioDataState => {
       }
 
       setRecords({
-        lavoro: lavoroRecords,
         manutenzione: manutenzioneRecords,
         segnalazione: segnalazioneRecords,
         richiesta: richiestaRecords,

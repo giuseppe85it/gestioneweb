@@ -122,6 +122,8 @@ Dataset coinvolti dal conteggio reale:
 - `@segnalazioni_autisti_tmp`: 36 record totali, 32 con `linkedLavoroId` o `linkedLavoroIds` popolato.
 - `@controlli_mezzo_autisti`: 349 record totali, 9 con `linkedLavoroId` o `linkedLavoroIds` popolato.
 
+Numero di backlink riscritti atteso = numero di record origine con linkedLavoroId/linkedLavoroIds puntante a uno dei 18 lavori migrati. NON il conteggio dei record con campo popolato. La differenza tra i 41 record con campo popolato e i 17 link validi e' rappresentata da 24 record orfani preesistenti (linkedLavoroId che punta a id lavoro non piu' esistente), documentati in docs/_live/REPORT_FASI_1-4_DISMISSIONE_LAVORI_NEXT_2026-05-12.md cap 16.
+
 Regola congelata: il nome `linkedLavoroId` non cambia (`docs/DIARIO_DECISIONI.md:454-455`). Cambia solo il valore: dopo la migrazione punta all'id della manutenzione equivalente.
 
 Algoritmo:
@@ -408,7 +410,7 @@ Altre rimozioni collegate:
    - Rischi principali: scope barrier troppo largo, backlink non aggiornato, creazione duplicata da controllo con piu' targhe.
 
 3. Migrazione una tantum
-   - Obiettivo: migrare 18 record `@lavori` in `@manutenzioni`; riscrivere 32 backlink segnalazioni e 9 backlink controlli verso id manutenzione. Nessuna migrazione localStorage J.11: key `@next_clone_lavori:records` verificata assente.
+   - Obiettivo: migrare 18 record `@lavori` in `@manutenzioni`; riscrivere tutti i backlink validi verso id manutenzione, cioe' record origine il cui `linkedLavoroId` o `linkedLavoroIds` punta a uno dei 18 lavori migrati. Nessuna migrazione localStorage J.11: key `@next_clone_lavori:records` verificata assente.
    - Dipendenze: prompt 1 chiuso; prompt 2 chiuso o writer nuovi disattivati durante run.
    - Perimetro file: script one-off sotto `scripts/oneoff/` da creare, eseguire e rimuovere; nessun runtime.
    - Taglia: L.
@@ -461,8 +463,8 @@ Checklist specifica dismissione:
 3. I 18 record migrati hanno `km: null` e `ore: null`, coerente col conteggio Firestore reale.
 4. Nessun record migrato contiene `gruppoId`.
 5. Nessun record migrato introduce `tipo: "magazzino"`; se compare, la migrazione deve essere `DA VERIFICARE`.
-6. Le 32 segnalazioni con backlink puntano a id manutenzione oppure sono in report `DA VERIFICARE`.
-7. I 9 controlli con backlink puntano a id manutenzione oppure sono in report `DA VERIFICARE`.
+6. Tutti i backlink validi delle segnalazioni sono riscritti (= record origine il cui `linkedLavoroId` e' presente nei 18 lavori migrati); eventuali orfani preesistenti restano documentati nel report.
+7. Tutti i backlink validi dei controlli sono riscritti (= record origine il cui `linkedLavoroId`/`linkedLavoroIds` e' presente nei 18 lavori migrati); eventuali orfani preesistenti restano documentati nel report.
 8. Home mostra "Manutenzioni da fare" e non naviga a `/next/lavori-in-attesa`.
 9. Centro Controllo non scrive piu' `@lavori` da modale evento.
 10. `/next/dettagliolavori/:id` redirige a `/next/manutenzioni?id=...`.
@@ -481,6 +483,7 @@ Checklist specifica dismissione:
 - `internal-ai-repo-understanding.js` resta con route lavori (`backend/internal-ai/server/internal-ai-repo-understanding.js:200-203`, `backend/internal-ai/server/internal-ai-repo-understanding.js:275-282`).
 - Eventuale refactor impaginazione PDF resta fuori: J.3 mantiene impaginazione invariata in questo giro (`docs/DIARIO_DECISIONI.md:442-443`).
 - `@lavori` Firestore resta vivo; nessuna cancellazione collection.
+- Pulizia 24 backlink orfani preesistenti (17 segnalazioni + 7 controlli) il cui linkedLavoroId punta a lavori non piu' esistenti; task separato, fuori scope dismissione; elenco completo in docs/_live/REPORT cap 16.
 
 ## 14. Cosa NON si fa (controllo anti-ambito)
 

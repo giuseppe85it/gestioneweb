@@ -6,6 +6,8 @@
 import type { ReactElement } from "react";
 
 import type { ArchivioRecord } from "../archivioTypes";
+import { StoriaRecordTimeline } from "../../../components/StoriaRecordTimeline";
+import { getStoriaRecord } from "../../../helpers/storiaRecord";
 import "../styles/archivioStorico.css";
 
 type Props = {
@@ -48,61 +50,6 @@ function asseLabel(asseId: string): string {
   return asseId;
 }
 
-function renderLavoroExpanded(
-  data: Extract<ArchivioRecord, { kind: "lavoro" }>["data"],
-): ReactElement {
-  const descrizione: string = data.descrizione ?? "";
-  const dettagli: string | null = data.dettagli ?? null;
-  const hasDescrizione: boolean = descrizione.length > 0;
-  const hasChiusura: boolean = data.eseguito === true;
-  const hasContent: boolean = hasDescrizione || hasChiusura;
-
-  if (!hasContent) {
-    return (
-      <div className="archivio-row-extra-empty">
-        Nessun dettaglio aggiuntivo registrato per questo record.
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {hasDescrizione ? (
-        <div className="rx-section">
-          <div className="rx-label">Descrizione</div>
-          <div className="rx-value">
-            {descrizione}
-            {dettagli ? (
-              <>
-                <br />
-                <span style={{ color: "var(--ink-3)" }}>{dettagli}</span>
-              </>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-      {hasChiusura ? (
-        <div className="rx-section">
-          <div className="rx-label">Chiusura</div>
-          <div className="rx-value">
-            {data.chiHaEseguito ? (
-              <>
-                Chiuso da <strong>{data.chiHaEseguito}</strong>
-                {" il "}
-              </>
-            ) : (
-              "Chiuso il "
-            )}
-            <span className="mono">
-              {formatDateTimeLong(data.timestampEsecuzione)}
-            </span>
-          </div>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 function renderManutenzioneExpanded(
   data: Extract<ArchivioRecord, { kind: "manutenzione" }>["data"],
 ): ReactElement {
@@ -128,7 +75,13 @@ function renderManutenzioneExpanded(
       {data.descrizione ? (
         <div className="rx-section">
           <div className="rx-label">Descrizione</div>
-          <div className="rx-value">{data.descrizione}</div>
+          <div className="rx-value">
+            {data.descrizione}
+            <StoriaRecordTimeline
+              storia={getStoriaRecord(data as unknown as Record<string, unknown>)}
+              compact
+            />
+          </div>
         </div>
       ) : null}
       {(hasImporto || hasKm || hasOre || hasSottotipo) ? (
@@ -253,7 +206,8 @@ function renderSegnalazioneExpanded(
   data: Extract<ArchivioRecord, { kind: "segnalazione" }>["data"],
 ): ReactElement {
   const showChiusura: boolean = data.chiusa === true;
-  const showLinkLavoro: boolean = data.hasLinkedLavoro && Boolean(data.linkedLavoroId);
+  const showLinkManutenzione: boolean =
+    data.hasLinkedLavoro && Boolean(data.linkedLavoroId);
   const showFotoNote: boolean = data.fotoCount > 0;
 
   return (
@@ -287,9 +241,9 @@ function renderSegnalazioneExpanded(
           )}
         </div>
       </div>
-      {showLinkLavoro ? (
+      {showLinkManutenzione ? (
         <div className="rx-section">
-          <div className="rx-label">Lavoro generato</div>
+          <div className="rx-label">Manutenzione generata</div>
           <div className="rx-value">
             <span className="mono">{data.linkedLavoroId}</span>
           </div>
@@ -354,10 +308,6 @@ function renderRichiestaExpanded(
 export function ArchivioRowExpanded({ record }: Props): ReactElement {
   let body: ReactElement;
   switch (record.kind) {
-    case "lavoro": {
-      body = renderLavoroExpanded(record.data);
-      break;
-    }
     case "manutenzione": {
       body = renderManutenzioneExpanded(record.data);
       break;

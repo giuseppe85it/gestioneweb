@@ -5,7 +5,11 @@ import {
   type NextAnagraficheFlottaMezzoItem,
 } from "../../../nextAnagraficheFlottaDomain";
 import { readNextMezzoOperativitaTecnicaSnapshot } from "../../../nextOperativitaTecnicaDomain";
-import { readNextMezzoLavoriSnapshot } from "../../../domain/nextLavoriDomain";
+import {
+  readNextMezzoManutenzioniSnapshot,
+  type NextMaintenanceHistoryItem,
+  type NextMezzoManutenzioniSnapshot,
+} from "../../../domain/nextManutenzioniDomain";
 import { readNextMezzoRifornimentiSnapshot } from "../../../domain/nextRifornimentiDomain";
 import {
   buildNextMezzoMaterialiMovimentiSnapshot,
@@ -21,7 +25,12 @@ import {
   normalizeChatIaMezzoTarga,
   resolveChatIaMezzoTarga,
 } from "./chatIaMezziTarga";
-import type { ChatIaMezzoDataResult, ChatIaMezzoSnapshot } from "./chatIaMezziTypes";
+import type {
+  ChatIaMezzoDataResult,
+  ChatIaMezzoLavoriCompatItem,
+  ChatIaMezzoLavoriCompatSnapshot,
+  ChatIaMezzoSnapshot,
+} from "./chatIaMezziTypes";
 
 function collectLimitations(snapshot: ChatIaMezzoSnapshot): string[] {
   return [
@@ -58,6 +67,78 @@ function toCardAlert(item: D10AlertItem | D10FocusItem) {
   };
 }
 
+function isManutenzioneDaFare(item: NextMaintenanceHistoryItem): boolean {
+  return item.stato === "daFare" || item.stato === "programmata";
+}
+
+function toLavoroCompatItem(item: NextMaintenanceHistoryItem): ChatIaMezzoLavoriCompatItem {
+  const isEseguita = item.stato === "eseguita";
+  return {
+    id: item.id,
+    gruppoId: null,
+    targa: item.mezzoTarga,
+    mezzoTarga: item.mezzoTarga,
+    descrizione: item.descrizione ?? "Manutenzione",
+    dettagli: item.tipo,
+    dataInserimento: item.dataProgrammata ?? item.dataRaw,
+    timestampInserimento: item.timestamp,
+    dataEsecuzione: isEseguita ? item.dataRaw : null,
+    timestampEsecuzione: isEseguita ? item.timestamp : null,
+    eseguito: isEseguita,
+    stato: item.stato,
+    urgenza: item.urgenza,
+    segnalatoDa: null,
+    chiHaEseguito: item.eseguitoLabel,
+  };
+}
+
+// Fonte: @manutenzioni; deroga J.10 controllata 2026-05-13.
+function buildLavoriCompatFromManutenzioni(
+  snapshot: NextMezzoManutenzioniSnapshot,
+): ChatIaMezzoLavoriCompatSnapshot {
+  const items = snapshot.historyItems.map(toLavoroCompatItem);
+  const daEseguire = snapshot.historyItems.filter(isManutenzioneDaFare).map(toLavoroCompatItem);
+  const eseguiti = snapshot.historyItems.filter((item) => item.stato === "eseguita").map(toLavoroCompatItem);
+  const chiuseDaEvento = snapshot.historyItems
+    .filter((item) => item.stato === "chiusa_da_evento")
+    .map(toLavoroCompatItem);
+
+  return {
+    domainCode: snapshot.domainCode,
+    domainName: snapshot.domainName,
+    mezzoTarga: snapshot.mezzoTarga,
+    logicalDatasets: snapshot.logicalDatasets,
+    activeReadOnlyDataset: "@manutenzioni",
+    normalizationStrategy: "manutenzioni-dafare-compat",
+    outputContract: "chat-ia-mezzo-lavori-compat-da-manutenzioni",
+    datasetShape: "items",
+    items,
+    daEseguire,
+    inAttesa: daEseguire,
+    eseguiti,
+    counts: {
+      total: items.length,
+      daEseguire: daEseguire.length,
+      inAttesa: daEseguire.length,
+      eseguiti: eseguiti.length,
+      chiuseDaEvento: chiuseDaEvento.length,
+      apertiSenzaGruppo: daEseguire.length,
+      withDettagli: items.filter((item) => Boolean(item.dettagli)).length,
+      withDataEsecuzione: eseguiti.filter((item) => Boolean(item.dataEsecuzione)).length,
+      withChiHaEseguito: eseguiti.filter((item) => Boolean(item.chiHaEseguito)).length,
+      sourceSegnalazioni: 0,
+      sourceControlli: 0,
+    },
+    limitations:
+      chiuseDaEvento.length > 0
+        ? [
+            ...snapshot.limitations,
+            `${chiuseDaEvento.length} manutenzioni chiuse da evento sono escluse da aperte ed eseguite classiche.`,
+          ]
+        : snapshot.limitations,
+  };
+}
+
 export async function readChatIaMezzoSnapshot(requestedTarga: string): Promise<ChatIaMezzoDataResult> {
   const flotta = await readNextAnagraficheFlottaSnapshot();
   const match = resolveChatIaMezzoTarga({ requestedTarga, mezzi: flotta.items });
@@ -73,7 +154,7 @@ export async function readChatIaMezzoSnapshot(requestedTarga: string): Promise<C
 
   const [
     operativita,
-    lavori,
+    manutenzioni,
     rifornimenti,
     materialiBase,
     statoOperativo,
@@ -81,7 +162,7 @@ export async function readChatIaMezzoSnapshot(requestedTarga: string): Promise<C
     documenti,
   ] = await Promise.all([
     readNextMezzoOperativitaTecnicaSnapshot(resolvedTarga),
-    readNextMezzoLavoriSnapshot(resolvedTarga),
+    readNextMezzoManutenzioniSnapshot(resolvedTarga),
     readNextMezzoRifornimentiSnapshot(resolvedTarga),
     readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false }),
     readNextStatoOperativoSnapshot(),
@@ -94,6 +175,7 @@ export async function readChatIaMezzoSnapshot(requestedTarga: string): Promise<C
     targa: resolvedTarga,
     mezzoId: mezzo.id,
   });
+  const lavori = buildLavoriCompatFromManutenzioni(manutenzioni);
 
   const snapshot: ChatIaMezzoSnapshot = {
     requestedTarga: normalizeChatIaMezzoTarga(requestedTarga),
@@ -110,7 +192,7 @@ export async function readChatIaMezzoSnapshot(requestedTarga: string): Promise<C
     generatedAt: new Date().toISOString(),
     sources: [
       { label: "Anagrafica flotta", path: "storage/@mezzi_aziendali", domainCode: "D01" },
-      { label: "Lavori e manutenzioni", path: "storage/@lavori + storage/@manutenzioni", domainCode: "D02" },
+      { label: "Manutenzioni", path: "storage/@manutenzioni", domainCode: "D02" },
       { label: "Rifornimenti", path: "storage/@rifornimenti", domainCode: "D04" },
       { label: "Materiali consegnati", path: "storage/@materialiconsegnati", domainCode: "D05" },
       { label: "Stato operativo", path: "storage/@alerts_state + storage/@storico_eventi_operativi", domainCode: "D10" },

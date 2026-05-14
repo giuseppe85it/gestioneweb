@@ -24,7 +24,28 @@ import {
 import { buildTargheList } from "../../utils/targhe";
 import TargaPicker from "../../components/TargaPicker";
 import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
-import { appendNextLavoriCloneRecords } from "../nextLavoriCloneState";
+import {
+  createManutenzioneDaFareFromControllo,
+  createManutenzioneDaFareFromSegnalazione,
+} from "../writers/nextManutenzioneDaFareCreateWriter";
+import {
+  chiudiControlloDaEvento,
+  chiudiManutenzioneDaEvento,
+  chiudiSegnalazioneDaEvento,
+  sganciaControlloDaEvento,
+  sganciaSegnalazioneDaEvento,
+} from "../writers/nextChiusuraEventoWriter";
+import {
+  NextAggancioEventoModal,
+  type AggancioEventoRecord,
+  type AggancioEventoTipoRecord,
+} from "../components/NextAggancioEventoModal";
+import type { EventoCompatibile } from "../helpers/eventiCompatibili";
+import { getDataRiferimentoRecord } from "../helpers/parseRobusto";
+import {
+  NextImportGommeChiusuraModal,
+  type NextImportGommeChiusuraSelection,
+} from "../components/NextImportGommeChiusuraModal";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -37,23 +58,6 @@ const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
 const KEY_GOMME_EVENTI = "@gomme_eventi";
-
-type LavoroTipo = "magazzino" | "targa";
-type LavoroUrgenza = "bassa" | "media" | "alta";
-
-type LavoroRecord = {
-  id: string;
-  gruppoId: string;
-  tipo: LavoroTipo;
-  targa: string;
-  descrizione: string;
-  dataInserimento: string;
-  eseguito: boolean;
-  urgenza: LavoroUrgenza;
-  segnalatoDa: string;
-  sottoElementi: any[];
-  source?: { type: string; id?: string | null; key?: string };
-};
 
 type TabKey =
   | "rifornimenti"
@@ -202,6 +206,13 @@ export default function AutistiAdmin() {
   const [segnalazioniRaw, setSegnalazioniRaw] = useState<any[]>([]);
   const [controlliRaw, setControlliRaw] = useState<any[]>([]);
   const [gommeRaw, setGommeRaw] = useState<any[]>([]);
+  const [gommeChiusuraRecord, setGommeChiusuraRecord] = useState<any | null>(null);
+  const [gommeImportBusy, setGommeImportBusy] = useState(false);
+  const [aggancioEventoState, setAggancioEventoState] = useState<{
+    kind: Exclude<AggancioEventoTipoRecord, "manutenzione">;
+    record: any;
+  } | null>(null);
+  const [aggancioEventoBusy, setAggancioEventoBusy] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Modale modifica sessione
@@ -717,10 +728,6 @@ export default function AutistiAdmin() {
     return value ? String(value).toUpperCase().trim() : "";
   }
 
-  function todayYmd() {
-    return new Date().toISOString().substring(0, 10);
-  }
-
 function genId() {
   const c: any = globalThis.crypto;
   if (c?.randomUUID) return c.randomUUID();
@@ -734,27 +741,6 @@ function showReadOnlyAdminBlock(action: string) {
 function shouldBlockAdminMutations() {
   return typeof window !== "undefined";
 }
-
-async function appendLavori(newItems: LavoroRecord[]) {
-  appendNextLavoriCloneRecords(
-    newItems.map((item) => ({
-        id: item.id,
-        gruppoId: item.gruppoId,
-        tipo: item.tipo,
-        descrizione: item.descrizione,
-        dettagli: undefined,
-        dataInserimento: item.dataInserimento,
-        eseguito: item.eseguito,
-        targa: item.targa || undefined,
-        urgenza: item.urgenza,
-        segnalatoDa: item.segnalatoDa,
-        sottoElementi: item.sottoElementi,
-        __nextCloneOnly: true,
-        __nextCloneSavedAt: Date.now(),
-      })),
-    );
-    return newItems;
-  }
 
   function getFotoList(record: any) {
     const list: string[] = [];
@@ -1537,159 +1523,225 @@ async function appendLavori(newItems: LavoroRecord[]) {
     return false;
   }
 
-  async function createLavoroFromSegnalazione(record: any) {
-    if (shouldBlockAdminMutations()) {
-      void record;
-      showReadOnlyAdminBlock("la creazione lavoro da segnalazione resta visibile ma non genera lavori");
-      return;
-    }
-
-    if (!record) return;
-    if (hasLinkedLavoro(record)) {
-      window.alert("Lavoro già creato per questa segnalazione.");
-      return;
-    }
-    if (!window.confirm("Creare un lavoro da questa segnalazione?")) return;
-
-    const targaRaw =
-      record?.targa ?? record?.targaCamion ?? record?.targaRimorchio ?? "";
-    const targa = fmtTarga(targaRaw);
-    const tipo: LavoroTipo = targa ? "targa" : "magazzino";
-    const tipoProblema = record?.tipoProblema ?? "";
-    const descr = record?.descrizione ?? "";
-    const descrizione = `Segnalazione: ${String(tipoProblema || "-")} - ${String(
-      descr || "-"
-    )}`;
-    const gruppoId = genId();
-    const id = genId();
-    const lavoro: LavoroRecord = {
-      id,
-      gruppoId,
-      tipo,
-      targa: tipo === "targa" ? targa : "",
-      descrizione,
-      dataInserimento: todayYmd(),
-      eseguito: false,
-      urgenza: record?.flagVerifica ? "alta" : "media",
-      segnalatoDa: String(record?.autistaNome ?? record?.badgeAutista ?? "autista"),
-      sottoElementi: [],
-      source: {
-        type: "segnalazione",
-        id: record?.id ?? null,
-        key: KEY_SEGNALAZIONI,
-      },
-    };
-
-    await appendLavori([lavoro]);
-    if (window.confirm("Lavoro creato. Aprire il dettaglio?")) {
-      navigate(`/next/dettagliolavori?lavoroId=${id}`);
-    }
-
-    const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
-    const list = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.value)
-      ? raw.value
-      : [];
-    const updated = list.map((r: any) => {
-      if (String(r?.id ?? "") !== String(record?.id ?? "")) return r;
-      const next = { ...r, linkedLavoroId: id };
-      if ("stato" in r || r?.stato) next.stato = "presa_in_carico";
-      else next.letta = true;
-      return next;
-    });
-    await setItemSync(KEY_SEGNALAZIONI, updated);
-    setSegnalazioniRaw(updated);
+  function hasGommeKeywordAdmin(record: any): boolean {
+    const haystack = [
+      record?.descrizione,
+      record?.tipo,
+      record?.tipoProblema,
+      record?.categoria,
+      record?.target,
+      record?.note,
+      record?.messaggio,
+      Array.isArray(record?.koItems) ? record.koItems.join(" ") : null,
+      Array.isArray(record?.controlliKo) ? record.controlliKo.join(" ") : null,
+      record?.checkGomme === true || record?.check?.gomme === false ? "gomme" : null,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return /\b(gomma|gomme|pneumatici|pneumatico|ruota|ruote|gommista)\b/.test(haystack);
   }
 
-  async function createLavoroFromControllo(record: any) {
-    if (shouldBlockAdminMutations()) {
-      void record;
-      showReadOnlyAdminBlock("la creazione lavoro da controllo resta visibile ma non genera lavori");
-      return;
-    }
-
-    if (!record) return;
-    if (hasLinkedLavoro(record)) {
-      window.alert("Lavoro già creato per questo controllo.");
-      return;
-    }
+  function isAdminControlloKo(record: any): boolean {
     const check = record?.check ?? {};
-    const koList = Object.entries(check)
-      .filter(([, v]) => v === false)
-      .map(([k]) => String(k).toUpperCase());
-    if (koList.length === 0) {
-      window.alert("Controllo OK: nessun lavoro da creare.");
-      return;
-    }
+    if (record?.ko === true || record?.ok === false || record?.tuttoOk === false) return true;
+    if (Array.isArray(record?.koItems) && record.koItems.length > 0) return true;
+    if (Array.isArray(record?.controlliKo) && record.controlliKo.length > 0) return true;
+    return Object.values(check).some((value) => value === false);
+  }
 
+  function getAggancioTargaAdmin(record: any, kind: "segnalazione" | "controllo"): string {
+    if (kind === "segnalazione") {
+      return fmtTarga(record?.targa ?? record?.targaCamion ?? record?.targaMotrice ?? record?.targaRimorchio ?? "");
+    }
     const target = String(record?.target ?? "").toLowerCase();
-    const targaMotrice = fmtTarga(record?.targaCamion ?? record?.targaMotrice ?? "");
-    const targaRimorchio = fmtTarga(record?.targaRimorchio ?? "");
-    const targhe: string[] = [];
-    if (target === "entrambi") {
-      if (targaMotrice) targhe.push(targaMotrice);
-      if (targaRimorchio) targhe.push(targaRimorchio);
-    } else if (target === "rimorchio") {
-      if (targaRimorchio) targhe.push(targaRimorchio);
-    } else {
-      if (targaMotrice) targhe.push(targaMotrice);
-    }
-    if (targhe.length === 0) {
-      window.alert("Targa non disponibile per questo controllo.");
-      return;
-    }
-    if (!window.confirm("Creare un lavoro da questo controllo?")) return;
+    const motrice = fmtTarga(record?.targaCamion ?? record?.targaMotrice ?? "");
+    const rimorchio = fmtTarga(record?.targaRimorchio ?? "");
+    if (target === "rimorchio") return rimorchio;
+    if (target === "entrambi") return motrice || rimorchio;
+    return motrice || rimorchio;
+  }
 
-    const gruppoId = genId();
-    const descrizione = `Controllo KO: ${koList.join(", ")}`;
-    const urgenza: LavoroUrgenza =
-      koList.length > 1 || record?.obbligatorio === true ? "alta" : "media";
-    const segnalatoDa = String(record?.autistaNome ?? record?.badgeAutista ?? "autista");
+  function buildAggancioAdminRecord(
+    kind: "segnalazione" | "controllo",
+    record: any,
+  ): AggancioEventoRecord {
+    const titolo =
+      String(record?.descrizione ?? record?.tipoProblema ?? record?.note ?? "").trim() ||
+      (kind === "controllo" ? "Controllo KO gomme" : "Segnalazione gomme");
+    return {
+      id: String(record?.id ?? ""),
+      targa: getAggancioTargaAdmin(record, kind),
+      dataRiferimento: getDataRiferimentoRecord(record as Record<string, unknown>),
+      titolo,
+    };
+  }
 
-    const lavori = targhe.map((t) => ({
-      id: genId(),
-      gruppoId,
-      tipo: "targa" as const,
-      targa: t,
-      descrizione,
-      dataInserimento: todayYmd(),
-      eseguito: false,
-      urgenza,
-      segnalatoDa,
-      sottoElementi: [],
-      source: {
-        type: "controllo",
-        id: record?.id ?? null,
-        key: KEY_CONTROLLI,
-      },
-    }));
+  function canAgganciaSegnalazione(record: any): boolean {
+    const stato = String(record?.stato ?? "aperta").toLowerCase();
+    return (stato === "aperta" || stato === "in_carico") && hasGommeKeywordAdmin(record);
+  }
 
-    await appendLavori(lavori);
-    const firstLavoroId = lavori[0]?.id;
-    if (firstLavoroId && window.confirm("Lavoro creato. Aprire il dettaglio?")) {
-      navigate(`/next/dettagliolavori?lavoroId=${firstLavoroId}`);
-    }
+  function canAgganciaControllo(record: any): boolean {
+    const stato = String(record?.stato ?? "aperta").toLowerCase();
+    return (stato === "aperta" || stato === "in_carico") && isAdminControlloKo(record) && hasGommeKeywordAdmin(record);
+  }
 
-    const raw = (await getItemSync(KEY_CONTROLLI)) || [];
+  function canSganciaEventoGomme(record: any): boolean {
+    return String(record?.chiusuraDi ?? "") === "gomme_evento";
+  }
+
+  async function reloadAdminOriginList(kind: "segnalazione" | "controllo", recordId: string) {
+    const key = kind === "segnalazione" ? KEY_SEGNALAZIONI : KEY_CONTROLLI;
+    const raw = (await getItemSync(key)) || [];
     const list = Array.isArray(raw)
       ? raw
       : Array.isArray(raw?.value)
       ? raw.value
       : [];
-    const updated = list.map((r: any) => {
-      if (String(r?.id ?? "") !== String(record?.id ?? "")) return r;
-      const next: any = { ...r, letta: true };
-      if (lavori.length > 1) {
-        next.linkedLavoroIds = lavori.map((l) => l.id);
-        next.linkedMultiple = true;
-      } else {
-        next.linkedLavoroId = lavori[0].id;
+    if (kind === "segnalazione") setSegnalazioniRaw(list);
+    else setControlliRaw(list);
+    const nextRecord = list.find((entry: any) => String(entry?.id ?? "") === recordId) ?? null;
+    if (nextRecord && adminEditOpen && adminEditId === recordId) {
+      setAdminEditOriginal(nextRecord);
+      setAdminEditForm((prev: any) => ({
+        ...prev,
+        stato: String(nextRecord.stato ?? ""),
+      }));
+    }
+  }
+
+  async function confirmAggancioEventoAdmin(evento: EventoCompatibile) {
+    const state = aggancioEventoState;
+    if (!state) return;
+    const id = String(state.record?.id ?? "");
+    if (!id) return;
+    setAggancioEventoBusy(true);
+    try {
+      const result =
+        state.kind === "segnalazione"
+          ? await chiudiSegnalazioneDaEvento(id, "gomme_evento", evento.id)
+          : await chiudiControlloDaEvento(id, "gomme_evento", evento.id);
+      if (!result.ok) {
+        window.alert(result.error || "Aggancio evento non riuscito.");
+        return;
       }
-      return next;
-    });
-    await setItemSync(KEY_CONTROLLI, updated);
-    setControlliRaw(updated);
+      await reloadAdminOriginList(state.kind, id);
+      setAggancioEventoState(null);
+      window.alert("Evento agganciato. Record chiuso da cambio gomme.");
+    } catch (error) {
+      console.error("Errore aggancio evento admin:", error);
+      window.alert("Aggancio evento non riuscito.");
+    } finally {
+      setAggancioEventoBusy(false);
+    }
+  }
+
+  async function sganciaEventoAdmin(kind: "segnalazione" | "controllo", record: any) {
+    const id = String(record?.id ?? "");
+    if (!id) return;
+    if (!window.confirm("Sganciare il cambio gomme collegato e riaprire il record?")) return;
+    try {
+      const result =
+        kind === "segnalazione"
+          ? await sganciaSegnalazioneDaEvento(id, "aperta")
+          : await sganciaControlloDaEvento(id, "aperta");
+      if (!result.ok) {
+        window.alert(result.error || "Sgancio evento non riuscito.");
+        return;
+      }
+      await reloadAdminOriginList(kind, id);
+      window.alert("Evento sganciato. Record riaperto.");
+    } catch (error) {
+      console.error("Errore sgancio evento admin:", error);
+      window.alert("Sgancio evento non riuscito.");
+    }
+  }
+
+  async function createManutenzioneDaFareAdminFromSegnalazione(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questa segnalazione.");
+      return;
+    }
+    if (!window.confirm("Creare una manutenzione da fare da questa segnalazione?")) return;
+
+    try {
+      const result = await createManutenzioneDaFareFromSegnalazione(record);
+      if (!result.ok) {
+        window.alert(result.error || "Errore creazione manutenzione da fare.");
+        return;
+      }
+
+      const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.value)
+        ? raw.value
+        : [];
+      setSegnalazioniRaw(list);
+
+      const manutenzioneId = result.manutenzioneId;
+      const targa = fmtTarga(record?.targa ?? record?.targaCamion ?? record?.targaRimorchio ?? "");
+      if (manutenzioneId && window.confirm("Manutenzione creata. Aprire il dettaglio?")) {
+        const target = `/next/manutenzioni?recordId=${encodeURIComponent(manutenzioneId)}${
+          targa ? `&targa=${encodeURIComponent(targa)}` : ""
+        }`;
+        navigate(target);
+        return;
+      }
+      window.alert("Manutenzione da fare creata.");
+    } catch (error) {
+      console.error("Errore creazione manutenzione da segnalazione:", error);
+      window.alert("Errore creazione manutenzione da fare.");
+    }
+  }
+
+  async function createManutenzioneDaFareAdminFromControllo(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questo controllo.");
+      return;
+    }
+    if (!window.confirm("Creare una manutenzione da fare da questo controllo?")) return;
+
+    try {
+      const result = await createManutenzioneDaFareFromControllo(record);
+      if (!result.ok) {
+        window.alert(result.error || "Errore creazione manutenzione da fare.");
+        return;
+      }
+
+      const raw = (await getItemSync(KEY_CONTROLLI)) || [];
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.value)
+        ? raw.value
+        : [];
+      setControlliRaw(list);
+
+      const target = String(record?.target ?? "").toLowerCase();
+      const targaMotrice = fmtTarga(record?.targaCamion ?? record?.targaMotrice ?? "");
+      const targaRimorchio = fmtTarga(record?.targaRimorchio ?? "");
+      const targa =
+        target === "rimorchio"
+          ? targaRimorchio
+          : target === "entrambi"
+            ? targaMotrice || targaRimorchio
+            : targaMotrice;
+      const manutenzioneId = result.manutenzioneId;
+      if (manutenzioneId && window.confirm("Manutenzione creata. Aprire il dettaglio?")) {
+        const targetUrl = `/next/manutenzioni?recordId=${encodeURIComponent(manutenzioneId)}${
+          targa ? `&targa=${encodeURIComponent(targa)}` : ""
+        }`;
+        navigate(targetUrl);
+        return;
+      }
+      window.alert("Manutenzione da fare creata.");
+    } catch (error) {
+      console.error("Errore creazione manutenzione da controllo:", error);
+      window.alert("Errore creazione manutenzione da fare.");
+    }
   }
 
   async function updateGommeRecord(recordId: string, patch: any) {
@@ -1719,13 +1771,48 @@ async function appendLavori(newItems: LavoroRecord[]) {
     }
 
     if (!record?.id) return;
-    const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
-    const list = Array.isArray(raw) ? raw : [];
-    const ufficiale = { ...(record ?? {}) };
-    delete ufficiale.letta;
-    delete ufficiale.stato;
-    await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
-    await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
+    setGommeChiusuraRecord(record);
+  }
+
+  async function confirmImportGommeRecord(selected: NextImportGommeChiusuraSelection[]) {
+    const record = gommeChiusuraRecord;
+    if (!record?.id) return;
+    setGommeImportBusy(true);
+    try {
+      const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
+      const list = Array.isArray(raw) ? raw : [];
+      const ufficiale = { ...(record ?? {}) };
+      delete ufficiale.letta;
+      delete ufficiale.stato;
+      await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
+      const idEvento = String(ufficiale.id ?? record.id);
+      const chiusuraResults = await Promise.all(
+        selected.map((entry) => {
+          if (entry.kind === "manutenzione") {
+            return chiudiManutenzioneDaEvento(entry.id, "gomme_evento", idEvento);
+          }
+          if (entry.kind === "segnalazione") {
+            return chiudiSegnalazioneDaEvento(entry.id, "gomme_evento", idEvento);
+          }
+          return chiudiControlloDaEvento(entry.id, "gomme_evento", idEvento);
+        }),
+      );
+      await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
+      setGommeChiusuraRecord(null);
+      const failed = chiusuraResults.filter((entry) => !entry.ok);
+      if (failed.length > 0) {
+        window.alert(
+          `Cambio gomme creato, ma ${failed.length} chiusure non sono riuscite. Verificare e riprovare.`,
+        );
+        return;
+      }
+      window.alert(`Cambio gomme creato. Chiusure collegate: ${selected.length}.`);
+    } catch (error) {
+      console.error("Errore import cambio gomme:", error);
+      window.alert("Errore import cambio gomme. Nessuna chiusura collegata eseguita.");
+    } finally {
+      setGommeImportBusy(false);
+    }
   }
 
   function normalizeValue(v: any) {
@@ -2642,9 +2729,9 @@ async function appendLavori(newItems: LavoroRecord[]) {
                         type="button"
                         className="edit"
                         disabled={hasLinked}
-                        onClick={() => createLavoroFromSegnalazione(r)}
+                        onClick={() => createManutenzioneDaFareAdminFromSegnalazione(r)}
                       >
-                        CREA LAVORO
+                        CREA MANUTENZIONE
                       </button>
                       <button
                         type="button"
@@ -2768,9 +2855,9 @@ async function appendLavori(newItems: LavoroRecord[]) {
                           type="button"
                           className="edit"
                           disabled={hasLinked}
-                          onClick={() => createLavoroFromControllo(r)}
+                          onClick={() => createManutenzioneDaFareAdminFromControllo(r)}
                         >
-                          CREA LAVORO
+                          CREA MANUTENZIONE
                         </button>
                       </div>
                     </div>
@@ -3541,6 +3628,52 @@ async function appendLavori(newItems: LavoroRecord[]) {
                   <button className="edit" type="button" onClick={closeAdminEdit}>
                     ANNULLA
                   </button>
+                  {adminEditKind === "segnalazione" &&
+                  adminEditOriginal &&
+                  canAgganciaSegnalazione(adminEditOriginal) ? (
+                    <button
+                      className="edit"
+                      type="button"
+                      onClick={() => setAggancioEventoState({ kind: "segnalazione", record: adminEditOriginal })}
+                    >
+                      AGGANCIA EVENTO
+                    </button>
+                  ) : null}
+                  {adminEditKind === "controllo" &&
+                  adminEditOriginal &&
+                  canAgganciaControllo(adminEditOriginal) ? (
+                    <button
+                      className="edit"
+                      type="button"
+                      onClick={() => setAggancioEventoState({ kind: "controllo", record: adminEditOriginal })}
+                    >
+                      AGGANCIA EVENTO
+                    </button>
+                  ) : null}
+                  {adminEditKind === "segnalazione" &&
+                  adminEditOriginal &&
+                  String(adminEditOriginal.stato ?? "").toLowerCase() === "chiusa" &&
+                  canSganciaEventoGomme(adminEditOriginal) ? (
+                    <button
+                      className="edit"
+                      type="button"
+                      onClick={() => void sganciaEventoAdmin("segnalazione", adminEditOriginal)}
+                    >
+                      SGANCIA EVENTO
+                    </button>
+                  ) : null}
+                  {adminEditKind === "controllo" &&
+                  adminEditOriginal &&
+                  String(adminEditOriginal.stato ?? "").toLowerCase() === "chiusa" &&
+                  canSganciaEventoGomme(adminEditOriginal) ? (
+                    <button
+                      className="edit"
+                      type="button"
+                      onClick={() => void sganciaEventoAdmin("controllo", adminEditOriginal)}
+                    >
+                      SGANCIA EVENTO
+                    </button>
+                  ) : null}
                   {!isAdminCreateRifornimento ? (
                     <button className="edit danger" type="button" onClick={deleteAdminEdit}>
                       ELIMINA
@@ -3781,6 +3914,27 @@ async function appendLavori(newItems: LavoroRecord[]) {
           onCopyLink={handleCopyPDFText}
           onWhatsApp={handleWhatsAppPDF}
         />
+        {gommeChiusuraRecord ? (
+          <NextImportGommeChiusuraModal
+            record={gommeChiusuraRecord}
+            busy={gommeImportBusy}
+            onCancel={() => {
+              if (!gommeImportBusy) setGommeChiusuraRecord(null);
+            }}
+            onConfirm={(selected) => void confirmImportGommeRecord(selected)}
+          />
+        ) : null}
+        {aggancioEventoState ? (
+          <NextAggancioEventoModal
+            record={buildAggancioAdminRecord(aggancioEventoState.kind, aggancioEventoState.record)}
+            tipoRecord={aggancioEventoState.kind}
+            busy={aggancioEventoBusy}
+            onCancel={() => {
+              if (!aggancioEventoBusy) setAggancioEventoState(null);
+            }}
+            onConfirm={(evento) => void confirmAggancioEventoAdmin(evento)}
+          />
+        ) : null}
         {lightboxSrc ? (
           <div className="admin-lightbox" onClick={() => setLightboxSrc(null)}>
             <button

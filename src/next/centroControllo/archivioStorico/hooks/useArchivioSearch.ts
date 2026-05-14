@@ -1,12 +1,11 @@
 // Archivio Storico NEXT — Step 2 (PROMPT 29.7) — useArchivioSearch.
 // Modalita' C ibrida (SPEC §7): la sub-tab attiva e tutte le altre
 // vengono filtrate per query testuale sui rispettivi campi indicizzati;
-// il componente UI legge i 4 `counts` per popolare i badge della
+// il componente UI legge i 3 `counts` per popolare i badge della
 // sub-tabbar. Funzione pura, nessun debounce qui (gestito dal
 // componente ArchivioToolbar in Step 5).
 //
 // Campi indicizzati per kind (SPEC §7.2):
-//   lavoro       : descrizione, dettagli, mezzoTarga, segnalatoDa, chiHaEseguito
 //   manutenzione : descrizione, targa, fornitore, eseguito
 //   segnalazione : descrizione, targa, autistaNome, tipo
 //   richiesta    : testo, targa, autistaNome
@@ -24,7 +23,6 @@ export type UseArchivioSearchInput = {
 };
 
 export type ArchivioCountsByKind = {
-  lavoro: number;
   manutenzione: number;
   segnalazione: number;
   richiesta: number;
@@ -54,16 +52,6 @@ function fieldIncludes(
 
 function getSearchableFields(record: ArchivioRecord): Array<string | null | undefined> {
   switch (record.kind) {
-    case "lavoro": {
-      return [
-        record.data.descrizione,
-        record.data.dettagli,
-        record.data.mezzoTarga,
-        record.data.targa,
-        record.data.segnalatoDa,
-        record.data.chiHaEseguito,
-      ];
-    }
     case "manutenzione": {
       return [
         record.data.descrizione,
@@ -123,7 +111,6 @@ export const useArchivioSearch = (
     const normalized: string = normalizeQuery(search);
     const tokens: string[] = tokenize(normalized);
 
-    const lavoro: ArchivioRecord[] = filterByQuery(records.lavoro, tokens);
     const manutenzione: ArchivioRecord[] = filterByQuery(
       records.manutenzione,
       tokens,
@@ -138,17 +125,16 @@ export const useArchivioSearch = (
     );
 
     const counts: ArchivioCountsByKind = {
-      lavoro: lavoro.length,
       manutenzione: manutenzione.length,
       segnalazione: segnalazione.length,
       richiesta: richiesta.length,
     };
 
     const totalCount: number =
-      counts.lavoro + counts.manutenzione + counts.segnalazione + counts.richiesta;
+      counts.manutenzione + counts.segnalazione + counts.richiesta;
 
     return {
-      records: { lavoro, manutenzione, segnalazione, richiesta },
+      records: { manutenzione, segnalazione, richiesta },
       counts,
       totalCount,
     };

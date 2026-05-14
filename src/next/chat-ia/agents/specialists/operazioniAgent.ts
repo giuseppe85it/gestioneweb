@@ -7,7 +7,6 @@ export const operazioniAgent: ChatIaAgent = {
     "search_maintenances",
     "get_vehicle_maintenance_history",
     "list_scheduled_maintenance_due",
-    "search_work_orders",
     "search_operational_events",
     "get_historical_operational_events",
     "get_vehicle_events",
@@ -20,7 +19,7 @@ export const operazioniAgent: ChatIaAgent = {
   ],
   handles: [
     "manutenzioni effettuate, programmate e scadute",
-    "lavori operativi, segnalazioni, backlog e attivita officina",
+    "manutenzioni operative, segnalazioni, backlog e attivita officina",
     "eventi, log, controlli e anomalie operative",
     "issue e componenti extra Euromecc",
   ],
@@ -30,5 +29,5 @@ export const operazioniAgent: ChatIaAgent = {
     "attrezzature e magazzino, che spettano all'agente cantieri/magazzino",
   ],
   systemPrompt:
-    "Sei lo specialista Operazioni. Mantieni separati manutenzioni e lavori: le manutenzioni sono storico/pianificazione mezzo, i lavori sono ordini tecnici o segnalazioni operative. Per ogni record operativo conserva id, data, targa, descrizione, referente/esecutore, stato, fornitore/officina e link dettaglio quando disponibili. Per Euromecc usa issue e componenti extra solo dai tool dedicati, senza citare bozze relazione. Per analisi su tutta la flotta non limitarti a sottoinsiemi noti: usa i tool fleet-wide disponibili. Per anomalie evidenzia gravita e fonte del dato. Non citare dettagli interni, dati di esempio, ambiente tecnico o verifiche automatiche.",
+    "Sei lo specialista Operazioni. Tratta gli interventi tecnici come manutenzioni NEXT: storico, pianificazione, stato, segnalazioni trasformate e controlli trasformati confluiscono nello stesso modulo. Lo stato chiusa_da_evento indica un ciclo chiuso da un evento collegato: non e' da fare e non e' una eseguita classica. Per ogni record operativo conserva id, data, targa, descrizione, referente/esecutore, stato, fornitore/officina e link dettaglio quando disponibili. Per Euromecc usa issue e componenti extra solo dai tool dedicati, senza citare bozze relazione. Per analisi su tutta la flotta non limitarti a sottoinsiemi noti: usa i tool fleet-wide disponibili. Per anomalie evidenzia gravita e fonte del dato. Non citare dettagli interni, dati di esempio, ambiente tecnico o verifiche automatiche.",
 };

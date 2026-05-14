@@ -5,6 +5,7 @@ import { getNextRoleFromSearch } from "./nextAccess";
 import {
   NEXT_AUTISTI_APP_PATH,
   NEXT_MAGAZZINO_PATH,
+  buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
 import {
@@ -13,11 +14,10 @@ import {
   type D10Snapshot,
 } from "./domain/nextCentroControlloDomain";
 import {
-  readNextLavoriInAttesaSnapshot,
-  type NextLavoriListaRow,
-  type NextLavoriListaSnapshot,
-  type NextLavoroUrgenza,
-} from "./domain/nextLavoriDomain";
+  readNextManutenzioniDaFareSnapshot,
+  type NextManutenzioniLegacyDatasetRecord,
+  type NextManutenzioneUrgenza,
+} from "./domain/nextManutenzioniDomain";
 import {
   readNextInventarioSnapshot,
   type NextInventarioSnapshot,
@@ -51,6 +51,7 @@ type TaskRow = {
   detail: string;
   tone: StatusTone;
   badge: string;
+  href?: string;
 };
 
 type HomeAlertBanner = {
@@ -145,15 +146,15 @@ function buildHomeAlertBanner(snapshot: D10Snapshot | null): HomeAlertBanner | n
 }
 
 function buildHomeLavoriAlert(
-  snapshot: NextLavoriListaSnapshot | null,
+  snapshot: NextManutenzioniLegacyDatasetRecord[] | null,
   stats: HomeStatsState,
 ): HomeLavoriAlert {
   const totalLabel =
     stats.lavoriAperti == null
-      ? "Lavori in caricamento"
+      ? "Manutenzioni in caricamento"
       : stats.lavoriAperti === 0
-        ? "Nessun lavoro aperto"
-        : `${stats.lavoriAperti} ${stats.lavoriAperti === 1 ? "lavoro aperto" : "lavori aperti"}`;
+        ? "Nessuna manutenzione da fare"
+        : `${stats.lavoriAperti} ${stats.lavoriAperti === 1 ? "manutenzione da fare" : "manutenzioni da fare"}`;
   const urgentLabel =
     stats.lavoriUrgenti == null
       ? "urgenze in caricamento"
@@ -250,7 +251,7 @@ function rebucketHomeFleetItems(snapshot: D10Snapshot | null): {
   return { motrici, rimorchi };
 }
 
-function mapLavoroUrgenzaTone(urgenza: NextLavoroUrgenza): StatusTone {
+function mapLavoroUrgenzaTone(urgenza: NextManutenzioneUrgenza | null | undefined): StatusTone {
   switch (urgenza) {
     case "alta":
       return "danger";
@@ -263,23 +264,23 @@ function mapLavoroUrgenzaTone(urgenza: NextLavoroUrgenza): StatusTone {
   }
 }
 
-function formatLavoroUrgenzaLabel(urgenza: NextLavoroUrgenza): string {
+function formatLavoroUrgenzaLabel(urgenza: NextManutenzioneUrgenza | null | undefined): string {
   return urgenza ?? "n.d.";
 }
 
-function buildLavoriWidgetRows(snapshot: NextLavoriListaSnapshot | null): TaskRow[] {
+function buildLavoriWidgetRows(snapshot: NextManutenzioniLegacyDatasetRecord[] | null): TaskRow[] {
   if (!snapshot) {
     return [];
   }
 
-  return snapshot.groups
-    .flatMap((group) => group.items)
+  return snapshot
     .slice(0, 3)
-    .map((item: NextLavoriListaRow) => ({
+    .map((item) => ({
       title: item.descrizione,
-      detail: item.mezzoTarga ?? item.targa ?? "MAGAZZINO",
+      detail: item.targa || "Targa non indicata",
       tone: mapLavoroUrgenzaTone(item.urgenza),
       badge: formatLavoroUrgenzaLabel(item.urgenza),
+      href: buildNextManutenzioniPath(item.targa || undefined, item.id),
     }));
 }
 
@@ -340,7 +341,7 @@ export default function NextHomePage() {
     ordiniParziali: null,
     segnalazioniNuove: null,
   });
-  const [lavoriSnapshot, setLavoriSnapshot] = useState<NextLavoriListaSnapshot | null>(null);
+  const [lavoriSnapshot, setLavoriSnapshot] = useState<NextManutenzioniLegacyDatasetRecord[] | null>(null);
   const [inventarioSnapshot, setInventarioSnapshot] = useState<NextInventarioSnapshot | null>(null);
   const [fleetLocationOverrides, setFleetLocationOverrides] = useState<Record<string, string>>({});
   const [fleetEdit, setFleetEdit] = useState<FleetEditState | null>(null);
@@ -353,7 +354,7 @@ export default function NextHomePage() {
     const loadSnapshot = async () => {
       const [centroResult, lavoriResult, procurementResult, inventarioResult] = await Promise.allSettled([
         readNextCentroControlloSnapshot(Date.now()),
-        readNextLavoriInAttesaSnapshot(),
+        readNextManutenzioniDaFareSnapshot(),
         readNextProcurementSnapshot(),
         readNextInventarioSnapshot({ includeCloneOverlays: false }),
       ]);
@@ -382,10 +383,10 @@ export default function NextHomePage() {
 
       setHomeStats({
         lavoriAperti:
-          lavoriResult.status === "fulfilled" ? lavoriResult.value.counts.totalLavori : null,
+          lavoriResult.status === "fulfilled" ? lavoriResult.value.length : null,
         lavoriUrgenti:
           lavoriResult.status === "fulfilled"
-            ? lavoriResult.value.groups.reduce((total, group) => total + group.counts.alta, 0)
+            ? lavoriResult.value.filter((item) => item.urgenza === "alta").length
             : null,
         ordiniInAttesa:
           procurementResult.status === "fulfilled"
@@ -412,7 +413,7 @@ export default function NextHomePage() {
     () => [
       PLACEHOLDER_MEZZI_CARD,
       {
-        label: "Lavori aperti",
+        label: "Manutenzioni da fare",
         value: formatHomeStatValue(homeStats.lavoriAperti),
         detail: formatUrgentLavoriDetail(homeStats.lavoriUrgenti),
       },
@@ -605,7 +606,7 @@ export default function NextHomePage() {
       </header>
 
       {alertBanner ? (
-        <section className="next-home__alerts-grid" aria-label="Scadenze e lavori in attesa">
+        <section className="next-home__alerts-grid" aria-label="Scadenze e manutenzioni da fare">
           <button
             type="button"
             className={`next-home__alert-card next-home__alert-card--${alertBanner.tone} next-shell__scadenze-banner-trigger`}
@@ -621,20 +622,21 @@ export default function NextHomePage() {
                 />
                 <span className="next-home__alert-card-title">Scadenze</span>
               </div>
-              <span className="next-home__alert-card-link">Apri →</span>
+              <NavLink to="/next/manutenzioni" className="next-home__alert-card-link">
+                Apri -&gt;
+              </NavLink>
             </div>
             <div className="next-home__alert-card-copy">{alertBanner.text}</div>
           </button>
 
-          <NavLink
-            to="/next/lavori-in-attesa"
+          <article
             className="next-home__alert-card next-home__alert-card--info"
-            aria-label="Apri lavori in attesa"
+            aria-label="Apri manutenzioni da fare"
           >
             <div className="next-home__alert-card-head">
               <div className="next-home__alert-card-title-wrap">
                 <span className="next-home__alert-dot next-home__alert-dot--info" aria-hidden="true" />
-                <span className="next-home__alert-card-title">Lavori in attesa</span>
+                <span className="next-home__alert-card-title">Manutenzioni da fare</span>
               </div>
               <span className="next-home__alert-card-link">Apri →</span>
             </div>
@@ -645,19 +647,23 @@ export default function NextHomePage() {
             <div className="next-home__alert-list">
               {lavoriAlert.items.length ? (
                 lavoriAlert.items.map((row) => (
-                  <div key={`${row.title}:${row.detail}`} className="next-home__alert-list-row">
+                  <NavLink
+                    key={`${row.title}:${row.detail}`}
+                    to={row.href ?? "/next/manutenzioni"}
+                    className="next-home__alert-list-row"
+                  >
                     <div className="next-home__alert-list-text">
                       <span className="next-home__alert-list-title">{row.title}</span>
                       <span className="next-home__alert-list-detail">{row.detail}</span>
                     </div>
                     <span className={`next-home__badge next-home__badge--${row.tone}`}>{row.badge}</span>
-                  </div>
+                  </NavLink>
                 ))
               ) : (
-                <div className="next-home__alert-list-empty">Nessun lavoro in attesa rilevato</div>
+                <div className="next-home__alert-list-empty">Nessuna manutenzione da fare rilevata</div>
               )}
             </div>
-          </NavLink>
+          </article>
         </section>
       ) : null}
 
@@ -723,24 +729,28 @@ export default function NextHomePage() {
       <section className="next-home__widgets-grid" aria-label="Widget operativi">
         <article className="next-home__widget">
           <div className="next-home__widget-head">
-            <h2>Lavori aperti</h2>
-            <NavLink to="/next/lavori-in-attesa" className="next-home__widget-link">
+            <h2>Manutenzioni da fare</h2>
+            <NavLink to="/next/manutenzioni" className="next-home__widget-link">
               Tutti -&gt;
             </NavLink>
           </div>
           <div className="next-home__widget-list next-home__widget-list--tasks">
             {lavoriOpenRows.length ? (
               lavoriOpenRows.map((row) => (
-                <div key={`${row.title}:${row.detail}`} className="next-home__task-row">
+                <NavLink
+                  key={`${row.title}:${row.detail}`}
+                  to={row.href ?? "/next/manutenzioni"}
+                  className="next-home__task-row"
+                >
                   <div>
                     <div className="next-home__task-title">{row.title}</div>
                     <div className="next-home__task-detail">{row.detail}</div>
                   </div>
                   <div className={`next-home__badge next-home__badge--${row.tone}`}>{row.badge}</div>
-                </div>
+                </NavLink>
               ))
             ) : (
-              <div className="next-home__widget-empty">Nessun lavoro aperto disponibile</div>
+              <div className="next-home__widget-empty">Nessuna manutenzione da fare disponibile</div>
             )}
           </div>
         </article>

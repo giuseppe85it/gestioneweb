@@ -15,6 +15,7 @@ import {
   type NextGommeLegacyViewItem,
   type NextGommeReadOnlyItem,
 } from "./domain/nextManutenzioniGommeDomain";
+import { parseDataRobusta } from "./helpers/parseRobusto";
 
 type DataScope = "legacy_parity" | "extended";
 
@@ -26,11 +27,21 @@ type Props = {
 function parseLegacyDate(value: string | null | undefined) {
   const raw = String(value || "").trim();
   if (!raw) return 0;
-  const direct = new Date(raw).getTime();
-  if (Number.isFinite(direct)) return direct;
-  const match = raw.match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{4})$/);
-  if (!match) return 0;
-  return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 12, 0, 0, 0).getTime();
+  const spaceLegacy = raw.match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{4})$/);
+  if (spaceLegacy) {
+    return new Date(
+      Number(spaceLegacy[3]),
+      Number(spaceLegacy[2]) - 1,
+      Number(spaceLegacy[1]),
+      12,
+      0,
+      0,
+      0,
+    ).getTime();
+  }
+  const robustTimestamp = parseDataRobusta(raw);
+  if (robustTimestamp !== null) return robustTimestamp;
+  return 0;
 }
 
 export default function NextGommeEconomiaSection({
@@ -96,10 +107,8 @@ export default function NextGommeEconomiaSection({
   );
 
   const sorted = [...sostituzioni].sort((a, b) => {
-    const [ggA, mmA, yyyyA] = (a.data || "").split(" ");
-    const [ggB, mmB, yyyyB] = (b.data || "").split(" ");
-    const tsA = new Date(`${yyyyA}-${mmA}-${ggA}`).getTime() || 0;
-    const tsB = new Date(`${yyyyB}-${mmB}-${ggB}`).getTime() || 0;
+    const tsA = parseLegacyDate(a.data);
+    const tsB = parseLegacyDate(b.data);
     return tsB - tsA;
   });
 

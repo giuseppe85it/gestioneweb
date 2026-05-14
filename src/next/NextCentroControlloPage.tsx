@@ -1,3 +1,4 @@
+/* eslint-disable no-constant-condition -- Layout legacy: due blocchi sono neutralizzati intenzionalmente. */
 import "../pages/Home.css";
 import "./next-shell.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -38,9 +39,6 @@ import {
   NEXT_IA_LIBRETTO_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
-  NEXT_LAVORI_DA_ESEGUIRE_PATH,
-  NEXT_LAVORI_ESEGUITI_PATH,
-  NEXT_LAVORI_IN_ATTESA_PATH,
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_CONSEGNATI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
@@ -78,9 +76,9 @@ function resolveCloneSafeRoute(path: string): string | null {
   if (path === "/materiali-da-ordinare") return NEXT_MATERIALI_DA_ORDINARE_PATH;
   if (path === "/ordini-in-attesa") return NEXT_ORDINI_IN_ATTESA_PATH;
   if (path === "/ordini-arrivati") return NEXT_ORDINI_ARRIVATI_PATH;
-  if (path === "/lavori-da-eseguire") return NEXT_LAVORI_DA_ESEGUIRE_PATH;
-  if (path === "/lavori-in-attesa") return NEXT_LAVORI_IN_ATTESA_PATH;
-  if (path === "/lavori-eseguiti") return NEXT_LAVORI_ESEGUITI_PATH;
+  if (path === "/lavori-da-eseguire") return NEXT_MANUTENZIONI_PATH;
+  if (path === "/lavori-in-attesa") return NEXT_MANUTENZIONI_PATH;
+  if (path === "/lavori-eseguiti") return NEXT_MANUTENZIONI_PATH;
   if (path === "/cisterna") return NEXT_CISTERNA_PATH;
   if (path === "/cisterna/ia") return NEXT_CISTERNA_IA_PATH;
   if (path === "/cisterna/schede-test") return NEXT_CISTERNA_SCHEDE_TEST_PATH;
