@@ -1,5 +1,16 @@
 # Indice report - Mappa NEXT, flussi dati e Autisti
 
+> **NOTA 2026-05-16 — Package parzialmente migrato.**
+> Questo package handoff è stato creato il 2026-05-07 con 8 audit numerati.
+> Con PROMPT 57 (bonifica documentale 2026-05-16) i file 04_, 05_, 06_, 07_,
+> 08_ sono stati spostati in `docs/copia questi nel progetto in chat/` e
+> aggiornati al delta 2026-05-08 → 2026-05-16 (PROMPT 55). I file 01_, 02_,
+> 03_ in questa cartella restano qui come **copie congelate per consultazione
+> storica**: gli originali aggiornati di 01_, 02_, 03_ vivono nei path
+> `docs/audit/`, `docs/data/`, `docs/architecture/` (vedi colonna "Origine"
+> nella tabella sotto). La tabella sotto è quella originale del 2026-05-07
+> e va letta in questa luce.
+
 Data: 2026-05-07
 
 Cartella creata per consultazione rapida. Gli originali non sono stati spostati o cancellati.
