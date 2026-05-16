@@ -17,12 +17,13 @@
 - Matching, incroci e claim di parity devono essere strutturali e spiegabili.
 
 ## 3. Letture obbligatorie prima di agire
-- Sempre: `docs/STATO_ATTUALE_PROGETTO.md`.
-- Se il task tocca la NEXT: leggere e poi aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
-- Se il task tocca il clone: aggiornare `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
-- Se il task riguarda IA interna: leggere e aggiornare `docs/product/CHECKLIST_IA_INTERNA.md`; leggere anche `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`.
-- Se il task tocca dati o domini: leggere `docs/data/DOMINI_DATI_CANONICI.md`, `docs/data/MAPPA_COMPLETA_DATI.md`, `docs/data/REGOLE_STRUTTURA_DATI.md`.
-- Se il task e architetturale, rischioso o tocca sicurezza: applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md` e leggere gli audit rilevanti.
+Tutti i path sotto puntano alla cartella canonica `docs/copia questi nel progetto in chat/` (vedi sez. 17).
+- Sempre: `docs/copia questi nel progetto in chat/STATO_ATTUALE_PROGETTO.md`.
+- Se il task tocca la NEXT: leggere e poi aggiornare `docs/copia questi nel progetto in chat/STATO_MIGRAZIONE_NEXT.md`.
+- Se il task tocca il clone: aggiornare `docs/copia questi nel progetto in chat/REGISTRO_MODIFICHE_CLONE.md`.
+- Se il task riguarda IA interna: leggere e aggiornare `docs/copia questi nel progetto in chat/CHECKLIST_IA_INTERNA.md`; leggere anche `docs/copia questi nel progetto in chat/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/copia questi nel progetto in chat/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`.
+- Se il task tocca dati o domini: leggere `docs/copia questi nel progetto in chat/DOMINI_DATI_CANONICI.md`, `docs/copia questi nel progetto in chat/MAPPA_COMPLETA_DATI.md`, `docs/copia questi nel progetto in chat/REGOLE_STRUTTURA_DATI.md`.
+- Se il task e architetturale, rischioso o tocca sicurezza: applicare `docs/copia questi nel progetto in chat/PROTOCOLLO_SICUREZZA_MODIFICHE.md` e leggere gli audit rilevanti (vedi `MANIFEST.md` della cartella).
 
 ## 4. Regola anti auto-certificazione
 - Un report esecutivo non basta per dichiarare chiuso un modulo.
@@ -166,6 +167,17 @@ Eccezioni: se Firestore readonly non e' disponibile o il dato cade fuori boundar
 - Il file non deve superare 400 righe totali.
 - Se l'aggiornamento richiederebbe più di 400 righe, 
   sintetizzare eliminando storia superata.
+
+## 17. Documentazione canonica per chat — `docs/copia questi nel progetto in chat/`
+
+La cartella `docs/copia questi nel progetto in chat/` (nome letterale, con spazi) e' la fonte canonica dei file MD da caricare come contesto nelle chat con Claude/GPT architetto (project knowledge).
+
+Regole:
+- Quando un MD viene promosso a "fonte canonica per la chat" (governance, registro vivo, audit aggiornato, SPEC attiva, decisione vincolante), va **spostato** in `docs/copia questi nel progetto in chat/` (non copiato). Preferire `git mv` per preservare la storia.
+- La cartella e' modificabile: aggiungere/rimuovere file richiede aggiornamento contestuale del file `MANIFEST.md` dentro la cartella, nello stesso commit.
+- `AGENTS.md`, `CLAUDE_CHAT_BEHAVIOR.md`, `METODO_AGENTI.md` restano in root (NON spostati), ma vanno caricati in chat insieme ai file della cartella.
+- L'indice della cartella e' il file `MANIFEST.md` (al suo interno) che elenca i file presenti, cosa contengono in una riga, e l'ordine consigliato di caricamento in chat (governance prima, registri dopo, audit aggiornati infine).
+- La cartella NON deve contenere doppioni: se un file viene spostato qui, l'originale altrove va cancellato o, se e' una copia handoff dichiarata, resta in posizione come storico (Categoria B della bonifica 2026-05-16).
 
 ## 16. Cartella `docs/fonti-pronte/`
 - `docs/fonti-pronte/` e la raccolta stabile delle fonti piu usate per riaprire il progetto in una nuova chat.

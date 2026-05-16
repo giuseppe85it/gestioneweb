@@ -20,11 +20,14 @@ e il metodo.
 
 ## 3. Cosa leggere all'inizio
 
-- `AGENTS.md` — regole operative degli agenti.
-- `docs/DIARIO_DECISIONI.md` — decisioni storiche di prodotto.
-- `METODO_AGENTI.md` — metodo di lavoro con i 4 agenti.
+- `AGENTS.md` (root) — regole operative degli agenti.
+- `METODO_AGENTI.md` (root) — metodo di lavoro con i 4 agenti.
+- `docs/copia questi nel progetto in chat/MANIFEST.md` — indice della documentazione canonica da caricare in chat (governance + registri vivi + audit aggiornati + SPEC attive). I file elencati dal manifest sono la fonte primaria di contesto.
+- `docs/copia questi nel progetto in chat/DIARIO_DECISIONI.md` — decisioni storiche di prodotto (append-only).
 - userMemories — memoria persistente.
 - Eventuali file rilevanti al task presenti nel project knowledge.
+
+La cartella `docs/copia questi nel progetto in chat/` riflette lo stato corrente. Quando cambia struttura, `AGENTS.md` (sez. 3 + 17), questo file (sez. 3) e il `MANIFEST.md` interno vanno aggiornati nello stesso commit.
 
 ## 4. Cosa NON fare
 
