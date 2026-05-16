@@ -612,3 +612,16 @@ Firestore nel prompt: zero scritture. La reversibilita' resta affidata a `Sganci
 2026-05-15 — PROMPT 46: audit mirato READ-ONLY su TI298409 / Riccardo Fenderico. Corretto l'errore PROMPT 45 T5 (cercava per legame, non per targa). Trovati 6 manutenzioni + 11 segnalazioni + 16 controlli per TI298409 (T5 ne aveva viste solo 6/0/0). Conferma esistenza segnalazione 08/05 "4 gomme di trazione usurate" con linkedLavoroId orfano + manutenzione 12/05 stand-alone "CAMBIO GOMME Kumho" + controllo KO 01/04 gia' chiuso ma con daFare rimorchio TI280132 ancora aperta. Rif: docs/_live/AUDIT_TI298409_RICCARDO_FENDERICO_2026-05-15.md
 
 2026-05-15 — PROMPT 45 unificazione finale ciclo segnalazione: T1 modale "crea nuova vs unisci a manutenzione esistente stessa targa" (writer `agganciaSorgenteAManutenzioneEsistente` in nextManutenzioneDaFareCreateWriter, helper `manutenzioniCandidatiMerge` reader 90gg solo daFare+programmata, modale `NextMergeManutenzioneModal`, integrato in NextAutistiAdminNative — bypass se 0 candidati, riusa MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE, no patch del back-link target); T2 nome autista nella frase storia (campo `segnalatoDa` opzionale in RecordChiuso, adapter legge segnalatoDa/autistaNome/badgeAutista, sentinel "autista" filtrato come anonimo, ArchivioRowExpanded `segnalazioneToRecordChiuso` aggiornato); T3 STOP HARD #2 — link a record originale non implementabile (no route NEXT navigabile a segnalazione/controllo singolo in nextStructuralPaths.ts), frase resta plain text, raccomandazione per PROMPT futuro; T4 verificato campo data gia' editabile in form Modifica (NextManutenzioniPage:3080-3086 condiviso Crea/Modifica) + aggiunta micro-UX errore esplicito (`man2-field-error`) per input >= 10 char non parsabile; T5 audit TI298409 read-only da backup Firestore PROMPT 44 — il cambio gomme del 12/05 e' stand-alone (no legame), la segnalazione del 24/04 era per "perdita liquido raffreddamento" (manutenzione separata), nessun mismatch reale da correggere. CI: tsc clean, eslint clean, vitest 40/40 mirato, sweep Playwright 9/9. Rif: docs/_live/REPORT_PROMPT45_2026-05-15.md
+
+## 2026-05-16
+
+**Bonifica documentale + governance canonica chat.**
+PROMPT 55-58 di Claude Code. Aggiornati gli 8 audit numerati al delta
+2026-05-08 → 2026-05-16 (PROMPT 55). Audit profondo autisti
+(`AUDIT_AUTISTI_PROFONDO_2026-05-16.md`, PROMPT 56). Bonifica
+documentale: creata cartella `docs/copia questi nel progetto in chat/`
+come fonte canonica dei file da caricare in chat (26 file canonici +
+MANIFEST), cancellati 126 file MD obsoleti/duplicati/assorbiti
+(PROMPT 57). AGENTS.md sez. 17 nuova + sez. 3 path aggiornati.
+CLAUDE_CHAT_BEHAVIOR.md sez. 3 punta a MANIFEST canonico. Fix
+indice handoff 2026-05-07 (PROMPT 58).
