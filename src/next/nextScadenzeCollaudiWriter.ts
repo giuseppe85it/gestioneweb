@@ -1,5 +1,6 @@
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { parseAnyDate, toDisplay, toISO } from "./helpers/dateUnica";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SCADENZE_COLLAUDI_WRITE_SCOPE = "scadenze_collaudi_write_scope";
@@ -77,39 +78,15 @@ function assertTarga(targa: string): string {
 }
 
 function parseDateFlexible(value: string): Date | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-
-  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) {
-    const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
-    return Number.isFinite(date.getTime()) ? date : null;
-  }
-
-  const parts = raw.split(/[\s./-]+/).filter(Boolean);
-  if (parts.length === 3) {
-    const [day, month, year] = parts;
-    if (day && month && year) {
-      const yearNum = year.length === 2 ? 2000 + Number(year) : Number(year);
-      const date = new Date(yearNum, Number(month) - 1, Number(day));
-      return Number.isFinite(date.getTime()) ? date : null;
-    }
-  }
-
-  const fallback = new Date(raw);
-  return Number.isFinite(fallback.getTime()) ? fallback : null;
-}
-
-function pad2(value: number): string {
-  return value < 10 ? `0${value}` : String(value);
+  return parseAnyDate(value);
 }
 
 function formatDateForInput(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return toISO(date) ?? "";
 }
 
 function formatDateForDisplay(date: Date): string {
-  return `${pad2(date.getDate())} ${pad2(date.getMonth() + 1)} ${date.getFullYear()}`;
+  return toDisplay(date) || "";
 }
 
 export async function setPrenotazioneCollaudo(

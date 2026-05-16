@@ -1,7 +1,8 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
-import { formatDateUI, toNextDateValue } from "../nextDateFormat";
+import { toNextDateValue } from "../nextDateFormat";
+import { toDisplay } from "../helpers/dateUnica";
 import {
   readNextAttrezzatureCantieriSnapshot,
   type NextAttrezzatureCantieriSnapshot,
@@ -240,9 +241,9 @@ function toTimestamp(value: unknown): number | null {
   return parsed ? parsed.getTime() : null;
 }
 
-function formatLegacyDateLabel(timestamp: number | null): string | null {
+function formatRecordDateLabel(timestamp: number | null): string | null {
   if (timestamp === null) return null;
-  return formatDateUI(new Date(timestamp));
+  return toDisplay(timestamp) || null;
 }
 
 function sortByTimestampDesc<T extends { id: string; timestamp: number | null }>(items: T[]): T[] {
@@ -265,7 +266,7 @@ function toMaintenanceItem(raw: RawRecord, index: number): NextOperativitaMainte
     [raw.timestamp, raw.data, raw.createdAt, raw.updatedAt]
       .map((entry) => toTimestamp(entry))
       .find((entry): entry is number => entry !== null) ?? null;
-  const data = normalizeOptionalText(raw.data) ?? formatLegacyDateLabel(timestamp);
+  const data = normalizeOptionalText(raw.data) ?? formatRecordDateLabel(timestamp);
   const materialiCount = Array.isArray(raw.materiali) ? raw.materiali.length : 0;
   const fornitore =
     normalizeOptionalText(raw.fornitore) ??

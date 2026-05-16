@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { formatDateUI } from "./nextDateFormat";
 import { generatePreventiviCapoPDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
@@ -18,6 +17,7 @@ import {
   type NextCapoCostiRecord,
 } from "./domain/nextCapoDomain";
 import type { NextDocumentiCostiCurrency } from "./domain/nextDocumentiCostiDomain";
+import { parseAnyDate, toDisplay } from "./helpers/dateUnica";
 
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -34,22 +34,7 @@ type Currency = NextDocumentiCostiCurrency;
 type ActiveTab = "FATTURE" | "PREVENTIVI" | "TUTTI";
 
 function parseDateFlexible(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
-
-  const dmyMatch = raw.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})$/);
-  if (!dmyMatch) return null;
-
-  const yearRaw = Number(dmyMatch[3]);
-  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const month = Number(dmyMatch[2]) - 1;
-  const day = Number(dmyMatch[1]);
-  const date = new Date(year, month, day, 12, 0, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseAnyDate(value);
 }
 
 function formatAmountValue(value: number) {
@@ -74,8 +59,7 @@ function renderAmountWithCurrency(value: number | undefined, currency: Currency)
 }
 
 function formatDateShort(value: string | null, timestamp: number | null): string {
-  const parsed = timestamp ? new Date(timestamp) : parseDateFlexible(value);
-  return formatDateUI(parsed);
+  return toDisplay(timestamp ?? value) || "-";
 }
 
 const monthOptions = [

@@ -12,6 +12,7 @@ import {
   saveNextCisternaMonthlyExchange,
   updateNextCisternaDuplicateChoice,
 } from "./nextCisternaWriter";
+import { toDisplay } from "./helpers/dateUnica";
 import "../pages/CisternaCaravate/CisternaCaravatePage.css";
 
 type TabKey = "archivio" | "report" | "targhe";
@@ -77,6 +78,21 @@ function formatAziendaLabel(value: "cementi" | "import"): string {
   return value === "import" ? "GHIELMIIMPORT" : "GHIELMICEMENTI";
 }
 
+const MONTH_NAMES_IT = [
+  "gennaio",
+  "febbraio",
+  "marzo",
+  "aprile",
+  "maggio",
+  "giugno",
+  "luglio",
+  "agosto",
+  "settembre",
+  "ottobre",
+  "novembre",
+  "dicembre",
+] as const;
+
 function monthParam(search: string) {
   const value = String(new URLSearchParams(search).get("month") ?? "").trim();
   return /^\d{4}-\d{2}$/.test(value) ? value : null;
@@ -85,12 +101,9 @@ function monthParam(search: string) {
 function monthLabelFromKey(monthKey: string) {
   const match = String(monthKey ?? "").match(/^(\d{4})-(\d{2})$/);
   if (!match) return monthKey || "-";
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, 1);
-  if (Number.isNaN(date.getTime())) return monthKey || "-";
-  return new Intl.DateTimeFormat("it-CH", {
-    month: "long",
-    year: "numeric",
-  }).format(date);
+  const monthIndex = Number(match[2]) - 1;
+  const label = MONTH_NAMES_IT[monthIndex];
+  return label ? `${label} ${match[1]}` : monthKey || "-";
 }
 
 function yearFromMonthKey(monthKey: string | null) {
@@ -173,7 +186,7 @@ export default function NextCisternaPage() {
   const monthNames = useMemo(
     () =>
       Array.from({ length: 12 }, (_, index) =>
-        new Date(2000, index, 1).toLocaleDateString("it-CH", { month: "long" }),
+        MONTH_NAMES_IT[index] ?? String(index + 1).padStart(2, "0"),
       ),
     [],
   );
@@ -1049,7 +1062,7 @@ export default function NextCisternaPage() {
                   <tbody>
                     {snapshot.report.detailRows.map((row) => (
                       <tr key={row.id}>
-                        <td>{row.data}</td>
+                        <td>{toDisplay(row.data) || row.data}</td>
                         <td>{row.targa}</td>
                         <td>{row.litri.toFixed(2)} L</td>
                         <td>{row.nome || row.autista || "-"}</td>

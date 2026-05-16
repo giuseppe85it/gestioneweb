@@ -164,6 +164,7 @@ https://developers.openai.com/codex/multi-agent.
 - Cross-verify indipendente dopo una patch di Codex (separazione execution/audit).
 - Plan mode quando serve esplorare il codice prima di proporre.
 - Quando vuoi subagent specializzati con tool e modello dedicati.
+- Vale sempre la regola `AUDIT-CERCA-PER-TARGA` in `AGENTS.md`: negli audit di record correlati a un mezzo, cercare per targa (tutti i campi `targa*`), mai solo per legame.
 
 ### 4.2 Plan mode nativo (`/plan` o Esc+Tab)
 Pre-step da usare per ogni task non banale.

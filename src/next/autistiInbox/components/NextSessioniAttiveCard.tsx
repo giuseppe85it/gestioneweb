@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ActiveSession } from "../../../utils/homeEvents";
-import { formatDateTimeUI } from "../../nextDateFormat";
+import { toDisplayDateTime } from "../../helpers/dateUnica";
 
 type Props = {
   sessions: ActiveSession[];
@@ -28,10 +28,6 @@ function compareByTimestampDesc(a: ActiveSession, b: ActiveSession) {
   if (a.timestamp == null) return 1;
   if (b.timestamp == null) return -1;
   return b.timestamp - a.timestamp;
-}
-
-function formatDateTime(ts: number | null) {
-  return formatDateTimeUI(ts ?? null);
 }
 
 function formatAutistaLabel(session: ActiveSession) {
@@ -136,7 +132,7 @@ export default function NextSessioniAttiveCard({ sessions }: Props) {
             <strong>{getStatus(session)}</strong>
             {hasConflict ? <span className="sessione-conflict-badge">CONFLITTO</span> : null}
           </div>
-          <span className="sessione-time">{formatDateTime(session.timestamp)}</span>
+          <span className="sessione-time">{toDisplayDateTime(session.timestamp ?? null) || "-"}</span>
         </div>
         <div className="sessione-line">
           <span className="sessione-label">Autista</span>
@@ -248,7 +244,7 @@ export default function NextSessioniAttiveCard({ sessions }: Props) {
               <div className="aix-row"><div className="aix-row-top"><strong>Badge</strong><span className="sessione-badge">badge {detailSession.badgeAutista || "-"}</span></div></div>
               <div className="aix-row"><div className="aix-row-top"><strong>Motrice</strong><span>{detailSession.targaMotrice ?? "-"}</span></div></div>
               <div className="aix-row"><div className="aix-row-top"><strong>Rimorchio</strong><span>{detailSession.targaRimorchio ?? "-"}</span></div></div>
-              <div className="aix-row"><div className="aix-row-top"><strong>Ultimo update</strong><span>{formatDateTime(detailSession.timestamp)}</span></div></div>
+              <div className="aix-row"><div className="aix-row-top"><strong>Ultimo update</strong><span>{toDisplayDateTime(detailSession.timestamp ?? null) || "-"}</span></div></div>
               {detailConflict.length > 0 ? (
                 <div className="aix-row">
                   <div className="aix-row-top">

@@ -10,14 +10,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../../autistiInbox/CambioMezzoInbox.css";
 import { loadHomeEvents, type HomeEvent } from "../autisti/nextAutistiHomeEvents";
-import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
+import { toDisplay, toDisplayDateTime, toISO } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 
 function formatDateInputValue(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const dayValue = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${dayValue}`;
+  return toISO(value) ?? "";
 }
 
 function parseDayParam(value: string | null): Date | null {
@@ -34,11 +31,7 @@ function normTarga(value?: string | null) {
 }
 
 function formatTime(ts: number) {
-  return formatDateTimeUI(ts);
-}
-
-function formatDateTime(ts: number) {
-  return formatDateTimeUI(ts);
+  return toDisplayDateTime(ts) || "-";
 }
 
 function getAutistaInfo(e: HomeEvent) {
@@ -247,7 +240,7 @@ export default function CambioMezzoInbox() {
               onClick={openDatePicker}
               aria-label="Seleziona data"
             >
-              {formatDateUI(day)}
+              {toDisplay(day) || "-"}
             </button>
             <input
               ref={datePickerRef}
@@ -287,7 +280,7 @@ export default function CambioMezzoInbox() {
                 return (
                   <div key={e.id ?? `cambio_${e.timestamp}_${idx}`} className="cmi-card">
                     <div className="cmi-header">
-                      <span className="aix-time">{formatDateTime(e.timestamp)}</span>
+                      <span className="aix-time">{toDisplayDateTime(e.timestamp) || "-"}</span>
                     </div>
 
                     <div className="cmi-main">

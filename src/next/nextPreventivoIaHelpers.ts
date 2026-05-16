@@ -1,5 +1,6 @@
 import type { NextFornitoreReadOnlyItem } from "./domain/nextFornitoriDomain";
 import type { NextProcurementListinoItem } from "./domain/nextProcurementDomain";
+import { toDisplay } from "./helpers/dateUnica";
 import type { Valuta } from "./nextPreventivoManualeWriter";
 
 export type PreventivoPriceExtractDocument = {
@@ -255,7 +256,9 @@ export function computeRowAnalysis(
 
     const referenceParts = [
       matched?.fonteNumeroPreventivo ? `N. ${matched.fonteNumeroPreventivo}` : null,
-      matched?.fonteDataPreventivo ? `del ${matched.fonteDataPreventivo}` : null,
+      matched?.fonteDataPreventivo
+        ? `del ${toDisplay(matched.fonteDataPreventivo) || matched.fonteDataPreventivo}`
+        : null,
     ].filter((entry): entry is string => Boolean(entry));
 
     return {

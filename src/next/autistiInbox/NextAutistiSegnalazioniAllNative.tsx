@@ -12,7 +12,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiSegnalazioniAll.css";
 
@@ -45,10 +45,6 @@ type SegnalazioneView = SegnalazioneRecord & {
   fotoList: string[];
   fotoCount: number;
 };
-
-function formatDateTime(ts?: number | null) {
-  return formatDateTimeUI(ts ?? null);
-}
 
 function normTarga(value?: string | null) {
   return String(value ?? "").toUpperCase().replace(/\s+/g, "").trim();
@@ -332,7 +328,7 @@ export default function AutistiSegnalazioniAll() {
                     }}
                   >
                     <div className="aix-row-top">
-                      <span className="aix-time">{formatDateTime(r.ts)}</span>
+                      <span className="aix-time">{toDisplayDateTime(r.ts ?? null) || "-"}</span>
                       <span className="aix-ambito">{r.ambitoLabel}</span>
                       <span className="aix-targa">{r.targaLabel}</span>
                     </div>

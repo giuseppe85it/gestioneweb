@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 
 import { getItemSync } from "../../utils/storageSync";
+import { buildFraseStoria, type TipoRecordStoria } from "../helpers/frasestoriaRecord";
 import { formatDateTimeUI } from "../nextDateFormat";
 
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -19,6 +20,17 @@ export type NextImportGommeChiusuraSelection = {
   kind: NextImportGommeChiusuraSelectionKind;
   id: string;
   label: string;
+  /**
+   * PROMPT 44 — D4: fingerprint del record sorgente, usato dal writer di chiusura
+   * come fallback se l'id non matcha (record storici migrati con id sintetico).
+   * Popolato solo per `kind: "manutenzione"`.
+   */
+  fingerprint?: {
+    targa: string | null;
+    data: string | null;
+    descrizione: string | null;
+    stato: string | null;
+  } | null;
 };
 
 type Candidate = NextImportGommeChiusuraSelection & {
@@ -174,6 +186,15 @@ function candidateFromRecord(args: {
         : "Segnalazione",
     timestamp ? formatDateTimeUI(timestamp) : "data non disponibile",
   ].join(" - ");
+  const fingerprint =
+    args.kind === "manutenzione"
+      ? {
+          targa: normalizeText(args.record.targa) || null,
+          data: normalizeText(args.record.data) || null,
+          descrizione: normalizeText(args.record.descrizione) || null,
+          stato: normalizeText(args.record.stato) || null,
+        }
+      : null;
   return {
     kind: args.kind,
     id,
@@ -182,11 +203,18 @@ function candidateFromRecord(args: {
     timestamp,
     distanceDays,
     suggested,
+    fingerprint,
   };
 }
 
 function checkboxKey(candidate: NextImportGommeChiusuraSelection): string {
   return `${candidate.kind}:${candidate.id}`;
+}
+
+function chiusuraKindToStoriaTipo(kind: NextImportGommeChiusuraSelectionKind): TipoRecordStoria {
+  if (kind === "segnalazione") return "segnalazione";
+  if (kind === "controllo") return "controllo_ko";
+  return "manutenzione";
 }
 
 export function NextImportGommeChiusuraModal({
@@ -280,7 +308,7 @@ export function NextImportGommeChiusuraModal({
   const confirm = (): void => {
     const selected = candidates
       .filter((candidate) => checked.has(checkboxKey(candidate)))
-      .map(({ kind, id, label }) => ({ kind, id, label }));
+      .map(({ kind, id, label, fingerprint }) => ({ kind, id, label, fingerprint }));
     onConfirm(selected);
   };
 
@@ -332,6 +360,34 @@ export function NextImportGommeChiusuraModal({
               {others.map(renderCandidate)}
             </section>
           ) : null}
+          {(() => {
+            const checkedCandidate = candidates.find((c) => checked.has(checkboxKey(c)));
+            if (!checkedCandidate) return null;
+            return (
+              <div
+                className="aix-frase-preview"
+                style={{
+                  marginTop: 14,
+                  padding: "10px 12px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 6,
+                }}
+              >
+                <span style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                  Frase storia che apparira' dopo la chiusura:
+                </span>
+                <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
+                  {buildFraseStoria({
+                    tipo: chiusuraKindToStoriaTipo(checkedCandidate.kind),
+                    dataApertura: checkedCandidate.timestamp,
+                    modalitaChiusura: "evento_autisti",
+                    dataEventoChiusura: getCambioTimestamp(record),
+                  })}
+                </p>
+              </div>
+            );
+          })()}
           <div className="aix-actions">
             <button className="edit" type="button" onClick={onCancel} disabled={busy}>
               ANNULLA

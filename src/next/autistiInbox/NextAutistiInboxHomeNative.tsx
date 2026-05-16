@@ -13,7 +13,7 @@ import type {
   CreateManutenzioneDaFareSubmitInput,
   CreateManutenzioneDaFareSubmitResult,
 } from "../components/NextHomeAutistiEventoModal";
-import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
+import { toDisplay, toDisplayDateTime, toISO } from "../helpers/dateUnica";
 import { getItemSync } from "../autisti/nextAutistiStorageSync";
 import { createManutenzioneDaFareFromEvento } from "../writers/nextManutenzioneDaFareCreateWriter";
 
@@ -196,7 +196,7 @@ useEffect(() => {
   }, [logAccessi]);
 
   function formatTime(ts: number) {
-    return formatDateTimeUI(ts);
+    return toDisplayDateTime(ts) || "-";
   }
 
   function openModal(kind: Exclude<ModalKind, null>) {
@@ -316,10 +316,7 @@ useEffect(() => {
   }
 
   function formatDateInputValue(value: Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const dayValue = String(value.getDate()).padStart(2, "0");
-    return `${year}-${month}-${dayValue}`;
+    return toISO(value) ?? "";
   }
 
   function openDatePicker() {
@@ -574,7 +571,7 @@ useEffect(() => {
               onClick={openDatePicker}
               aria-label="Seleziona data"
             >
-              {formatDateUI(day)}
+              {toDisplay(day) || "-"}
             </button>
             <input
               ref={datePickerRef}
@@ -797,7 +794,7 @@ useEffect(() => {
               ) : (
                 logPreview.map((item, index) => (
                   <div key={`log-${index}`} className="daily-item">
-                    {formatDateTimeUI(item.ts ?? null)} - {item.tipo} - {item.badge} -{" "}
+                    {toDisplayDateTime(item.ts ?? null) || "-"} - {item.tipo} - {item.badge} -{" "}
                     {item.nome}
                   </div>
                 ))

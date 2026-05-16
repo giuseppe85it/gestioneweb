@@ -3,6 +3,7 @@ import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { readNextInternalAiCloneDocumenti } from "../internal-ai/nextInternalAiCloneState";
 import { readNextProcurementSnapshot } from "./nextProcurementDomain";
+import { toDisplay } from "../helpers/dateUnica";
 
 const STORAGE_COLLECTION = "storage";
 const COSTI_DATASET_KEY = "@costiMezzo";
@@ -565,15 +566,9 @@ function toTimestamp(value: unknown): number | null {
   return parsed ? parsed.getTime() : null;
 }
 
-function formatLegacyDateLabel(timestamp: number | null): string | null {
+function formatRecordDateLabel(timestamp: number | null): string | null {
   if (timestamp === null) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return `${dd} ${mm} ${yyyy}`;
+  return toDisplay(timestamp) || null;
 }
 
 function resolveDateFields(args: {
@@ -589,7 +584,7 @@ function resolveDateFields(args: {
     .map((value) => toTimestamp(value))
     .find((value): value is number => value !== null) ?? null;
   const rawDateLabel = normalizeOptionalText(primary);
-  const dateLabel = rawDateLabel ?? formatLegacyDateLabel(sortTimestamp);
+  const dateLabel = rawDateLabel ?? formatRecordDateLabel(sortTimestamp);
 
   return {
     dateLabel,

@@ -3,11 +3,27 @@
 // `.rx-section` con k:v + descrizione lunga + griglie k:v.
 // Solo campi presenti nei type proiezione: niente invenzioni.
 
-import type { ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import type { ArchivioRecord } from "../archivioTypes";
-import { StoriaRecordTimeline } from "../../../components/StoriaRecordTimeline";
-import { getStoriaRecord } from "../../../helpers/storiaRecord";
+import { FraseStoriaRecord } from "../../../components/FraseStoriaRecord";
+import { recordChiusoFromRaw, type RecordChiuso } from "../../../helpers/frasestoriaRecord";
+import { toDisplay, toDisplayDateTime } from "../../../helpers/dateUnica";
+// PROMPT 47 T1/T2: detection legame orfano + UI aggancia/cambia/sgancia
+import { isLegameOrfano, readLegameLavoro } from "../../../helpers/cicloLegame";
+// PROMPT 49: cross-read sorgente segnalazione/controllo per frase storia manutenzione
+import { useSorgenteManutenzione } from "../../../helpers/useSorgenteManutenzione";
+import {
+  getManutenzioniPerAggancio,
+  type ManutenzioneCandidataAggancio,
+} from "../../../helpers/manutenzioniPerAggancio";
+import {
+  NextAgganciaLegameModal,
+  type AgganciaLegameMode,
+} from "../../../components/NextAgganciaLegameModal";
+import { agganciaSegnalazioneAManutenzioneEsistente } from "../../../writers/agganciaSegnalazioneAManutenzioneEsistenteWriter";
+import { sganciaLegameOrfano } from "../../../writers/sganciaLegameOrfanoWriter";
+import { getItemSync } from "../../../../utils/storageSync";
 import "../styles/archivioStorico.css";
 
 type Props = {
@@ -18,14 +34,7 @@ function formatDateTimeLong(ts: number | null | undefined): string {
   if (ts === null || ts === undefined || !Number.isFinite(ts) || ts === 0) {
     return "—";
   }
-  const date: Date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return "—";
-  const dd: string = String(date.getDate()).padStart(2, "0");
-  const mm: string = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy: string = String(date.getFullYear());
-  const hh: string = String(date.getHours()).padStart(2, "0");
-  const mi: string = String(date.getMinutes()).padStart(2, "0");
-  return `${dd}.${mm}.${yyyy} · ${hh}:${mi}`;
+  return toDisplayDateTime(ts) || "—";
 }
 
 function formatImportoExt(
@@ -50,9 +59,11 @@ function asseLabel(asseId: string): string {
   return asseId;
 }
 
-function renderManutenzioneExpanded(
-  data: Extract<ArchivioRecord, { kind: "manutenzione" }>["data"],
-): ReactElement {
+function ManutenzioneExpanded({
+  data,
+}: {
+  data: Extract<ArchivioRecord, { kind: "manutenzione" }>["data"];
+}): ReactElement {
   const materiali = data.materiali ?? [];
   const hasMateriali: boolean = materiali.length > 0;
   const hasImporto: boolean = data.importo !== null && data.importo !== undefined;
@@ -70,6 +81,11 @@ function renderManutenzioneExpanded(
     gommeStraordinario !== null ||
     gommeInterventoTipo !== null;
 
+  // PROMPT 49: se la manutenzione ha back-link `origineRefId`, carica il record
+  // sorgente (segnalazione/controllo) per la frase storia. Senza sorgente la
+  // frase pesca data/autore dalla manutenzione stessa (comportamento pre-49).
+  const sourceRecord = useSorgenteManutenzione(data as unknown as Record<string, unknown>);
+
   return (
     <>
       {data.descrizione ? (
@@ -77,8 +93,12 @@ function renderManutenzioneExpanded(
           <div className="rx-label">Descrizione</div>
           <div className="rx-value">
             {data.descrizione}
-            <StoriaRecordTimeline
-              storia={getStoriaRecord(data as unknown as Record<string, unknown>)}
+            <FraseStoriaRecord
+              {...recordChiusoFromRaw(
+                data as unknown as Record<string, unknown>,
+                undefined,
+                { sourceRecord },
+              )}
               compact
             />
           </div>
@@ -172,7 +192,7 @@ function renderManutenzioneExpanded(
                 {gommePerAsse.map((g, idx: number) => (
                   <li key={`${g.asseId}-${idx}`}>
                     {asseLabel(g.asseId)}
-                    {g.dataCambio ? ` · cambio ${g.dataCambio}` : ""}
+                    {g.dataCambio ? ` · cambio ${toDisplay(g.dataCambio) || g.dataCambio}` : ""}
                     {g.kmCambio !== null && g.kmCambio !== undefined
                       ? ` · ${g.kmCambio.toLocaleString("it-CH")} km`
                       : ""}
@@ -202,37 +222,208 @@ function renderManutenzioneExpanded(
   );
 }
 
-function renderSegnalazioneExpanded(
+function segnalazioneToRecordChiuso(
   data: Extract<ArchivioRecord, { kind: "segnalazione" }>["data"],
-): ReactElement {
+): RecordChiuso {
+  const eventoAutisti: boolean = data.chiusuraDi === "gomme_evento";
+  return {
+    tipo: "segnalazione",
+    dataApertura: data.timestamp ?? null,
+    dataEsecuzione: data.dataChiusura ?? null,
+    modalitaChiusura: eventoAutisti ? "evento_autisti" : "manuale",
+    dataEventoChiusura: eventoAutisti ? data.dataChiusura ?? null : undefined,
+    // PROMPT 45 T2: nome autista che ha aperto la segnalazione, mostrato nella prima
+    // riga della frase storia come "Segnalazione di <nome> del ...". Sentinel "autista"
+    // (fallback writer PROMPT 41) viene filtrato da buildFraseStoria.
+    segnalatoDa: data.autistaNome ?? undefined,
+  };
+}
+
+type LegameStato = "loading" | "no-legame" | "legame-valido" | "legame-orfano";
+
+type RawRecord = Record<string, unknown>;
+
+function unwrapManutenzioniSnapshot(raw: unknown): RawRecord[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter((r): r is RawRecord => typeof r === "object" && r !== null);
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as { value?: unknown; items?: unknown };
+    if (Array.isArray(obj.value)) {
+      return (obj.value as unknown[]).filter(
+        (r): r is RawRecord => typeof r === "object" && r !== null,
+      );
+    }
+    if (Array.isArray(obj.items)) {
+      return (obj.items as unknown[]).filter(
+        (r): r is RawRecord => typeof r === "object" && r !== null,
+      );
+    }
+  }
+  return [];
+}
+
+/**
+ * PROMPT 47 T1/T2 — sub-component per la riga espansa segnalazione, con UI Aggancia/Cambia/Sgancia.
+ * Carica lo snapshot @manutenzioni on mount per rilevare legami orfani e popolare i candidati.
+ */
+function SegnalazioneExpanded({
+  data,
+}: {
+  data: Extract<ArchivioRecord, { kind: "segnalazione" }>["data"];
+}): ReactElement {
   const showChiusura: boolean = data.chiusa === true;
   const showLinkManutenzione: boolean =
     data.hasLinkedLavoro && Boolean(data.linkedLavoroId);
   const showFotoNote: boolean = data.fotoCount > 0;
+
+  // PROMPT 47 — detection legame
+  const [legameStato, setLegameStato] = useState<LegameStato>("loading");
+  const [snapshotVer, setSnapshotVer] = useState(0); // bumped per ricaricare dopo writer
+
+  const [modalState, setModalState] = useState<
+    | null
+    | {
+        mode: AgganciaLegameMode;
+        candidati: ManutenzioneCandidataAggancio[];
+        busy: boolean;
+      }
+  >(null);
+
+  const targa = String(
+    (data as RawRecord).targa ??
+      (data as RawRecord).targaCamion ??
+      (data as RawRecord).targaRimorchio ??
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await getItemSync("@manutenzioni");
+        if (cancelled) return;
+        const snapshot = unwrapManutenzioniSnapshot(raw);
+        const linked = readLegameLavoro(data as unknown as RawRecord);
+        if (linked.length === 0) {
+          setLegameStato("no-legame");
+        } else if (isLegameOrfano(data as unknown as RawRecord, snapshot)) {
+          setLegameStato("legame-orfano");
+        } else {
+          setLegameStato("legame-valido");
+        }
+      } catch {
+        if (!cancelled) setLegameStato("no-legame");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data, snapshotVer]);
+
+  const openModal = useCallback(
+    async (mode: AgganciaLegameMode) => {
+      if (!targa) return;
+      setModalState({ mode, candidati: [], busy: true });
+      try {
+        const candidati = await getManutenzioniPerAggancio(targa);
+        setModalState({ mode, candidati, busy: false });
+      } catch (err) {
+        console.error("Errore caricamento candidati aggancio:", err);
+        setModalState(null);
+      }
+    },
+    [targa],
+  );
+
+  const handleConfirmAggancio = useCallback(
+    async (manutenzioneTargetId: string) => {
+      setModalState((prev) => (prev ? { ...prev, busy: true } : prev));
+      try {
+        const res = await agganciaSegnalazioneAManutenzioneEsistente({
+          sorgenteId: String(data.id),
+          sorgenteTipo: "segnalazione",
+          manutenzioneTargetId,
+        });
+        if (!res.ok) {
+          window.alert(res.error || "Errore aggancio segnalazione.");
+        } else if (res.alreadyLinked) {
+          window.alert("Segnalazione gia' collegata a questa manutenzione.");
+        } else {
+          window.alert(
+            res.chiusuraPropagata
+              ? "Aggancio eseguito. Segnalazione chiusa automaticamente (manutenzione target gia' eseguita)."
+              : "Aggancio eseguito.",
+          );
+        }
+      } catch (err) {
+        console.error("Errore aggancio segnalazione:", err);
+        window.alert("Errore aggancio segnalazione.");
+      }
+      setModalState(null);
+      setSnapshotVer((v) => v + 1);
+    },
+    [data.id],
+  );
+
+  const handleSgancia = useCallback(async () => {
+    if (!window.confirm("Sganciare il link rotto da questa segnalazione? Tornera' nelle liste aperte.")) {
+      return;
+    }
+    try {
+      const res = await sganciaLegameOrfano({
+        sorgenteId: String(data.id),
+        sorgenteTipo: "segnalazione",
+      });
+      if (!res.ok) {
+        window.alert(res.error || "Errore sgancio link orfano.");
+      } else if (res.alreadyClean) {
+        window.alert("La segnalazione non aveva legami da sganciare.");
+      } else {
+        window.alert("Link orfano sganciato. La segnalazione e' tornata 'nuova'.");
+      }
+    } catch (err) {
+      console.error("Errore sgancio link orfano:", err);
+      window.alert("Errore sgancio link orfano.");
+    }
+    setSnapshotVer((v) => v + 1);
+  }, [data.id]);
 
   return (
     <>
       {data.descrizione ? (
         <div className="rx-section">
           <div className="rx-label">Descrizione</div>
-          <div className="rx-value">{data.descrizione}</div>
+          <div className="rx-value">
+            {data.descrizione}
+            {legameStato === "legame-orfano" ? (
+              <span
+                data-testid="link-rotto-badge"
+                style={{
+                  display: "inline-block",
+                  marginLeft: 8,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "#fff7ed",
+                  border: "1px solid #fdba74",
+                  color: "#9a3412",
+                  fontSize: 11,
+                  verticalAlign: "middle",
+                }}
+                title="Link rotto: la manutenzione collegata non esiste piu'."
+              >
+                Link rotto
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <div className="rx-section">
         <div className="rx-label">Stato</div>
         <div className="rx-value">
           {showChiusura ? (
-            <>
-              Chiusa il{" "}
-              <span className="mono">
-                {formatDateTimeLong(data.dataChiusura)}
-              </span>
-              {data.chiusaBy ? (
-                <>
-                  {" "}da <strong>{data.chiusaBy}</strong>
-                </>
-              ) : null}
-            </>
+            <FraseStoriaRecord {...segnalazioneToRecordChiuso(data)} />
           ) : (
             <>
               Stato corrente: <strong>{data.stato || "—"}</strong>
@@ -255,8 +446,87 @@ function renderSegnalazioneExpanded(
           <div className="rx-value">{data.fotoCount} foto allegate.</div>
         </div>
       ) : null}
+
+      {/* PROMPT 47 T1/T2 — azioni aggancia/cambia/sgancia legame manutenzione */}
+      {legameStato !== "loading" ? (
+        <div
+          className="rx-section"
+          data-testid="aggancia-actions-section"
+          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+        >
+          {legameStato === "no-legame" ? (
+            <button
+              type="button"
+              className="edit"
+              onClick={() => void openModal("aggancia")}
+              data-testid="btn-aggancia"
+            >
+              Aggancia a manutenzione esistente
+            </button>
+          ) : null}
+          {legameStato === "legame-valido" ? (
+            <button
+              type="button"
+              className="edit"
+              onClick={() => void openModal("cambia")}
+              data-testid="btn-cambia-legame"
+            >
+              Cambia legame
+            </button>
+          ) : null}
+          {legameStato === "legame-orfano" ? (
+            <>
+              <button
+                type="button"
+                className="edit"
+                onClick={() => void handleSgancia()}
+                data-testid="btn-sgancia-orfano"
+              >
+                Sgancia link orfano
+              </button>
+              <button
+                type="button"
+                className="edit"
+                onClick={() => void openModal("sostituisci-orfano")}
+                data-testid="btn-sostituisci-orfano"
+              >
+                Sostituisci con manutenzione esistente
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {modalState ? (
+        <NextAgganciaLegameModal
+          sorgente={{
+            id: String(data.id),
+            targa,
+            tipo: "segnalazione",
+            descrizione: String(data.descrizione ?? "").trim(),
+          }}
+          mode={modalState.mode}
+          legameAttuale={
+            modalState.mode === "cambia" || modalState.mode === "sostituisci-orfano"
+              ? { id: String(data.linkedLavoroId ?? "") }
+              : null
+          }
+          candidati={modalState.candidati}
+          busy={modalState.busy}
+          onCancel={() => {
+            if (!modalState.busy) setModalState(null);
+          }}
+          onConfirm={(id) => void handleConfirmAggancio(id)}
+        />
+      ) : null}
     </>
   );
+}
+
+function renderSegnalazioneExpanded(
+  data: Extract<ArchivioRecord, { kind: "segnalazione" }>["data"],
+): ReactElement {
+  return <SegnalazioneExpanded data={data} />;
 }
 
 function renderRichiestaExpanded(
@@ -309,7 +579,7 @@ export function ArchivioRowExpanded({ record }: Props): ReactElement {
   let body: ReactElement;
   switch (record.kind) {
     case "manutenzione": {
-      body = renderManutenzioneExpanded(record.data);
+      body = <ManutenzioneExpanded data={record.data} />;
       break;
     }
     case "segnalazione": {

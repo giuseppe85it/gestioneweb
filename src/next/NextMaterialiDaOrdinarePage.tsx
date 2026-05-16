@@ -30,6 +30,7 @@ import {
   NEXT_HOME_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
 } from "./nextStructuralPaths";
+import { toDisplay, toISO } from "./helpers/dateUnica";
 
 interface Fornitore {
   id: string;
@@ -97,9 +98,12 @@ const PROCUREMENT_DRAFT_KEY = "next.procurement.materiali-da-ordinare.draft";
 const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const oggi = () => {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, "0")} ${String(d.getMonth() + 1).padStart(2, "0")} ${d.getFullYear()}`;
+  return toISO(new Date()) ?? "";
 };
+
+function formatProcurementDate(value: string | null | undefined): string {
+  return toDisplay(value) || value || "";
+}
 
 const immaginiAutomatiche: { pattern: RegExp; url: string }[] = [
   { pattern: /cemento/i, url: "/materiali/cemento.png" },
@@ -1477,7 +1481,7 @@ export default function NextMaterialiDaOrdinarePage() {
                                         ? ` - N. ${entry.fonteNumeroPreventivo}`
                                         : ""}
                                       {entry.fonteDataPreventivo
-                                        ? ` del ${entry.fonteDataPreventivo}`
+                                        ? ` del ${formatProcurementDate(entry.fonteDataPreventivo)}`
                                         : ""}
                                     </span>
                                   </button>
@@ -1602,7 +1606,7 @@ export default function NextMaterialiDaOrdinarePage() {
                                       ? `N. ${selectedListinoVoce.fonteNumeroPreventivo}`
                                       : "Listino senza documento"}
                                     {selectedListinoVoce.fonteDataPreventivo
-                                      ? ` del ${selectedListinoVoce.fonteDataPreventivo}`
+                                      ? ` del ${formatProcurementDate(selectedListinoVoce.fonteDataPreventivo)}`
                                       : ""}
                                   </span>
                                 </div>

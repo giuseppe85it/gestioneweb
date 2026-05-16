@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatDateUI } from "./nextDateFormat";
+import { parseAnyDate, toDisplay } from "./helpers/dateUnica";
 import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
 import {
   ResponsiveContainer,
@@ -43,10 +43,6 @@ type RifornimentoNorm = RifornimentoRecord & {
   litriNum: number | null;
 };
 
-type TimestampLike = {
-  toDate?: () => Date;
-};
-
 type ChartPayloadLike = {
   giorno?: string;
   dayKey?: string;
@@ -67,54 +63,14 @@ const toNumber = (value: unknown): number | null => {
 };
 
 const parseDateFlex = (value: unknown): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "object" && typeof (value as TimestampLike).toDate === "function") {
-    const d = (value as TimestampLike).toDate?.();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-  if (typeof value === "number") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value !== "string") return null;
-
-  const raw = value.trim();
-  if (!raw) return null;
-
-  if (raw.includes("-")) {
-    const d = new Date(raw);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const match = raw.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})(?:,\s*(\d{1,2}):(\d{2}))?$/
-  );
-  if (match) {
-    const [, dd, mm, yyyy, hh, min] = match;
-    const d = new Date(
-      Number(yyyy),
-      Number(mm) - 1,
-      Number(dd),
-      Number(hh || 0),
-      Number(min || 0),
-      0
-    );
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const ts = Date.parse(raw);
-  if (!Number.isNaN(ts)) return new Date(ts);
-  return null;
+  return parseAnyDate(value);
 };
 
 const formatDateLabel = (value: unknown): string => {
-  const d = parseDateFlex(value);
-  if (!d) return "—";
-  return formatDateUI(d);
+  return toDisplay(value) || "---";
 };
 
-const formatDayShort = (value: Date): string => formatDateUI(value);
+const formatDayShort = (value: Date): string => toDisplay(value) || "---";
 
 const formatDayKeyShort = (dayKey: string): string => {
   return formatDayKeyLong(dayKey);
@@ -122,8 +78,8 @@ const formatDayKeyShort = (dayKey: string): string => {
 
 const formatDayKeyLong = (dayKey: string): string => {
   const [yyyy, mm, dd] = dayKey.split("-");
-  if (!yyyy || !mm || !dd) return "—";
-  return formatDateUI(`${dd} ${mm} ${yyyy}`);
+  if (!yyyy || !mm || !dd) return "---";
+  return toDisplay(`${yyyy}-${mm}-${dd}`) || "---";
 };
 
 const getDayKey = (value: Date): string => {
@@ -291,7 +247,7 @@ export default function RifornimentiEconomiaSection({
     for (let i = monthsCount - 1; i >= 0; i -= 1) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = formatDateUI(d);
+      const label = toDisplay(d) || "---";
       months.push({ key, label });
     }
 
@@ -394,7 +350,7 @@ export default function RifornimentiEconomiaSection({
       data.push({
         dayKey: key,
         labelShort: formatDayShort(cursor),
-        labelLong: formatDateUI(cursor),
+        labelLong: toDisplay(cursor) || "---",
         litri: entry?.litri ?? 0,
         kmMin: entry?.kmMin ?? null,
         kmMax: entry?.kmMax ?? null,
@@ -465,7 +421,7 @@ export default function RifornimentiEconomiaSection({
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const key = getDayKey(d);
-      const label = formatDateUI(d);
+      const label = toDisplay(d) || "---";
       labelByKey[key] = label;
       keyByLabel[label] = key;
       dayBuckets.push({ key, label });

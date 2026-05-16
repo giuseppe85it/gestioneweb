@@ -9,7 +9,7 @@ import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal"
 import QuickNavigationCard from "./components/QuickNavigationCard";
 import type { QuickNavigationSection } from "./components/QuickNavigationCard";
 import StatoOperativoCard from "./components/StatoOperativoCard";
-import { formatDateUI } from "./nextDateFormat";
+import { toDisplay } from "./helpers/dateUnica";
 import { generateTablePDF } from "../utils/pdfEngine";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
 import type { HomeEvent } from "../utils/homeEvents";
@@ -527,7 +527,7 @@ function parseDateFlexible(value: string | null | undefined): Date | null {
 }
 
 function formatDateForDisplay(date: Date | null): string {
-  return formatDateUI(date);
+  return toDisplay(date) || "--/--/----";
 }
 
 function normalizeFreeText(value: string | null | undefined): string {

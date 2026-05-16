@@ -24,3 +24,26 @@ GoogleCloudSDKInstaller.exe
 gsutil.zip
 gsutil/
 tools/
+
+# PROMPT 53 — non committare artefatti delle sessioni di sviluppo
+
+# Output Playwright / test
+test-results/
+
+# Screenshot debug delle sessioni
+docs/_live/screenshots-*/
+
+# Dump JSON one-shot di scripts/oneoff
+scripts/oneoff/*-DRY.json
+scripts/oneoff/*-REAL.json
+scripts/oneoff/cleanup-*-report-*.json
+
+# Config Claude Code personale
+.claude/settings.json
+.claude/settings.local.json
+
+# Editor / backup file
+*.bak
+*.tmp
+*.backup
+*.old

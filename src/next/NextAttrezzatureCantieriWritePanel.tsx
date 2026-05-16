@@ -15,6 +15,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../utils/pdfPreview";
+import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import {
   buildNextAttrezzatureRegistroView,
   formatNextAttrezzatureQuantita,
@@ -64,10 +65,17 @@ export type NextAttrezzatureCantieriWritePanelProps = {
 };
 
 function oggi(): string {
-  const now = new Date();
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${day} ${month} ${now.getFullYear()}`;
+  return toDisplay(new Date()) || "";
+}
+
+function normalizeDataInput(value: string): string | null {
+  return fromUserInput(value) ?? toISO(value);
+}
+
+function formatDataInput(value: string | null): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  return toDisplay(raw) || raw;
 }
 
 function parseNumero(value: string): number {
@@ -109,19 +117,7 @@ function formatQuantita(value: number): string {
 function formatDataExport(value: string | null): string {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "-";
-
-  const parts = trimmed.split(" ");
-  if (parts.length === 3) {
-    const [day, month, year] = parts;
-    return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
-  }
-
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) return trimmed;
-
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}/${parsed.getFullYear()}`;
+  return toDisplay(trimmed) || trimmed;
 }
 
 function formatCantiereExport(labelRaw: string | null, idRaw: string | null): string {
@@ -255,7 +251,7 @@ function buildEditForm(record: NextAttrezzaturaMovimentoReadOnlyItem): Movimento
   return {
     id: record.id,
     tipo: record.tipo,
-    data: record.data || oggi(),
+    data: formatDataInput(record.data) || oggi(),
     materialeCategoria: record.materialeCategoria || "TUBI",
     descrizione: record.descrizione || "",
     quantita: record.quantita ? String(record.quantita) : "",
@@ -329,10 +325,7 @@ export default function NextAttrezzatureCantieriWritePanel({
   };
 
   const formatFileDate = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, "0");
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    return `${day}-${month}-${now.getFullYear()}`;
+    return toISO(new Date()) ?? "data-non-disponibile";
   };
 
   const closePdfPreview = () => {
@@ -422,7 +415,7 @@ export default function NextAttrezzatureCantieriWritePanel({
       setSaving(true);
       await createMovimentoAttrezzatura({
         tipo: form.tipo,
-        data: form.data.trim() || oggi(),
+        data: normalizeDataInput(form.data) ?? normalizeDataInput(oggi()) ?? form.data.trim(),
         materialeCategoria: form.materialeCategoria || "TUBI",
         descrizione: validated.descrizione,
         quantita: validated.quantita,
@@ -508,7 +501,7 @@ export default function NextAttrezzatureCantieriWritePanel({
         originalRecord: editRecord,
         updatedFields: {
           tipo: editForm.tipo,
-          data: editForm.data.trim() || oggi(),
+          data: normalizeDataInput(editForm.data) ?? normalizeDataInput(oggi()) ?? editForm.data.trim(),
           materialeCategoria: editForm.materialeCategoria || "TUBI",
           descrizione: validated.descrizione,
           quantita: validated.quantita,
@@ -781,8 +774,8 @@ export default function NextAttrezzatureCantieriWritePanel({
                   <input
                     className="ac-input"
                     type="text"
-                    placeholder="gg mm aaaa"
-                    value={form.data}
+                    placeholder="GG/MM/AAAA"
+                    value={formatDataInput(form.data)}
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, data: event.target.value }))
                     }
@@ -1105,7 +1098,7 @@ export default function NextAttrezzatureCantieriWritePanel({
                   <div key={movimento.id} className="ac-registro-row">
                     <div className="ac-registro-main">
                       <div className="ac-registro-head">
-                        <span className="ac-date">{movimento.data ?? "-"}</span>
+                        <span className="ac-date">{formatDataExport(movimento.data ?? null)}</span>
                         <span className={`ac-badge is-${movimento.tipo.toLowerCase()}`}>
                           {movimento.tipo}
                         </span>
@@ -1201,7 +1194,7 @@ export default function NextAttrezzatureCantieriWritePanel({
                   <input
                     className="ac-input"
                     type="text"
-                    value={editForm.data}
+                    value={formatDataInput(editForm.data)}
                     onChange={(event) =>
                       setEditForm((prev) => (prev ? { ...prev, data: event.target.value } : prev))
                     }

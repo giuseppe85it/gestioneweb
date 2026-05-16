@@ -1,5 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import { parseAnyDate, toDisplay } from "../helpers/dateUnica";
 import { readNextProcurementCloneOrders } from "../nextProcurementCloneState";
 
 const STORAGE_COLLECTION = "storage";
@@ -424,63 +425,7 @@ function unwrapStorageArrayWithPreferredKeys(
 }
 
 function parseDateFlexible(value: unknown): Date | null {
-  if (!value) return null;
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const millis = value > 1_000_000_000_000 ? value : value * 1000;
-    const parsed = new Date(millis);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    const maybe = value as {
-      toDate?: () => Date;
-      seconds?: number;
-      _seconds?: number;
-    };
-
-    if (typeof maybe.toDate === "function") {
-      const parsed = maybe.toDate();
-      return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
-    }
-
-    if (typeof maybe.seconds === "number") {
-      const parsed = new Date(maybe.seconds * 1000);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    if (typeof maybe._seconds === "number") {
-      const parsed = new Date(maybe._seconds * 1000);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-  }
-
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw) return null;
-
-  const parsedIso = new Date(raw);
-  if (!Number.isNaN(parsedIso.getTime())) {
-    return parsedIso;
-  }
-
-  const match = raw.match(
-    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
-  );
-  if (!match) return null;
-
-  const day = Number(match[1]);
-  const month = Number(match[2]) - 1;
-  const yearRaw = Number(match[3]);
-  const year = match[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const hours = Number(match[4] ?? "12");
-  const minutes = Number(match[5] ?? "00");
-  const parsed = new Date(year, month, day, hours, minutes, 0, 0);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseAnyDate(value);
 }
 
 function toTimestamp(value: unknown): number | null {
@@ -490,12 +435,7 @@ function toTimestamp(value: unknown): number | null {
 
 function formatTimestampDateLabel(timestamp: number | null): string | null {
   if (timestamp === null) return null;
-  const parsed = new Date(timestamp);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const year = String(parsed.getFullYear());
-  return `${day} ${month} ${year}`;
+  return toDisplay(timestamp) || null;
 }
 
 function normalizeLegacyDateLabel(value: unknown): string | null {
@@ -570,7 +510,7 @@ function buildOrderReference(raw: RawOrderRecord, orderId: string, orderDateLabe
     return explicitReference;
   }
 
-  const dateLabel = orderDateLabel ?? "00 00 0000";
+  const dateLabel = orderDateLabel ?? (toDisplay(null) || "00/00/0000");
   const idTail = orderId.slice(-5).toUpperCase();
   return `ORD DEL ${dateLabel} - ${idTail || "0000"}`;
 }

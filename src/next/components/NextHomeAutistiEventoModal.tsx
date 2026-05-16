@@ -16,7 +16,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime, toISO } from "../helpers/dateUnica";
 import "../../autistiInbox/AutistiInboxHome.css";
 
 type CreateManutenzioneDaFareOrigineTipo = "segnalazione" | "controllo";
@@ -102,15 +102,11 @@ function normalizeTarga(value: unknown): string {
 }
 
 function formatFileDate() {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
+  return toISO(new Date()) ?? "data-non-disponibile";
 }
 
 function formatDateTime(value: number | null | undefined) {
-  return formatDateTimeUI(value ?? null);
+  return toDisplayDateTime(value ?? null) || "-";
 }
 
 function getTipoLabel(tipo: HomeEvent["tipo"]) {

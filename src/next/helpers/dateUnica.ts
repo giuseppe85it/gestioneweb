@@ -105,7 +105,7 @@ function parseTimestampLike(value: TimestampLike): Date | null {
  * - timestamp millisecondi: 1778544000000
  * - ISO breve: "2026-05-10"
  * - ISO esteso: "2026-05-10T14:30:00" / "2026-05-10T12:30:00Z"
- * - legacy italiano con spazi: "10 05 2026"
+ * - legacy italiano con spazi: giorno, mese e anno separati da spazio
  * - legacy italiano con slash: "10/05/2026"
  * - legacy italiano con punti: "10.05.2026"
  * - null, undefined e stringa vuota: null

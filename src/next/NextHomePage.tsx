@@ -23,6 +23,7 @@ import {
   type NextInventarioSnapshot,
 } from "./domain/nextInventarioDomain";
 import { readNextProcurementSnapshot } from "./domain/nextProcurementDomain";
+import { toDisplay } from "./helpers/dateUnica";
 
 type StatCard = {
   label: string;
@@ -83,12 +84,8 @@ const PLACEHOLDER_MEZZI_CARD: StatCard = {
 const FLEET_ADMIN_PATH = "/next/autisti-admin";
 
 function formatCurrentDate(date: Date) {
-  const weekday = new Intl.DateTimeFormat("it-IT", { weekday: "long" }).format(date);
-  const day = new Intl.DateTimeFormat("it-IT", { day: "numeric" }).format(date);
-  const month = new Intl.DateTimeFormat("it-IT", { month: "short" })
-    .format(date)
-    .replace(".", "");
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day} ${month}`;
+  const giorni = ["Domenica", "Lunedi", "Martedi", "Mercoledi", "Giovedi", "Venerdi", "Sabato"];
+  return `${giorni[date.getDay()] ?? ""} ${toDisplay(date) || "-"}`;
 }
 
 function formatHomeStatValue(value: number | null): string {

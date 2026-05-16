@@ -13,7 +13,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
@@ -31,10 +31,6 @@ type RichiestaAttrezzatureRecord = {
   fotoUrls?: string[] | null;
   foto?: Array<{ dataUrl?: string; url?: string } | string> | null;
 };
-
-function formatDateTime(ts?: number | null) {
-  return formatDateTimeUI(ts ?? null);
-}
 
 function getFotoList(r: RichiestaAttrezzatureRecord) {
   const list: string[] = [];
@@ -217,7 +213,7 @@ export default function RichiestaAttrezzatureAll() {
                     aria-expanded={isOpen}
                   >
                     <div className="richiesta-row-top">
-                      <span className="richiesta-date">{formatDateTime(item.ts)}</span>
+                      <span className="richiesta-date">{toDisplayDateTime(item.ts ?? null) || "-"}</span>
                       <span
                         className={`richiesta-badge ${
                           item.isNuova ? "badge-nuova" : "badge-stato"

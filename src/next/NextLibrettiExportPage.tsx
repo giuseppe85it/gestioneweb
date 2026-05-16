@@ -16,6 +16,7 @@ import {
   type NextLibrettiExportItem,
   type NextLibrettiExportSnapshot,
 } from "./domain/nextLibrettiExportDomain";
+import { toISO } from "./helpers/dateUnica";
 import { NEXT_HOME_PATH } from "./nextStructuralPaths";
 
 const CATEGORY_ORDER = [
@@ -38,11 +39,7 @@ type LibrettiGroup = {
 };
 
 function formatFileDate() {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
+  return toISO(new Date()) ?? "data-non-disponibile";
 }
 
 function normalizeCategoryKey(value: unknown): string {

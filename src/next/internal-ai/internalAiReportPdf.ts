@@ -4,7 +4,7 @@ import {
   buildInternalAiProfessionalVehicleReportText,
   readInternalAiProfessionalVehicleReport,
 } from "./internalAiProfessionalVehicleReport";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { generateInternalAiOperationalReportPdfBlob } from "../../utils/pdfEngine";
 
 const PREVIEW_STATUS_LABELS: Record<string, string> = {
@@ -76,7 +76,7 @@ function formatDateLabel(value: string | null | undefined): string {
     return "non disponibile";
   }
 
-  return formatDateTimeUI(value);
+  return toDisplayDateTime(value) || "non disponibile";
 }
 
 function getReportTypeLabel(report: InternalAiReportPreview): string {

@@ -3,6 +3,7 @@ import {
   readNextSessioniStoricoPerTarga,
   type NextSessioneStoricoEvent,
 } from "../domain/nextSessioniStoricoDomain";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import "./sinottica-flotta-v2-design-tokens.css";
 
 type Props = {
@@ -12,14 +13,7 @@ type Props = {
 };
 
 function formatDateLong(ts: number): string {
-  const d: Date = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
-  const dd: string = String(d.getDate()).padStart(2, "0");
-  const mm: string = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy: number = d.getFullYear();
-  const hh: string = String(d.getHours()).padStart(2, "0");
-  const min: string = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} alle ${hh}:${min}`;
+  return toDisplayDateTime(ts) || "---";
 }
 
 function badgeForTipo(tipo: string): { label: string; bg: string; color: string } {

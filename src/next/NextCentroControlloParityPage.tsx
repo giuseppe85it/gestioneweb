@@ -31,6 +31,7 @@ import {
   buildNextDossierGommePath,
   buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
+import { toDisplay } from "./helpers/dateUnica";
 import NextRifornimentoEditModal from "./components/NextRifornimentoEditModal";
 import NextCentroControlloIndagineModal from "./components/NextCentroControlloIndagineModal";
 import NextCentroControlloAnalisiModal from "./components/NextCentroControlloAnalisiModal";
@@ -195,11 +196,7 @@ export function formatDecimalIt(value: number, fractionDigits = 2): string {
 }
 
 export function formatDateItDisplay(value: Date | null): string {
-  if (!value) return "--/--/----";
-  const dd = String(value.getDate()).padStart(2, "0");
-  const mm = String(value.getMonth() + 1).padStart(2, "0");
-  const yyyy = value.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return toDisplay(value) || "--/--/----";
 }
 
 export function describeAnomaly(
@@ -423,11 +420,7 @@ const parseDateFlexible = (value: unknown): Date | null => {
 };
 
 export const formatDateIt = (value: Date | null): string => {
-  if (!value) return "--/--/----";
-  const dd = String(value.getDate()).padStart(2, "0");
-  const mm = String(value.getMonth() + 1).padStart(2, "0");
-  const yyyy = value.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return toDisplay(value) || "--/--/----";
 };
 
 export const formatNumberIt = (value: number | null, fractionDigits = 2): string => {

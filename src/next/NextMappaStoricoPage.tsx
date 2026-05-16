@@ -18,11 +18,10 @@ import {
 } from "./mezziHotspotAreas";
 import { formatDateTimeUI } from "./nextDateFormat";
 import { parseDataRobusta } from "./helpers/parseRobusto";
-import { StoriaRecordTimeline } from "./components/StoriaRecordTimeline";
-import {
-  findSatelliteChiusoDaEventoForRecord,
-  getStoriaRecord,
-} from "./helpers/storiaRecord";
+import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
+import { findSatelliteChiusoDaEventoForRecord } from "./helpers/storiaRecord";
+import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
+import { toDisplay } from "./helpers/dateUnica";
 import "./next-mappa-storico.css";
 
 type ManutenzioneLegacy = NextManutenzioniLegacyDatasetRecord;
@@ -207,6 +206,10 @@ function formatMaintenanceImporto(
   });
 }
 
+function formatMaintenanceDateDisplay(value: string | null | undefined): string {
+  return toDisplay(value) || value || "DA VERIFICARE";
+}
+
 function isTyreMaintenanceRecord(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): boolean {
   if (!record) return false;
   if ((record.assiCoinvolti?.length ?? 0) > 0) return true;
@@ -325,14 +328,11 @@ export default function NextMappaStoricoPage({
         : null,
     [selectedRecord, storiaSatelliteRecords],
   );
-  const selectedRecordStoria = useMemo(
+  const selectedRecordChiuso = useMemo(
     () =>
       selectedRecord
-        ? getStoriaRecord(
+        ? recordChiusoFromRaw(
             (selectedSatelliteRecord ?? selectedRecord) as Record<string, unknown>,
-            selectedSatelliteRecord
-              ? { eventoRecord: selectedRecord as Record<string, unknown> }
-              : {},
           )
         : null,
     [selectedRecord, selectedSatelliteRecord],
@@ -790,7 +790,7 @@ export default function NextMappaStoricoPage({
                     </div>
                   </div>
                   <div className="man2-detail-v2__detail-meta">
-                    {selectedRecord.data || "DA VERIFICARE"}
+                    {formatMaintenanceDateDisplay(selectedRecord.data)}
                     <span className="man2-detail-v2__detail-meta-sep">·</span>
                     {selectedRecord.sottotipo?.trim() || "—"}
                     <span className="man2-detail-v2__detail-meta-sep">·</span>
@@ -865,7 +865,9 @@ export default function NextMappaStoricoPage({
                     <div className="man2-detail-v2__description-box">
                       {selectedRecord.descrizione?.trim() || "Nessuna descrizione inserita"}
                     </div>
-                    <StoriaRecordTimeline storia={selectedRecordStoria} />
+                    {selectedRecordChiuso ? (
+                      <FraseStoriaRecord {...selectedRecordChiuso} />
+                    ) : null}
                   </section>
 
                   {showTyreSection ? (
@@ -902,7 +904,7 @@ export default function NextMappaStoricoPage({
                         {(selectedRecord.gommePerAsse ?? []).map((entry) => (
                           <div key={`${entry.asseId}-${entry.dataCambio ?? "nodata"}`} className="man2-detail-v2__gomme-axis">
                             <strong>{formatAsseLabel(entry.asseId)}</strong>
-                            <span>Data cambio: {entry.dataCambio || "—"}</span>
+                            <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "—"}</span>
                             <span>
                               Km cambio: {entry.kmCambio != null ? formatNumberOptional(entry.kmCambio) : "—"}
                             </span>
@@ -1150,7 +1152,7 @@ export default function NextMappaStoricoPage({
               </div>
               <div className="ms-vehicle-item">
                 <span className="ms-vehicle-label">Ultima manutenzione</span>
-                <strong>{mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
+                <strong>{toDisplay(mezzoCardInfo.ultimaManutenzione) || mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
               </div>
               <div className="ms-vehicle-item">
                 <span className="ms-vehicle-label">Ultimo intervento mezzo</span>
@@ -1177,7 +1179,7 @@ export default function NextMappaStoricoPage({
                 {mezzoCardInfo.ultimeManutenzioniMezzo.map((item) => (
                   <div key={item.id} className="ms-mini-history-item">
                     <strong>{item.title}</strong>
-                    <span>{item.data}</span>
+                    <span>{toDisplay(item.data) || item.data}</span>
                   </div>
                 ))}
               </div>
@@ -1191,7 +1193,7 @@ export default function NextMappaStoricoPage({
                 {mezzoCardInfo.ultimeManutenzioniCompressore.map((item) => (
                   <div key={item.id} className="ms-mini-history-item">
                     <strong>{item.title}</strong>
-                    <span>{item.data}</span>
+                    <span>{toDisplay(item.data) || item.data}</span>
                   </div>
                 ))}
               </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../autisti/nextAutistiStorageSync";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiGommeAll.css";
 
@@ -34,10 +34,6 @@ type GommeView = GommeRecord & {
   targetLabel: string;
   autistaLabel: string;
 };
-
-function formatDateTime(ts?: number | null) {
-  return formatDateTimeUI(ts ?? null);
-}
 
 function normTarga(value?: string | null) {
   return String(value ?? "").toUpperCase().replace(/\s+/g, "").trim();
@@ -192,7 +188,7 @@ export default function AutistiGommeAll() {
                     }}
                   >
                     <div className="aig-row-top">
-                      <span>{formatDateTime(r.ts)}</span>
+                      <span>{toDisplayDateTime(r.ts ?? null) || "-"}</span>
                       <span>{r.targetLabel}</span>
                       <span>{tipo}</span>
                     </div>

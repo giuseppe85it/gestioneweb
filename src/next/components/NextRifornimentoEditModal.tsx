@@ -3,6 +3,7 @@ import {
   updateNextRifornimento,
   type NextRifornimentoEditablePayload,
 } from "../nextRifornimentiWriter";
+import { toDisplay } from "../helpers/dateUnica";
 
 type RowSubset = {
   id: string;
@@ -28,11 +29,7 @@ type Props = {
 type TipoFilter = "caravate" | "distributore";
 
 function formatDateItDisplay(value: Date | null): string {
-  if (!value) return "--/--/----";
-  const dd = String(value.getDate()).padStart(2, "0");
-  const mm = String(value.getMonth() + 1).padStart(2, "0");
-  const yyyy = value.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return toDisplay(value) || "--/--/----";
 }
 
 function deriveTipoInitial(row: RowSubset | null): TipoFilter {
@@ -60,33 +57,55 @@ export default function NextRifornimentoEditModal({
   onClose,
   onSaved,
 }: Props) {
-  const [tipo, setTipo] = useState<TipoFilter>("caravate");
-  const [metodo, setMetodo] = useState<"piccadilly" | "eni" | "contanti" | "">("");
-  const [paese, setPaese] = useState<"IT" | "CH" | "">("");
-  const [km, setKm] = useState<string>("");
-  const [litri, setLitri] = useState<string>("");
+  if (!open || !row) return null;
+
+  return (
+    <NextRifornimentoEditModalContent
+      key={`${row.originId || row.id}:${row.dateObj.getTime()}`}
+      row={row}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+type ContentProps = {
+  row: RowSubset;
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+function NextRifornimentoEditModalContent({
+  row,
+  onClose,
+  onSaved,
+}: ContentProps) {
+  const [tipo, setTipo] = useState<TipoFilter>(() => deriveTipoInitial(row));
+  const [metodo, setMetodo] = useState<"piccadilly" | "eni" | "contanti" | "">(
+    () => row.metodoPagamento ?? ""
+  );
+  const [paese, setPaese] = useState<"IT" | "CH" | "">(
+    () => row.paese ?? ""
+  );
+  const [km, setKm] = useState<string>(() => formatNumberInput(row.km));
+  const [litri, setLitri] = useState<string>(() => formatNumberInput(row.litri));
   const [importo, setImporto] = useState<string>("");
-  const [note, setNote] = useState<string>("");
+  const [note, setNote] = useState<string>(() => row.note ?? "");
   const [dirty, setDirty] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open || !row) return;
-    setTipo(deriveTipoInitial(row));
-    setMetodo(row.metodoPagamento ?? "");
-    setPaese(row.paese ?? "");
-    setKm(formatNumberInput(row.km));
-    setLitri(formatNumberInput(row.litri));
-    setImporto("");
-    setNote(row.note ?? "");
-    setDirty(false);
-    setSubmitting(false);
-    setErrorMessage(null);
-  }, [open, row]);
+  function attemptClose() {
+    if (submitting) return;
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    const ok = window.confirm("Hai modifiche non salvate. Vuoi davvero uscire?");
+    if (ok) onClose();
+  }
 
   useEffect(() => {
-    if (!open) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         attemptClose();
@@ -101,18 +120,8 @@ export default function NextRifornimentoEditModal({
     if (errorMessage) setErrorMessage(null);
   };
 
-  const attemptClose = () => {
-    if (submitting) return;
-    if (!dirty) {
-      onClose();
-      return;
-    }
-    const ok = window.confirm("Hai modifiche non salvate. Vuoi davvero uscire?");
-    if (ok) onClose();
-  };
-
   const handleSave = async () => {
-    if (!row || submitting) return;
+    if (submitting) return;
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -141,8 +150,6 @@ export default function NextRifornimentoEditModal({
     setSubmitting(false);
     setErrorMessage(result.error ?? "Errore salvataggio rifornimento.");
   };
-
-  if (!open || !row) return null;
 
   const showImportoField = tipo === "distributore" && metodo === "contanti";
 

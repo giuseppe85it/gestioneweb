@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../autisti/nextAutistiStorageSync";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiSegnalazioniAll.css";
 
@@ -44,10 +44,6 @@ function toTs(value: unknown): number | null {
     return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function formatDateTime(ts: number | null) {
-  return formatDateTimeUI(ts ?? null);
 }
 
 function buildBadgeLabel(value: unknown) {
@@ -231,7 +227,7 @@ export default function AutistiLogAccessiAll() {
               filtered.map((r) => (
                 <div className="aix-row" key={r.id}>
                   <div className="aix-row-top" style={{ fontSize: 15, gap: 16 }}>
-                    <strong>{formatDateTime(r.ts)}</strong>
+                    <strong>{toDisplayDateTime(r.ts ?? null) || "-"}</strong>
                     <span
                       style={{
                         display: "inline-flex",

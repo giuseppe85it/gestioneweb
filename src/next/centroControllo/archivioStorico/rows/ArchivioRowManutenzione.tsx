@@ -16,17 +16,22 @@ import type { NextManutenzioneStato } from "../../../domain/nextManutenzioniDoma
 import { formatDateTimeUI } from "../../../nextDateFormat";
 import { ArchivioKebabMenu } from "../ArchivioKebabMenu";
 import { ArchivioVeicoloPhoto } from "../ArchivioVeicoloPhoto";
-import { StoriaRecordTimeline } from "../../../components/StoriaRecordTimeline";
-import { getStoriaRecord } from "../../../helpers/storiaRecord";
+import { FraseStoriaRecord } from "../../../components/FraseStoriaRecord";
+import { recordChiusoFromRaw } from "../../../helpers/frasestoriaRecord";
+// PROMPT 49: cross-read sorgente per frase storia coerente quando la manutenzione
+// ha back-link a una segnalazione/controllo (origineRefId).
+import { useSorgenteManutenzione } from "../../../helpers/useSorgenteManutenzione";
 import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeMaterialiIcon,
   ArchivioExpandChevron,
+} from "./ArchivioRowShared";
+import {
   formatDateShort,
   formatImporto,
   formatTarga,
   formatTimelineStamp,
-} from "./ArchivioRowShared";
+} from "./ArchivioRowFormatters";
 
 type Props = {
   record: Extract<ArchivioRecord, { kind: "manutenzione" }>;
@@ -53,7 +58,10 @@ function statoLabel(stato: NextManutenzioneStato | null | undefined): string {
   if (stato === "daFare") return "DA FARE";
   if (stato === "programmata") return "PROGRAMMATA";
   if (stato === "chiusa_da_evento") return "CHIUSA DA EVENTO";
-  return "ESEGUITA";
+  if (stato === "eseguita") return "ESEGUITA";
+  // PROMPT 44 — D6: record legacy senza stato → etichetta "Storico" (solo
+  // display, zero scritture Firestore sui 55/73 record migrati).
+  return "STORICO";
 }
 
 function statoStyle(stato: NextManutenzioneStato | null | undefined): CSSProperties {
@@ -66,7 +74,11 @@ function statoStyle(stato: NextManutenzioneStato | null | undefined): CSSPropert
   if (stato === "chiusa_da_evento") {
     return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
   }
-  return { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" };
+  if (stato === "eseguita") {
+    return { background: "#dcfce7", color: "#166534", borderColor: "#bbf7d0" };
+  }
+  // PROMPT 44 — D6: stato "Storico" (legacy senza stato) — grigio neutro.
+  return { background: "#e5e7eb", color: "#4b5563", borderColor: "#d1d5db" };
 }
 
 function formatChiusuraEventoTipo(value: string | null | undefined): string {
@@ -97,7 +109,13 @@ export function ArchivioRowManutenzione({
 }: Props): ReactElement {
   const navigate = useNavigate();
   const data = record.data;
-  const stato = data.stato ?? "eseguita";
+  // PROMPT 44 — D6: il default storico era "eseguita" (mascherava 55/73 record
+  // legacy come "ESEGUITA"). Ora passa null al label/style che mostra "STORICO".
+  const stato = data.stato ?? null;
+  // PROMPT 49: cross-read sorgente per frase storia coerente. Quando la manutenzione
+  // ha `origineRefId` (= nata da/agganciata a segnalazione o controllo), la frase
+  // pesca data + autore dalla sorgente. Senza back-link, fallback al record stesso.
+  const sourceRecord = useSorgenteManutenzione(data as unknown as Record<string, unknown>);
   const ts: number = extractTimestamp(record);
   const safeTs: number | null = ts > 0 ? ts : null;
   const dateLabel = formatDateShort(safeTs);
@@ -166,8 +184,12 @@ export function ArchivioRowManutenzione({
         </header>
 
         <div className="archivio-row-title">{data.descrizione}</div>
-        <StoriaRecordTimeline
-          storia={getStoriaRecord(data as unknown as Record<string, unknown>)}
+        <FraseStoriaRecord
+          {...recordChiusoFromRaw(
+            data as unknown as Record<string, unknown>,
+            undefined,
+            { sourceRecord },
+          )}
           compact
         />
 

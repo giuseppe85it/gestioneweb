@@ -8,6 +8,7 @@ import type {
 import { detectRefuelAnomalies } from "../NextCentroControlloParityPage";
 import type { ActiveSession, HomeEvent } from "../../utils/homeEvents";
 import { classifyMezzoCategoria } from "../domain/nextCentroControlloDomain";
+import { toDisplay } from "../helpers/dateUnica";
 import "./sinottica-flotta-v2-design-tokens.css";
 
 type MaintenanceStatus = "SCADUTA" | "IN_SCADENZA" | "OK" | "SENZA_DATA";
@@ -226,13 +227,8 @@ function deriveRowKind(categoria: string | null | undefined): RowKind {
 }
 
 function formatDateIt(ts: number | null): string {
-  if (ts === null) return "—";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}.${mm}.${yyyy}`;
+  if (ts === null) return "---";
+  return toDisplay(ts) || "---";
 }
 
 function formatMonthYearIt(ts: number | null): string {
@@ -1710,3 +1706,4 @@ export default function NextCentroControlloSinottica({
     </div>
   );
 }
+

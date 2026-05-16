@@ -2,7 +2,7 @@ import { getDownloadURL, ref } from "firebase/storage";
 import type { WheelPoint } from "../../components/wheels";
 import { wheelGeom } from "../../components/wheels";
 import { storage } from "../../firebase";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplay, toDisplayDateTime } from "../helpers/dateUnica";
 import {
   readNextStatoOperativoSnapshot,
   type D10SessionItem,
@@ -108,7 +108,7 @@ function formatDateLabel(value: string | null | undefined): string {
     return FALLBACK_UNAVAILABLE;
   }
 
-  return formatDateTimeUI(value);
+  return toDisplayDateTime(value) || FALLBACK_UNAVAILABLE;
 }
 
 function normalizeSpace(value: string): string {
@@ -451,7 +451,9 @@ function buildScadenzeList(
 ): string[] {
   const collected = [
     report.header.revisione ? `Revisione: ${report.header.revisione}` : null,
-    mezzo?.dataUltimoCollaudo ? `Ultimo collaudo: ${mezzo.dataUltimoCollaudo}` : null,
+    mezzo?.dataUltimoCollaudo
+      ? `Ultimo collaudo: ${toDisplay(mezzo.dataUltimoCollaudo) || mezzo.dataUltimoCollaudo}`
+      : null,
     ...report.sections.flatMap((section) =>
       [...section.bullets, section.summary].filter((entry) => isDeadlineText(entry)),
     ),
@@ -879,7 +881,7 @@ function buildTyreVisual(
         ? `Coinvolgimento: lato ${side === "dx" ? "destro" : "sinistro"}`
         : null,
     candidate.marca ? `Marca: ${candidate.marca}` : null,
-    candidate.dataLabel ? `Data: ${candidate.dataLabel}` : null,
+    candidate.dataLabel ? `Data: ${toDisplay(candidate.dataLabel) || candidate.dataLabel}` : null,
   ]);
 
   return {

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { formatDateInput, formatDateUI } from "./nextDateFormat";
+import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import {
-  parseNextCentroControlloDate,
   readNextCentroControlloSnapshot,
   type D10PrenotazioneCollaudo,
   type D10PreCollaudo,
@@ -76,22 +75,23 @@ type PreCollaudoWithLavori = D10PreCollaudo & {
 
 function formatDateLabel(timestamp: number | null): string {
   if (timestamp == null) return "-";
-  return formatDateUI(new Date(timestamp));
+  return toDisplay(timestamp) || "-";
 }
 
 function formatEditableDate(value: string | null | undefined): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
-  const parsed = parseNextCentroControlloDate(raw);
-  if (!parsed) return raw;
-  return formatDateUI(parsed);
+  return toDisplay(raw) || raw;
 }
 
 function formatDateFieldValue(value: string | null | undefined): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
-  const parsed = parseNextCentroControlloDate(raw);
-  return parsed ? formatDateInput(parsed) : raw;
+  return toDisplay(raw) || raw;
+}
+
+function normalizeDateForStorage(value: string): string | null {
+  return fromUserInput(value) ?? toISO(value);
 }
 
 function formatGiorniLabel(giorni: number | null): string {
@@ -410,8 +410,9 @@ export default function NextScadenzeCollaudiPage() {
       showValidationError("Inserisci la data della prenotazione collaudo.");
       return;
     }
-    if (!parseNextCentroControlloDate(dataInput)) {
-      showValidationError("Data non valida. Usa formato gg/mm/aaaa oppure YYYY-MM-DD.");
+    const normalizedData = normalizeDateForStorage(dataInput);
+    if (!normalizedData) {
+      showValidationError("Data non valida. Usa formato GG/MM/AAAA.");
       return;
     }
     const ora = sanitizeBookingTime(operation.form.ora);
@@ -429,7 +430,7 @@ export default function NextScadenzeCollaudiPage() {
     setSubmitting(true);
     try {
       await setPrenotazioneCollaudo(targa, {
-        data: dataInput,
+        data: normalizedData,
         ora,
         ...(luogo ? { luogo } : {}),
         ...(note ? { note } : {}),
@@ -452,8 +453,9 @@ export default function NextScadenzeCollaudiPage() {
       showValidationError("Inserisci la data del pre-collaudo.");
       return;
     }
-    if (!parseNextCentroControlloDate(dataInput)) {
-      showValidationError("Data non valida. Usa formato gg/mm/aaaa oppure YYYY-MM-DD.");
+    const normalizedData = normalizeDateForStorage(dataInput);
+    if (!normalizedData) {
+      showValidationError("Data non valida. Usa formato GG/MM/AAAA.");
       return;
     }
     const officina = operation.form.officina.trim();
@@ -470,7 +472,7 @@ export default function NextScadenzeCollaudiPage() {
     setSubmitting(true);
     try {
       await setPreCollaudo(targa, {
-        data: dataInput,
+        data: normalizedData,
         officina,
         ...(lavoriPrevisti ? { lavoriPrevisti } : {}),
       });
@@ -492,8 +494,9 @@ export default function NextScadenzeCollaudiPage() {
       showValidationError("Inserisci la data della revisione.");
       return;
     }
-    if (!parseNextCentroControlloDate(dataInput)) {
-      showValidationError("Data non valida. Usa formato gg/mm/aaaa oppure YYYY-MM-DD.");
+    const normalizedData = normalizeDateForStorage(dataInput);
+    if (!normalizedData) {
+      showValidationError("Data non valida. Usa formato GG/MM/AAAA.");
       return;
     }
     const esito = operation.form.esito.trim();
@@ -510,7 +513,7 @@ export default function NextScadenzeCollaudiPage() {
     setSubmitting(true);
     try {
       await markRevisioneCompletata(targa, {
-        data: dataInput,
+        data: normalizedData,
         esito,
         ...(note ? { note } : {}),
       });
@@ -581,7 +584,9 @@ export default function NextScadenzeCollaudiPage() {
               {renderFieldLabel("Data prenotazione")}
               <input
                 className="next-shell__scadenze-input"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="GG/MM/AAAA"
                 value={operation.form.data}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -680,7 +685,9 @@ export default function NextScadenzeCollaudiPage() {
               {renderFieldLabel("Data pre-collaudo")}
               <input
                 className="next-shell__scadenze-input"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="GG/MM/AAAA"
                 value={operation.form.data}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -791,7 +798,9 @@ export default function NextScadenzeCollaudiPage() {
               {renderFieldLabel("Data revisione")}
               <input
                 className="next-shell__scadenze-input"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="GG/MM/AAAA"
                 value={operation.form.data}
                 onChange={(event) => {
                   const value = event.target.value;

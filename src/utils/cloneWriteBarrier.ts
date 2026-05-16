@@ -158,6 +158,18 @@ const CHIUSURA_DA_EVENTO_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@controlli_mezzo_autisti",
 ]);
 const CHIUSURA_DA_EVENTO_WRITE_SCOPE = "next_chiusura_da_evento_write_scope";
+// PROMPT 47/48 — scope dedicato per aggancio/sgancio legame manutenzione lato CC
+// (writer agganciaSegnalazioneAManutenzioneEsistente + sganciaLegameOrfano).
+// Path autorizzato: SOLO /next/centro-controllo (Archivio Storico interno). Le storage
+// keys includono @manutenzioni (writer T1 patch back-link su target stand-alone) +
+// @segnalazioni_autisti_tmp + @controlli_mezzo_autisti (patch sorgente).
+const CENTRO_CONTROLLO_LEGAME_ALLOWED_WRITE_PATHS = ["/next/centro-controllo"] as const;
+const CENTRO_CONTROLLO_LEGAME_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@manutenzioni",
+  "@segnalazioni_autisti_tmp",
+  "@controlli_mezzo_autisti",
+]);
+const CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE = "centro_controllo_legame_write";
 // PROMPT 31.1 — deroga ristretta per il flag `nascostoInArchivio` su 4
 // collezioni Archivio Storico. Il modulo Archivio era dichiarato
 // sola-lettura nello SPEC; questa deroga abilita SOLO la patch del flag
@@ -257,6 +269,13 @@ function isAllowedManutenzioneDaFareCreateWritePath(pathname: string): boolean {
 
 function isAllowedChiusuraDaEventoWritePath(pathname: string): boolean {
   return CHIUSURA_DA_EVENTO_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
+// PROMPT 47/48 — check path autorizzato per lo scope CENTRO_CONTROLLO_LEGAME_*.
+function isAllowedCentroControlloLegameWritePath(pathname: string): boolean {
+  return CENTRO_CONTROLLO_LEGAME_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
@@ -464,7 +483,8 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof DELETE_MEZZO_WRITE_SCOPE
     | typeof MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE
     | typeof CHIUSURA_DA_EVENTO_WRITE_SCOPE
-    | typeof ARCHIVIO_HIDE_WRITE_SCOPE,
+    | typeof ARCHIVIO_HIDE_WRITE_SCOPE
+    | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -545,6 +565,18 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return CHIUSURA_DA_EVENTO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  // PROMPT 47/48 — aggancio/sgancio legame manutenzione lato Centro Controllo.
+  // Lo scope e' acceso dai writer agganciaSegnalazioneAManutenzioneEsistente e
+  // sganciaLegameOrfano. Storage keys: @segnalazioni / @controlli (patch sorgente)
+  // + @manutenzioni (back-link su target stand-alone).
+  if (
+    isAllowedCentroControlloLegameWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return CENTRO_CONTROLLO_LEGAME_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   // PROMPT 31.1 — deroga hide flag su Archivio Storico (4 collezioni).

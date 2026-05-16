@@ -1,5 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { parseAnyDate, toISO } from "./helpers/dateUnica";
 import { readNextFlottaClonePatches } from "./nextFlottaCloneState";
 
 const STORAGE_COLLECTION = "storage";
@@ -189,68 +190,11 @@ function normalizeBoolean(value: unknown): boolean {
 }
 
 function parseDateFlexible(value: unknown): Date | null {
-  if (!value) return null;
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const millis = value > 1_000_000_000_000 ? value : value * 1000;
-    const date = new Date(millis);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    const maybe = value as {
-      toDate?: () => Date;
-      seconds?: number;
-      _seconds?: number;
-    };
-
-    if (typeof maybe.toDate === "function") {
-      const date = maybe.toDate();
-      return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
-    }
-
-    if (typeof maybe.seconds === "number") {
-      const date = new Date(maybe.seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    if (typeof maybe._seconds === "number") {
-      const date = new Date(maybe._seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-  }
-
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw) return null;
-
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
-
-  const dmyMatch = raw.match(
-    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
-  );
-  if (!dmyMatch) return null;
-
-  const yearRaw = Number(dmyMatch[3]);
-  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const month = Number(dmyMatch[2]) - 1;
-  const day = Number(dmyMatch[1]);
-  const hours = Number(dmyMatch[4] ?? "12");
-  const minutes = Number(dmyMatch[5] ?? "00");
-  const date = new Date(year, month, day, hours, minutes, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseAnyDate(value);
 }
 
 function formatDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return toISO(date) ?? "";
 }
 
 function normalizeDateInputValue(value: unknown): {

@@ -559,8 +559,24 @@ function normalizeSegnalazioneSectionItem(
     letta,
     isNuova: letta === false || normalizeLowerText(record.stato) === "nuova",
     fotoCount: Array.isArray(record.fotoUrls) ? record.fotoUrls.filter(Boolean).length : 0,
-    chiusa: record.chiusa === true,
-    dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
+    // PROMPT 49: oltre al flag legacy `chiusa: true`, considerare chiusa una segnalazione
+    // se ha `stato === "chiusa"` (PROMPT 44 D1: chiudiSegnalazioneDaEvento) o se ha la
+    // traccia chiusura valorizzata (`chiusuraRefId`/`chiusuraData`). Senza questo,
+    // dopo aggancio P47 a manutenzione eseguita la vista archivio non mostra la
+    // frase storia (perche' showChiusura legge `data.chiusa`).
+    chiusa:
+      record.chiusa === true ||
+      normalizeLowerText(record.stato) === "chiusa" ||
+      typeof record.chiusuraData === "number" ||
+      Boolean(normalizeOptionalText(record.chiusuraRefId)),
+    // PROMPT 49: fallback su `chiusuraData` quando `dataChiusura` legacy manca
+    // (writer chiudi*DaEvento PROMPT 44 non scrive `dataChiusura`).
+    dataChiusura:
+      typeof record.dataChiusura === "number"
+        ? record.dataChiusura
+        : typeof record.chiusuraData === "number"
+          ? record.chiusuraData
+          : null,
     chiusaBy: normalizeOptionalText(record.chiusa_by),
     chiusuraDi: normalizeOptionalText(record.chiusuraDi),
     chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),

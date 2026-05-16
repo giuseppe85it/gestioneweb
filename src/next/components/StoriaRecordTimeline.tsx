@@ -1,3 +1,7 @@
+// DEPRECATO (PROMPT 40): il display standard della storia record e' FraseStoriaRecord
+// (src/next/components/FraseStoriaRecord.tsx) + buildFraseStoria (helpers/frasestoriaRecord.ts).
+// Mantenuto per eventuali viste future "timeline estesa". Non usare in nuove superfici.
+
 import type { CSSProperties, ReactElement } from "react";
 
 import type { StoriaRecordData, StoriaRecordSegment } from "../helpers/storiaRecord";

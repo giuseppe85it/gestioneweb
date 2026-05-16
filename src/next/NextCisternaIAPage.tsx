@@ -13,6 +13,7 @@ import {
 } from "./nextCisternaWriter";
 import { readNextCisternaSnapshot } from "./domain/nextCisternaDomain";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import "../pages/CisternaCaravate/CisternaCaravateIA.css";
 
 type DocumentoForm = {
@@ -30,7 +31,6 @@ type DocumentoForm = {
   motivoVerifica: string;
 };
 
-const DATE_REGEX = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 const YEAR_MONTH_REGEX = /^(\d{4})-(\d{2})$/;
 
 function sanitizeFileName(name: string): string {
@@ -80,57 +80,15 @@ function parseNumberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 function normalizeDataDocumento(value: string): string | null {
   const raw = String(value || "").trim();
   if (!raw) return null;
-
-  const it = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
-  if (it) {
-    const day = Number(it[1]);
-    const month = Number(it[2]);
-    let year = Number(it[3]);
-    if (it[3].length === 2) year += 2000;
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${pad2(day)}/${pad2(month)}/${year}`;
-    }
-    return null;
-  }
-
-  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const year = Number(iso[1]);
-    const month = Number(iso[2]);
-    const day = Number(iso[3]);
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${pad2(day)}/${pad2(month)}/${year}`;
-    }
-    return null;
-  }
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+  return fromUserInput(raw) ?? toISO(raw);
 }
 
 function yearMonthFromDataDocumento(value: string | null): string | null {
-  if (!value) return null;
-  const match = value.match(DATE_REGEX);
-  if (!match) return null;
-  return `${match[3]}-${match[2]}`;
+  const iso = toISO(value);
+  return iso ? iso.slice(0, 7) : null;
 }
 
 function isValidYearMonth(value: string): boolean {
@@ -170,7 +128,7 @@ function buildFormFromExtract(data: CisternaDocumentoExtractResult): DocumentoFo
     fornitore: String(data.fornitore ?? ""),
     destinatario: String(data.destinatario ?? ""),
     numeroDocumento: String(data.numeroDocumento ?? ""),
-    dataDocumento: String(data.dataDocumento ?? ""),
+    dataDocumento: toDisplay(data.dataDocumento) || String(data.dataDocumento ?? ""),
     litriTotali: asInputString(data.litriTotali),
     totaleDocumento: asInputString(data.totaleDocumento),
     valuta: data.valuta ?? "",

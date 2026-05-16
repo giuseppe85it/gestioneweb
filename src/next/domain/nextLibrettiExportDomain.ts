@@ -4,6 +4,7 @@ import {
   type LibrettiPhotosSection,
 } from "../../utils/pdfEngine";
 import { db } from "../../firebase";
+import { toISO } from "../helpers/dateUnica";
 import {
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
@@ -150,11 +151,7 @@ function sortItems(items: NextLibrettiExportItem[]): NextLibrettiExportItem[] {
 }
 
 function formatFileDate(): string {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
+  return toISO(new Date()) ?? "data-non-disponibile";
 }
 
 export async function readNextLibrettiExportSnapshot(): Promise<NextLibrettiExportSnapshot> {

@@ -15,6 +15,7 @@ import {
   monthKeyFromDate,
   monthLabel,
 } from "../../cisterna/collections";
+import { parseAnyDate, toISO } from "../helpers/dateUnica";
 import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import type {
   CisternaDocumento,
@@ -267,81 +268,11 @@ function toNumberOrNull(value: unknown): number | null {
 }
 
 function toDateFromUnknown(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-
-  if (typeof value === "number") {
-    const millis = value > 1_000_000_000_000 ? value : value * 1000;
-    const date = new Date(millis);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  if (typeof value === "string") {
-    const direct = new Date(value);
-    if (!Number.isNaN(direct.getTime())) return direct;
-
-    const match = value.trim().match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
-    if (!match) return null;
-    const day = Number(match[1]);
-    const month = Number(match[2]) - 1;
-    const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
-    const date = new Date(year, month, day);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  if (typeof value === "object") {
-    const maybeTimestamp = value as {
-      toDate?: () => Date;
-      seconds?: number;
-      _seconds?: number;
-    };
-
-    if (typeof maybeTimestamp.toDate === "function") {
-      const date = maybeTimestamp.toDate();
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    if (typeof maybeTimestamp.seconds === "number") {
-      const date = new Date(maybeTimestamp.seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    if (typeof maybeTimestamp._seconds === "number") {
-      const date = new Date(maybeTimestamp._seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-  }
-
-  return null;
-}
-
-function formatDateKey(date: Date): string {
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}/${date.getFullYear()}`;
+  return parseAnyDate(value);
 }
 
 function normalizeDateKey(value: unknown): string {
-  const text = String(value ?? "").trim();
-  if (!text) return "";
-  const match = text.match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
-  if (!match) return "";
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  let year = Number(match[3]);
-  if (match[3].length === 2) year += 2000;
-
-  const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return "";
-  }
-
-  return formatDateKey(date);
+  return toISO(value) ?? "";
 }
 
 function formatLitri(value: number | null): string {

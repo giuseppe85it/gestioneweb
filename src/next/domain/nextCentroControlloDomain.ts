@@ -12,6 +12,7 @@ import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import type { HomeEvent } from "../../utils/homeEvents";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { readNextUnifiedStorageDocument } from "./nextUnifiedReadRegistryDomain";
+import { toDisplay } from "../helpers/dateUnica";
 
 const ALERTS_STATE_KEY = "@alerts_state";
 const MEZZI_KEY = "@mezzi_aziendali";
@@ -1256,7 +1257,7 @@ function buildRevisionAlertCandidates(
     const prenOra = item.prenotazioneCollaudo?.ora;
     const prenDateTs = toTimestamp(prenData);
     const prenLabel = prenData
-      ? ` | Prenotata ${formatDateLabel(prenDateTs) ?? prenData}${prenOra ? ` ${prenOra}` : ""}`
+      ? ` | Prenotata ${formatDateLabel(prenDateTs) ?? (toDisplay(prenData) || prenData)}${prenOra ? ` ${prenOra}` : ""}`
       : "";
     const targaId = normalizeTargaForAlertId(item.targa);
     const title = item.giorni < 0 ? "Revisione scaduta" : "Revisione in scadenza";

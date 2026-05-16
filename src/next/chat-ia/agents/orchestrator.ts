@@ -2,6 +2,7 @@ import { executeToolCall } from "../tools/chatIaToolExecutor";
 import type { ChatIaAssistantFinalMessage } from "../core/chatIaTypes";
 import { readNextAttrezzatureCantieriSnapshot } from "../../domain/nextAttrezzatureCantieriDomain";
 import { readNextRifornimentiReadOnlySnapshot } from "../../domain/nextRifornimentiDomain";
+import { toDisplay } from "../../helpers/dateUnica";
 import { parseChatIaToolDate } from "../tools/chatIaToolDates";
 import type { ChatIaToolCall, ChatIaToolResult } from "../tools/chatIaToolTypes";
 import { analyzeMultiAgentResults } from "./analytics";
@@ -67,7 +68,7 @@ function identifyArguteQuestion(prompt: string): ChatIaArguteQuestionId | null {
 }
 
 function formatDate(value: Date): string {
-  return `${String(value.getDate()).padStart(2, "0")}/${String(value.getMonth() + 1).padStart(2, "0")}/${value.getFullYear()}`;
+  return toDisplay(value) || "";
 }
 
 function periodLastMonths(nowIso: string, months: number): DatePeriod {

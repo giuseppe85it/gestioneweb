@@ -21,10 +21,12 @@ import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeFotoIcon,
   ArchivioExpandChevron,
+} from "./ArchivioRowShared";
+import {
   formatDateShort,
   formatTarga,
   formatTimelineStamp,
-} from "./ArchivioRowShared";
+} from "./ArchivioRowFormatters";
 
 type Props = {
   record: Extract<ArchivioRecord, { kind: "richiesta" }>;

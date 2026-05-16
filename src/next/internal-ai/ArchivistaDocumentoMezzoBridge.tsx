@@ -26,6 +26,7 @@ import { db } from "../../firebase";
 import { storage } from "../../firebase";
 import { getDownloadURL, ref } from "firebase/storage";
 import { uploadString } from "../../utils/storageWriteOps";
+import { parseAnyDate, toDisplay, toISO } from "../helpers/dateUnica";
 
 const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/documento-mezzo-analyze";
 const IA_LIBRETTO_ANALYZE_ENDPOINT = "https://estrazione-libretto-7bo6jdsreq-uc.a.run.app";
@@ -79,6 +80,9 @@ const IA_LIBRETTO_REQUESTED_FIELDS = [
   "note",
   "testo",
 ] as const;
+const CANONICAL_LIBRETTO_COLLAUDO_ISO = "2026-04-09";
+const CANONICAL_LIBRETTO_COLLAUDO_DISPLAY =
+  toDisplay(CANONICAL_LIBRETTO_COLLAUDO_ISO) || CANONICAL_LIBRETTO_COLLAUDO_ISO;
 void IA_LIBRETTO_ANALYZE_ENDPOINT;
 void IA_LIBRETTO_REQUESTED_FIELDS;
 
@@ -366,13 +370,7 @@ function normalizeLibrettoDateValue(value: unknown) {
     return "";
   }
 
-  const match = text.match(/(\d{1,2})[.\-/ ](\d{1,2})[.\-/ ](\d{4})/);
-  if (!match) {
-    return text;
-  }
-
-  const [, day, month, year] = match;
-  return `${day.padStart(2, "0")} ${month.padStart(2, "0")} ${year}`;
+  return toISO(text) || text;
 }
 
 function normalizeMaskedLibrettoValue(value: unknown) {
@@ -409,19 +407,10 @@ function extractLibrettoPlaceDateValue(value: unknown) {
 }
 
 function addOneYearToLibrettoDateValue(value: unknown) {
-  const normalized = normalizeLibrettoDateValue(value);
-  const match = normalized.match(/^(\d{2}) (\d{2}) (\d{4})$/);
-  if (!match) {
-    return "";
-  }
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  const nextDate = new Date(Date.UTC(year + 1, month - 1, day));
-  return `${String(nextDate.getUTCDate()).padStart(2, "0")} ${String(
-    nextDate.getUTCMonth() + 1,
-  ).padStart(2, "0")} ${nextDate.getUTCFullYear()}`;
+  const date = parseAnyDate(normalizeLibrettoDateValue(value));
+  if (!date) return "";
+  const nextDate = new Date(Date.UTC(date.getUTCFullYear() + 1, date.getUTCMonth(), date.getUTCDate()));
+  return toISO(nextDate) || "";
 }
 
 function isCanonicalLibretto282780(_record: Record<string, unknown>, fileName?: string) {
@@ -461,8 +450,8 @@ function resolveCanonicalLibrettoFieldOverrides(
     luogoCollaudo: "Camorino",
     luogoImmatricolazione: "Camorino",
     luogoRilascio: "Camorino",
-    dataUltimoCollaudo: "09 04 2026",
-    ultimoCollaudo: "09 04 2026",
+    dataUltimoCollaudo: CANONICAL_LIBRETTO_COLLAUDO_DISPLAY,
+    ultimoCollaudo: CANONICAL_LIBRETTO_COLLAUDO_DISPLAY,
     note:
       "103 II/I certificato/i di conformità UE (COC) o una sua/loro copia deve/devono accompagnare i veicoli.\n185 Carichi massimi ammessi sul timone, sulla sella d'appoggio o sugli assi nel rispetto del peso totale:\nCarico della sella d'appoggio 14000 kg\nCarico del 1. asse 9000 kg\nCarico del 2. asse 9000 kg\nCarico del 3. asse 9000 kg\nAsse triplo (assi 1-2-3) 24000 kg",
     testo:
@@ -477,7 +466,7 @@ function resolveCanonicalLibrettoUltimoCollaudoValue(
 ) {
   const canonicalOverrides = resolveCanonicalLibrettoFieldOverrides(record, fileName);
   if (normalizeText(canonicalOverrides.riga38Collaudo) === "Camorino 09.04.2026") {
-    return "09 04 2026";
+    return CANONICAL_LIBRETTO_COLLAUDO_DISPLAY;
   }
 
   return "";
@@ -1045,8 +1034,8 @@ function normalizeLibrettoAnalyzePayload(
         targa ? `Targa ${targa}` : "",
         [marca, modello].filter(Boolean).join(" "),
         proprietario ? `intestatario ${proprietario}` : "",
-        dataImmatricolazione ? `immatricolazione ${dataImmatricolazione}` : "",
-        dataScadenzaRevisione ? `scadenza revisione ${dataScadenzaRevisione}` : "",
+        dataImmatricolazione ? `immatricolazione ${toDisplay(dataImmatricolazione) || dataImmatricolazione}` : "",
+        dataScadenzaRevisione ? `scadenza revisione ${toDisplay(dataScadenzaRevisione) || dataScadenzaRevisione}` : "",
       ]
         .filter(Boolean)
         .join(" · "),

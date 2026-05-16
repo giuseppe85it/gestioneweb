@@ -24,6 +24,7 @@ import {
   type NextProcurementOrderItem,
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
+import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import { buildNextMagazzinoPath } from "./nextStructuralPaths";
 import "../pages/Acquisti.css";
 import "./next-shell.css";
@@ -106,11 +107,19 @@ function normalizeUnit(value: string | null | undefined) {
 }
 
 function formatTodayLabel() {
-  const now = new Date();
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const year = String(now.getFullYear());
-  return `${day} ${month} ${year}`;
+  return toISO(new Date()) ?? "";
+}
+
+function normalizeArrivalDateForStorage(value: string | null | undefined): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  return fromUserInput(raw) ?? toISO(raw) ?? raw;
+}
+
+function formatArrivalDateLabel(value: string | null | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  return toDisplay(raw) || raw;
 }
 
 function parseConversionFactor(note: string | null | undefined): number | null {
@@ -580,7 +589,7 @@ function OrderDetailPanel(props: {
           quantita: m.quantita ?? 0,
           unita: m.unita ?? "pz",
           arrivato: m.arrived,
-          dataArrivo: m.arrivalDateLabel ?? null,
+          dataArrivo: normalizeArrivalDateForStorage(m.arrivalDateLabel),
           fotoUrl: m.photoUrl ?? null,
           fotoStoragePath: m.photoStoragePath ?? null,
           note: m.note ?? null,
@@ -776,7 +785,7 @@ function OrderDetailPanel(props: {
         quantita: material.quantita != null ? String(material.quantita) : "",
         unita: material.unita || "",
         stato: material.arrived ? "ARRIVATO" : "IN ATTESA",
-        dataArrivo: material.arrivalDateLabel || "",
+        dataArrivo: formatArrivalDateLabel(material.arrivalDateLabel),
         note: material.note || "",
         totaleRiga:
           line.status === "needs_factor"
@@ -1182,12 +1191,12 @@ function OrderDetailPanel(props: {
                     </td>
                     <td>
                       {!editing ? (
-                        material.arrivalDateLabel ?? "-"
+                        formatArrivalDateLabel(material.arrivalDateLabel) || "-"
                       ) : (
                         <input
                           className="acq-input acq-input--sm"
-                          value={material.arrivalDateLabel ?? ""}
-                          placeholder="gg mm aaaa"
+                          value={formatArrivalDateLabel(material.arrivalDateLabel)}
+                          placeholder="GG/MM/AAAA"
                           onChange={(event) =>
                             setMaterial(material.id, (current) => ({
                               ...current,

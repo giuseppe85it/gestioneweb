@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import type { ArchivioFilters, ArchivioPeriodo, ArchivioRecordKind } from "./archivioTypes";
 import type { ArchivioManutenzioneStatoFilter } from "./hooks/useArchivioFilters";
+import { fromUserInput, parseAnyDate, toDisplay, toISO } from "../../helpers/dateUnica";
 import "./styles/archivioStorico.css";
 
 type Props = {
@@ -61,24 +62,19 @@ function formatPeriodoLabel(
   if (periodo.fromTs === 0) {
     return "Tutto lo storico";
   }
-  const from: Date = new Date(periodo.fromTs);
-  const to: Date = new Date(periodo.toTs);
-  const fmt = (d: Date): string =>
-    `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
-  return `${fmt(from)} → ${fmt(to)}`;
+  return `${toDisplay(periodo.fromTs) || "-"} → ${toDisplay(periodo.toTs) || "-"}`;
 }
 
-function toDateInputValue(ts: number): string {
+function periodTimestampToInputValue(ts: number): string {
   if (ts === 0) return "";
-  const d: Date = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return toDisplay(ts);
 }
 
-function fromDateInputValue(value: string): number | null {
+function periodInputToTimestamp(value: string): number | null {
   if (!value) return null;
-  const parsed: number = new Date(`${value}T00:00:00`).getTime();
-  return Number.isNaN(parsed) ? null : parsed;
+  const iso = fromUserInput(value) ?? toISO(value);
+  const parsed = parseAnyDate(iso ?? value);
+  return parsed ? parsed.getTime() : null;
 }
 
 export function ArchivioToolbar({
@@ -249,10 +245,12 @@ export function ArchivioToolbar({
               <label>
                 Da
                 <input
-                  type="date"
-                  value={toDateInputValue(filters.periodo.fromTs)}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="GG/MM/AAAA"
+                  value={periodTimestampToInputValue(filters.periodo.fromTs)}
                   onChange={(e) => {
-                    const next: number | null = fromDateInputValue(e.target.value);
+                    const next: number | null = periodInputToTimestamp(e.target.value);
                     if (next !== null) {
                       setPeriodo({ ...filters.periodo, fromTs: next });
                     }
@@ -262,10 +260,12 @@ export function ArchivioToolbar({
               <label>
                 A
                 <input
-                  type="date"
-                  value={toDateInputValue(filters.periodo.toTs)}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="GG/MM/AAAA"
+                  value={periodTimestampToInputValue(filters.periodo.toTs)}
                   onChange={(e) => {
-                    const next: number | null = fromDateInputValue(e.target.value);
+                    const next: number | null = periodInputToTimestamp(e.target.value);
                     if (next !== null) {
                       setPeriodo({ ...filters.periodo, toTs: next });
                     }

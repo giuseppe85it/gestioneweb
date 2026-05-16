@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./internal-ai/internal-ai.css";
-import { formatDateUI } from "./nextDateFormat";
+import { toDisplay } from "./helpers/dateUnica";
 import {
   buildNextDossierPath,
 } from "./nextStructuralPaths";
@@ -116,10 +116,10 @@ function formatMoneyCompact(value: number) {
 
 function formatDate(item: NextIADocumentiArchiveItem) {
   if (typeof item.sortTimestamp === "number" && Number.isFinite(item.sortTimestamp)) {
-    return formatDateUI(item.sortTimestamp);
+    return toDisplay(item.sortTimestamp) || "-";
   }
 
-  return normalizeText(item.dataDocumento) || "-";
+  return toDisplay(item.dataDocumento) || normalizeText(item.dataDocumento) || "-";
 }
 
 function truncateText(value: string, maxLength: number) {

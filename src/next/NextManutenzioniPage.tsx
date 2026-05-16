@@ -36,12 +36,25 @@ import {
   readNextAnagraficheFlottaSnapshot,
   type NextMezzoListItem,
 } from "./nextAnagraficheFlottaDomain";
-import { formatDateTimeUI, formatDateUI, toNextDateValue } from "./nextDateFormat";
+import { formatDateTimeUI } from "./nextDateFormat";
+import {
+  fromUserInput,
+  parseAnyDate,
+  toDisplay,
+  toISO,
+} from "./helpers/dateUnica";
 import { buildNextDossierPath } from "./nextStructuralPaths";
 import { NextAggancioEventoModal } from "./components/NextAggancioEventoModal";
 import type { EventoCompatibile } from "./helpers/eventiCompatibili";
-import { getDataRiferimentoRecord, parseDataRobusta } from "./helpers/parseRobusto";
+import { getDataRiferimentoRecord } from "./helpers/parseRobusto";
 import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
+import { buildFraseStoria, recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
+import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
+import { OfficinaAutocomplete } from "./components/OfficinaAutocomplete";
+import {
+  readNextOfficineSnapshot,
+  type NextOfficinaReadOnlyItem,
+} from "./domain/nextOfficineDomain";
 import {
   chiudiManutenzioneDaEvento,
   sganciaManutenzioneDaEvento,
@@ -125,11 +138,6 @@ type PageLoadData = {
   lavoriInAttesaByTarga: Record<string, number>;
 };
 
-const MESE_LABEL = new Intl.DateTimeFormat("it-IT", {
-  month: "long",
-  year: "numeric",
-});
-
 const PDF_UNICODE_FONT_URL =
   "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxP.ttf";
 const PDF_UNICODE_FONT_FILE = "Roboto-Regular.ttf";
@@ -146,11 +154,7 @@ const TAGLIANDO_COMPONENTI = [
 ];
 
 function todayLabel() {
-  const now = new Date();
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const year = now.getFullYear();
-  return `${day} ${month} ${year}`;
+  return toISO(new Date()) ?? "";
 }
 
 function normalizeText(value: string) {
@@ -161,44 +165,12 @@ function normalizeFreeText(value: string) {
   return value.trim();
 }
 
-function parseLegacyDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const spaceLegacy = value.trim().match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})$/);
-  if (spaceLegacy) {
-    const [, dayRaw, monthRaw, yearRaw] = spaceLegacy;
-    const day = Number(dayRaw);
-    const monthIndex = Number(monthRaw) - 1;
-    let year = Number(yearRaw);
-    if (!Number.isFinite(day) || !Number.isFinite(monthIndex) || !Number.isFinite(year)) return null;
-    if (yearRaw.length === 2) year += year >= 70 ? 1900 : 2000;
-    const parsed = new Date(year, monthIndex, day);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  const robustTimestamp = parseDataRobusta(value);
-  if (robustTimestamp !== null) {
-    const robustDate = new Date(robustTimestamp);
-    if (!Number.isNaN(robustDate.getTime())) return robustDate;
-  }
-  const normalized = value.trim().replace(/[./-]/g, " ");
-  const match = normalized.match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})$/);
-  if (!match) return null;
-  const [, dayRaw, monthRaw, yearRaw] = match;
-  const day = Number(dayRaw);
-  const monthIndex = Number(monthRaw) - 1;
-  let year = Number(yearRaw);
-  if (!Number.isFinite(day) || !Number.isFinite(monthIndex) || !Number.isFinite(year)) return null;
-  if (yearRaw.length === 2) year += year >= 70 ? 1900 : 2000;
-  const parsed = new Date(year, monthIndex, day);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
 function getLegacyDateTimestamp(value: string | null | undefined) {
-  return parseLegacyDate(value)?.getTime() ?? 0;
+  return parseAnyDate(value)?.getTime() ?? 0;
 }
 
 function buildMonthFilterKey(value: string | null | undefined): PdfPeriodFilter | null {
-  const parsed = parseLegacyDate(value);
+  const parsed = parseAnyDate(value);
   if (!parsed) return null;
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
   return `mese:${parsed.getFullYear()}-${month}`;
@@ -209,56 +181,24 @@ function formatMonthFilterLabel(filter: PdfPeriodFilter) {
   if (filter === "tutto") return "Tutto";
   const [, key] = filter.split(":");
   const [yearRaw, monthRaw] = key.split("-");
-  const year = Number(yearRaw);
-  const monthIndex = Number(monthRaw) - 1;
-  if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return key;
-  return MESE_LABEL.format(new Date(year, monthIndex, 1));
+  return toDisplay(`${yearRaw}-${monthRaw}-01`) || key;
 }
 
-function toDateInputValue(value: string | null | undefined) {
-  const parsed = parseLegacyDate(value);
-  if (!parsed) {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    return `${now.getFullYear()}-${month}-${day}`;
-  }
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  return `${parsed.getFullYear()}-${month}-${day}`;
-}
-
-function fromDateInputValue(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return value;
-  const [, year, month, day] = match;
-  return `${day} ${month} ${year}`;
+function normalizeDateEditorValue(value: string) {
+  return toISO(value) ?? fromUserInput(value) ?? value;
 }
 
 function formatDateShort(value: string | null | undefined) {
-  const parsed = parseLegacyDate(value);
-  if (!parsed) return value || "Nessuna";
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}`;
+  return toDisplay(value) || value || "Nessuna";
 }
 
 function formatDateFull(value: string | null | undefined) {
-  const parsed = parseLegacyDate(value);
-  if (!parsed) return value || "DA VERIFICARE";
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}/${parsed.getFullYear()}`;
+  return toDisplay(value) || value || "DA VERIFICARE";
 }
 
 function formatNumberIt(value: number | null | undefined) {
   if (value == null) return "DA VERIFICARE";
   return new Intl.NumberFormat("it-IT").format(value);
-}
-
-function capitalizeLabel(value: string) {
-  if (!value) return value;
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function resolvePdfMaintenanceTypeLabel(item: NextManutenzioniLegacyDatasetRecord) {
@@ -365,6 +305,19 @@ function formatMaintenanceStatoLabel(stato: NextManutenzioneStato): string {
   if (stato === "eseguita") return "ESEGUITA";
   if (stato === "chiusa_da_evento") return "CHIUSA DA EVENTO";
   return "DA FARE";
+}
+
+// PROMPT 44 — D6: etichetta che distingue il "vero daFare" (esplicito) dai
+// record legacy senza stato (55/73), mostrandoli come "STORICO". Usato dove
+// renderizzi il valore per l'utente; per i filtri interni continua a passare
+// per `resolveMaintenanceStato` (che collassa null → "daFare").
+function formatMaintenanceStatoLabelDisplay(item: NextManutenzioniLegacyDatasetRecord): string {
+  const raw = item.stato;
+  if (raw === "programmata") return "PROGRAMMATA";
+  if (raw === "eseguita") return "ESEGUITA";
+  if (raw === "chiusa_da_evento") return "CHIUSA DA EVENTO";
+  if (raw === "daFare") return "DA FARE";
+  return "STORICO";
 }
 
 function formatChiusuraEventoTipo(value: string | null | undefined): string {
@@ -509,7 +462,8 @@ function buildPdfDescrizioneWithOrigin(
 }
 
 function formatDaFareDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
-  return item.dataProgrammata || item.data || item.dataEsecuzione || "-";
+  const value = item.dataProgrammata || item.data || item.dataEsecuzione || null;
+  return toDisplay(value) || value || "-";
 }
 
 function formatMaintenancePdfDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
@@ -533,13 +487,11 @@ function normalizePdfDateCandidate(value: unknown): string | null {
     const raw = value.trim();
     if (!raw) return null;
     if (/^\d{10,13}$/.test(raw)) {
-      const parsed = toNextDateValue(Number(raw));
-      return parsed ? formatDateUI(parsed) : null;
+      return toDisplay(Number(raw)) || null;
     }
     return raw;
   }
-  const parsed = toNextDateValue(value);
-  return parsed ? formatDateUI(parsed) : null;
+  return toDisplay(value) || null;
 }
 
 function getMaintenancePdfDateValue(item: NextManutenzioniLegacyDatasetRecord): string | null {
@@ -1180,6 +1132,10 @@ export default function NextManutenzioniPage() {
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF quadro manutenzioni");
   const [modalOpenForTarga, setModalOpenForTarga] = useState<string | null>(null);
   const [pdfModalLayout, setPdfModalLayout] = useState<PdfModalLayout>("data");
+  // PROMPT 42 — T1: record selezionato per la modale di conferma eliminazione dal Quadro.
+  const [pdfDeleteCandidate, setPdfDeleteCandidate] =
+    useState<NextManutenzioniLegacyDatasetRecord | null>(null);
+  const [pdfDeleteBusy, setPdfDeleteBusy] = useState(false);
   const [daFareTargaFilter, setDaFareTargaFilter] = useState<string>("tutte");
   const [daFareUrgenzaFilter, setDaFareUrgenzaFilter] = useState<DaFareUrgenzaFilter>("tutte");
   const [daFareOrigineFilter, setDaFareOrigineFilter] = useState<DaFareOrigineFilter>("tutte");
@@ -1205,6 +1161,8 @@ export default function NextManutenzioniPage() {
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [completionRecordId, setCompletionRecordId] = useState<string | null>(null);
+  // PROMPT 42 — T2: officine dell'anagrafica per i suggerimenti dell'autocomplete.
+  const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
   const requestedTarga = useMemo(
     () => normalizeText(new URLSearchParams(location.search).get("targa") ?? ""),
     [location.search],
@@ -1270,6 +1228,23 @@ export default function NextManutenzioniPage() {
       revokePdfPreviewUrl(pdfPreviewUrl);
     };
   }, [pdfPreviewUrl]);
+
+  // PROMPT 42 — T2: carica le officine dell'anagrafica per i suggerimenti
+  // dell'autocomplete del campo Fornitore. Read-only, nessuna scrittura @officine.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snapshot = await readNextOfficineSnapshot({ includeCloneOverlays: false });
+        if (!cancelled) setOfficine(snapshot.items);
+      } catch {
+        if (!cancelled) setOfficine([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function resolvePdfOriginNotesForItems(
     items: NextManutenzioniLegacyDatasetRecord[],
@@ -1659,7 +1634,7 @@ export default function NextManutenzioniPage() {
     if (!pdfModalResult) return [];
     const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
     pdfModalResult.items.forEach((item) => {
-      const parsed = parseLegacyDate(getMaintenancePdfDateValue(item));
+      const parsed = parseAnyDate(getMaintenancePdfDateValue(item));
       const key = parsed ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}` : "senza-data";
       const current = grouped.get(key) ?? [];
       current.push(item);
@@ -1668,11 +1643,9 @@ export default function NextManutenzioniPage() {
 
     return [...grouped.entries()].map(([key, items]) => {
       const [yearRaw, monthRaw] = key.split("-");
-      const year = Number(yearRaw);
-      const monthIndex = Number(monthRaw) - 1;
       const label =
-        Number.isFinite(year) && Number.isFinite(monthIndex)
-          ? capitalizeLabel(MESE_LABEL.format(new Date(year, monthIndex, 1)))
+        key !== "senza-data"
+          ? toDisplay(`${yearRaw}-${monthRaw}-01`) || key
           : "Senza data";
       return {
         key,
@@ -1837,6 +1810,7 @@ export default function NextManutenzioniPage() {
     categoria?: string | null;
     showType: boolean;
     showSupplier: boolean;
+    showActions?: boolean;
     variant: "list" | "modal";
   }) {
     const dateClass = args.variant === "list" ? "man2-pdf-list__date" : "man2-pdf-modal__date";
@@ -1857,7 +1831,7 @@ export default function NextManutenzioniPage() {
         <tr key={`${item.id}-${args.variant}-${args.showSupplier ? "supplier" : "compact"}`}>
           <td className={dateClass}>{formatMaintenancePdfDateLabel(item)}</td>
           <td>
-            <span className="man2-pdf-list__pill">{formatMaintenanceStatoLabel(resolveMaintenanceStato(item))}</span>
+            <span className="man2-pdf-list__pill">{formatMaintenanceStatoLabelDisplay(item)}</span>
           </td>
           <td className={metricClass}>{buildPdfTableMetricValue(item, args.categoria)}</td>
           <td className={deltaClass}>{rowMetricInfo?.deltaValue ?? "—"}</td>
@@ -1868,6 +1842,18 @@ export default function NextManutenzioniPage() {
           ) : null}
           <td className={descClass}>{buildPdfDescrizione(item) || "—"}</td>
           {args.showSupplier ? <td>{item.fornitore || "—"}</td> : null}
+          {args.showActions ? (
+            <td className="man2-pdf-row__delete-cell">
+              <button
+                type="button"
+                className="man2-btn man2-btn--danger"
+                onClick={() => setPdfDeleteCandidate(item)}
+                aria-label={`Elimina manutenzione ${item.descrizione}`}
+              >
+                Elimina
+              </button>
+            </td>
+          ) : null}
         </tr>
       );
     });
@@ -2003,6 +1989,36 @@ export default function NextManutenzioniPage() {
     }
   }
 
+  async function handleConfirmPdfDelete(): Promise<void> {
+    const record = pdfDeleteCandidate;
+    if (!record) return;
+    const recordId = String(record.id ?? "").trim();
+    try {
+      setPdfDeleteBusy(true);
+      setError(null);
+      setNotice(null);
+      const ok = await deleteNextManutenzioneBusinessRecord(recordId, {
+        targa: record.targa ?? null,
+        data: record.data ?? null,
+        descrizione: record.descrizione ?? null,
+        stato: record.stato ?? null,
+      });
+      if (!ok) {
+        setError("Eliminazione manutenzione non riuscita: record non trovato nel dataset.");
+        return;
+      }
+      setPdfDeleteCandidate(null);
+      setSelectedDetailRecordId(null);
+      await refreshData();
+      setNotice("Manutenzione eliminata dal dataset reale.");
+    } catch (deleteError) {
+      console.error("Errore eliminazione manutenzione dal Quadro:", deleteError);
+      setError("Eliminazione manutenzione non riuscita.");
+    } finally {
+      setPdfDeleteBusy(false);
+    }
+  }
+
   function getManutenzioneAggancioTimestamp(record: NextManutenzioniLegacyDatasetRecord): number {
     return getDataRiferimentoRecord(record as unknown as Record<string, unknown>);
   }
@@ -2014,7 +2030,12 @@ export default function NextManutenzioniPage() {
       setAggancioManutenzioneBusy(true);
       setError(null);
       setNotice(null);
-      const result = await chiudiManutenzioneDaEvento(record.id, "gomme_evento", evento.id);
+      const result = await chiudiManutenzioneDaEvento(record.id, "gomme_evento", evento.id, undefined, {
+        targa: (record as { targa?: string | null }).targa ?? null,
+        data: (record as { data?: string | null }).data ?? null,
+        descrizione: (record as { descrizione?: string | null }).descrizione ?? null,
+        stato: (record as { stato?: string | null }).stato ?? null,
+      });
       if (!result.ok) {
         throw new Error(result.error || "Aggancio evento non riuscito.");
       }
@@ -2081,13 +2102,13 @@ export default function NextManutenzioniPage() {
   async function handleSave() {
     const normalizedTarga = normalizeText(targa);
     const normalizedDescrizione = normalizeFreeText(descrizione);
-    const normalizedData = normalizeFreeText(data);
+    const normalizedData = toISO(data) ?? fromUserInput(data);
     const normalizedImporto = parseImportoInput(importo);
     const sourceRecord = editingId ? storico.find((item) => item.id === editingId) ?? null : null;
     const isCompletionSave = Boolean(completionRecordId && completionRecordId === editingId);
 
     if (!normalizedTarga || !normalizedDescrizione || !normalizedData) {
-      window.alert("Compila almeno TARGA, DESCRIZIONE e DATA.");
+      window.alert("Compila almeno TARGA, DESCRIZIONE e DATA nel formato GG/MM/AAAA.");
       return;
     }
 
@@ -2123,6 +2144,14 @@ export default function NextManutenzioniPage() {
       const wasEditing = Boolean(editingId);
       const savedRecord = await saveNextManutenzioneBusinessRecord({
         editingSourceId: editingId,
+        editingSourceFingerprint: sourceRecord
+          ? {
+              targa: sourceRecord.targa ?? null,
+              data: sourceRecord.data ?? null,
+              descrizione: sourceRecord.descrizione ?? null,
+              stato: sourceRecord.stato ?? null,
+            }
+          : null,
         targa: normalizedTarga,
         tipo,
         fornitore: normalizeFreeText(fornitore) || null,
@@ -2323,7 +2352,12 @@ export default function NextManutenzioniPage() {
         body: closedItems.map((item) => [
           toPdfText(buildPdfClosedExternalOriginLabel(item, notesById), fontReady),
           toPdfText(formatPdfChiusuraDateLabel(item), fontReady),
-          toPdfText(buildPdfDescrizione(item), fontReady),
+          toPdfText(
+            `${buildPdfDescrizione(item)}\n${buildFraseStoria(
+              recordChiusoFromRaw(item as unknown as Record<string, unknown>),
+            )}`,
+            fontReady,
+          ),
           toPdfText(buildChiusuraDaEventoTitle(item) ?? "Evento esterno", fontReady),
         ]),
         styles: {
@@ -2496,7 +2530,7 @@ export default function NextManutenzioniPage() {
 
           return [
             toPdfText(formatMaintenancePdfDateLabel(item), fontReady),
-            toPdfText(formatMaintenanceStatoLabel(resolveMaintenanceStato(item)), fontReady),
+            toPdfText(formatMaintenanceStatoLabelDisplay(item), fontReady),
             toPdfText(buildPdfTableMetricValue(item, group?.mezzo?.categoria ?? null), fontReady),
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
@@ -2641,7 +2675,7 @@ export default function NextManutenzioniPage() {
 
           return [
             toPdfText(formatMaintenancePdfDateLabel(item), fontReady),
-            toPdfText(formatMaintenanceStatoLabel(resolveMaintenanceStato(item)), fontReady),
+            toPdfText(formatMaintenanceStatoLabelDisplay(item), fontReady),
             toPdfText(buildPdfTableMetricValue(item, group.mezzo?.categoria ?? null), fontReady),
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
@@ -2718,7 +2752,7 @@ export default function NextManutenzioniPage() {
       },
       {
         label: "Ultima manutenzione",
-        value: activeTarga ? latestRecord?.data || "Nessuna" : "-",
+        value: activeTarga ? (latestRecord ? formatDateShort(latestRecord.data) : "Nessuna") : "-",
       },
     ];
 
@@ -2848,6 +2882,10 @@ export default function NextManutenzioniPage() {
                     </span>
                     <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
                   </div>
+                  <FraseStoriaRecord
+                    {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
+                    compact
+                  />
                   <div className="man2-form-actions">
                     <button type="button" className="man2-btn" onClick={() => openDetailForRecord(item)}>
                       Apri
@@ -2939,7 +2977,7 @@ export default function NextManutenzioniPage() {
                     <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 40)}</span>
                     <div className="man2-last-item__meta">
                       {[
-                        item.data,
+                        formatDateShort(item.data),
                         buildMisuraLabel(item),
                         item.fornitore || null,
                         formatMaintenanceImporto(item),
@@ -2955,11 +2993,16 @@ export default function NextManutenzioniPage() {
                       style={getMaintenanceStatoBadgeStyle(resolveMaintenanceStato(item))}
                       title={buildChiusuraDaEventoTitle(item)}
                     >
-                      {formatMaintenanceStatoLabel(resolveMaintenanceStato(item))}
+                      {formatMaintenanceStatoLabelDisplay(item)}
                     </span>
                     <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
                   </div>
                 </div>
+                <FraseStoriaRecord
+                  {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
+                  compact
+                  as="span"
+                />
               </button>
             ))
           ) : (
@@ -3035,10 +3078,30 @@ export default function NextManutenzioniPage() {
               <div className="man2-field man2-metric-group man2-metric-group--date">
                 <label className="man2-field__label">Data</label>
                 <input
-                  type="date"
-                  value={toDateInputValue(data)}
-                  onChange={(event) => setData(fromDateInputValue(event.target.value))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="GG/MM/AAAA"
+                  value={toDisplay(data) || data}
+                  onChange={(event) => setData(normalizeDateEditorValue(event.target.value))}
                 />
+                {(() => {
+                  // PROMPT 45 T4: messaggio errore solo se l'utente ha digitato qualcosa di "completo"
+                  // (>= 10 caratteri o due slash) che non risulta parsabile da dateUnica.
+                  const trimmed = String(data ?? "").trim();
+                  if (!trimmed) return null;
+                  const looksComplete =
+                    trimmed.length >= 10 || (trimmed.match(/\//g)?.length ?? 0) >= 2;
+                  if (!looksComplete) return null;
+                  if (toDisplay(trimmed)) return null;
+                  return (
+                    <small
+                      className="man2-field-error"
+                      style={{ color: "#b91c1c", display: "block", marginTop: 4 }}
+                    >
+                      Data non valida. Formato atteso GG/MM/AAAA.
+                    </small>
+                  );
+                })()}
               </div>
               <div className="man2-field man2-metric-group man2-metric-group--metric">
                 <label className="man2-field__label">
@@ -3064,10 +3127,11 @@ export default function NextManutenzioniPage() {
                 />
               </div>
               <div className="man2-field man2-metric-group man2-metric-group--supplier">
-                <label className="man2-field__label">Fornitore</label>
-                <input
+                <label className="man2-field__label">Fornitore / Officina</label>
+                <OfficinaAutocomplete
                   value={fornitore}
-                  onChange={(event) => setFornitore(event.target.value.toUpperCase())}
+                  onChange={setFornitore}
+                  officine={officine}
                   placeholder="Es. Officina Rossi"
                 />
               </div>
@@ -3127,7 +3191,7 @@ export default function NextManutenzioniPage() {
                             <div className="man2-gomme-asse-card__meta">
                               <div>
                                 <span>Data cambio</span>
-                                <strong>{entry.dataCambio || "DA INSERIRE"}</strong>
+                                <strong>{toDisplay(entry.dataCambio) || entry.dataCambio || "DA INSERIRE"}</strong>
                               </div>
                               {categoriaMotorizzata ? (
                                 <div>
@@ -3512,7 +3576,7 @@ export default function NextManutenzioniPage() {
                       ) : null}
                       <div>
                         <span className="man2-pdf-row__label">Data</span>
-                        <strong>{result.latest.data}</strong>
+                        <strong>{toDisplay(result.latest.data) || "DA VERIFICARE"}</strong>
                       </div>
                       <div>
                         <span className="man2-pdf-row__label">Tipo</span>
@@ -3548,6 +3612,7 @@ export default function NextManutenzioniPage() {
                                 <th>{deltaColumnLabel}</th>
                                 <th>Tipo</th>
                                 <th>Descrizione</th>
+                                <th>Azioni</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3558,6 +3623,7 @@ export default function NextManutenzioniPage() {
                                 categoria: result.mezzo?.categoria ?? null,
                                 showType: true,
                                 showSupplier: false,
+                                showActions: true,
                                 variant: "list",
                               })}
                             </tbody>
@@ -3600,7 +3666,7 @@ export default function NextManutenzioniPage() {
                               {result.gommePerAsse.map((entry) => (
                                 <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
                                   <strong>{entry.asseLabel}</strong>
-                                  <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
+                                  <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "DA VERIFICARE"}</span>
                                   {entry.isMotorizzato ? (
                                     <>
                                       <span>
@@ -3632,7 +3698,7 @@ export default function NextManutenzioniPage() {
                                   className="man2-gomme-pdf-event"
                                 >
                                   <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
-                                  <span>Data: {entry.dataLabel || "DA VERIFICARE"}</span>
+                                  <span>Data: {toDisplay(entry.dataLabel) || "DA VERIFICARE"}</span>
                                   <span>Asse: {entry.asseLabel || "Non specificato"}</span>
                                   <span>
                                     Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
@@ -3743,6 +3809,7 @@ export default function NextManutenzioniPage() {
                           <th>Tipo</th>
                           <th>Descrizione</th>
                           <th>Fornitore</th>
+                          <th>Azioni</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3753,6 +3820,7 @@ export default function NextManutenzioniPage() {
                           categoria: pdfModalResult.mezzo?.categoria ?? null,
                           showType: true,
                           showSupplier: true,
+                          showActions: true,
                           variant: "modal",
                         })}
                       </tbody>
@@ -3774,6 +3842,7 @@ export default function NextManutenzioniPage() {
                                 <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
                                 <th>Tipo</th>
                                 <th>Descrizione</th>
+                                <th>Azioni</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3784,6 +3853,7 @@ export default function NextManutenzioniPage() {
                                 categoria: pdfModalResult.mezzo?.categoria ?? null,
                                 showType: true,
                                 showSupplier: false,
+                                showActions: true,
                                 variant: "modal",
                               })}
                             </tbody>
@@ -3811,6 +3881,7 @@ export default function NextManutenzioniPage() {
                                 categoria: pdfModalResult.mezzo?.categoria ?? null,
                                 showType: false,
                                 showSupplier: false,
+                                showActions: true,
                                 variant: "modal",
                               })}
                             </tbody>
@@ -3854,6 +3925,72 @@ export default function NextManutenzioniPage() {
         </div>
         {origineModalError ? <div className="man2-feedback man2-feedback--error">{origineModalError}</div> : null}
       </section>
+    );
+  }
+
+  function renderPdfDeleteModal() {
+    const record = pdfDeleteCandidate;
+    if (!record) return null;
+    const dataLabel = toDisplay(record.data) || record.data || "data non disponibile";
+    const close = () => {
+      if (!pdfDeleteBusy) setPdfDeleteCandidate(null);
+    };
+    return (
+      <div
+        className="man2-pdf-modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Elimina manutenzione"
+      >
+        <div className="man2-pdf-modal man2-pdf-modal--confirm">
+          <div className="man2-pdf-modal__head">
+            <div>
+              <h3>Elimina manutenzione</h3>
+            </div>
+            <button
+              type="button"
+              className="man2-pdf-modal__close"
+              aria-label="Chiudi"
+              onClick={close}
+              disabled={pdfDeleteBusy}
+            >
+              x
+            </button>
+          </div>
+          <div className="man2-pdf-modal__content">
+            <p>Stai per eliminare definitivamente questa manutenzione:</p>
+            <p>
+              <strong>Manutenzione del {dataLabel}</strong>
+              {record.descrizione ? <> — {record.descrizione}</> : null}
+            </p>
+            <p>
+              Mezzo <strong>{record.targa || "—"}</strong> · tipo {record.tipo}
+            </p>
+            <p className="man2-feedback man2-feedback--error">
+              L&apos;operazione non puo&apos; essere annullata.
+            </p>
+            <div className="man2-form-actions">
+              <button
+                type="button"
+                className="man2-btn"
+                autoFocus
+                onClick={close}
+                disabled={pdfDeleteBusy}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="man2-btn man2-btn--danger"
+                onClick={() => void handleConfirmPdfDelete()}
+                disabled={pdfDeleteBusy}
+              >
+                {pdfDeleteBusy ? "Eliminazione..." : "Elimina definitivamente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -4011,17 +4148,17 @@ export default function NextManutenzioniPage() {
               categoria: mezzoPreviewSelezionato?.categoria ?? null,
               kmAttuali: kmUltimoRifornimento,
               latestGommeKmCambio,
-              ultimaManutenzione: latestRecord?.data ?? null,
+              ultimaManutenzione: latestRecord ? formatDateShort(latestRecord.data) : null,
               ultimoInterventoMezzo: ultimeManutenzioniMezzo[0]?.descrizione ?? null,
               ultimoInterventoCompressore: ultimeManutenzioniCompressore[0]?.descrizione ?? null,
               ultimeManutenzioniMezzo: ultimeManutenzioniMezzoSenzaUltimo.map((item) => ({
                 id: item.id,
-                data: item.data,
+                data: formatDateShort(item.data),
                 title: buildDescrizioneSnippet(item.descrizione, 78),
               })),
               ultimeManutenzioniCompressore: ultimeManutenzioniCompressoreSenzaUltimo.map((item) => ({
                 id: item.id,
-                data: item.data,
+                data: formatDateShort(item.data),
                 title: buildDescrizioneSnippet(item.descrizione, 78),
               })),
             }}
@@ -4069,6 +4206,7 @@ export default function NextManutenzioniPage() {
         />
       ) : null}
       {renderOrigineModal()}
+      {renderPdfDeleteModal()}
     </div>
   );
 }

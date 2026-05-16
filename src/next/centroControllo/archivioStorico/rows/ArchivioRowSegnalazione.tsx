@@ -15,16 +15,23 @@ import type {
 } from "../archivioTypes";
 import { ArchivioKebabMenu } from "../ArchivioKebabMenu";
 import { ArchivioVeicoloPhoto } from "../ArchivioVeicoloPhoto";
+// PROMPT 52: frase storia visibile direttamente sulla riga base segnalazione
+// (prima era solo dentro ArchivioRowExpanded dietro chevron, e Giuseppe non
+// la vedeva). Allinea il rendering con ArchivioRowManutenzione (riga compact).
+import { FraseStoriaRecord } from "../../../components/FraseStoriaRecord";
+import { recordChiusoFromRaw } from "../../../helpers/frasestoriaRecord";
 import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeFotoIcon,
   ArchivioExpandChevron,
+} from "./ArchivioRowShared";
+import {
   deriveSegnTipoChip,
   formatDateShort,
   formatTarga,
   formatTimelineStamp,
   segnTipoLabel,
-} from "./ArchivioRowShared";
+} from "./ArchivioRowFormatters";
 
 type Props = {
   record: Extract<ArchivioRecord, { kind: "segnalazione" }>;
@@ -128,6 +135,14 @@ export function ArchivioRowSegnalazione({
             </span>
           </div>
         ) : null}
+
+        {/* PROMPT 52: frase storia compatta. `recordChiusoFromRaw` con tipoOverride
+            "segnalazione" + estensione per `stato === "chiusa"` (cfr. helper P52)
+            produce la frase coerente: "Segnalazione di X del Y, eseguita il Z. ..." */}
+        <FraseStoriaRecord
+          {...recordChiusoFromRaw(data as unknown as Record<string, unknown>, "segnalazione")}
+          compact
+        />
 
         <footer className="archivio-row-foot">
           <div className="archivio-timeline">

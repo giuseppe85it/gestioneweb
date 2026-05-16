@@ -23,11 +23,20 @@ import {
 } from "../../utils/pdfPreview";
 import { buildTargheList } from "../../utils/targhe";
 import TargaPicker from "../../components/TargaPicker";
-import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
+import { toDisplay, toDisplayDateTime, toISO } from "../helpers/dateUnica";
 import {
+  agganciaSorgenteAManutenzioneEsistente,
   createManutenzioneDaFareFromControllo,
   createManutenzioneDaFareFromSegnalazione,
 } from "../writers/nextManutenzioneDaFareCreateWriter";
+import {
+  getManutenzioniCandidateMerge,
+  type ManutenzioneCandidataMerge,
+} from "../helpers/manutenzioniCandidatiMerge";
+import {
+  NextMergeManutenzioneModal,
+  type MergeOrigineRecord,
+} from "../components/NextMergeManutenzioneModal";
 import {
   chiudiControlloDaEvento,
   chiudiManutenzioneDaEvento,
@@ -86,11 +95,11 @@ function formatDayLabel(d: Date) {
     "Venerdì",
     "Sabato",
   ];
-  return `${giorni[d.getDay()] ?? ""} ${formatDateUI(d)}`;
+  return `${giorni[d.getDay()] ?? ""} ${toDisplay(d) || "-"}`;
 }
 
 function formatHHMM(ts: number) {
-  return formatDateTimeUI(ts);
+  return toDisplayDateTime(ts) || "-";
 }
 
 function toTs(v: any): number | null {
@@ -109,10 +118,6 @@ function toTs(v: any): number | null {
 function toStrOrNull(v: any): string | null {
   if (v === undefined || v === null || v === "") return null;
   return String(v);
-}
-
-function formatDateString(ts: number) {
-  return formatDateUI(ts);
 }
 
 function toNumberOrNull(value: any) {
@@ -137,17 +142,13 @@ function buildDossierItem(record: any) {
   return {
     id: String(record?.id ?? ""),
     mezzoTarga,
-    data: formatDateString(ts),
+    data: toDisplay(ts) || "-",
     litri: toNumberOrNull(record?.litri),
     km: toNumberOrNull(record?.km),
     distributore: buildDistributore(record),
     costo: toNumberOrNull(record?.importo),
     note: record?.note != null ? String(record.note) : "",
   };
-}
-
-function formatDateTime(ts: number) {
-  return formatDateTimeUI(ts ?? null);
 }
 
 function normalizeMezzi(raw: any): any[] {
@@ -171,10 +172,7 @@ export default function AutistiAdmin() {
   }, []);
 
   const formatDateInputValue = (value: Date) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const dayValue = String(value.getDate()).padStart(2, "0");
-    return `${year}-${month}-${dayValue}`;
+    return toISO(value) ?? "";
   };
 
   const openDatePicker = () => {
@@ -213,6 +211,13 @@ export default function AutistiAdmin() {
     record: any;
   } | null>(null);
   const [aggancioEventoBusy, setAggancioEventoBusy] = useState(false);
+  // PROMPT 45 T1 — modale "crea nuova vs unisci a esistente".
+  const [mergeModalState, setMergeModalState] = useState<{
+    kind: "segnalazione" | "controllo";
+    record: any;
+    candidati: ManutenzioneCandidataMerge[];
+    busy: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Modale modifica sessione
@@ -1658,14 +1663,9 @@ function shouldBlockAdminMutations() {
     }
   }
 
-  async function createManutenzioneDaFareAdminFromSegnalazione(record: any) {
-    if (!record) return;
-    if (hasLinkedLavoro(record)) {
-      window.alert("Manutenzione gia creata per questa segnalazione.");
-      return;
-    }
-    if (!window.confirm("Creare una manutenzione da fare da questa segnalazione?")) return;
-
+  // PROMPT 45 T1 — Path "crea nuova" estratto: chiama il writer originale e
+  // gestisce il post (reload sorgente + naviga al dettaglio se richiesto).
+  async function doCreateDaFareDaSegnalazione(record: any) {
     try {
       const result = await createManutenzioneDaFareFromSegnalazione(record);
       if (!result.ok) {
@@ -1697,14 +1697,7 @@ function shouldBlockAdminMutations() {
     }
   }
 
-  async function createManutenzioneDaFareAdminFromControllo(record: any) {
-    if (!record) return;
-    if (hasLinkedLavoro(record)) {
-      window.alert("Manutenzione gia creata per questo controllo.");
-      return;
-    }
-    if (!window.confirm("Creare una manutenzione da fare da questo controllo?")) return;
-
+  async function doCreateDaFareDaControllo(record: any) {
     try {
       const result = await createManutenzioneDaFareFromControllo(record);
       if (!result.ok) {
@@ -1742,6 +1735,120 @@ function shouldBlockAdminMutations() {
       console.error("Errore creazione manutenzione da controllo:", error);
       window.alert("Errore creazione manutenzione da fare.");
     }
+  }
+
+  // PROMPT 45 T1 — Path "unisci a esistente": chiama il writer merge e ricarica
+  // la lista sorgente. Non naviga al dettaglio (il target era gia' esistente).
+  async function doMergeSorgenteToTarget(
+    targetId: string,
+    kind: "segnalazione" | "controllo",
+    record: any,
+  ) {
+    setMergeModalState((prev) => (prev ? { ...prev, busy: true } : prev));
+    try {
+      const res = await agganciaSorgenteAManutenzioneEsistente({
+        manutenzioneTargetId: targetId,
+        origineTipo: kind,
+        origineRecord: record,
+      });
+      setMergeModalState(null);
+      if (!res.ok) {
+        window.alert(res.error || "Errore unione manutenzione.");
+        return;
+      }
+      const sourceKey = kind === "segnalazione" ? KEY_SEGNALAZIONI : KEY_CONTROLLI;
+      const raw = (await getItemSync(sourceKey)) || [];
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.value)
+        ? raw.value
+        : [];
+      if (kind === "segnalazione") setSegnalazioniRaw(list);
+      else setControlliRaw(list);
+      if (res.alreadyLinked) {
+        window.alert("Segnalazione/controllo era gia' collegata a questa manutenzione.");
+      } else {
+        window.alert(`Unita alla manutenzione esistente (id ${targetId}).`);
+      }
+    } catch (error) {
+      console.error("Errore merge sorgente -> manutenzione esistente:", error);
+      setMergeModalState(null);
+      window.alert("Errore unione manutenzione.");
+    }
+  }
+
+  function buildMergeOrigineRecord(
+    kind: "segnalazione" | "controllo",
+    record: any,
+  ): MergeOrigineRecord {
+    const targa = fmtTarga(
+      record?.targa ?? record?.targaCamion ?? record?.targaMotrice ?? record?.targaRimorchio ?? "",
+    );
+    let descrizioneSorgente = "";
+    if (kind === "segnalazione") {
+      const tipoP = String(record?.tipoProblema ?? "").trim();
+      const desc = String(record?.descrizione ?? "").trim();
+      descrizioneSorgente = `Segnalazione: ${tipoP || "-"}${desc ? ` - ${desc}` : ""}`;
+    } else {
+      const check =
+        record && typeof record.check === "object" && record.check !== null ? record.check : {};
+      const koList = Object.entries(check as Record<string, unknown>)
+        .filter(([, value]) => value === false)
+        .map(([key]) => key.toUpperCase());
+      descrizioneSorgente = `Controllo KO: ${koList.length > 0 ? koList.join(", ") : "-"}`;
+    }
+    return {
+      id: String(record?.id ?? ""),
+      targa,
+      tipo: kind,
+      descrizioneSorgente,
+    };
+  }
+
+  async function createManutenzioneDaFareAdminFromSegnalazione(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questa segnalazione.");
+      return;
+    }
+    // PROMPT 45 T1 — cerca manutenzioni aperte stessa targa. Se ne esiste almeno
+    // una, apri il modale "Crea nuova vs Unisci a esistente". Bypass diretto se
+    // candidati = 0 (preserva il flusso classico con confirm + creazione).
+    const targa = fmtTarga(record?.targa ?? record?.targaCamion ?? record?.targaRimorchio ?? "");
+    const candidati = targa ? await getManutenzioniCandidateMerge(targa) : [];
+    if (candidati.length === 0) {
+      if (!window.confirm("Creare una manutenzione da fare da questa segnalazione?")) return;
+      await doCreateDaFareDaSegnalazione(record);
+      return;
+    }
+    setMergeModalState({ kind: "segnalazione", record, candidati, busy: false });
+  }
+
+  async function createManutenzioneDaFareAdminFromControllo(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questo controllo.");
+      return;
+    }
+    // PROMPT 45 T1 — stesso pattern di sopra per controlli KO.
+    const target = String(record?.target ?? "").toLowerCase();
+    const targaMotrice = fmtTarga(record?.targaCamion ?? record?.targaMotrice ?? "");
+    const targaRimorchio = fmtTarga(record?.targaRimorchio ?? "");
+    const targaPrincipale =
+      target === "rimorchio"
+        ? targaRimorchio
+        : target === "entrambi"
+          ? targaMotrice || targaRimorchio
+          : targaMotrice;
+    const candidati = targaPrincipale
+      ? await getManutenzioniCandidateMerge(targaPrincipale)
+      : [];
+    if (candidati.length === 0) {
+      if (!window.confirm("Creare una manutenzione da fare da questo controllo?")) return;
+      await doCreateDaFareDaControllo(record);
+      return;
+    }
+    setMergeModalState({ kind: "controllo", record, candidati, busy: false });
   }
 
   async function updateGommeRecord(recordId: string, patch: any) {
@@ -1789,7 +1896,13 @@ function shouldBlockAdminMutations() {
       const chiusuraResults = await Promise.all(
         selected.map((entry) => {
           if (entry.kind === "manutenzione") {
-            return chiudiManutenzioneDaEvento(entry.id, "gomme_evento", idEvento);
+            return chiudiManutenzioneDaEvento(
+              entry.id,
+              "gomme_evento",
+              idEvento,
+              undefined,
+              entry.fingerprint ?? null,
+            );
           }
           if (entry.kind === "segnalazione") {
             return chiudiSegnalazioneDaEvento(entry.id, "gomme_evento", idEvento);
@@ -2668,7 +2781,7 @@ function shouldBlockAdminMutations() {
                 return (
                   <div className={`row ${item.isNuova ? "pill-danger" : ""}`} key={item.key}>
                     <div className="row-left">
-                      <div className="time">{formatDateTime(ts)}</div>
+                      <div className="time">{toDisplayDateTime(ts) || "-"}</div>
                       <div className="main">
                         <div className="line1">
                           <span>{autista}</span>
@@ -2802,7 +2915,7 @@ function shouldBlockAdminMutations() {
                   return (
                     <div className={`row ${item.isKO ? "pill-danger" : ""}`} key={item.key}>
                       <div className="row-left">
-                        <div className="time">{formatDateTime(ts)}</div>
+                        <div className="time">{toDisplayDateTime(ts) || "-"}</div>
                         <div className="main">
                           <div className="line1">
                             <span>{autista}</span>
@@ -2916,7 +3029,7 @@ function shouldBlockAdminMutations() {
                 return (
                   <div className={`row ${item.isNuova ? "pill-danger" : ""}`} key={item.key}>
                     <div className="row-left">
-                      <div className="time">{formatDateTime(ts)}</div>
+                      <div className="time">{toDisplayDateTime(ts) || "-"}</div>
                       <div className="main">
                         <div className="line1">
                           <span>{autista}</span>
@@ -3141,7 +3254,7 @@ function shouldBlockAdminMutations() {
                       if (e.key === "Enter" || e.key === " ") openCanonEdit(evt);
                     }}
                   >
-                    <div className="canon-cell">{formatDateTime(ts)}</div>
+                    <div className="canon-cell">{toDisplayDateTime(ts) || "-"}</div>
                     <div className="canon-cell">{`BADGE ${badge} | ${nome}`}</div>
                     <div className="canon-cell">{luogo}</div>
                     <div className="canon-cell">{motriceLine ?? ""}</div>
@@ -3933,6 +4046,31 @@ function shouldBlockAdminMutations() {
               if (!aggancioEventoBusy) setAggancioEventoState(null);
             }}
             onConfirm={(evento) => void confirmAggancioEventoAdmin(evento)}
+          />
+        ) : null}
+        {mergeModalState ? (
+          <NextMergeManutenzioneModal
+            origineRecord={buildMergeOrigineRecord(
+              mergeModalState.kind,
+              mergeModalState.record,
+            )}
+            candidati={mergeModalState.candidati}
+            busy={mergeModalState.busy}
+            onCancel={() => {
+              if (!mergeModalState.busy) setMergeModalState(null);
+            }}
+            onConfirmCreaNuova={() => {
+              const captured = mergeModalState;
+              setMergeModalState(null);
+              if (captured.kind === "segnalazione") {
+                void doCreateDaFareDaSegnalazione(captured.record);
+              } else {
+                void doCreateDaFareDaControllo(captured.record);
+              }
+            }}
+            onConfirmMerge={(targetId) => {
+              void doMergeSorgenteToTarget(targetId, mergeModalState.kind, mergeModalState.record);
+            }}
           />
         ) : null}
         {lightboxSrc ? (

@@ -5,6 +5,7 @@ import type {
   ChatIaArguteQuestionId,
   ChatIaOrchestratorPlan,
 } from "./types";
+import { toDisplay } from "../../helpers/dateUnica";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -14,6 +15,10 @@ function isRecord(value: unknown): value is AnyRecord {
 
 function text(value: unknown, fallback = "n.d."): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function dateText(value: unknown, fallback = "n.d."): string {
+  return toDisplay(value) || text(value, fallback);
 }
 
 function fingerprint(value: unknown, fallback = ""): string | null {
@@ -347,7 +352,7 @@ function analyzeMaintenances(questionId: "D2", agentResults: ChatIaAgentResult[]
         ],
         rows: analoghe.map((row) => ({
           _id: rowFingerprint(row),
-          data: text(row.data, "n.d."),
+          data: dateText(row.data, "n.d."),
           targa: text(row.targa, "n.d."),
           tipo: text(row.tipo, "n.d."),
           descrizione: text(row.descrizione_breve, "n.d."),
@@ -360,7 +365,7 @@ function analyzeMaintenances(questionId: "D2", agentResults: ChatIaAgentResult[]
     ],
     timeline: rows.map((row) => ({
       _id: rowFingerprint(row),
-      date: text(row.data, "n.d."),
+      date: dateText(row.data, "n.d."),
       title: `${vehicleLabel(row)} - ${text(row.tipo, "manutenzione")}`,
       description: text(row.descrizione_breve ?? row.fornitore, ""),
       metadata: compactMeta(meta("Fornitore", row.fornitore), meta("Costo", displayAmount(row.costo)), meta("Stato", row.stato)),
@@ -376,7 +381,7 @@ function analyzeMaintenances(questionId: "D2", agentResults: ChatIaAgentResult[]
             items: analoghe.map((row) => ({
               _id: rowFingerprint(row),
               title: `${text(row.targa, "n.d.")} - ${text(row.tipo, "manutenzione")}`,
-              subtitle: text(row.data, "n.d."),
+              subtitle: dateText(row.data, "n.d."),
               description: text(row.descrizione_breve, "Descrizione non disponibile"),
               metadata: compactMeta(meta("Fornitore", row.fornitore), meta("Costo", displayAmount(row.costo)), meta("Stato", row.stato)),
               action: actionForRow(row),
@@ -422,7 +427,7 @@ function analyzeEvents(questionId: "D3" | "D4", agentResults: ChatIaAgentResult[
     ],
     rows: rows.map((row, index) => ({
       _id: eventFingerprint(row, index),
-      data: text(row.data_italiana, "n.d."),
+      data: dateText(row.data_italiana, "n.d."),
       tipo: text(row.tipo, "evento"),
       soggetto: text(row.targa ?? row.autista, "n.d."),
       autore: text(row.autista, "n.d."),
@@ -448,15 +453,15 @@ function analyzeEvents(questionId: "D3" | "D4", agentResults: ChatIaAgentResult[
       value: anomalies.length - index,
       unit: "score",
       detail: text(row.descrizione_breve, ""),
-      metadata: compactMeta(meta("Data", row.data_italiana), meta("Tipo", row.tipo), meta("Autore", row.autista), meta("Stato", row.stato)),
+      metadata: compactMeta(meta("Data", dateText(row.data_italiana, "")), meta("Tipo", row.tipo), meta("Autore", row.autista), meta("Stato", row.stato)),
       action: actionForEvent(row),
     })),
     comparison: [],
-    trend: rows.map((row, index) => ({ label: text(row.data_italiana, `riga ${index + 1}`), value: index + 1 })),
+    trend: rows.map((row, index) => ({ label: dateText(row.data_italiana, `riga ${index + 1}`), value: index + 1 })),
     tables: [table],
     timeline: rows.map((row, index) => ({
       _id: eventFingerprint(row, index),
-      date: text(row.data_italiana, "n.d."),
+      date: dateText(row.data_italiana, "n.d."),
       title: text(row.tipo, "evento"),
       description: text(row.descrizione_breve, ""),
       metadata: compactMeta(meta("Soggetto", row.targa ?? row.autista), meta("Autore", row.autista), meta("Stato", row.stato)),
@@ -554,7 +559,7 @@ function analyzeCostOutliers(agentResults: ChatIaAgentResult[]): ChatIaAnalytics
         rows: documentRows.map((row) => ({
           _id: fingerprint(row._id ?? row.id, `documento:${text(row.numero, text(row.targa, ""))}`),
           numero: text(row.numero, "n.d."),
-          data: text(row.data_italiana, "n.d."),
+          data: dateText(row.data_italiana, "n.d."),
           targa: text(row.targa, "n.d."),
           fornitore: text(row.fornitore, "n.d."),
           importo: displayAmount(row.importo, text(row.valuta, "EUR")),
@@ -626,7 +631,7 @@ function analyzeSiteEquipment(agentResults: ChatIaAgentResult[]): ChatIaAnalytic
       ],
       timeline: movements.slice(0, 6).map((row, index) => ({
         _id: fingerprint(row._id ?? row.id, `movimento:${index + 1}:${text(row.cantiere, "")}`),
-        date: text(row.data_italiana, "n.d."),
+        date: dateText(row.data_italiana, "n.d."),
         title: `${text(row.tipo, "movimento")} - ${text(row.cantiere, "cantiere n.d.")}`,
         description: text(row.descrizione, ""),
         metadata: compactMeta(meta("Cantiere", row.cantiere), meta("Tipo", row.tipo)),
@@ -682,7 +687,7 @@ function analyzeSiteEquipment(agentResults: ChatIaAgentResult[]): ChatIaAnalytic
     ],
     timeline: movements.slice(0, 6).map((row, index) => ({
       _id: fingerprint(row._id ?? row.id, `movimento:${index + 1}:${text(row.cantiere ?? row.cantiereLabel, "")}`),
-      date: text(row.data_italiana, "n.d."),
+      date: dateText(row.data_italiana, "n.d."),
       title: text(row.tipo, "movimento"),
       description: text(row.descrizione ?? row.materialeDescrizione ?? row.cantiereLabel, ""),
       metadata: compactMeta(meta("Cantiere", row.cantiere ?? row.cantiereLabel), meta("Tipo", row.tipo)),
@@ -754,7 +759,7 @@ function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyti
           _id: rowFingerprint(row, index),
           ambito: text(row.ambito, ""),
           targa: text(row.targa, "n.d."),
-          data: text(row.data ?? row.data_italiana, "n.d."),
+          data: dateText(row.data ?? row.data_italiana, "n.d."),
           referente: text(row.assegnato_a ?? row.fornitore, "n.d."),
           descrizione: text(row.descrizione_breve, "n.d."),
         })),
@@ -764,7 +769,7 @@ function analyzeExecutorReport(agentResults: ChatIaAgentResult[]): ChatIaAnalyti
     ],
     timeline: rows.map((row, index) => ({
       _id: rowFingerprint(row, index),
-      date: text(row.data ?? row.data_italiana, "n.d."),
+      date: dateText(row.data ?? row.data_italiana, "n.d."),
       title: `${text(row.ambito, "attivita")} - ${text(row.targa, "n.d.")}`,
       description: text(row.descrizione_breve, ""),
       metadata: compactMeta(meta("Referente", row.assegnato_a ?? row.fornitore), meta("Stato", row.stato), meta("Costo", displayAmount(row.costo))),

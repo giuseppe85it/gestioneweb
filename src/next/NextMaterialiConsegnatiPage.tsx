@@ -18,6 +18,7 @@ import {
   readNextMaterialiMovimentiSnapshot,
   type NextMaterialeMovimentoReadOnlyItem,
 } from "./domain/nextMaterialiMovimentiDomain";
+import { compareISO, fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { NEXT_HOME_PATH } from "./nextStructuralPaths";
 import "../pages/MaterialiConsegnati.css";
@@ -81,12 +82,20 @@ const READ_ONLY_DELETE_MESSAGE =
   "Clone read-only: eliminazione consegna non disponibile.";
 
 const oggi = () => {
-  const now = new Date();
-  const gg = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  return `${gg} ${mm} ${yyyy}`;
+  return toDisplay(new Date()) || "";
 };
+
+function normalizeDateInput(value: string): string {
+  return fromUserInput(value) ?? toISO(value) ?? value;
+}
+
+function formatDateForOutput(value: string): string {
+  return toDisplay(value) || value || "";
+}
+
+function compareConsegnaDateAsc(left: MaterialeConsegnatoView, right: MaterialeConsegnatoView): number {
+  return compareISO(toISO(left.data), toISO(right.data));
+}
 
 function formatInventoryQuantity(value: number | null, unit: string): string {
   if (value === null) return `- ${unit}`;
@@ -300,7 +309,7 @@ export default function NextMaterialiConsegnatiPage() {
       selectedDest
         ? consegne
             .filter((consegna) => consegna.destinatario.refId === selectedDest)
-            .sort((left, right) => left.data.localeCompare(right.data))
+            .sort(compareConsegnaDateAsc)
         : [],
     [consegne, selectedDest],
   );
@@ -382,11 +391,11 @@ export default function NextMaterialiConsegnatiPage() {
   const buildPdfPayloadPerDestinatario = (destRefId: string) => {
     const list = consegne
       .filter((entry) => entry.destinatario.refId === destRefId)
-      .sort((left, right) => left.data.localeCompare(right.data));
+      .sort(compareConsegnaDateAsc);
 
     const destLabel = list[0]?.destinatario.label || "Destinatario";
     const rows = list.map((entry) => ({
-      data: entry.data,
+      data: formatDateForOutput(entry.data),
       descrizione: entry.descrizione,
       fornitore: entry.fornitore || "",
       quantita: String(entry.quantita),
@@ -406,9 +415,9 @@ export default function NextMaterialiConsegnatiPage() {
   const buildPdfPayloadGlobale = () => {
     const rows = consegne
       .slice()
-      .sort((left, right) => left.data.localeCompare(right.data))
+      .sort(compareConsegnaDateAsc)
       .map((entry) => ({
-        data: entry.data,
+        data: formatDateForOutput(entry.data),
         destinatario: entry.destinatario.label,
         descrizione: entry.descrizione,
         fornitore: entry.fornitore || "",
@@ -800,9 +809,9 @@ export default function NextMaterialiConsegnatiPage() {
             <input
               type="text"
               className="mc-input"
-              value={data}
-              onChange={(event) => setData(event.target.value)}
-              placeholder="gg mm aaaa"
+              value={toDisplay(data) || data}
+              onChange={(event) => setData(normalizeDateInput(event.target.value))}
+              placeholder="GG/MM/AAAA"
             />
           </label>
 
@@ -890,7 +899,7 @@ export default function NextMaterialiConsegnatiPage() {
                     {consegneSelezionate.map((consegna) => (
                       <div key={consegna.id} className="mc-detail-row">
                         <div className="mc-detail-main">
-                          <span className="mc-detail-date">{consegna.data}</span>
+                          <span className="mc-detail-date">{formatDateForOutput(consegna.data)}</span>
                           <span className="mc-detail-desc">
                             {consegna.descrizione} - {consegna.quantita} {consegna.unita}
                           </span>

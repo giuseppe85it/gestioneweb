@@ -13,6 +13,7 @@ import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { ArchivioRecordKind } from "../archivioTypes";
+import { parseAnyDate, toISO } from "../../../helpers/dateUnica";
 
 export type ArchivioUrlPeriodPreset =
   | "7g"
@@ -57,10 +58,12 @@ function parsePeriod(value: string | null): ArchivioUrlPeriodPreset {
   return "30g";
 }
 
-function parseNumber(value: string | null): number | null {
+function parsePeriodValue(value: string | null): number | null {
   if (!value) return null;
   const n: number = Number(value);
-  return Number.isFinite(n) ? n : null;
+  if (Number.isFinite(n)) return n;
+  const parsed = parseAnyDate(value);
+  return parsed ? parsed.getTime() : null;
 }
 
 export type UseArchivioUrlStateApi = {
@@ -76,8 +79,8 @@ export function useArchivioUrlState(): UseArchivioUrlStateApi {
     autista: searchParams.get("asAutista") ?? null,
     targa: searchParams.get("asTarga") ?? null,
     period: parsePeriod(searchParams.get("asPeriod")),
-    periodFrom: parseNumber(searchParams.get("asFrom")),
-    periodTo: parseNumber(searchParams.get("asTo")),
+    periodFrom: parsePeriodValue(searchParams.get("asFrom")),
+    periodTo: parsePeriodValue(searchParams.get("asTo")),
     q: searchParams.get("asQ") ?? "",
   };
 
@@ -117,7 +120,7 @@ export function useArchivioUrlState(): UseArchivioUrlStateApi {
             writeOrDelete(
               "asFrom",
               partial.periodFrom !== null && partial.periodFrom !== undefined
-                ? String(partial.periodFrom)
+                ? toISO(partial.periodFrom)
                 : null,
             );
           }
@@ -125,7 +128,7 @@ export function useArchivioUrlState(): UseArchivioUrlStateApi {
             writeOrDelete(
               "asTo",
               partial.periodTo !== null && partial.periodTo !== undefined
-                ? String(partial.periodTo)
+                ? toISO(partial.periodTo)
                 : null,
             );
           }

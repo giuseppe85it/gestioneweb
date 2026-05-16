@@ -14,7 +14,7 @@ import {
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import NextMezzoEditModal from "./components/NextMezzoEditModal";
-import { StoriaRecordTimeline } from "./components/StoriaRecordTimeline";
+import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import {
   buildNextDossierMezzoLegacyView,
   readNextDossierMezzoCompositeSnapshot,
@@ -23,7 +23,7 @@ import {
   type NextDossierManutenzioneLegacyItem,
   type NextDossierMezzoLegacyViewState,
 } from "./domain/nextDossierMezzoDomain";
-import { getStoriaRecord } from "./helpers/storiaRecord";
+import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
   buildNextAnalisiEconomicaPath,
@@ -35,6 +35,7 @@ import {
   NEXT_IA_LIBRETTO_PATH,
 } from "./nextStructuralPaths";
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+import { toDisplay } from "./helpers/dateUnica";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
 
@@ -68,6 +69,10 @@ function parseDateFlexible(value: string | number | null | undefined): Date | nu
 
 function formatDateTime(value: string | number | null | undefined) {
   return formatDateTimeUI(parseDateFlexible(value));
+}
+
+function formatDossierDate(value: string | number | null | undefined): string {
+  return toDisplay(value) || String(value ?? "").trim() || "-";
 }
 
 function formatChiusuraEventoTipo(value: string | null | undefined): string {
@@ -140,7 +145,7 @@ function formatKmOre(item: NextDossierManutenzioneLegacyItem) {
 
 function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerAsse"][number]) {
   const parts: string[] = [];
-  parts.push(item.dataCambio ? `Cambio ${item.dataCambio}` : "Data cambio n/d");
+  parts.push(item.dataCambio ? `Cambio ${formatDossierDate(item.dataCambio)}` : "Data cambio n/d");
   if (item.isMotorizzato) {
     parts.push(
       typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio)
@@ -158,7 +163,7 @@ function formatGommeStraordinarieMeta(
   item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number],
 ) {
   const parts: string[] = [];
-  parts.push(item.dataLabel || "-");
+  parts.push(formatDossierDate(item.dataLabel));
   if (item.asseLabel) parts.push(item.asseLabel);
   if (typeof item.quantita === "number" && Number.isFinite(item.quantita)) {
     parts.push(`${item.quantita} gomma${item.quantita === 1 ? "" : "e"}`);
@@ -467,8 +472,8 @@ export default function NextDossierMezzoPage() {
         <span className={`dossier-badge ${dossierWorkBadgeClass(item, badge)}`} style={dossierWorkBadgeStyle(item)} title={dossierWorkBadgeTitle(item)}>{dossierWorkBadgeLabel(item, label)}</span>
         <strong>{item.descrizione}</strong>
       </div>
-      <div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{item.dataInserimento || "-"}</span></div>
-      <StoriaRecordTimeline storia={getStoriaRecord(item as unknown as Record<string, unknown>)} compact />
+      <div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{formatDossierDate(item.dataInserimento)}</span></div>
+      <FraseStoriaRecord {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)} compact />
     </li>
   );
 
@@ -482,7 +487,7 @@ export default function NextDossierMezzoPage() {
               <strong>{item.descrizione || "-"}</strong>
             </div>
             <div className="dossier-list-meta">
-              <span>{item.data || "-"}</span>
+              <span>{formatDossierDate(item.data)}</span>
               <span>{renderAmount(item.importo, resolveCurrency(item))}</span>
               <span>{item.fornitoreLabel || "-"}</span>
               {item.fileUrl ? <button className="dossier-button" type="button" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
@@ -531,7 +536,7 @@ export default function NextDossierMezzoPage() {
               </p>
               <div className="dossier-list-meta">
                 <span>{fatturaToDelete.descrizione || "-"}</span>
-                <span>{fatturaToDelete.data || "-"}</span>
+                <span>{formatDossierDate(fatturaToDelete.data)}</span>
                 <span>{renderAmount(fatturaToDelete.importo, resolveCurrency(fatturaToDelete))}</span>
               </div>
               {deleteError ? (
@@ -596,13 +601,13 @@ export default function NextDossierMezzoPage() {
           ))}
         </div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Storico manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Storico manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Stato gomme per asse</h2></div><div className="dossier-card-body">{legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}</div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Eventi gomme straordinari</h2></div><div className="dossier-card-body">{legacy.gommeStraordinarie.length === 0 ? <p className="dossier-empty">Nessun evento gomme straordinario registrato.</p> : <ul className="dossier-list">{legacy.gommeStraordinarie.slice(0, 5).map((item) => <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>)}</ul>}</div></section>
 
-        <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Materiali e movimenti inventario</h2></div><div className="dossier-card-body">{legacy.movimentiMateriali.length === 0 ? <p className="dossier-empty">Nessun movimento materiali registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead><tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{item.data || "-"}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody></table></div>}</div></section>
+        <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Materiali e movimenti inventario</h2></div><div className="dossier-card-body">{legacy.movimentiMateriali.length === 0 ? <p className="dossier-empty">Nessun movimento materiali registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead><tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{formatDossierDate(item.data)}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
@@ -620,7 +625,7 @@ export default function NextDossierMezzoPage() {
               </div>
               <div className="dossier-modal-body">
                 {key === "manutenzioni" ? (
-                  lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
+                  lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
                 ) : (
                   lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => renderWorkItem(item, key === "attesa" ? "badge-info" : "badge-success", key === "attesa" ? "DA FARE" : "ESEGUITA"))}</ul>
                 )}

@@ -45,7 +45,7 @@ import {
   type NextMagazzinoStockUnit,
 } from "./domain/nextMagazzinoStockContract";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
-import { formatDateUI } from "./nextDateFormat";
+import { parseAnyDate, toDisplay } from "./helpers/dateUnica";
 import "./internal-ai/internal-ai.css";
 import "./next-magazzino.css";
 
@@ -474,28 +474,11 @@ function inputDateToStored(value: string): string {
 }
 
 function parseStoredDate(value: string | null | undefined): Date | null {
-  const normalized = normalizeText(value);
-  if (!normalized) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    const parsed = new Date(`${normalized}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  const parts = normalized.replace(/\//g, " ").split(/\s+/).filter(Boolean);
-  if (parts.length === 3) {
-    const [dd, mm, yyyy] = parts;
-    const parsed = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  return null;
+  return parseAnyDate(value);
 }
 
 function formatStoredDateForUi(value: string | null | undefined): string {
-  const parsed = parseStoredDate(value);
-  if (!parsed) return normalizeText(value) || "-";
-  return formatDateUI(parsed);
+  return toDisplay(value) || normalizeText(value) || "-";
 }
 
 function dateDiffDays(start: Date | null, end: Date | null): number | null {
@@ -1266,7 +1249,7 @@ function stimaDataFine(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): 
   if (!baseDate || mediaGiorni <= 0) return "-";
   const target = new Date(baseDate.getTime());
   target.setDate(target.getDate() + mediaGiorni);
-  return formatDateUI(target);
+  return toDisplay(target) || "-";
 }
 
 export default function NextMagazzinoPage() {
@@ -4725,7 +4708,7 @@ export default function NextMagazzinoPage() {
                             {preventivo.numeroPreventivo} · {preventivo.supplierName}
                           </div>
                           <div className="mag-domain-row__meta">
-                            {preventivo.dataPreventivoLabel || "-"} ·{" "}
+                            {formatStoredDateForUi(preventivo.dataPreventivoLabel)} ·{" "}
                             {formatCurrencyAmount(preventivo.totalAmount, preventivo.currency)} ·{" "}
                             {preventivo.approvalStatus}
                           </div>

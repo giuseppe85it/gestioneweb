@@ -2,7 +2,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { getItemSync, setItemSync } from "../../utils/storageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
-import { formatDateUI, toNextDateValue } from "../nextDateFormat";
+import { toNextDateValue } from "../nextDateFormat";
+import { toDisplay } from "../helpers/dateUnica";
 import {
   areNextMagazzinoUnitsCompatible,
   buildNextMagazzinoStockKey,
@@ -208,8 +209,21 @@ const VALID_ASSI_COINVOLTI = new Set<AsseCoinvoltoId>([
   "asse3",
 ]);
 
+export type NextManutenzioneEditingFingerprint = {
+  targa?: string | null;
+  data?: string | null;
+  descrizione?: string | null;
+  stato?: string | null;
+};
+
 export type NextManutenzioneBusinessSavePayload = {
   editingSourceId?: string | null;
+  /**
+   * Snapshot dei campi identificativi del record in modifica. Fallback per
+   * ritrovare un record privo di `id` reale senza dipendere dall'indice
+   * dell'array (vedi DIAGNOSI_MODIFICA_MANUTENZIONE_2026-05-14).
+   */
+  editingSourceFingerprint?: NextManutenzioneEditingFingerprint | null;
   targa: string;
   tipo: TipoVoce;
   fornitore?: string | null;
@@ -376,9 +390,9 @@ function parseDateFlexible(value: unknown): Date | null {
   return toNextDateValue(value);
 }
 
-function formatLegacyDateLabel(value: unknown): string {
+function formatRecordDateLabel(value: unknown): string {
   const parsed = parseDateFlexible(value);
-  return parsed ? formatDateUI(parsed) : "";
+  return parsed ? toDisplay(parsed) : "";
 }
 
 function giorniDaOggi(target: Date | null, now: number): number | null {
@@ -612,7 +626,7 @@ function toLegacyDatasetRecord(
     "Manutenzione";
   const data =
     normalizeOptionalText(raw.data) ??
-    formatLegacyDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
+    formatRecordDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
   const kmCambio = normalizeNumber(raw.km);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, data, kmCambio);
   const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
@@ -1112,6 +1126,37 @@ function findLegacyRecordIndex(
   return items.findIndex((entry, index) => matchLegacyRecordById(entry, index, recordId));
 }
 
+/**
+ * Fallback per ritrovare un record privo di `id` reale: l'id sintetico
+ * `manutenzione:<targa>:<index>` dipende dalla posizione nell'array e non e'
+ * affidabile fra letture diverse. Il fingerprint dei campi identificativi del
+ * record originale lo ritrova senza dipendere dall'indice. Usato solo come
+ * fallback transitorio: dopo il primo salvataggio il record riceve un `id` reale.
+ */
+export function findLegacyRecordIndexByFingerprint(
+  items: unknown[],
+  fingerprint: NextManutenzioneEditingFingerprint | null | undefined,
+): number {
+  if (!fingerprint) return -1;
+  const targa = buildHistoryTargaKey(normalizeText(fingerprint.targa));
+  const data = normalizeText(fingerprint.data);
+  const descrizione = normalizeText(fingerprint.descrizione);
+  const stato = normalizeText(fingerprint.stato);
+  if (!targa || !data || !descrizione) return -1;
+  return items.findIndex((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const raw = entry as RawRecord;
+    if (buildHistoryTargaKey(normalizeText(raw.targa)) !== targa) return false;
+    if (normalizeText(raw.data) !== data) return false;
+    if (normalizeText(raw.descrizione) !== descrizione) return false;
+    const rawStato = normalizeText(raw.stato);
+    // `stato` confrontato solo se presente su entrambi i lati (il reader puo'
+    // derivare lo stato, quindi e' un identificatore debole).
+    if (stato && rawStato && stato !== rawStato) return false;
+    return true;
+  });
+}
+
 function sanitizeInventarioArray(items: unknown[]): NextLegacyInventarioRecord[] {
   return items.filter((item): item is NextLegacyInventarioRecord => Boolean(item) && typeof item === "object");
 }
@@ -1221,26 +1266,53 @@ export async function saveNextManutenzioneBusinessRecord(
 ): Promise<NextManutenzioniLegacyDatasetRecord> {
   const storicoRaw = await readStoredArrayByKey(MANUTENZIONI_KEY);
   const editingSourceId = normalizeOptionalText(payload.editingSourceId);
-  const existingIndex = editingSourceId
-    ? findLegacyRecordIndex(storicoRaw, editingSourceId)
-    : -1;
+
+  // Localizzazione del record da aggiornare: prima per id, poi (fallback
+  // transitorio per i record privi di id reale) per fingerprint dei campi
+  // identificativi. Vedi DIAGNOSI_MODIFICA_MANUTENZIONE_2026-05-14.
+  let existingIndex = editingSourceId ? findLegacyRecordIndex(storicoRaw, editingSourceId) : -1;
+  if (existingIndex === -1 && editingSourceId) {
+    existingIndex = findLegacyRecordIndexByFingerprint(storicoRaw, payload.editingSourceFingerprint);
+  }
   const existingRaw =
     existingIndex >= 0 && storicoRaw[existingIndex] && typeof storicoRaw[existingIndex] === "object"
       ? (storicoRaw[existingIndex] as RawRecord)
       : null;
+
+  // Id stabile alla radice: se il record esistente ha gia' un id reale lo si
+  // preserva; se l'id e' assente o sintetico (`manutenzione:*`, basato
+  // sull'indice) gliene si assegna uno reale e persistito, cosi' i salvataggi
+  // futuri lo ritrovano sempre per `raw.id`, mai piu' per posizione.
+  const existingRealId = existingRaw ? normalizeOptionalText(existingRaw.id) : null;
+  const existingHasStableId = Boolean(existingRealId && !existingRealId.startsWith("manutenzione:"));
+  const editingSourceIsStable = Boolean(editingSourceId && !editingSourceId.startsWith("manutenzione:"));
   const forcedRecordId =
     existingRaw !== null
-      ? normalizeOptionalText(existingRaw.id) ?? editingSourceId
-      : editingSourceId;
+      ? existingHasStableId
+        ? existingRealId
+        : buildGeneratedId()
+      : editingSourceIsStable
+        ? editingSourceId
+        : undefined;
+
   const nextRecord = sanitizeBusinessRecord(payload, forcedRecordId);
-  const nextStoredRecord =
+  const baseStoredRecord =
     existingRaw !== null
       ? ({ ...existingRaw, ...nextRecord } as NextManutenzioniLegacyDatasetRecord)
       : nextRecord;
-  const nextStorico = storicoRaw.filter((entry, index) => {
-    if (!editingSourceId) return true;
-    return !matchLegacyRecordById(entry, index, editingSourceId);
-  });
+  // La modifica tocca in automatico solo `updatedAt`; `data` resta quello del
+  // payload (gia' preservato dal form). Nessun'altra modifica di shape.
+  const nextStoredRecord = {
+    ...baseStoredRecord,
+    updatedAt: Date.now(),
+  } as NextManutenzioniLegacyDatasetRecord;
+
+  // Rimozione del vecchio record per indice trovato: robusta, niente ricalcolo
+  // di id sensibile alla posizione nell'array.
+  const nextStorico =
+    existingIndex >= 0
+      ? storicoRaw.filter((_, index) => index !== existingIndex)
+      : storicoRaw.slice();
 
   nextStorico.unshift(nextStoredRecord);
   await setItemSync(MANUTENZIONI_KEY, nextStorico);
@@ -1258,15 +1330,35 @@ export async function saveNextManutenzioneBusinessRecord(
     }
   }
 
+  // PROMPT 44 — D1: se il save porta la manutenzione a "eseguita" e c'e' una
+  // sorgente collegata (segnalazione/controllo via origineRefId), propaga la
+  // chiusura tramite l'orchestrator. No-op se non c'e' legame, idempotente.
+  if (normalizeText((nextStoredRecord as RawRecord).stato) === "eseguita") {
+    try {
+      const { propagateChiusuraToLegame } = await import("../helpers/closureOrchestrator");
+      await propagateChiusuraToLegame(nextStoredRecord);
+    } catch (error) {
+      console.warn("[PROMPT44 D1] propagazione chiusura sorgente fallita:", error);
+    }
+  }
+
   return nextStoredRecord;
 }
 
-export async function deleteNextManutenzioneBusinessRecord(recordId: string): Promise<boolean> {
+export async function deleteNextManutenzioneBusinessRecord(
+  recordId: string,
+  fingerprint?: NextManutenzioneEditingFingerprint | null,
+): Promise<boolean> {
   const normalizedRecordId = normalizeOptionalText(recordId);
   if (!normalizedRecordId) return false;
 
   const storicoRaw = await readStoredArrayByKey(MANUTENZIONI_KEY);
-  const recordIndex = findLegacyRecordIndex(storicoRaw, normalizedRecordId);
+  // Match per id; fallback per fingerprint quando il record non ha un id reale
+  // (id sintetico index-based instabile, vedi PROMPT 41).
+  let recordIndex = findLegacyRecordIndex(storicoRaw, normalizedRecordId);
+  if (recordIndex === -1) {
+    recordIndex = findLegacyRecordIndexByFingerprint(storicoRaw, fingerprint);
+  }
   if (recordIndex === -1) return false;
 
   const recordRaw = storicoRaw[recordIndex];

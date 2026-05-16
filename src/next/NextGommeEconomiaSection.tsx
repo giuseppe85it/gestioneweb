@@ -16,6 +16,7 @@ import {
   type NextGommeReadOnlyItem,
 } from "./domain/nextManutenzioniGommeDomain";
 import { parseDataRobusta } from "./helpers/parseRobusto";
+import { toDisplay } from "./helpers/dateUnica";
 
 type DataScope = "legacy_parity" | "extended";
 
@@ -42,6 +43,10 @@ function parseLegacyDate(value: string | null | undefined) {
   const robustTimestamp = parseDataRobusta(raw);
   if (robustTimestamp !== null) return robustTimestamp;
   return 0;
+}
+
+function formatGommeDate(value: string | null | undefined): string {
+  return toDisplay(value) || value || "-";
 }
 
 export default function NextGommeEconomiaSection({
@@ -122,8 +127,8 @@ export default function NextGommeEconomiaSection({
     const annuali: Record<string, number> = {};
 
     sostituzioni.forEach((item) => {
-      const parts = (item.data || "").split(" ");
-      const anno = parts[2] || "";
+      const timestamp = parseLegacyDate(item.data);
+      const anno = timestamp ? String(new Date(timestamp).getFullYear()) : "";
       if (!anno) return;
       annuali[anno] = (annuali[anno] || 0) + (item.costo || 0);
     });
@@ -140,7 +145,7 @@ export default function NextGommeEconomiaSection({
 
       if (corrente.km != null && successiva.km != null) {
         items.push({
-          data: corrente.data,
+          data: formatGommeDate(corrente.data),
           kmPercorsi: corrente.km - successiva.km,
         });
       }
@@ -218,7 +223,7 @@ export default function NextGommeEconomiaSection({
                     <strong>{item.asseLabel || item.posizione || "Asse non indicato"}</strong>
                   </div>
                   <div className="dossier-list-meta">
-                    <span>{item.dataLabel || item.data || "-"}</span>
+                    <span>{formatGommeDate(item.dataLabel || item.data)}</span>
                     <span>{item.km != null ? `${item.km} km` : "km n/d"}</span>
                     <span>{item.fornitore || "-"}</span>
                   </div>
@@ -244,7 +249,7 @@ export default function NextGommeEconomiaSection({
                     <strong>{item.interventoTipo || item.evento}</strong>
                   </div>
                   <div className="dossier-list-meta">
-                    <span>{item.dataLabel || item.data || "-"}</span>
+                    <span>{formatGommeDate(item.dataLabel || item.data)}</span>
                     <span>{item.asseLabel || item.posizione || "-"}</span>
                     <span>
                       {item.quantita != null
@@ -275,7 +280,7 @@ export default function NextGommeEconomiaSection({
                     <strong>{item.evento}</strong>
                   </div>
                   <div className="dossier-list-meta">
-                    <span>{item.dataLabel || item.data || "-"}</span>
+                    <span>{formatGommeDate(item.dataLabel || item.data)}</span>
                     <span>{item.asseLabel || item.posizione || "-"}</span>
                     <span>{item.km != null ? `${item.km} km` : "km n/d"}</span>
                     <span>{item.fornitore || "-"}</span>

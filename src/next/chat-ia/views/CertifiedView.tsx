@@ -1,6 +1,7 @@
 import type { ChatZeroInvenzioniMessage, ViewEnum } from "../core/chatIaTypes";
 import { getViewConfig, type ViewConfig, type ViewSectionConfig } from "../config/view.config";
 import ProofPanel from "../components/ProofPanel";
+import { toDisplay } from "../../helpers/dateUnica";
 
 type CertifiedField = {
   value: unknown;
@@ -71,7 +72,7 @@ function formatCertifiedValue(value: unknown): string {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
-    return value.toDate().toLocaleDateString("it-IT");
+    return toDisplay(value) || "dato non trovato nelle fonti autorizzate";
   }
   return "dato non trovato nelle fonti autorizzate";
 }

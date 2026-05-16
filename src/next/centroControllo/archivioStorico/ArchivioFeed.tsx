@@ -1,4 +1,4 @@
-// Archivio Storico NEXT — Step 5 (PROMPT 29.9) — ArchivioFeed.
+﻿// Archivio Storico NEXT â€” Step 5 (PROMPT 29.9) â€” ArchivioFeed.
 // Orchestratore centrale del modulo: monta toolbar + subtabs +
 // feed body con raggruppamento per giorno e card espansa inline.
 
@@ -31,6 +31,7 @@ import { ArchivioRowExpanded } from "./rows/ArchivioRowExpanded";
 import { ArchivioRowManutenzione } from "./rows/ArchivioRowManutenzione";
 import { ArchivioRowRichiesta } from "./rows/ArchivioRowRichiesta";
 import { ArchivioRowSegnalazione } from "./rows/ArchivioRowSegnalazione";
+import { toDisplay, toDisplayDateTime } from "../../helpers/dateUnica";
 import "./styles/archivioStorico.css";
 
 const MONTH_LABELS_LONG: ReadonlyArray<string> = [
@@ -46,16 +47,6 @@ const MONTH_LABELS_LONG: ReadonlyArray<string> = [
   "ottobre",
   "novembre",
   "dicembre",
-];
-
-const WEEKDAY_LABELS_LONG: ReadonlyArray<string> = [
-  "domenica",
-  "lunedì",
-  "martedì",
-  "mercoledì",
-  "giovedì",
-  "venerdì",
-  "sabato",
 ];
 
 const DENSITY_STORAGE_KEY = "archivio.densita";
@@ -122,7 +113,7 @@ function classifyDate(ts: number, now: Date): {
       key: "today",
       groupKey: "today",
       label: "Oggi",
-      sublabel: `${WEEKDAY_LABELS_LONG[d.getDay()]} ${d.getDate()} ${MONTH_LABELS_LONG[d.getMonth()]}`,
+      sublabel: toDisplay(d) || "-",
     };
   }
   if (isSameDay(d, yesterday)) {
@@ -130,7 +121,7 @@ function classifyDate(ts: number, now: Date): {
       key: "yesterday",
       groupKey: "yesterday",
       label: "Ieri",
-      sublabel: `${WEEKDAY_LABELS_LONG[d.getDay()]} ${d.getDate()} ${MONTH_LABELS_LONG[d.getMonth()]}`,
+      sublabel: toDisplay(d) || "-",
     };
   }
   const weekStart: Date = startOfWeekMonday(now);
@@ -196,21 +187,19 @@ function formatManutenzioneStatoLabel(
   if (stato === "daFare") return "Da fare";
   if (stato === "programmata") return "Programmata";
   if (stato === "chiusa_da_evento") return "Chiusa da evento";
-  return "Eseguita";
+  if (stato === "eseguita") return "Eseguita";
+  // PROMPT 44 — D6: legacy senza stato → "Storico" (solo display).
+  return "Storico";
 }
 
 function fmtPdfDate(ts: number | null): { data: string; ora: string } {
   if (ts === null || !Number.isFinite(ts) || ts === 0) {
     return { data: "", ora: "" };
   }
-  const d: Date = new Date(ts);
-  if (Number.isNaN(d.getTime())) return { data: "", ora: "" };
-  const dd: string = String(d.getDate()).padStart(2, "0");
-  const mm: string = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy: string = String(d.getFullYear());
-  const hh: string = String(d.getHours()).padStart(2, "0");
-  const mi: string = String(d.getMinutes()).padStart(2, "0");
-  return { data: `${dd}/${mm}/${yyyy}`, ora: `${hh}:${mi}` };
+  const label = toDisplayDateTime(ts);
+  if (!label) return { data: "", ora: "" };
+  const [data = "", ora = ""] = label.split(" ");
+  return { data, ora };
 }
 
 function mapManutenzioneToPdfRow(record: ArchivioRecord): ArchivioStoricoPdfRow {
@@ -327,15 +316,11 @@ function mapRecordsToPdfRows(
 }
 
 function formatPeriodoLabel(fromTs: number, toTs: number): string {
-  const fmt = (ts: number): string => {
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return "—";
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-  };
+  const fmt = (ts: number): string => toDisplay(ts) || "â€”";
   if (fromTs === 0) {
     return `Tutto lo storico (fino al ${fmt(toTs)})`;
   }
-  return `${fmt(fromTs)} → ${fmt(toTs)}`;
+  return `${fmt(fromTs)} â†’ ${fmt(toTs)}`;
 }
 
 export function ArchivioFeed({
@@ -413,7 +398,7 @@ export function ArchivioFeed({
     };
   }, [dataState.records, filtersState]);
 
-  // Step 2: applica search (modalita' C) — produce records+counts per kind.
+  // Step 2: applica search (modalita' C) â€” produce records+counts per kind.
   const searchState = useArchivioSearch({
     records: filteredByKind,
     search: filtersState.filters.search,
@@ -489,7 +474,7 @@ export function ArchivioFeed({
   if (dataState.loading) {
     return (
       <div className="archivio-loading" role="status">
-        Caricamento archivio…
+        Caricamento archivioâ€¦
       </div>
     );
   }
@@ -543,7 +528,7 @@ export function ArchivioFeed({
       >
         {showManutenzioniBanner ? (
           <div className="archivio-manut-banner" role="note">
-            Filtro Autista ignorato in questa scheda — le manutenzioni non hanno un autista, mostrato l&apos;elenco completo del periodo.
+            Filtro Autista ignorato in questa scheda â€” le manutenzioni non hanno un autista, mostrato l&apos;elenco completo del periodo.
           </div>
         ) : null}
         {sortedActive.length === 0 ? (

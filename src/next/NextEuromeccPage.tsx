@@ -2403,7 +2403,7 @@ function RelazioniExtracted(props: {
       <div className="eur-relazioni-meta">
         <span>
           Data intervento:{" "}
-          <strong>{props.payload.dataIntervento || "—"}</strong>
+          <strong>{formatDateUI(props.payload.dataIntervento) || "—"}</strong>
         </span>
         <span>
           Tecnici: <strong>{props.payload.tecnici.join(", ") || "—"}</strong>
@@ -2473,7 +2473,7 @@ function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
   return (
     <article className="eur-relazioni-storico-item">
       <div className="eur-relazioni-storico-item-main">
-        <span className="eur-relazioni-storico-date">{r.dataIntervento}</span>
+        <span className="eur-relazioni-storico-date">{formatDateUI(r.dataIntervento)}</span>
         <span className="eur-relazioni-storico-tecnici">{r.tecnici.join(", ")}</span>
         <span className="eur-relazioni-storico-counts">
           {r.doneCount} lavori &middot; {r.pendingCount} interventi futuri

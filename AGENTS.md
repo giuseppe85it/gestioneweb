@@ -209,3 +209,68 @@ NOTE: `<opzionale>`
 
 ### Eccezioni
 Se l'utente chiede esplicitamente un audit, un change-report, un continuity-report o una nuova SPEC, Codex lo crea in `docs/_live/`. Altrimenti, non-proliferazione assoluta.
+
+## Regole audit
+
+### AUDIT-CERCA-PER-TARGA
+
+Negli audit di record correlati a un mezzo, **cercare sempre per targa, mai solo per legame**.
+
+Esempio: per auditare il ciclo segnalazione/manutenzione del mezzo TI298409, filtrare ogni
+collection rilevante (`@manutenzioni`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`,
+`@gomme_eventi`) per **tutti i campi targa possibili** (`targa`, `targaCamion`, `targaMotrice`,
+`targaRimorchio`) e riportare TUTTI i record trovati, anche quelli senza legami bidirezionali.
+
+I record orfani — con `linkedLavoroId`/`chiusuraRefId`/`origineRefId` che puntano a target
+inesistenti — esistono nella realta' (cancellazioni manuali, record fantasma PROMPT 41/42)
+e vanno **identificati esplicitamente** verificando l'esistenza di ogni target referenziato.
+
+**Lezione storica**: PROMPT 45 T5 ha sbagliato l'audit di TI298409 perche' ha seguito solo
+i legami uscenti da `@manutenzioni` (back-link `origineRefId`) e ha ignorato segnalazioni/
+controlli per la stessa targa che avevano `linkedLavoroId` orfani. PROMPT 46 ha corretto.
+Riferimento: `docs/_live/AUDIT_TI298409_RICCARDO_FENDERICO_2026-05-15.md`.
+
+## Regole scrittura
+
+### TIMESTAMP-MAI-DA-CLICK
+
+I campi temporali persistiti (`chiusuraData`, `dataPresaInCarico`, `dataEsecuzione`,
+`dataChiusura`, ecc.) **non devono mai essere scritti con `Date.now()` come effetto
+collaterale di operazioni non temporali** (aggancio retroattivo, riassegnazione,
+modifica metadata, cambio legame, sgancio, completamento automatico, ecc.).
+
+Regole operative:
+
+1. **Solo le azioni utente esplicitamente temporali** possono scrivere timestamp
+   con `Date.now()` come "ora del click". Esempi validi:
+   - Bottone "Prendi in carico" → `dataPresaInCarico = toISO(new Date())`
+   - Bottone "Completa intervento" → `dataEsecuzione = toISO(new Date())`
+   - Modale di chiusura manuale con campo data utente
+
+2. **Per chiusure derivate** (es. propagazione automatica della chiusura di una
+   manutenzione alla segnalazione collegata), il timestamp **deve ereditare** dal
+   record di origine — es. `chiusuraData = data della manutenzione collegata`,
+   mai `Date.now()`.
+
+3. **Effetti collaterali con timestamp sono vietati**. Un'operazione di "aggancio",
+   "merge", "cambio legame", "sgancio" NON deve toccare i campi `dataPresaInCarico`,
+   `chiusuraData`, ecc. — neanche per "comodita' di display". La frase storia che
+   ne risulta deve essere coerente con lo stato semantico, non con il momento del
+   click.
+
+4. **Per chiusura propagata**: scrivere `chiusuraData = parseISO(target.data)`
+   (la data della manutenzione target). Se nemmeno `target.data` e' valorizzato,
+   accettare `Date.now()` come ultimo fallback documentato (caso degenere).
+
+**Lezione storica**: PROMPT 44 D7 scriveva `dataPresaInCarico = toISO(new Date())` in
+`patchSegnalazione` come effetto della creazione della manutenzione daFare da segnalazione.
+PROMPT 47 (`agganciaSegnalazioneAManutenzioneEsistente`) scriveva `dataPresaInCarico =
+toISO(new Date())` come effetto dell'aggancio, e `chiusuraData = Date.now()` (via fallback
+`buildChiusuraPatch`) quando il target era `eseguita` ma senza `chiusuraData` esplicita.
+Risultato visibile: su TI298409, dopo aggancio del 15/05 17:45 alla manutenzione gomme
+del 12/05, la frase mostrava "presa in carico il 15/05" e la segnalazione veniva chiusa
+con timestamp 15/05 17:45 invece di 12/05. PROMPT 50 ha corretto:
+- writer P47 + closureOrchestrator ereditano `chiusuraData` da `target.data`
+- `patchSegnalazione` non scrive piu' `dataPresaInCarico`
+- nuovo writer `segnaPresaInCaricoSegnalazione` e' la sola via per scrivere quel campo
+Riferimento: `docs/_live/REPORT_PROMPT50_TIMESTAMP_FIX_2026-05-15.md`.

@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import type { HomeEvent } from "../../../utils/homeEvents";
-import { formatDateTimeUI } from "../../nextDateFormat";
+import { toDisplayDateTime } from "../../helpers/dateUnica";
 
 type Props = {
   events: HomeEvent[];
@@ -10,7 +10,7 @@ type Props = {
 };
 
 function formatTime(ts: number) {
-  return formatDateTimeUI(ts);
+  return toDisplayDateTime(ts) || "-";
 }
 
 function getTarga(e: HomeEvent) {

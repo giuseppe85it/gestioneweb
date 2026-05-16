@@ -4,6 +4,10 @@ import {
   assertCloneWriteAllowed,
   runWithCloneWriteScopedAllowance,
 } from "../../utils/cloneWriteBarrier";
+import {
+  findLegacyRecordIndexByFingerprint,
+  type NextManutenzioneEditingFingerprint,
+} from "../domain/nextManutenzioniDomain";
 
 export const CHIUSURA_DA_EVENTO_WRITE_SCOPE = "next_chiusura_da_evento_write_scope";
 
@@ -81,6 +85,28 @@ function patchById(
   return { nextList, updated };
 }
 
+/**
+ * PROMPT 44 — D4: fallback fingerprint per chiusura da evento su @manutenzioni.
+ * I record storici migrati possono non avere `id` reale (id sintetico per indice,
+ * fragile fra letture). Se il match per id fallisce e abbiamo un fingerprint,
+ * si risale via `findLegacyRecordIndexByFingerprint` (riusato da PROMPT 41) e
+ * si applica il patch a quell'indice.
+ */
+function patchByIdOrFingerprint(
+  list: RawRecord[],
+  id: string,
+  patch: RawRecord,
+  fingerprint: NextManutenzioneEditingFingerprint | null | undefined,
+): { nextList: RawRecord[]; updated: number; matchedBy: "id" | "fingerprint" | "none" } {
+  const byId = patchById(list, id, patch);
+  if (byId.updated > 0) return { ...byId, matchedBy: "id" };
+  if (!fingerprint) return { ...byId, matchedBy: "none" };
+  const index = findLegacyRecordIndexByFingerprint(list, fingerprint);
+  if (index < 0) return { ...byId, matchedBy: "none" };
+  const nextList = list.map((record, i) => (i === index ? { ...record, ...patch } : record));
+  return { nextList, updated: 1, matchedBy: "fingerprint" };
+}
+
 function patchByIdIfGommeEvento(
   list: RawRecord[],
   id: string,
@@ -124,6 +150,7 @@ async function chiudiRecordDaEvento(args: {
   tipoEvento: string;
   idEvento: string;
   chiusuraData?: number;
+  fingerprint?: NextManutenzioneEditingFingerprint | null;
 }): Promise<ChiusuraDaEventoResult> {
   const recordId = normalizeText(args.id);
   const tipoEvento = normalizeText(args.tipoEvento);
@@ -132,8 +159,9 @@ async function chiudiRecordDaEvento(args: {
   if (!tipoEvento) return { ok: false, updated: 0, error: "Tipo evento chiusura mancante." };
   if (!idEvento) return { ok: false, updated: 0, error: "ID evento chiusura mancante." };
 
+  let closedManutenzione: RawRecord | null = null;
   try {
-    return await runWithCloneWriteScopedAllowance(CHIUSURA_DA_EVENTO_WRITE_SCOPE, async () => {
+    const result = await runWithCloneWriteScopedAllowance(CHIUSURA_DA_EVENTO_WRITE_SCOPE, async () => {
       const raw = await getItemSync(args.key);
       const list = unwrapList(raw);
       const patch = buildChiusuraPatch({
@@ -142,14 +170,32 @@ async function chiudiRecordDaEvento(args: {
         idEvento,
         chiusuraData: args.chiusuraData,
       });
-      const { nextList, updated } = patchById(list, recordId, patch);
+      const useFingerprint = args.key === MANUTENZIONI_KEY && args.fingerprint;
+      const { nextList, updated } = useFingerprint
+        ? patchByIdOrFingerprint(list, recordId, patch, args.fingerprint ?? null)
+        : patchById(list, recordId, patch);
       if (updated === 0) {
         return { ok: false, updated: 0, error: `Record non trovato in ${args.key}: ${recordId}` };
+      }
+      // PROMPT 44 — D1: cattura il record manutenzione appena chiuso per
+      // propagare la chiusura alla sorgente collegata (vedi sotto).
+      if (args.key === MANUTENZIONI_KEY) {
+        closedManutenzione = nextList.find((r) => normalizeText(r.id) === recordId) ?? null;
       }
       assertCloneWriteAllowed("storageSync.setItemSync", { key: args.key });
       await setItemSync(args.key, nextList);
       return { ok: true, updated };
     });
+    // Propaga la chiusura dopo lo scope (l'orchestrator apre un suo scope).
+    if (result.ok && args.key === MANUTENZIONI_KEY && closedManutenzione) {
+      try {
+        const { propagateChiusuraToLegame } = await import("../helpers/closureOrchestrator");
+        await propagateChiusuraToLegame(closedManutenzione, { chiusuraData: args.chiusuraData });
+      } catch (propagationError) {
+        console.warn("[PROMPT44 D1] propagazione chiusura sorgente fallita:", propagationError);
+      }
+    }
+    return result;
   } catch (error) {
     return blockedResult(error);
   }
@@ -190,6 +236,7 @@ export function chiudiManutenzioneDaEvento(
   tipoEvento: string,
   idEvento: string,
   chiusuraData?: number,
+  fingerprint?: NextManutenzioneEditingFingerprint | null,
 ): Promise<ChiusuraDaEventoResult> {
   return chiudiRecordDaEvento({
     key: MANUTENZIONI_KEY,
@@ -198,6 +245,7 @@ export function chiudiManutenzioneDaEvento(
     tipoEvento,
     idEvento,
     chiusuraData,
+    fingerprint,
   });
 }
 

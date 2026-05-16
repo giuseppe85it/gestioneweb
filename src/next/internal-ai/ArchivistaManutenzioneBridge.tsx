@@ -16,6 +16,7 @@ import {
 import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import { toDisplay } from "../helpers/dateUnica";
 
 const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/manutenzione-analyze";
 
@@ -917,7 +918,7 @@ export default function ArchivistaManutenzioneBridge({
 
     if (targa) summaryParts.push(`mezzo ${targa}`);
     if (supplier) summaryParts.push(`officina ${supplier}`);
-    if (date) summaryParts.push(`data ${date}`);
+    if (date) summaryParts.push(`data ${toDisplay(date) || date}`);
     if (total) summaryParts.push(`totale ${total}`);
 
     return summaryParts.length

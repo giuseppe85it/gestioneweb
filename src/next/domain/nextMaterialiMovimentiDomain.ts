@@ -5,6 +5,7 @@ import {
   readNextMaterialiMovimentiCloneDeletedIds,
   readNextMaterialiMovimentiCloneRecords,
 } from "../nextMaterialiMovimentiCloneState";
+import { toDisplay } from "../helpers/dateUnica";
 import {
   readNextAttrezzatureCantieriSnapshot,
   type NextAttrezzatureCantieriSnapshot,
@@ -488,15 +489,9 @@ function toTimestamp(value: unknown): number | null {
   return parsed ? parsed.getTime() : null;
 }
 
-function formatLegacyDateLabel(timestamp: number | null): string | null {
+function formatRecordDateLabel(timestamp: number | null): string | null {
   if (timestamp === null) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return `${dd} ${mm} ${yyyy}`;
+  return toDisplay(timestamp) || null;
 }
 
 function unwrapStorageArray(
@@ -693,7 +688,7 @@ function toNextMaterialeMovimentoReadOnlyItem(
     [raw.timestamp, raw.data, raw.createdAt, raw.updatedAt]
       .map((entry) => toTimestamp(entry))
       .find((entry): entry is number => entry !== null) ?? null;
-  const data = rawDataLabel ?? formatLegacyDateLabel(timestamp);
+  const data = rawDataLabel ?? formatRecordDateLabel(timestamp);
   const fornitore =
     normalizeOptionalText(raw.fornitore) ?? normalizeOptionalText(raw.fornitoreLabel);
   const explicitTarga =
@@ -818,7 +813,7 @@ function normalizeAdBlueEvent(
   const data =
     normalizeOptionalText(record.data) ??
     normalizeOptionalText(record.dataCambio) ??
-    formatLegacyDateLabel(timestamp);
+    formatRecordDateLabel(timestamp);
   const quantitaLitri =
     normalizeNumber(record.quantitaLitri) ??
     normalizeNumber(record.quantita) ??

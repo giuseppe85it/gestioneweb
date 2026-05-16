@@ -9,6 +9,16 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-05-14 Date NEXT: recupero ISO residui
+- Fase 9 completata: scan totale in `docs/_live/SCAN_DATE_TOTALE_2026-05-14.md` su template, JSX, ISO letterali, helper locali, PDF e Chat IA.
+- Convertiti 31 residui runtime aggiuntivi a `src/next/helpers/dateUnica.ts` o ad adapter gia' ridiretti; classificati e motivati falsi positivi tecnici, backup e punti vietati PROMPT 40.
+- Verifiche Fase 9: `npm run build` PASS, `npx tsc --noEmit` PASS. Firestore invariato.
+- Dopo la migration `@manutenzioni.data` a ISO, e' stato eseguito uno scan runtime esaustivo in `docs/_live/SCAN_ISO_RESIDUI_2026-05-14.md`.
+- Patchati 42 contesti display che potevano mostrare ISO grezzo invece di `GG/MM/AAAA`, con focus su `/next/manutenzioni`, dashboard, mappa storico, dossier, Chat IA, report IA e procurement.
+- Tutti i display patchati passano da `src/next/helpers/dateUnica.ts` direttamente o tramite helper locali gia collegati a `dateUnica`.
+- Nessuna modifica a Firestore, writer o storia segnalazione; `StoriaRecordTimeline` resta fuori perimetro e rimandato a PROMPT 40.
+- Verifiche: `npm run build` PASS, `npx tsc --noEmit` PASS, grep ISO residuo senza render JSX.
+
 ## 0.0 Aggiornamento operativo 2026-05-14 Manutenzioni: chiusura ciclo eventi gomme
 - NEXT Manutenzioni ora supporta lo stato esplicito `chiusa_da_evento` con tracciabilita `chiusuraDi`, `chiusuraRefId`, `chiusuraData`, preservando il fallback storico dei record senza stato come `eseguita`.
 - `@segnalazioni_autisti_tmp` e `@controlli_mezzo_autisti` accettano lo stato `chiusa` e gli stessi campi di chiusura, usati per collegare il ciclo a un evento esterno.

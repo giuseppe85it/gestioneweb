@@ -11,7 +11,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../nextDateFormat";
+import { toDisplayDateTime } from "../helpers/dateUnica";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiControlliAll.css";
 
@@ -33,10 +33,6 @@ type ControlloView = ControlloRecord & {
   targetLabel: string;
   targaLabel: string;
 };
-
-function formatDateTime(ts?: number | null) {
-  return formatDateTimeUI(ts ?? null);
-}
 
 function normTarga(value?: string | null) {
   return String(value ?? "").toUpperCase().replace(/\s+/g, "").trim();
@@ -201,7 +197,7 @@ export default function AutistiControlliAll() {
       <div className="aic-row" key={r.id ?? `ctrl_${index}`}>
         <div className="aic-row-main">
           <div className="aic-row-top">
-            <span className="aic-time">{formatDateTime(r.timestamp)}</span>
+            <span className="aic-time">{toDisplayDateTime(r.timestamp ?? null) || "-"}</span>
             <span className="aic-target">{r.targetLabel}</span>
           </div>
           <div className="aic-row-mid">

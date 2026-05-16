@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toDisplay } from "../helpers/dateUnica";
 import type { MezzoDossierCardData } from "./internalAiTypes";
 import "./internalAiMezzoCard.css";
 
@@ -205,7 +206,7 @@ export default function InternalAiMezzoCard({ data }: { data: MezzoDossierCardDa
                   ) : null}
                   {lavoro.dataInserimento ? (
                     <span className="internal-ai-mezzo-card__lavoro-date">
-                      {lavoro.dataInserimento}
+                      {toDisplay(lavoro.dataInserimento) || lavoro.dataInserimento}
                     </span>
                   ) : null}
                 </div>
@@ -236,7 +237,7 @@ export default function InternalAiMezzoCard({ data }: { data: MezzoDossierCardDa
                   {m.descrizione ?? m.tipo ?? "Tipo non disponibile"}
                 </span>
                 {m.data ? (
-                  <span className="internal-ai-mezzo-card__lavoro-date">{m.data}</span>
+                  <span className="internal-ai-mezzo-card__lavoro-date">{toDisplay(m.data) || m.data}</span>
                 ) : null}
                 {m.km !== null ? (
                   <span className="internal-ai-pill is-neutral">{m.km} km</span>
@@ -284,7 +285,7 @@ export default function InternalAiMezzoCard({ data }: { data: MezzoDossierCardDa
                       ) : null}
                       {lavoro.dataInserimento ? (
                         <span className="internal-ai-mezzo-card__lavoro-date">
-                          {lavoro.dataInserimento}
+                          {toDisplay(lavoro.dataInserimento) || lavoro.dataInserimento}
                         </span>
                       ) : null}
                     </div>

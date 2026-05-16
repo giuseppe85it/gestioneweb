@@ -1,15 +1,20 @@
 import { isChatIaMezzoSameTarga } from "./chatIaMezziTarga";
 import type { ChatIaMezzoSnapshot, ChatIaMezzoTimelineEvent } from "./chatIaMezziTypes";
+import { parseAnyDate, toDisplay } from "../../../helpers/dateUnica";
 
 function fromDateText(value: string | null): number | null {
   if (!value) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseAnyDate(value)?.getTime() ?? null;
 }
 
 function dateLabelFromTimestamp(timestamp: number | null): string | null {
   if (!timestamp) return null;
-  return new Date(timestamp).toLocaleDateString("it-IT");
+  return toDisplay(timestamp) || null;
+}
+
+function dateLabelFromValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return toDisplay(value) || String(value);
 }
 
 function severityFromText(value: string | null | undefined): ChatIaMezzoTimelineEvent["severity"] {
@@ -47,7 +52,7 @@ export function buildChatIaMezzoTimeline(snapshot: ChatIaMezzoSnapshot): ChatIaM
       source: item.source,
       title: item.title,
       detail: item.detail ?? item.subtitle,
-      dateLabel: item.data ?? dateLabelFromTimestamp(item.timestamp),
+      dateLabel: dateLabelFromValue(item.data) ?? dateLabelFromTimestamp(item.timestamp),
       timestamp: item.timestamp,
       severity: item.source === "controllo" ? severityFromText(item.title) : "warning",
       sourceLabel: item.source === "controllo" ? "Controlli mezzo" : "Segnalazioni autisti",
@@ -72,7 +77,7 @@ export function buildChatIaMezzoTimeline(snapshot: ChatIaMezzoSnapshot): ChatIaM
     source: "manutenzione",
     title: item.descrizione ?? item.tipo ?? "Manutenzione",
     detail: item.km !== null ? `${item.km} km` : null,
-    dateLabel: item.data,
+    dateLabel: dateLabelFromValue(item.data),
     timestamp: fromDateText(item.data),
     severity: "ok",
     sourceLabel: "Manutenzioni",
@@ -84,7 +89,7 @@ export function buildChatIaMezzoTimeline(snapshot: ChatIaMezzoSnapshot): ChatIaM
     source: "lavoro",
     title: item.descrizione ?? "Lavoro mezzo",
     detail: item.dettagli,
-    dateLabel: item.dataEsecuzione ?? item.dataInserimento,
+    dateLabel: dateLabelFromValue(item.dataEsecuzione ?? item.dataInserimento),
     timestamp: item.timestampEsecuzione ?? item.timestampInserimento,
     severity: item.eseguito ? "ok" : severityFromText(item.urgenza),
     sourceLabel: item.eseguito ? "Lavori eseguiti" : "Lavori aperti",

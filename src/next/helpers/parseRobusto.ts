@@ -1,3 +1,5 @@
+// DEPRECATO: usare src/next/helpers/dateUnica.ts.
+// Mantenuto solo per compatibilità chiamanti residui durante transizione.
 /**
  * Converte formati data eterogenei in timestamp millisecondi.
  *

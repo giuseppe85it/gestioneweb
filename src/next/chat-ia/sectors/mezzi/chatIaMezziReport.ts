@@ -1,6 +1,7 @@
 import { createChatIaReportArchiveEntry } from "../../reports/chatIaReportArchive";
 import type { ChatIaArchiveEntry, ChatIaReport } from "../../core/chatIaTypes";
 import type { ChatIaMezzoReportBuildArgs, ChatIaMezzoSnapshot } from "./chatIaMezziTypes";
+import { toDisplay } from "../../../helpers/dateUnica";
 
 function formatCount(label: string, value: number): string {
   return `${label}: ${value}`;
@@ -12,7 +13,11 @@ function buildIdentityBullets(snapshot: ChatIaMezzoSnapshot): string[] {
     `Categoria: ${snapshot.mezzo.categoria || "non indicata"}`,
     `Marca/modello: ${snapshot.mezzo.marcaModello || "non indicato"}`,
     `Autista: ${snapshot.mezzo.autistaNome || "non assegnato"}`,
-    `Revisione: ${snapshot.mezzo.dataScadenzaRevisione || "non indicata"}`,
+    `Revisione: ${
+      snapshot.mezzo.dataScadenzaRevisione
+        ? toDisplay(snapshot.mezzo.dataScadenzaRevisione) || snapshot.mezzo.dataScadenzaRevisione
+        : "non indicata"
+    }`,
   ];
 }
 

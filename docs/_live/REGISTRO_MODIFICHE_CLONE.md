@@ -12016,3 +12016,43 @@ La regola corrente da leggere insieme a questo registro e:
 - COSA: I record `chiusa_da_evento` da `gomme_evento` non compaiono piu' come satelliti nelle liste storiche normali. Timeline standardizzata in Manutenzioni, Dossier e Archivio; PDF Quadro con sezione separata per risolte tramite eventi esterni.
 - ESITO: FATTO
 - NOTE: `npm run build` OK; lint mirati OK; Firestore invariato.
+
+### Voce 2026-05-14 1606
+- DATA: 2026-05-14
+- TITOLO: Date NEXT unificate
+- FILE TOCCATI: `src/next/helpers/dateUnica.ts`, `src/next/nextDateFormat.ts`, pagine/domain NEXT con display/input/search/export data, `scripts/oneoff/migrate-dates-storage-iso-2026-05-14.cjs`, `docs/_live/REPORT_DATE_UNIFICATE_2026-05-14.md`.
+- COSA: Date visibili/input/export NEXT allineate a `GG/MM/AAAA`; storage `@manutenzioni.data` migrato a ISO `yyyy-mm-dd` per 56 record. Helper vecchi deprecati o ridiretti a `dateUnica`.
+- ESITO: FATTO_CON_VERIFICA_MANCANTE
+- NOTE: `npm run build`, `npx tsc --noEmit` e lint mirato OK; test unitario `dateUnica` 14/14 OK. `npx vitest run` completo KO per raccolta dei Playwright E2E sotto Vitest (`tests/e2e/*.spec.ts`), non per i test data.
+
+### Voce 2026-05-14 1646
+- DATA: 2026-05-14
+- TITOLO: Recupero ISO residui post-migration NEXT
+- FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/NextMappaStoricoPage.tsx`, `src/next/NextDossierMezzoPage.tsx`, Chat IA, report IA, procurement e report date in `docs/_live`.
+- COSA: Eseguito scan runtime esaustivo dei display data NEXT dopo migration ISO. Patchati 42 contesti che potevano mostrare ISO grezzo, usando `dateUnica.toDisplay` o helper locali gia collegati a `dateUnica`.
+- ESITO: FATTO
+- NOTE: `npm run build` e `npx tsc --noEmit` OK; grep ISO residuo senza render JSX. Lint mirato OK escludendo baseline preesistente di `NextEuromeccPage.tsx`.
+
+### Voce 2026-05-14 2359
+- DATA: 2026-05-14
+- TITOLO: Sweep totale date NEXT Fase 9
+- FILE TOCCATI: `src/next/*` aree display/date, `docs/_live/SCAN_DATE_TOTALE_2026-05-14.md`, `docs/_live/REPORT_DATE_UNIFICATE_2026-05-14.md`
+- COSA: Eseguito scan totale su template, JSX, ISO, helper locali, PDF e Chat IA. Convertiti 31 residui runtime a `dateUnica` o adapter gia' ridiretti; classificati falsi positivi tecnici, backup e punti vietati PROMPT 40.
+- ESITO: FATTO
+- NOTE: Build e typecheck PASS. Firestore invariato.
+
+### Voce 2026-05-14 PROMPT 41-42
+- DATA: 2026-05-14
+- TITOLO: Fix duplicazione modifica manutenzione + Elimina nel Quadro + autocomplete officina
+- FILE TOCCATI: `src/next/domain/nextManutenzioniDomain.ts`, `src/next/NextManutenzioniPage.tsx`, `src/next/components/OfficinaAutocomplete.tsx`, `src/next/next-manutenzioni.css`
+- COSA: PROMPT 41 — `saveNextManutenzioneBusinessRecord` ritrova il record per id reale o fingerprint e assegna un id stabile, niente piu' duplicati su modifica. PROMPT 42 — bottone Elimina su ogni riga del pannello Quadro manutenzioni HTML con modale di conferma (`deleteNextManutenzioneBusinessRecord` esteso con fallback fingerprint); campo Fornitore/Officina dei form diventa autocomplete non vincolante che suggerisce read-only da `@officine` con testo libero sempre ammesso.
+- ESITO: FATTO
+- NOTE: Nessuna deroga `cloneWriteBarrier` aggiunta (`@manutenzioni` gia' in deroga path-based da `/next/manutenzioni`; `@officine` non scritto dal form). Test unitari writer 5/5 + 4/4; build/tsc/eslint OK; sweep Playwright P41 10/10 e P42 9/9. I record gia' duplicati pre-fix e i 31 nomi fornitore storici NON migrati.
+
+2026-05-15 1730
+DATA: 2026-05-15
+TITOLO: PROMPT 48 — fix configurazione barriera scope CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE
+FILE TOCCATI: `src/utils/cloneWriteBarrier.ts`
+COSA: PROMPT 47 aveva creato lo scope `centro_controllo_legame_write` nei writer `agganciaSegnalazioneAManutenzioneEsistente` + `sganciaLegameOrfano` ma non l'aveva configurato lato barriera. Risultato: `assertCloneWriteAllowed` lanciava `CloneWriteBlockedError` ad ogni scrittura su `/next/centro-controllo` (popup visto da Giuseppe cliccando "Sgancia link orfano"). Fix: aggiunte costanti `CENTRO_CONTROLLO_LEGAME_ALLOWED_WRITE_PATHS` (solo `/next/centro-controllo`) + `CENTRO_CONTROLLO_LEGAME_ALLOWED_STORAGE_KEYS` (`@manutenzioni`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`) + `CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE`; helper `isAllowedCentroControlloLegameWritePath`; scope nella type union di `runWithCloneWriteScopedAllowance`; clausola di autorizzazione in `isAllowedCloneWriteException` accanto a `CHIUSURA_DA_EVENTO_WRITE_SCOPE`.
+ESITO: FATTO
+NOTE: Nessuna deroga esistente modificata. Barriera attiva su tutto il resto. Deroga ristretta a `/next/centro-controllo` (sub-path inclusi via prefix match) e a 3 storage keys. Tsc clean, eslint clean, vitest writer P47 11/11 invariati. Rif: `docs/_live/REPORT_PROMPT48_BARRIERA_FIX_2026-05-15.md`.

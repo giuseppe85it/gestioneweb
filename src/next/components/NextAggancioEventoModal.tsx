@@ -5,6 +5,7 @@ import {
   type EventoCompatibile,
   type TipoEventoChiusuraCompatibile,
 } from "../helpers/eventiCompatibili";
+import { buildFraseStoria, type TipoRecordStoria } from "../helpers/frasestoriaRecord";
 import { formatDateTimeUI } from "../nextDateFormat";
 
 export type AggancioEventoTipoRecord = "manutenzione" | "segnalazione" | "controllo";
@@ -28,6 +29,12 @@ type Props = {
 function formatTipoRecord(value: AggancioEventoTipoRecord): string {
   if (value === "segnalazione") return "segnalazione";
   if (value === "controllo") return "controllo";
+  return "manutenzione";
+}
+
+function aggancioTipoToStoriaTipo(value: AggancioEventoTipoRecord): TipoRecordStoria {
+  if (value === "segnalazione") return "segnalazione";
+  if (value === "controllo") return "controllo_ko";
   return "manutenzione";
 }
 
@@ -149,6 +156,31 @@ export function NextAggancioEventoModal({
               <h4>Altri cambi gomme successivi</h4>
               {others.map(renderEvento)}
             </section>
+          ) : null}
+
+          {selectedEvento ? (
+            <div
+              className="aix-frase-preview"
+              style={{
+                marginTop: 14,
+                padding: "10px 12px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 6,
+              }}
+            >
+              <span style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                Frase storia che apparira' dopo la chiusura:
+              </span>
+              <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
+                {buildFraseStoria({
+                  tipo: aggancioTipoToStoriaTipo(tipoRecord),
+                  dataApertura: record.dataRiferimento,
+                  modalitaChiusura: "evento_autisti",
+                  dataEventoChiusura: selectedEvento.data,
+                })}
+              </p>
+            </div>
           ) : null}
 
           <div className="aix-actions">
