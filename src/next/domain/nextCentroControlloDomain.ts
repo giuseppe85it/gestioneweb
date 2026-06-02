@@ -33,6 +33,9 @@ const CATEGORIE_MOTORIZZATE_NORMALIZED: ReadonlySet<string> = new Set<string>([
 
 const CATEGORIE_RIMORCHI_NORMALIZED: ReadonlySet<string> = new Set<string>([
   "biga",
+  "pianale",
+  "porta silo container",
+  "silo container",
   "vasca",
   "centina",
   "semirimorchio asse fisso",
