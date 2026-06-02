@@ -2106,6 +2106,13 @@ export default function NextManutenzioniPage() {
     const normalizedImporto = parseImportoInput(importo);
     const sourceRecord = editingId ? storico.find((item) => item.id === editingId) ?? null : null;
     const isCompletionSave = Boolean(completionRecordId && completionRecordId === editingId);
+    const selectedStato: NextManutenzioneStato = sourceRecord
+      ? isCompletionSave
+        ? "eseguita"
+        : sourceRecord.stato ?? "daFare"
+      : createAsDaFare
+        ? "daFare"
+        : "eseguita";
 
     if (!normalizedTarga || !normalizedDescrizione || !normalizedData) {
       window.alert("Compila almeno TARGA, DESCRIZIONE e DATA nel formato GG/MM/AAAA.");
@@ -2161,6 +2168,7 @@ export default function NextManutenzioniPage() {
         descrizione: normalizedDescrizione,
         eseguito: normalizeFreeText(eseguito) || null,
         data: normalizedData,
+        stato: selectedStato,
         importo: normalizedImporto,
         materiali: createAsDaFare ? [] : materialiTemp,
         assiCoinvolti: isUiSubtypeGommeOrdinario(uiSubtype) ? assiCoinvolti : [],
@@ -2173,7 +2181,6 @@ export default function NextManutenzioniPage() {
         gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
         ...(sourceRecord
           ? {
-              stato: isCompletionSave ? "eseguita" : sourceRecord.stato ?? null,
               dataEsecuzione: isCompletionSave ? normalizedData : sourceRecord.dataEsecuzione ?? null,
               dataProgrammata: sourceRecord.dataProgrammata ?? null,
               origineTipo: sourceRecord.origineTipo ?? null,
@@ -2189,7 +2196,6 @@ export default function NextManutenzioniPage() {
           : {}),
         ...(createAsDaFare && !sourceRecord
           ? {
-              stato: "daFare" as const,
               eseguito: null,
               dataEsecuzione: null,
               dataProgrammata: null,
@@ -3031,17 +3037,31 @@ export default function NextManutenzioniPage() {
 
           {!editingId ? (
             <div className="man2-field-row">
-              <label className="man2-field">
+              <div className="man2-field">
                 <span className="man2-field__label">Stato iniziale</span>
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={createAsDaFare}
-                    onChange={(event) => setCreateAsDaFare(event.target.checked)}
-                  />{" "}
-                  Crea come manutenzione da fare
-                </span>
-              </label>
+                <div
+                  role="group"
+                  aria-label="Stato iniziale manutenzione"
+                  style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+                >
+                  <button
+                    type="button"
+                    className={createAsDaFare ? "man2-nav-btn man2-nav-btn--primary" : "man2-nav-btn"}
+                    aria-pressed={createAsDaFare}
+                    onClick={() => setCreateAsDaFare(true)}
+                  >
+                    Da fare
+                  </button>
+                  <button
+                    type="button"
+                    className={!createAsDaFare ? "man2-nav-btn man2-nav-btn--primary" : "man2-nav-btn"}
+                    aria-pressed={!createAsDaFare}
+                    onClick={() => setCreateAsDaFare(false)}
+                  >
+                    Eseguita
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 

@@ -543,15 +543,8 @@ function sanitizeManutenzioneUrgenza(value: unknown): NextManutenzioneUrgenza | 
 }
 
 function hasLegacyExecutionFields(raw: RawRecord): boolean {
-  if (normalizeOptionalText(raw.data) || normalizeOptionalText(raw.dataEsecuzione)) return true;
+  if (normalizeOptionalText(raw.dataEsecuzione)) return true;
   if (normalizeNumber(raw.km) !== null || normalizeNumber(raw.ore) !== null) return true;
-  if (
-    normalizeOptionalText(raw.fornitore) ||
-    normalizeOptionalText(raw.fornitoreLabel) ||
-    normalizeOptionalText(raw.eseguito)
-  ) {
-    return true;
-  }
   return normalizeNumber(raw.importo) !== null;
 }
 
@@ -559,7 +552,8 @@ function resolveLegacyManutenzioneStato(raw: RawRecord): NextManutenzioneStato {
   const explicitStato = sanitizeManutenzioneStato(raw.stato);
   if (explicitStato) return explicitStato;
 
-  // Regola fallback legacy: i record @manutenzioni senza stato esplicito sono letti come eseguiti se hanno segnali di esecuzione (data/dataEsecuzione, km/ore, fornitore/eseguito o importo); altrimenti restano da fare.
+  // Regola fallback legacy: data e fornitore/officina non determinano lo stato.
+  // Senza stato esplicito, servono segnali operativi di esecuzione.
   return hasLegacyExecutionFields(raw) ? "eseguita" : "daFare";
 }
 
