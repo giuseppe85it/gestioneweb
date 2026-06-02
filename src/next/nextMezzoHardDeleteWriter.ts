@@ -138,7 +138,10 @@ async function deleteMezzoById(mezzoId: string): Promise<number> {
   });
   const removed: number = list.length - filtered.length;
   if (removed > 0) {
-    await setItemSync(MEZZI_KEY, filtered);
+    await setItemSync(MEZZI_KEY, filtered, {
+      allowRemovals: true,
+      removedIds: [idTrim],
+    });
   }
   return removed;
 }
