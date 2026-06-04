@@ -51,7 +51,13 @@ describe("closureOrchestrator — propagateChiusuraToLegame (D1)", () => {
       origineRefId: "seg-1",
       origineRefKey: "@segnalazioni_autisti_tmp",
     });
-    expect(esito).toMatchObject({ ok: true, propagated: true, targetTipo: "segnalazione", targetId: "seg-1" });
+    expect(esito).toMatchObject({
+      ok: true,
+      propagated: true,
+      propagatedCount: 1,
+      targetTipo: "segnalazione",
+      targetId: "seg-1",
+    });
     const segs = read("@segnalazioni_autisti_tmp");
     expect(segs[0].stato).toBe("chiusa");
     expect(segs[0].chiusuraDi).toBe("manutenzione");
@@ -67,7 +73,13 @@ describe("closureOrchestrator — propagateChiusuraToLegame (D1)", () => {
       id: "man-99",
       stato: "eseguita",
     });
-    expect(esito).toEqual({ ok: true, propagated: false, reason: "no-legame" });
+    expect(esito).toEqual({
+      ok: true,
+      propagated: false,
+      reason: "no-legame",
+      propagatedCount: 0,
+      failures: [],
+    });
     expect(read("@segnalazioni_autisti_tmp")[0].stato).toBe("presa_in_carico");
   });
 
@@ -82,11 +94,49 @@ describe("closureOrchestrator — propagateChiusuraToLegame (D1)", () => {
       origineRefId: "ctl-1",
       origineRefKey: "@controlli_mezzo_autisti",
     });
-    expect(esito).toMatchObject({ ok: true, propagated: true, targetTipo: "controllo", targetId: "ctl-1" });
+    expect(esito).toMatchObject({
+      ok: true,
+      propagated: true,
+      propagatedCount: 1,
+      targetTipo: "controllo",
+      targetId: "ctl-1",
+    });
     const ctls = read("@controlli_mezzo_autisti");
     expect(ctls[0].stato).toBe("chiusa");
     expect(ctls[0].chiusuraDi).toBe("manutenzione");
     expect(ctls[0].chiusuraRefId).toBe("man-2");
+  });
+
+  it("manutenzione con origineRefs multiple: propaga a tutte le sorgenti", async () => {
+    seed("@segnalazioni_autisti_tmp", [
+      { id: "seg-1", stato: "presa_in_carico", linkedLavoroId: "man-multi" },
+      { id: "seg-2", stato: "presa_in_carico", linkedLavoroId: "man-multi" },
+    ]);
+    seed("@controlli_mezzo_autisti", [
+      { id: "ctl-1", letta: true, linkedLavoroId: "man-multi" },
+    ]);
+
+    const esito = await propagateChiusuraToLegame({
+      id: "man-multi",
+      stato: "eseguita",
+      origineRefs: [
+        { tipo: "segnalazione", refId: "seg-1", refKey: "@segnalazioni_autisti_tmp" },
+        { tipo: "segnalazione", refId: "seg-2", refKey: "@segnalazioni_autisti_tmp" },
+        { tipo: "controllo", refId: "ctl-1", refKey: "@controlli_mezzo_autisti" },
+      ],
+    });
+
+    expect(esito).toMatchObject({
+      ok: true,
+      propagated: true,
+      propagatedCount: 3,
+      failures: [],
+    });
+    expect(read("@segnalazioni_autisti_tmp").map((record) => record.stato)).toEqual([
+      "chiusa",
+      "chiusa",
+    ]);
+    expect(read("@controlli_mezzo_autisti")[0].stato).toBe("chiusa");
   });
 
   it("doppia chiamata: idempotente (stesso patch, nessun danno)", async () => {

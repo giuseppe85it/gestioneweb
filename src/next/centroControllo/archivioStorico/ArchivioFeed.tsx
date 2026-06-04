@@ -32,6 +32,13 @@ import { ArchivioRowManutenzione } from "./rows/ArchivioRowManutenzione";
 import { ArchivioRowRichiesta } from "./rows/ArchivioRowRichiesta";
 import { ArchivioRowSegnalazione } from "./rows/ArchivioRowSegnalazione";
 import { toDisplay, toDisplayDateTime } from "../../helpers/dateUnica";
+import {
+  getManutenzioniPerAggancio,
+  type ManutenzioneCandidataAggancio,
+} from "../../helpers/manutenzioniPerAggancio";
+import { NextAgganciaLegameModal } from "../../components/NextAgganciaLegameModal";
+import { agganciaSegnalazioniAManutenzioneEsistenteBatch } from "../../writers/agganciaSegnalazioneAManutenzioneEsistenteWriter";
+import { riapriESganciaSegnalazione } from "../../writers/nextChiusuraEventoWriter";
 import "./styles/archivioStorico.css";
 
 const MONTH_LABELS_LONG: ReadonlyArray<string> = [
@@ -344,6 +351,11 @@ export function ArchivioFeed({
   );
   const [density, setDensity] = useState<ArchivioDensity>(loadDensityFromStorage());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set<string>());
+  const [selectedSegnalazioneIds, setSelectedSegnalazioneIds] = useState<Set<string>>(new Set<string>());
+  const [batchModalState, setBatchModalState] = useState<null | {
+    candidati: ManutenzioneCandidataAggancio[];
+    busy: boolean;
+  }>(null);
 
   const handleSetDensity = useCallback((d: ArchivioDensity): void => {
     setDensity(d);
@@ -381,6 +393,27 @@ export function ArchivioFeed({
       });
     },
     [hideState],
+  );
+
+  const handleRiapriSegnalazione = useCallback(
+    async (record: Extract<ArchivioRecord, { kind: "segnalazione" }>): Promise<void> => {
+      const confirmed = window.confirm(
+        "Riaprire questa segnalazione e sganciarla dalle manutenzioni collegate?",
+      );
+      if (!confirmed) return;
+      try {
+        const result = await riapriESganciaSegnalazione(record.data.id);
+        if (!result.ok) {
+          window.alert(result.error || "Riapertura segnalazione parziale o non riuscita.");
+        } else {
+          window.alert("Segnalazione riaperta e sganciata.");
+        }
+        dataState.refetch();
+      } catch {
+        window.alert("Errore riapertura segnalazione.");
+      }
+    },
+    [dataState],
   );
 
   // Step 1: applica filtri globali (senza search) per kind.
@@ -424,6 +457,73 @@ export function ArchivioFeed({
   const groups: GroupBucket[] = useMemo(() => {
     return groupByDay(sortedActive, new Date());
   }, [sortedActive]);
+
+  const selectedSegnalazioni = useMemo(
+    () =>
+      sortedActive.filter(
+        (record): record is Extract<ArchivioRecord, { kind: "segnalazione" }> =>
+          record.kind === "segnalazione" && selectedSegnalazioneIds.has(record.data.id),
+      ),
+    [selectedSegnalazioneIds, sortedActive],
+  );
+
+  const handleToggleSegnalazioneSelection = useCallback((id: string): void => {
+    setSelectedSegnalazioneIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleOpenBatchAggancio = useCallback(async (): Promise<void> => {
+    if (selectedSegnalazioni.length === 0) return;
+    const targhe = Array.from(
+      new Set(
+        selectedSegnalazioni
+          .map((record) => String(record.data.targa ?? "").trim().toUpperCase())
+          .filter((targa) => targa.length > 0),
+      ),
+    );
+    if (targhe.length !== 1) {
+      window.alert("Seleziona segnalazioni della stessa targa per agganciarle alla stessa manutenzione.");
+      return;
+    }
+    setBatchModalState({ candidati: [], busy: true });
+    try {
+      const candidati = await getManutenzioniPerAggancio(targhe[0]);
+      setBatchModalState({ candidati, busy: false });
+    } catch (error) {
+      console.error("Errore caricamento candidati aggancio multiplo:", error);
+      setBatchModalState(null);
+      window.alert("Errore caricamento manutenzioni candidate.");
+    }
+  }, [selectedSegnalazioni]);
+
+  const handleConfirmBatchAggancio = useCallback(
+    async (manutenzioneTargetId: string): Promise<void> => {
+      setBatchModalState((prev) => (prev ? { ...prev, busy: true } : prev));
+      const result = await agganciaSegnalazioniAManutenzioneEsistenteBatch({
+        manutenzioneTargetId,
+        sorgenti: selectedSegnalazioni.map((record) => ({
+          sorgenteId: record.data.id,
+          sorgenteTipo: "segnalazione",
+        })),
+      });
+      if (result.failures.length > 0) {
+        window.alert(
+          `Aggancio parziale: ${result.successes.length} riusciti, ${result.failures.length} falliti.\n` +
+            result.failures.map((failure) => `${failure.sorgenteId}: ${failure.error}`).join("\n"),
+        );
+      } else {
+        window.alert(`Aggancio eseguito per ${result.successes.length} segnalazioni.`);
+      }
+      setBatchModalState(null);
+      setSelectedSegnalazioneIds(new Set<string>());
+      await dataState.refetch();
+    },
+    [dataState, selectedSegnalazioni],
+  );
 
   const showManutenzioniBanner: boolean =
     activeKind === "manutenzione" && Boolean(filtersState.filters.autista);
@@ -469,6 +569,7 @@ export function ArchivioFeed({
     // Quando cambio kind, riduco lo stato espanso allo spazio attivo.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedIds(new Set<string>());
+    setSelectedSegnalazioneIds(new Set<string>());
   }, [activeKind]);
 
   if (dataState.loading) {
@@ -522,6 +623,31 @@ export function ArchivioFeed({
         density={density}
         setDensity={handleSetDensity}
       />
+      {activeKind === "segnalazione" && selectedSegnalazioni.length > 0 ? (
+        <div
+          className="archivio-manut-banner"
+          role="note"
+          style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+        >
+          <span>{selectedSegnalazioni.length} segnalazioni selezionate</span>
+          <button
+            type="button"
+            className="edit"
+            onClick={() => void handleOpenBatchAggancio()}
+            disabled={Boolean(batchModalState?.busy)}
+          >
+            Aggancia a manutenzione
+          </button>
+          <button
+            type="button"
+            className="edit"
+            onClick={() => setSelectedSegnalazioneIds(new Set<string>())}
+            disabled={Boolean(batchModalState?.busy)}
+          >
+            Annulla selezione
+          </button>
+        </div>
+      ) : null}
       <div
         className={`archivio-feed-wrap ${density === "compatta" ? "is-compact" : ""}`}
         data-active-pane={activeKind}
@@ -562,14 +688,27 @@ export function ArchivioFeed({
                         onEliminaArchivio={() => handleRequestElimina(record)}
                       />
                     ) : record.kind === "segnalazione" ? (
-                      <ArchivioRowSegnalazione
-                        record={record}
-                        isExpanded={isExpanded}
-                        onToggleExpand={() => handleToggleExpand(id)}
-                        mezzoMeta={mezzoMeta}
-                        onOpenEventoModal={onOpenEventoModal}
-                        onEliminaArchivio={() => handleRequestElimina(record)}
-                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr)", gap: 8 }}>
+                        <label
+                          title="Seleziona per aggancio multiplo"
+                          style={{ display: "flex", alignItems: "flex-start", paddingTop: 18 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedSegnalazioneIds.has(id)}
+                            onChange={() => handleToggleSegnalazioneSelection(id)}
+                          />
+                        </label>
+                        <ArchivioRowSegnalazione
+                          record={record}
+                          isExpanded={isExpanded}
+                          onToggleExpand={() => handleToggleExpand(id)}
+                          mezzoMeta={mezzoMeta}
+                          onOpenEventoModal={onOpenEventoModal}
+                          onEliminaArchivio={() => handleRequestElimina(record)}
+                          onRiapri={() => void handleRiapriSegnalazione(record)}
+                        />
+                      </div>
                     ) : (
                       <ArchivioRowRichiesta
                         record={record}
@@ -588,6 +727,29 @@ export function ArchivioFeed({
           ))
         )}
       </div>
+      {batchModalState && selectedSegnalazioni.length > 0 ? (
+        <NextAgganciaLegameModal
+          sorgente={{
+            id: selectedSegnalazioni[0].data.id,
+            targa: selectedSegnalazioni[0].data.targa ?? "",
+            tipo: "segnalazione",
+            descrizione: selectedSegnalazioni[0].data.descrizione ?? "",
+          }}
+          sorgenti={selectedSegnalazioni.map((record) => ({
+            id: record.data.id,
+            targa: record.data.targa ?? "",
+            tipo: "segnalazione",
+            descrizione: record.data.descrizione ?? "",
+          }))}
+          mode="aggancia"
+          candidati={batchModalState.candidati}
+          busy={batchModalState.busy}
+          onCancel={() => {
+            if (!batchModalState.busy) setBatchModalState(null);
+          }}
+          onConfirm={(id) => void handleConfirmBatchAggancio(id)}
+        />
+      ) : null}
       <ArchivioConfirmDelete
         open={hideState.confirmOpen}
         kindLabel={hideState.pending?.kindLabel ?? "voce"}

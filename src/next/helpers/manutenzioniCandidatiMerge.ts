@@ -11,6 +11,7 @@
 
 import { getItemSync } from "../../utils/storageSync";
 import { parseAnyDate, toISO } from "./dateUnica";
+import { readLegamiOrigine } from "./cicloLegame";
 
 export type ManutenzioneCandidataMerge = {
   id: string;
@@ -21,6 +22,7 @@ export type ManutenzioneCandidataMerge = {
   dataProgrammataIso: string | null;
   origineTipo: string | null;
   origineRefId: string | null;
+  origineRefsCount: number;
 };
 
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -123,6 +125,7 @@ export async function getManutenzioniCandidateMerge(
         dataProgrammataIso: toISO(record.dataProgrammata),
         origineTipo,
         origineRefId,
+        origineRefsCount: readLegamiOrigine(record).length,
       },
       sortKey: dataApertura ? dataApertura.getTime() : 0,
     });

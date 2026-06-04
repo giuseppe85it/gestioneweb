@@ -1,0 +1,318 @@
+================================================================
+AUDIT FISICO FIRESTORE — Manutenzioni NEXT (STEP 2)
+MODALITÀ SOLA LETTURA — nessun metodo di scrittura presente nello script
+Metodi firebase-admin usati: initializeApp, credential.cert, firestore(), doc(), get()
+Project: gestionemanutenzione-934ef
+================================================================
+
+### SHAPE value @mezzi_aziendali: value_OGGETTO/ARRAY_DIRETTO -> ARRAY (doc exists=true)
+
+================== MEZZI MASTER (ordinati per label, domain:975) ==================
+Totale record fisici @mezzi_aziendali: 32
+Mezzi validi (targa non vuota): 32
+
+[  0] targaNorm=TI113417   | targaRaw="TI113417" | id=1769860939235 | label="TI113417 - RENAULT T460"   <<==== DEFAULT FILTRO (mezzi[0]) 
+[  1] targaNorm=TI136914   | targaRaw="TI136914" | id=1767028346960 | label="TI136914 - RENAULT T460 4x2"
+[  2] targaNorm=TI178456   | targaRaw="TI178456" | id=MEZZO-1764221925068 | label="TI178456 - Renault Lanterna 430 6x2"
+[  3] targaNorm=TI180147   | targaRaw="TI180147" | id=1774253518053 | label="TI180147 - IVECO 440X53T X-Way"
+[  4] targaNorm=TI229717   | targaRaw="TI229717" | id=MEZZO-1765267701340 | label="TI229717 - RENAULT T480 4x2"
+[  5] targaNorm=TI233827   | targaRaw="TI233827" | id=MEZZO-1765904721336 | label="TI233827 - RENAULT C460 8x4"
+[  6] targaNorm=TI239045   | targaRaw="TI239045" | id=MEZZO-1765262672326 | label="TI239045 - RENAULT T460 4x2"
+[  7] targaNorm=TI239279   | targaRaw="TI239279" | id=MEZZO-1770016354507 | label="TI239279 - RENAULT T 460 4X2"
+[  8] targaNorm=TI279216   | targaRaw="TI279216" | id=MEZZO-1764763020107 | label="TI279216 - Renault T460 4x2"
+[  9] targaNorm=TI280132   | targaRaw="TI280132" | id=MEZZO-1765018390933 | label="TI280132 - ALKOM MOD.SM39"
+[ 10] targaNorm=TI282780   | targaRaw="TI282780" | id=5dc13a08-c060-4496-888f-1064979d2183 | label="TI282780 - O.ME.P.S. CM35"
+[ 11] targaNorm=TI285053   | targaRaw="TI285053" | id=MEZZO-1770100792078 | label="TI285053 - WIELTON NS3K"
+[ 12] targaNorm=TI285195   | targaRaw="TI285195" | id=MEZZO-1765652531596 | label="TI285195 - O.ME.P.S. CM35"
+[ 13] targaNorm=TI285217   | targaRaw="TI285217" | id=MEZZO-1765060148166 | label="TI285217 - O.ME.P.S. CM Silo per cemento"
+[ 14] targaNorm=TI285997   | targaRaw="TI285997" | id=1772655159701 | label="TI285997 - LECITRAILER LTP-GEN TIR"
+[ 15] targaNorm=TI287110   | targaRaw="TI287110" | id=MEZZO-1765905230365 | label="TI287110 - O.ME.P.S. cm"
+[ 16] targaNorm=TI289007   | targaRaw="TI289007" | id=MEZZO-1765221910775 | label="TI289007 - MISTRALL B191PO"
+[ 17] targaNorm=TI298409   | targaRaw="TI298409" | id=MEZZO-1765905295721 | label="TI298409 - RENAULT T460 4X2"
+[ 18] targaNorm=TI313387   | targaRaw="TI313387" | id=MEZZO-1764192368638 | label="TI313387 - RENAULT D16.280"
+[ 19] targaNorm=TI315407   | targaRaw="TI315407" | id=MEZZO-1765230744581 | label="TI315407 - RENAULT C430 6x2"
+[ 20] targaNorm=TI324623   | targaRaw="TI324623" | id=MEZZO-1764359997811 | label="TI324623 - DAF FT XF"
+[ 21] targaNorm=TI324633   | targaRaw="TI324633" | id=MEZZO-1764364546534 | label="TI324633 - DAF FT XF"
+[ 22] targaNorm=TI81027    | targaRaw="TI81027" | id=1769797554969 | label="TI81027 - O.ME.P.S. -CM Silo per cemento"
+[ 23] targaNorm=TI84069    | targaRaw="TI84069" | id=MEZZO-1765018668973 | label="TI84069 - MISTRAL S372P1"
+[ 24] targaNorm=TI84822    | targaRaw="TI84822" | id=MEZZO-1765017515589 | label="TI84822 - O.ME.P.S CM35"
+[ 25] targaNorm=TI85121    | targaRaw="TI85121" | id=MEZZO-1765282472216 | label="TI85121 - VIBERTI A.V.37S20"
+[ 26] targaNorm=TI85688    | targaRaw="TI85688" | id=1765650279666 | label="TI85688 - omeps cm39"
+[ 27] targaNorm=TI86041    | targaRaw="TI86041" | id=MEZZO-1770121608323 | label="TI86041 - VIBERTI 53 SP"
+[ 28] targaNorm=TI87448    | targaRaw="TI87448" | id=MEZZO-1765221837633 | label="TI87448 - MISTRAL TIPO B"
+[ 29] targaNorm=TI88499    | targaRaw="TI88499" | id=1770992592439 | label="TI88499 - WIELTON ns3k Semirimorchio trasporto di cose"
+[ 30] targaNorm=TI89021    | targaRaw="TI89021" | id=1771957849378 | label="TI89021 - ACERBI VIBERTI SMR38S20PL"
+[ 31] targaNorm=TI89829    | targaRaw="TI89829" | id=1770122369378 | label="TI89829 - VIBERTI SP"
+
+### SHAPE value @manutenzioni: value_OGGETTO/ARRAY_DIRETTO -> ARRAY (doc exists=true)
+
+================== TOTALE MANUTENZIONI FISICHE ==================
+Totale record fisici @manutenzioni: 85
+Conteggio stati derivati GLOBALE: daFare=36  programmata=0  eseguita=49  chiusa_da_evento=0  altro=0
+VERIFICA SOMMA: 85 == totale 85 -> OK
+
+================== MANUTENZIONI PER TARGA (un blocco per targa master) ==================
+
+---- TARGA TI113417 | label="TI113417 - RENAULT T460" ----
+   totale=3  | daFare=1  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1780417563799 | targaRaw="TI113417" | data="2026-06-02" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="PROVA"
+   • id=1776791310225 | targaRaw="TI113417" | data="2026-03-31" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=541545 | ore=null | importo=1641.28 | srcDoc="GKZ6Furmxstj8KSRLybs" | descr="Tagliando e lavori di manutenzione: sostituzione anello convogliatore RVI, filt…"
+   • id=1775676123687 | targaRaw="TI113417" | data="2026-02-06" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="trattore" | km=null | ore=10070 | importo=null | srcDoc=null | descr="TAGLIANDO COMPRESSORE"
+
+---- TARGA TI136914 | label="TI136914 - RENAULT T460 4x2" ----
+   totale=1  | daFare=0  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1776176567458 | targaRaw="TI136914" | data="2026-04-14" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="motrice" | km=null | ore=9663 | importo=null | srcDoc=null | descr="TAGLIANDO COMPRESSORE"
+
+---- TARGA TI178456 | label="TI178456 - Renault Lanterna 430 6x2" ----
+   totale=5  | daFare=1  programmata=0  eseguita=4  chiusa_da_evento=0  altro=0
+   • id=1779372108628 | targaRaw="TI178456" | data="2026-05-21" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=671393 | ore=null | importo=null | srcDoc=null | descr="2 kg di olio per rabbocco"
+   • id=1778592051280 | targaRaw="TI178456" | data="2026-05-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=670954 | ore=null | importo=null | srcDoc=null | descr="sostituzione Alternatore"
+   • id=1772635641628 | targaRaw="TI178456" | data="2026-03-04" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=666599 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME – straordinario
+Categoria mezzo: motrice 3 assi
+1 ASSE INTERNO SX
+…"
+   • id=1769426279303 | targaRaw="TI178456" | data="2026-01-26" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="cambio manometro pressione impianto"
+   • id=1769426241950 | targaRaw="TI178456" | data="2026-01-26" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="motrice" | km=null | ore=7591 | importo=null | srcDoc=null | descr="tagliando compressore"
+
+---- TARGA TI180147 | label="TI180147 - IVECO 440X53T X-Way" ----
+   totale=1  | daFare=1  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+   • id=1779104254909 | targaRaw="TI180147" | data="2026-05-18" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="ricalibrazione anabbagliante sx (autorizzato Simone direttamente a Sandro)"
+
+---- TARGA TI229717 | label="TI229717 - RENAULT T480 4x2" ----
+   totale=2  | daFare=0  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1772450715834 | targaRaw="TI229717" | data="2026-03-02" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=105870 | ore=null | importo=null | srcDoc=null | descr="sostituzione freni posteriori"
+   • id=1770384308093 | targaRaw="TI229717" | data="2026-02-06" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="trattore" | km=null | ore=5643 | importo=null | srcDoc=null | descr="Tagliando compressore"
+
+---- TARGA TI233827 | label="TI233827 - RENAULT C460 8x4" ----
+   totale=12  | daFare=1  programmata=0  eseguita=11  chiusa_da_evento=0  altro=0
+   • id=from-lavoro-183e0356-022c-4aac-b179-1dda258a58ba | targaRaw="TI233827" | data="2026-05-18" | dataEsec="2026-05-18" | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=300210 | ore=null | importo=null | srcDoc=null | descr="Segnalazione: motore - Motore si è spento in autostrada e non parte più.
+
+Cambi…"
+   • id=1777475064105 | targaRaw="TI233827" | data="2026-04-29" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=299231 | ore=null | importo=null | srcDoc=null | descr="-22.04.2026 + oggi 29.04.2026 km 299231
+
+Controllo spia motore accesa, possibil…"
+   • id=1777474997286 | targaRaw="TI233827" | data="2026-02-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=287461 | ore=null | importo=null | srcDoc=null | descr="Sostituito ammortizzatori posteriori 4° asse."
+   • id=1777474922705 | targaRaw="TI233827" | data="2026-01-16" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=285564 | ore=null | importo=null | srcDoc=null | descr="TAGLIANDO - Effettuato servizio completo + sostituito cinghie servizi + elimina…"
+   • id=1777474828938 | targaRaw="TI233827" | data="2025-10-24" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=276258 | ore=null | importo=null | srcDoc=null | descr="Sostituito fascio cavi posteriore motore non disponibile in data 06.10.2026."
+   • id=1777474768624 | targaRaw="TI233827" | data="2025-10-06" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=276758 | ore=null | importo=null | srcDoc=null | descr="Controllo spia motore accesa gialla, effettuato diagnosi e test con diagnostica…"
+   • id=1777474705854 | targaRaw="TI233827" | data="2025-07-23" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=268883 | ore=null | importo=null | srcDoc=null | descr="Preparazione veicolo per collaudo."
+   • id=1777474643002 | targaRaw="TI233827" | data="2025-05-29" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=259728 | ore=null | importo=null | srcDoc=null | descr="Spia motore accesa gialla, sostituito sensore Nox scarico"
+   • id=1777474590389 | targaRaw="TI233827" | data="2025-03-29" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=252297 | ore=null | importo=null | srcDoc=null | descr="Effettuato servizio completo, controllo geometria a causa usura anomala pneumat…"
+   • id=1777474530604 | targaRaw="TI233827" | data="2024-07-03" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=217511 | ore=null | importo=null | srcDoc=null | descr="Spia motore accesa gialla e fusibile F44 guasto, sostituito elettrovalvola olio…"
+   • id=1768409608814 | targaRaw="TI233827" | data="2026-01-13" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="motrice" | km=null | ore=4357 | importo=null | srcDoc=null | descr="TAGLIANDO COMPRESSORE"
+   • id=from-lavoro-9c2ed0ca-422f-4f6c-88cc-e35d1772daab | targaRaw="TI233827" | data="2026-04-21" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: motore - Perdita potenza. Motore in protezione."
+
+---- TARGA TI239045 | label="TI239045 - RENAULT T460 4x2" ----
+   totale=3  | daFare=2  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1778585399818 | targaRaw="TI239045" | data="2026-05-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="bruciato anabbagliante"
+   • id=1774962027367 | targaRaw="TI239045" | data="2026-03-31" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=543423 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: Posteriore
+marca: N/D
+km mezzo: 543423
+intervento: sostituzi…"
+   • id=c1cbe0fc-e9e9-427d-b604-925d91a1e832 | targaRaw="TI239045" | data=null | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="smontaggio sedile e saldatura supporto"
+
+---- TARGA TI239279 | label="TI239279 - RENAULT T 460 4X2" ----
+   totale=4  | daFare=0  programmata=0  eseguita=4  chiusa_da_evento=0  altro=0
+   • id=1772531987235 | targaRaw="TI239279" | data="2026-02-27" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=266121 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: Posteriore
+marca: Kumho
+km mezzo: 266121
+intervento: sostitu…"
+   • id=1770384537393 | targaRaw="TI239279" | data="2026-02-06" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="trattore" | km=null | ore=9252 | importo=null | srcDoc=null | descr="Tagliando Compressore"
+   • id=from-lavoro-5dd4afde-4531-4560-9496-512e35c60167 | targaRaw="TI239279" | data="2026-04-01T18:08:31.199Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: altro - Tubo 10 metri rotto altri tubi perdono dalle guarnizioni …"
+   • id=from-lavoro-82df827a-b18b-43fa-b4ee-abf8e3b36389 | targaRaw="TI239279" | data="2026-04-10T07:38:06.360Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Controllo KO: PERDITE"
+
+---- TARGA TI279216 | label="TI279216 - Renault T460 4x2" ----
+   totale=2  | daFare=1  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1773345571010 | targaRaw="TI279216" | data="2026-03-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="motrice" | km=null | ore=9018 | importo=null | srcDoc=null | descr="TAGLIANDO COMPRESSORE"
+   • id=d0c31311-b3fa-4c7b-969b-ab328d95b6f9 | targaRaw="TI279216" | data=null | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="far controllare da Augustoni perche è in manutenzione programmata"
+
+---- TARGA TI280132 | label="TI280132 - ALKOM MOD.SM39" ----
+   totale=2  | daFare=1  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1779297992112 | targaRaw="TI280132" | data="2026-05-20" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="attrezzature" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="sostituzione 2 perni ciechi scarico cemento"
+   • id=from-lavoro-daade4a2-c681-46d0-99d4-1906d151116d | targaRaw="TI280132" | data="2026-05-20" | dataEsec="2026-05-20" | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Controllo KO: 2 GOMME
+KUMMO KXA11 
+385/65 R22.5"
+
+---- TARGA TI282780 | label="TI282780 - O.ME.P.S. CM35" ----
+   totale=5  | daFare=5  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+   • id=1778225510390 | targaRaw="TI282780" | data="2026-05-08" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="attrezzature" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="sistemato parafango posteriore sx 
+
+tubo aria + pistola aria"
+   • id=1776922451467 | targaRaw="TI282780" | data="2026-04-15" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="aggiunta valvola di non ritorno"
+   • id=1776922331102 | targaRaw="TI282780" | data="2026-04-14" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="sostituzione pistola  d aria"
+   • id=1776922191247 | targaRaw="TI282780" | data="2026-04-14" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="RETTIFICA E PULIZIA BOTOLE"
+   • id=1776922124189 | targaRaw="TI282780" | data="2026-04-23" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="CAMBIO TUBO MANOMETRO"
+
+---- TARGA TI285053 | label="TI285053 - WIELTON NS3K" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI285195 | label="TI285195 - O.ME.P.S. CM35" ----
+   totale=5  | daFare=3  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1780304942769 | targaRaw="TI285195" | data="2026-06-01" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="CAMBIO GUARNIZIONE E RIFACIMENTO PIANO SECONDA BOTOLA DI CARICO"
+   • id=1779298043409 | targaRaw="TI285195" | data="2026-05-20" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="TUBO 4.5 MT STORZ FLANGIA"
+   • id=1778683506411 | targaRaw="TI285195" | data="2026-05-13" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="TAGLIATO 50 CM DI TUBO E RIPRISITNATO PER USURA SI è ROTTO"
+   • id=1773066080204 | targaRaw="TI285195" | data="2026-03-09" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=294278 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME – ordinario
+Categoria mezzo: semirimorchio asse sterzante
+Asse: 3°…"
+   • id=1777979571388 | targaRaw="TI285195" | data="2026-05-05" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=300369 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: 1° asse
+marca: N/D
+km mezzo: 300369
+intervento: sostituzione"
+
+---- TARGA TI285217 | label="TI285217 - O.ME.P.S. CM Silo per cemento" ----
+   totale=2  | daFare=1  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1774962004752 | targaRaw="TI285217" | data="2026-03-30" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="SISTEMAZIONE TUBO DA 10 MT 
+CAMBIO 4 GUARNZIONI STORZ"
+   • id=from-lavoro-4cc1d480-92a5-4113-ae34-fb0eddf1eb96 | targaRaw="TI285217" | data="2026-04-10T07:37:11.153Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: altro - Manometro cisterna non funzionante 
+
+Tubo compressore cis…"
+
+---- TARGA TI285997 | label="TI285997 - LECITRAILER LTP-GEN TIR" ----
+   totale=2  | daFare=1  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1776922394876 | targaRaw="TI285997" | data="2026-04-14" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="cambio luce bianca ingombro"
+   • id=from-lavoro-27ceb61e-44f7-457e-b190-5c9c9d4e594f | targaRaw="TI285997" | data="2026-04-14T14:25:20.574Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: elettrico - Fanalino anteriore SX non funziona."
+
+---- TARGA TI287110 | label="TI287110 - O.ME.P.S. cm" ----
+   totale=1  | daFare=1  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+   • id=1774962066524 | targaRaw="TI287110" | data="2026-03-10" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="SISTEMAZIONE DEL PIANO DELLE BOTOLE DI CARICO PIU CAMBIO GUARNIZIONI E RIFACIME…"
+
+---- TARGA TI289007 | label="TI289007 - MISTRALL B191PO" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI298409 | label="TI298409 - RENAULT T460 4X2" ----
+   totale=7  | daFare=2  programmata=0  eseguita=5  chiusa_da_evento=0  altro=0
+   • id=1779116226492 | targaRaw="TI298409" | data="2026-05-18" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=384276 | ore=null | importo=1082.58 | srcDoc="QvOMwyKf90JCmUvgm1RF" | descr="Preventivo per sostituzione pompa acqua e reintegro liquido refrigerante/antige…"
+   • id=1778587360877 | targaRaw="TI298409" | data="2026-05-12" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=383482 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: Posteriore
+marca: Kumho
+km mezzo: 383482
+intervento: sostitu…"
+   • id=1777067242736 | targaRaw="TI298409" | data="2026-03-09" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=371620 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME – straordinario
+Categoria mezzo: trattore stradale
+Asse: Anteriore…"
+   • id=1776176698015 | targaRaw="TI298409" | data="2026-04-14" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="OLIO MOTORE PER RABBOCCO"
+   • id=1775026960740 | targaRaw="TI298409" | data="2026-03-31" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=375646 | ore=null | importo=null | srcDoc=null | descr="CONVERGENZA"
+   • id=1768228124986 | targaRaw="TI298409" | data="2026-01-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="motrice" | km=null | ore=11808 | importo=null | srcDoc=null | descr="TAGLIANDO COMPRESSORE"
+   • id=from-lavoro-4ed587dc-725e-461e-a219-20e31ebc5cf6 | targaRaw="TI298409" | data="2026-04-24" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: altro - Perdita  liquido raffreddamento da un manicotto. Vedi foto"
+
+---- TARGA TI313387 | label="TI313387 - RENAULT D16.280" ----
+   totale=4  | daFare=1  programmata=0  eseguita=3  chiusa_da_evento=0  altro=0
+   • id=1776797542533 | targaRaw="TI313387" | data="2026-04-20" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=237062 | ore=null | importo=null | srcDoc=null | descr="SOSTITUZIONE DISCHI E PASTIGLIE ANTERIORI E POSTERIORI"
+   • id=1768494034495 | targaRaw="TI313387" | data="2026-01-13" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="compressore" | sottotipo="motrice" | km=null | ore=null | importo=null | srcDoc=null | descr="REVISIONE COMPRESSORE 
+TURBO DIESEL REVISIONE 
+MONTAGGIO SCIURBA"
+   • id=from-lavoro-7c6af494-9b02-4bf2-ac67-c994b39436c0 | targaRaw="TI313387" | data="2026-04-22T16:59:06.683Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: freni - Freni da controllare"
+   • id=from-lavoro-f609de79-f9d6-4696-99ef-4dcff25dff49 | targaRaw="TI313387" | data="2026-04-22T16:58:28.891Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: idraulico - Perdita olio freni posteriore lato guida"
+
+---- TARGA TI315407 | label="TI315407 - RENAULT C430 6x2" ----
+   totale=3  | daFare=3  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+   • id=from-lavoro-ff4d97f1-9112-43c1-a7a8-7030760f0ff4 | targaRaw="TI315407" | data="2026-04-30" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: motore - Spia guasto ventola."
+   • id=from-lavoro-cd85c334-0538-4dba-8dee-b57fa8a15f12 | targaRaw="TI315407" | data="2026-05-12" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: elettrico - Errore guasto ventola."
+   • id=75420256-1dba-49f9-a3b5-75c934a1ed2f | targaRaw="TI315407" | data=null | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="retard difetto"
+
+---- TARGA TI324623 | label="TI324623 - DAF FT XF" ----
+   totale=4  | daFare=2  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1776958902385 | targaRaw="TI324623" | data="2026-03-24" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=262836 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: Anteriore
+marca: Kumho
+km mezzo: 262836
+intervento: sostituz…"
+   • id=1776868559013 | targaRaw="TI324623" | data="2026-04-22" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="carico compressore e aggiornamento softwar"
+   • id=from-lavoro-f2ab2ab1-7e0c-491d-b8c6-a98ff65d90d8 | targaRaw="TI324623" | data="2026-04-22T16:58:44.508Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: altro - Climatizzatore non funziona."
+   • id=bc03fcd9-ae9f-4130-8181-16d716992636 | targaRaw="TI324623" | data=null | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="programmare tagliando e sistemazione aria condizionata con Daf Italia"
+
+---- TARGA TI324633 | label="TI324633 - DAF FT XF" ----
+   totale=3  | daFare=2  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1774871528292 | targaRaw="TI324633" | data="2026-03-30" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="ingrassaggio perni fusi"
+   • id=1770384582146 | targaRaw="TI324633" | data="2026-01-07" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="compressore" | sottotipo="trattore" | km=null | ore=365 | importo=null | srcDoc=null | descr="Tagliando Compressore"
+   • id=from-lavoro-c3b066d4-253f-4cd9-9771-9344cd94557f | targaRaw="TI324633" | data="2026-04-23" | dataEsec=null | statoRaw="daFare" | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: elettrico - Tachigrafo sballato"
+
+---- TARGA TI81027 | label="TI81027 - O.ME.P.S. -CM Silo per cemento" ----
+   totale=2  | daFare=1  programmata=0  eseguita=1  chiusa_da_evento=0  altro=0
+   • id=1776438606504 | targaRaw="TI81027" | data="2026-04-17" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="CAMBIO GUARNZIONI COPERCHI E RETTIFICA"
+   • id=1774962042583 | targaRaw="TI81027" | data="2026-03-24" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=262836 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: 1° asse
+marca: Kumho
+km mezzo: 262836
+intervento: sostituzio…"
+
+---- TARGA TI84069 | label="TI84069 - MISTRAL S372P1" ----
+   totale=2  | daFare=0  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1774363044856 | targaRaw="TI84069" | data="2026-03-24" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=542114 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME
+asse: 3° asse
+marca: N/D
+km mezzo: 542114
+intervento: sostituzione"
+   • id=1768996701410 | targaRaw="TI84069" | data="2026-01-21" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=535458 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME – ordinario
+Categoria mezzo: semirimorchio asse fisso
+Asse: 1° ass…"
+
+---- TARGA TI84822 | label="TI84822 - O.ME.P.S CM35" ----
+   totale=4  | daFare=2  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1778592308335 | targaRaw="TI84822" | data="2026-05-12" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="attrezzature" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="SOSTITUZIONE 3 GUARNIZIONI STORZ GRANDI PERCHE COMPLETAMENTE USURATE
+
+AGGIUNTA …"
+   • id=1773161855627 | targaRaw="TI84822" | data="2026-03-06" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="PULIZIA E RETTIFICA PIANO DELLE BOTOLE DI CARICO
+SISTEMAZIONE MANOMETRO ARIA PR…"
+   • id=1768493626667 | targaRaw="TI84822" | data="2026-01-15" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=290665 | ore=null | importo=null | srcDoc=null | descr="CAMBIO GOMME – ordinario
+Categoria mezzo: semirimorchio asse sterzante
+Asse: 1°…"
+   • id=from-lavoro-7236bb5c-1008-4796-83e1-5ef2447cc460 | targaRaw="TI84822" | data="2026-05-12T15:11:38.489Z" | dataEsec=null | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Segnalazione: altro - Guarnizioni tubi e cisterna consumate perdono tanto"
+
+---- TARGA TI85121 | label="TI85121 - VIBERTI A.V.37S20" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI85688 | label="TI85688 - omeps cm39" ----
+   totale=6  | daFare=4  programmata=0  eseguita=2  chiusa_da_evento=0  altro=0
+   • id=1780304893610 | targaRaw="TI85688" | data="2026-06-01" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="RIPARAZIONE PROVVISIORIA TUBO GOMMA SCARICO CISTERNA PER FORO"
+   • id=from-lavoro-b2234103-8aff-4448-8778-f3ec918b77ae | targaRaw="TI85688" | data="2026-05-21" | dataEsec="2026-05-21" | statoRaw="eseguita" | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="Saldata dall interno e messa piastra di rinforzo"
+   • id=1777375942968 | targaRaw="TI85688" | data="2026-04-28" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="attrezzature" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="SOSTITUZIONE VALVOLA DI NON RITORNO (dritta) + TUBO SPUNTO 
+SOSTITUZIONE TUBO S…"
+   • id=1776922563742 | targaRaw="TI85688" | data="2026-04-17" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="cambio 2 guarnizioni (anteriore e centrale) e rettifica coperchio"
+   • id=1774871539527 | targaRaw="TI85688" | data="2026-03-30" | dataEsec=null | statoRaw=(assente) | statoDeriv=daFare | tipo="mezzo" | sottotipo=null | km=null | ore=null | importo=null | srcDoc=null | descr="ingrassaggio perni fusi"
+   • id=1774554164607 | targaRaw="TI85688" | data="2026-03-26" | dataEsec=null | statoRaw=(assente) | statoDeriv=eseguita | tipo="mezzo" | sottotipo=null | km=240800 | ore=null | importo=null | srcDoc=null | descr="rotazione 1 asse per usura non equilibrata
+
+lato dx 1 asse messo su lato sx e v…"
+
+---- TARGA TI86041 | label="TI86041 - VIBERTI 53 SP" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI87448 | label="TI87448 - MISTRAL TIPO B" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI88499 | label="TI88499 - WIELTON ns3k Semirimorchio trasporto di cose" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI89021 | label="TI89021 - ACERBI VIBERTI SMR38S20PL" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+---- TARGA TI89829 | label="TI89829 - VIBERTI SP" ----
+   totale=0  | daFare=0  programmata=0  eseguita=0  chiusa_da_evento=0  altro=0
+
+================== ORFANI (targa norm non presente tra i mezzi master) ==================
+Totale record orfani: 0
+
+================== DUPLICATI (stesso id ripetuto) ==================
+Duplicati (targaNorm + id): 0
+Duplicati (id puro, qualsiasi targa): 0
+
+================== INVENTARIO ALTRE CHIAVI (count-only) ==================
+   @inventario                      | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=20
+   @materialiconsegnati             | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=39
+   @colleghi                        | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=12
+   @rifornimenti                    | esiste=SI | typeofValue=undefined | shape=value_OGGETTO/ARRAY_DIRETTO -> NON_ARRAY(undefined) | lenArray=0
+   @rifornimenti_autisti_tmp        | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=331
+   @officine                        | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=5
+   @segnalazioni_autisti_tmp        | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=47
+   @controlli_mezzo_autisti         | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=384
+   @cambi_gomme_autisti_tmp         | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=14
+   @gomme_eventi                    | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=14
+   @mezzi_foto_viste                | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=0
+   @mezzi_hotspot_mapping           | esiste=SI | typeofValue=object | shape=value_OGGETTO/ARRAY_DIRETTO -> ARRAY | lenArray=0
+
+================================================================
+FINE AUDIT FISICO
+================================================================

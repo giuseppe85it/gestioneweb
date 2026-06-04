@@ -23,7 +23,14 @@ import {
   CloneWriteBlockedError,
   runWithCloneWriteScopedAllowance,
 } from "../../utils/cloneWriteBarrier";
-import { readLegameLavoro, writeLegameLavoro, writeLegameOrigine } from "../helpers/cicloLegame";
+import {
+  addLegameOrigine,
+  readLegameLavoro,
+  readLegamiOrigine,
+  removeLegameOrigine,
+  writeLegameLavoro,
+  type LegameOrigineRef,
+} from "../helpers/cicloLegame";
 import {
   chiudiControlloDaEvento,
   chiudiSegnalazioneDaEvento,
@@ -124,6 +131,41 @@ function readChiusuraDataMs(target: RawRecord): number | undefined {
   return undefined;
 }
 
+function buildOrigineRef(
+  sorgenteTipo: "segnalazione" | "controllo",
+  sorgenteId: string,
+  sourceKey: string,
+): LegameOrigineRef {
+  return {
+    tipo: sorgenteTipo,
+    refId: sorgenteId,
+    refKey: sourceKey,
+  };
+}
+
+function hasOrigineRef(record: RawRecord, legame: LegameOrigineRef): boolean {
+  return readLegamiOrigine(record).some(
+    (entry) =>
+      entry.tipo === legame.tipo &&
+      entry.refId === legame.refId &&
+      normalizeText(entry.refKey) === normalizeText(legame.refKey),
+  );
+}
+
+function removeSourceFromMaintenance(record: RawRecord, legame: LegameOrigineRef): RawRecord {
+  return {
+    ...record,
+    ...removeLegameOrigine(record, legame),
+  };
+}
+
+function addSourceToMaintenance(record: RawRecord, legame: LegameOrigineRef): RawRecord {
+  return {
+    ...record,
+    ...addLegameOrigine(record, legame),
+  };
+}
+
 export type AgganciaSegnalazioneInput = {
   /** ID della segnalazione o controllo da agganciare. */
   sorgenteId: string;
@@ -141,6 +183,19 @@ export type AgganciaSegnalazioneResult = {
   chiusuraPropagata?: boolean;
   /** Quando si "cambia legame", id del legame precedente. */
   previousLinkedId?: string | null;
+  previousLinkedIds?: string[];
+};
+
+export type AgganciaSegnalazioniBatchInput = {
+  sorgenti: Array<Pick<AgganciaSegnalazioneInput, "sorgenteId" | "sorgenteTipo">>;
+  manutenzioneTargetId: string;
+};
+
+export type AgganciaSegnalazioniBatchResult = {
+  ok: boolean;
+  manutenzioneId: string;
+  successes: AgganciaSegnalazioneResult[];
+  failures: Array<{ sorgenteId: string; sorgenteTipo: "segnalazione" | "controllo"; error: string }>;
 };
 
 function blockedResult(error: unknown): AgganciaSegnalazioneResult {
@@ -222,9 +277,15 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
           } as AgganciaSegnalazioneResult;
         }
 
-        // Idempotenza: se sorgente gia' linked al target -> no-op
+        const origineRef = buildOrigineRef(input.sorgenteTipo, sorgenteId, sourceKey);
+
+        // Idempotenza: se sorgente gia' linked al target e il target ha gia' il back-link -> no-op
         const linkedExisting = readLegameLavoro(sourceRecord);
-        if (linkedExisting.length === 1 && linkedExisting[0] === targetId) {
+        if (
+          linkedExisting.length === 1 &&
+          linkedExisting[0] === targetId &&
+          hasOrigineRef(target, origineRef)
+        ) {
           alreadyLinked = true;
           return {
             ok: true,
@@ -235,31 +296,25 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
 
         // Salva precedente per il result (caso "cambia legame")
         previousLinkedId = linkedExisting.length > 0 ? linkedExisting[0] : null;
+        const previousLinkedIds = linkedExisting.filter((id) => id !== targetId);
+        let nextManutenzioniList = [...manutenzioniList];
+        let manutenzioniChanged = false;
 
-        // Back-link target: scrivi SOLO se stand-alone (origineTipo == null/vuoto)
-        const targetOrigineTipo = normalizeText(target.origineTipo);
-        const targetOrigineRefId = normalizeText(target.origineRefId);
-        let nextTarget: RawRecord | null = null;
-        if (!targetOrigineTipo && !targetOrigineRefId) {
-          // Stand-alone: scrivi back-link
-          nextTarget = {
-            ...target,
-            ...writeLegameOrigine({
-              tipo: input.sorgenteTipo,
-              refId: sorgenteId,
-              refKey: sourceKey,
-            }),
-          };
-        } else if (targetOrigineTipo === input.sorgenteTipo && targetOrigineRefId === sorgenteId) {
-          // back-link gia' coerente -> no-op back-link
-          nextTarget = null;
-        } else {
-          // Back-link punta ad altra sorgente -> rifiuto
-          return {
-            ok: false,
-            error: `Manutenzione target gia' collegata a un'altra sorgente (${targetOrigineTipo}/${targetOrigineRefId}). Sganciala prima dall'altra sorgente.`,
-          } as AgganciaSegnalazioneResult;
+        for (const oldId of previousLinkedIds) {
+          const oldIndex = nextManutenzioniList.findIndex(
+            (record) => normalizeText(record.id) === oldId,
+          );
+          if (oldIndex < 0) continue;
+          nextManutenzioniList[oldIndex] = removeSourceFromMaintenance(
+            nextManutenzioniList[oldIndex],
+            origineRef,
+          );
+          manutenzioniChanged = true;
         }
+
+        const currentTarget = nextManutenzioniList[targetIndex];
+        nextManutenzioniList[targetIndex] = addSourceToMaintenance(currentTarget, origineRef);
+        manutenzioniChanged = true;
 
         // Patch sorgente: forward-link + flag stato.
         // PROMPT 50 R2: `dataPresaInCarico` NON viene scritta qui (era effetto
@@ -283,9 +338,7 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
         assertCloneWriteAllowed("storageSync.setItemSync", { key: sourceKey });
         await setItemSync(sourceKey, nextSourceList);
 
-        if (nextTarget) {
-          const nextManutenzioniList = [...manutenzioniList];
-          nextManutenzioniList[targetIndex] = nextTarget;
+        if (manutenzioniChanged) {
           assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
           await setItemSync(MANUTENZIONI_KEY, nextManutenzioniList);
         }
@@ -299,6 +352,8 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
         return {
           ok: true,
           manutenzioneId: targetId,
+          previousLinkedId,
+          previousLinkedIds,
         } as AgganciaSegnalazioneResult;
       },
     );
@@ -338,5 +393,38 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
     alreadyLinked: false,
     chiusuraPropagata: propagaChiusura,
     previousLinkedId,
+    previousLinkedIds: previousLinkedId ? [previousLinkedId] : [],
+  };
+}
+
+export async function agganciaSegnalazioniAManutenzioneEsistenteBatch(
+  input: AgganciaSegnalazioniBatchInput,
+): Promise<AgganciaSegnalazioniBatchResult> {
+  const targetId = normalizeText(input.manutenzioneTargetId);
+  const successes: AgganciaSegnalazioneResult[] = [];
+  const failures: AgganciaSegnalazioniBatchResult["failures"] = [];
+
+  for (const sorgente of input.sorgenti) {
+    const result = await agganciaSegnalazioneAManutenzioneEsistente({
+      sorgenteId: sorgente.sorgenteId,
+      sorgenteTipo: sorgente.sorgenteTipo,
+      manutenzioneTargetId: targetId,
+    });
+    if (result.ok) {
+      successes.push(result);
+    } else {
+      failures.push({
+        sorgenteId: sorgente.sorgenteId,
+        sorgenteTipo: sorgente.sorgenteTipo,
+        error: result.error || "Errore aggancio sorgente.",
+      });
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    manutenzioneId: targetId,
+    successes,
+    failures,
   };
 }

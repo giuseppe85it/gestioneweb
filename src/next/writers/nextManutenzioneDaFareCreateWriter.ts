@@ -5,6 +5,7 @@ import {
   runWithCloneWriteScopedAllowance,
 } from "../../utils/cloneWriteBarrier";
 import {
+  addLegameOrigine,
   readLegameLavoro,
   writeLegameLavoro,
   writeLegameOrigine,
@@ -476,9 +477,10 @@ export async function agganciaSorgenteAManutenzioneEsistente(
         // Verifica esistenza + stato del target.
         const manutenzioniRaw = await getItemSync(MANUTENZIONI_KEY);
         const manutenzioniList = unwrapList(manutenzioniRaw);
-        const target = manutenzioniList.find(
+        const targetIndex = manutenzioniList.findIndex(
           (record) => normalizeText(record.id) === targetId,
         );
+        const target = targetIndex >= 0 ? manutenzioniList[targetIndex] : null;
         if (!target) {
           return {
             ok: false,
@@ -512,6 +514,18 @@ export async function agganciaSorgenteAManutenzioneEsistente(
             : patchControllo(sourceList, origineId, [targetId]);
         assertCloneWriteAllowed("storageSync.setItemSync", { key: sourceKey });
         await setItemSync(sourceKey, nextSource);
+
+        const nextManutenzioniList = [...manutenzioniList];
+        nextManutenzioniList[targetIndex] = {
+          ...target,
+          ...addLegameOrigine(target, {
+            tipo: input.origineTipo,
+            refId: origineId,
+            refKey: sourceKey,
+          }),
+        };
+        assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
+        await setItemSync(MANUTENZIONI_KEY, nextManutenzioniList);
 
         return {
           ok: true,

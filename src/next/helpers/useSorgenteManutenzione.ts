@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { getItemSync } from "../../utils/storageSync";
+import { readLegamiOrigine } from "./cicloLegame";
 
 type RawRecord = Record<string, unknown>;
 
@@ -58,24 +59,43 @@ function pickSourceKey(origineTipo: string, origineRefKey: string): string | nul
 export function useSorgenteManutenzione(
   manutenzione: RawRecord | null | undefined,
 ): RawRecord | null {
-  const [sourceRecord, setSourceRecord] = useState<RawRecord | null>(null);
+  return useSorgentiManutenzione(manutenzione)[0] ?? null;
+}
 
-  const origineTipo = manutenzione ? normalizeText(manutenzione.origineTipo) : "";
-  const origineRefId = manutenzione ? normalizeText(manutenzione.origineRefId) : "";
-  const origineRefKey = manutenzione ? normalizeText(manutenzione.origineRefKey) : "";
+export function useSorgentiManutenzione(
+  manutenzione: RawRecord | null | undefined,
+): RawRecord[] {
+  const [sourceRecords, setSourceRecords] = useState<RawRecord[]>([]);
+  const legami = readLegamiOrigine(manutenzione);
+  const legamiKey = JSON.stringify(legami);
 
   useEffect(() => {
     let cancelled = false;
-    if (!origineRefId || !origineTipo) return undefined;
-    const sourceKey = pickSourceKey(origineTipo, origineRefKey);
-    if (!sourceKey) return undefined;
+    if (legami.length === 0) {
+      setSourceRecords([]);
+      return undefined;
+    }
     (async () => {
       try {
-        const raw = await getItemSync(sourceKey);
+        const foundRecords: RawRecord[] = [];
+        for (const legame of legami) {
+          const sourceKey = pickSourceKey(legame.tipo, legame.refKey ?? "");
+          if (!sourceKey) continue;
+          const raw = await getItemSync(sourceKey);
+          if (cancelled) return;
+          const list = unwrapList(raw);
+          const found = list.find((r) => normalizeText(r.id) === legame.refId);
+          if (found) {
+            foundRecords.push({
+              ...found,
+              __origineTipo: legame.tipo,
+              __origineRefId: legame.refId,
+              __origineRefKey: sourceKey,
+            });
+          }
+        }
         if (cancelled) return;
-        const list = unwrapList(raw);
-        const found = list.find((r) => normalizeText(r.id) === origineRefId);
-        if (found) setSourceRecord(found);
+        setSourceRecords(foundRecords);
       } catch {
         // best-effort: il fallback in recordChiusoFromRaw usa il record manutenzione stesso
       }
@@ -83,7 +103,7 @@ export function useSorgenteManutenzione(
     return () => {
       cancelled = true;
     };
-  }, [origineRefId, origineTipo, origineRefKey]);
+  }, [legamiKey]);
 
-  return sourceRecord;
+  return sourceRecords;
 }

@@ -13,7 +13,7 @@
  * dalle chiusure native da `gomme_evento`.
  */
 
-import { readLegameOrigine } from "./cicloLegame";
+import { readLegamiOrigine, type LegameOrigineRef } from "./cicloLegame";
 import {
   chiudiControlloDaEvento,
   chiudiSegnalazioneDaEvento,
@@ -31,9 +31,32 @@ function normalizeText(value: unknown): string {
 }
 
 export type PropagazioneEsito =
-  | { ok: true; propagated: false; reason: "no-legame" }
-  | { ok: true; propagated: true; targetTipo: "segnalazione" | "controllo"; targetId: string }
-  | { ok: false; reason: string; targetTipo?: "segnalazione" | "controllo"; targetId?: string };
+  | {
+      ok: true;
+      propagated: false;
+      reason: "no-legame";
+      propagatedCount: 0;
+      failures: [];
+    }
+  | {
+      ok: true;
+      propagated: true;
+      propagatedCount: number;
+      targets: Array<{ targetTipo: LegameOrigineRef["tipo"]; targetId: string }>;
+      failures: [];
+      targetTipo?: LegameOrigineRef["tipo"];
+      targetId?: string;
+    }
+  | {
+      ok: false;
+      propagated: boolean;
+      reason: string;
+      propagatedCount: number;
+      targets: Array<{ targetTipo: LegameOrigineRef["tipo"]; targetId: string }>;
+      failures: Array<{ targetTipo: LegameOrigineRef["tipo"]; targetId: string; reason: string }>;
+      targetTipo?: LegameOrigineRef["tipo"];
+      targetId?: string;
+    };
 
 /**
  * Propaga la chiusura di una manutenzione alla sorgente collegata, se presente.
@@ -46,15 +69,15 @@ export async function propagateChiusuraToLegame(
   options: { chiusuraData?: number } = {},
 ): Promise<PropagazioneEsito> {
   if (!isRecord(manutenzioneRecord)) {
-    return { ok: true, propagated: false, reason: "no-legame" };
+    return { ok: true, propagated: false, reason: "no-legame", propagatedCount: 0, failures: [] };
   }
   const manutenzioneId = normalizeText(manutenzioneRecord.id);
   if (!manutenzioneId) {
-    return { ok: true, propagated: false, reason: "no-legame" };
+    return { ok: true, propagated: false, reason: "no-legame", propagatedCount: 0, failures: [] };
   }
-  const legame = readLegameOrigine(manutenzioneRecord);
-  if (!legame || !legame.refId) {
-    return { ok: true, propagated: false, reason: "no-legame" };
+  const legami = readLegamiOrigine(manutenzioneRecord);
+  if (legami.length === 0) {
+    return { ok: true, propagated: false, reason: "no-legame", propagatedCount: 0, failures: [] };
   }
   // PROMPT 50 R1: chiusuraData EREDITA dalla manutenzione, MAI Date.now() come
   // fallback silenzioso. Priorita': options.chiusuraData (caller esplicito) →
@@ -85,36 +108,60 @@ export async function propagateChiusuraToLegame(
     chiusuraData = derived ?? Date.now();
   }
 
-  let result: ChiusuraDaEventoResult;
-  let targetTipo: "segnalazione" | "controllo";
-  if (legame.tipo === "segnalazione") {
-    targetTipo = "segnalazione";
-    result = await chiudiSegnalazioneDaEvento(
-      legame.refId,
-      "manutenzione",
-      manutenzioneId,
-      chiusuraData,
-    );
-  } else if (legame.tipo === "controllo") {
-    targetTipo = "controllo";
-    result = await chiudiControlloDaEvento(
-      legame.refId,
-      "manutenzione",
-      manutenzioneId,
-      chiusuraData,
-    );
-  } else {
-    // origineTipo "manuale" o "evento": niente sorgente da chiudere.
-    return { ok: true, propagated: false, reason: "no-legame" };
+  const targets: Array<{ targetTipo: LegameOrigineRef["tipo"]; targetId: string }> = [];
+  const failures: Array<{ targetTipo: LegameOrigineRef["tipo"]; targetId: string; reason: string }> = [];
+
+  for (const legame of legami) {
+    let result: ChiusuraDaEventoResult;
+    if (legame.tipo === "segnalazione") {
+      result = await chiudiSegnalazioneDaEvento(
+        legame.refId,
+        "manutenzione",
+        manutenzioneId,
+        chiusuraData,
+      );
+    } else {
+      result = await chiudiControlloDaEvento(
+        legame.refId,
+        "manutenzione",
+        manutenzioneId,
+        chiusuraData,
+      );
+    }
+
+    if (result.ok) {
+      targets.push({ targetTipo: legame.tipo, targetId: legame.refId });
+    } else {
+      failures.push({
+        targetTipo: legame.tipo,
+        targetId: legame.refId,
+        reason: result.error || "Propagazione chiusura sorgente fallita.",
+      });
+    }
   }
 
-  if (!result.ok) {
+  const firstTarget = targets[0] ?? failures[0] ?? null;
+  if (failures.length > 0) {
     return {
       ok: false,
-      reason: result.error || "Propagazione chiusura sorgente fallita.",
-      targetTipo,
-      targetId: legame.refId,
+      propagated: targets.length > 0,
+      reason: failures.map((failure) => `${failure.targetTipo}/${failure.targetId}: ${failure.reason}`).join("; "),
+      propagatedCount: targets.length,
+      targets,
+      failures,
+      ...(firstTarget ? { targetTipo: firstTarget.targetTipo, targetId: firstTarget.targetId } : {}),
     };
   }
-  return { ok: true, propagated: true, targetTipo, targetId: legame.refId };
+  if (targets.length === 0) {
+    return { ok: true, propagated: false, reason: "no-legame", propagatedCount: 0, failures: [] };
+  }
+  return {
+    ok: true,
+    propagated: true,
+    propagatedCount: targets.length,
+    targets,
+    failures: [],
+    targetTipo: targets[0].targetTipo,
+    targetId: targets[0].targetId,
+  };
 }

@@ -8,6 +8,7 @@ import {
   type NextManutenzioneGommeInterventoTipo,
   type NextManutenzioneGommePerAsseRecord,
   type NextManutenzioneGommeStraordinarioRecord,
+  type NextManutenzioneOrigineRef,
   type NextManutenzioneQuality,
   type NextScheduledMaintenance,
 } from "./nextManutenzioniDomain";
@@ -139,6 +140,7 @@ export type NextManutenzioneReadOnlyItem = {
   origineTipo?: NextMaintenanceHistoryItem["origineTipo"];
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[];
   segnalatoDa?: string | null;
   chiusuraDi?: string | null;
   chiusuraRefId?: string | null;
@@ -208,6 +210,7 @@ export type NextManutenzioneLegacyViewItem = {
   origineTipo?: NextMaintenanceHistoryItem["origineTipo"];
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[];
   segnalatoDa?: string | null;
   chiusuraDi?: string | null;
   chiusuraRefId?: string | null;
@@ -1009,6 +1012,7 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     origineTipo: item.origineTipo,
     origineRefId: item.origineRefId,
     origineRefKey: item.origineRefKey,
+    origineRefs: item.origineRefs,
     segnalatoDa: item.segnalatoDa,
     chiusuraDi: item.chiusuraDi,
     chiusuraRefId: item.chiusuraRefId,
@@ -1471,6 +1475,7 @@ export function mapNextManutenzioniItemsToLegacyView(
     origineTipo: item.origineTipo,
     origineRefId: item.origineRefId,
     origineRefKey: item.origineRefKey,
+    origineRefs: item.origineRefs,
     segnalatoDa: item.segnalatoDa,
     chiusuraDi: item.chiusuraDi,
     chiusuraRefId: item.chiusuraRefId,

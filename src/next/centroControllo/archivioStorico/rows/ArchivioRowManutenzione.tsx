@@ -20,7 +20,7 @@ import { FraseStoriaRecord } from "../../../components/FraseStoriaRecord";
 import { recordChiusoFromRaw } from "../../../helpers/frasestoriaRecord";
 // PROMPT 49: cross-read sorgente per frase storia coerente quando la manutenzione
 // ha back-link a una segnalazione/controllo (origineRefId).
-import { useSorgenteManutenzione } from "../../../helpers/useSorgenteManutenzione";
+import { useSorgentiManutenzione } from "../../../helpers/useSorgenteManutenzione";
 import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeMaterialiIcon,
@@ -115,7 +115,7 @@ export function ArchivioRowManutenzione({
   // PROMPT 49: cross-read sorgente per frase storia coerente. Quando la manutenzione
   // ha `origineRefId` (= nata da/agganciata a segnalazione o controllo), la frase
   // pesca data + autore dalla sorgente. Senza back-link, fallback al record stesso.
-  const sourceRecord = useSorgenteManutenzione(data as unknown as Record<string, unknown>);
+  const sourceRecords = useSorgentiManutenzione(data as unknown as Record<string, unknown>);
   const ts: number = extractTimestamp(record);
   const safeTs: number | null = ts > 0 ? ts : null;
   const dateLabel = formatDateShort(safeTs);
@@ -188,7 +188,7 @@ export function ArchivioRowManutenzione({
           {...recordChiusoFromRaw(
             data as unknown as Record<string, unknown>,
             undefined,
-            { sourceRecord },
+            { sourceRecords },
           )}
           compact
         />

@@ -20,6 +20,7 @@ import { ArchivioVeicoloPhoto } from "../ArchivioVeicoloPhoto";
 // la vedeva). Allinea il rendering con ArchivioRowManutenzione (riga compact).
 import { FraseStoriaRecord } from "../../../components/FraseStoriaRecord";
 import { recordChiusoFromRaw } from "../../../helpers/frasestoriaRecord";
+import { readLegameLavoro } from "../../../helpers/cicloLegame";
 import "../styles/archivioStorico.css";
 import {
   ArchivioBadgeFotoIcon,
@@ -40,10 +41,18 @@ type Props = {
   mezzoMeta?: ArchivioMezzoMeta | null;
   onOpenEventoModal?: (req: ArchivioEventoModalRequest) => void;
   onEliminaArchivio?: () => void;
+  onRiapri?: () => void;
 };
 
 const TOOLTIP_RICEVUTA: string =
   "Ricevuta dall'officina — orario non tracciato";
+
+function normalizeTargaCompare(value: string | null | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
 
 export function ArchivioRowSegnalazione({
   record,
@@ -52,10 +61,18 @@ export function ArchivioRowSegnalazione({
   mezzoMeta,
   onOpenEventoModal,
   onEliminaArchivio,
+  onRiapri,
 }: Props): ReactElement {
   const data = record.data;
   const dateLabel = formatDateShort(data.timestamp);
   const targaDisplay: string = formatTarga(data.targa);
+  const targaKey: string = normalizeTargaCompare(data.targa);
+  const targaCamionKey: string = normalizeTargaCompare(data.targaCamion);
+  const showTraino: boolean =
+    Boolean(targaCamionKey) &&
+    targaCamionKey !== targaKey &&
+    (String(data.ambito ?? "").trim().toLowerCase() === "rimorchio" || Boolean(targaKey));
+  const trainoDisplay: string | null = showTraino ? formatTarga(data.targaCamion) : null;
   const tipoKind: "freni" | "gomme" | "elettrico" | "altro" =
     deriveSegnTipoChip(data.tipo);
   const tipoClass: string =
@@ -74,15 +91,18 @@ export function ArchivioRowSegnalazione({
     data.letta === true || data.stato === "presa_in_carico";
   const showChiusa: boolean = data.chiusa === true;
   const migratedManutenzionePrefix: string = "from-" + "lavo" + "ro-";
+  const linkedIds = readLegameLavoro(data as unknown as Record<string, unknown>);
   const linkedManutenzioneId: string | null =
     data.linkedLavoroId?.startsWith(migratedManutenzionePrefix)
       ? data.linkedLavoroId
       : null;
   const showGenerato: boolean =
-    data.hasLinkedLavoro === true && Boolean(linkedManutenzioneId);
+    data.hasLinkedLavoro === true && (Boolean(linkedManutenzioneId) || linkedIds.length > 0);
   const linkedManutenzioneLabel: string = linkedManutenzioneId
     ? `Manutenzione ${linkedManutenzioneId.slice(0, 16)}`
-    : "Manutenzione";
+    : linkedIds.length > 1
+      ? `Manutenzioni (${linkedIds.length})`
+      : "Manutenzione";
 
   return (
     <article className={rowClassName} onClick={onToggleExpand}>
@@ -101,6 +121,9 @@ export function ArchivioRowSegnalazione({
       <div className="archivio-row-body">
         <header className="archivio-row-head">
           <span className="archivio-row-targa">{targaDisplay}</span>
+          {trainoDisplay ? (
+            <span className="archivio-row-cat">trainato da {trainoDisplay}</span>
+          ) : null}
           <span className={`archivio-row-type-chip ${tipoClass}`.trim()}>
             {segnTipoLabel(tipoKind)}
           </span>
@@ -118,6 +141,7 @@ export function ArchivioRowSegnalazione({
             onElimina={() => {
               if (onEliminaArchivio) onEliminaArchivio();
             }}
+            onRiapri={showChiusa ? onRiapri : undefined}
             apriDettaglioDisabled={!onOpenEventoModal}
           />
           <ArchivioExpandChevron onClick={onToggleExpand} />

@@ -401,4 +401,22 @@ describe("frasestoriaRecord — recordChiusoFromRaw", () => {
     const rc = recordChiusoFromRaw(manutenzione, undefined, { sourceRecord: source });
     expect(rc.segnalatoDa).toBe("RICCARDO FENDERICO");
   });
+
+  it("P20: sourceRecords multipli usa la sorgente piu recente per la frase compatta", () => {
+    const manutenzione = {
+      data: "2026-05-12",
+      stato: "eseguita",
+      fornitore: "OFFICINA X",
+      origineTipo: "segnalazione",
+      origineRefId: "S-1",
+    };
+    const rc = recordChiusoFromRaw(manutenzione, undefined, {
+      sourceRecords: [
+        { id: "S-OLD", data: "2026-05-05", autistaNome: "AUTISTA VECCHIO" },
+        { id: "S-NEW", data: "2026-05-08", autistaNome: "AUTISTA RECENTE" },
+      ],
+    });
+    expect(rc.segnalatoDa).toBe("AUTISTA RECENTE");
+    expect(buildFraseStoria(rc)).toContain("Segnalazione di AUTISTA RECENTE del 08/05/2026");
+  });
 });

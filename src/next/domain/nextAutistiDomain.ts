@@ -136,6 +136,9 @@ export type NextAutistiSegnalazioneSectionItem = {
   id: string;
   timestamp: number | null;
   targa: string | null;
+  targaCamion: string | null;
+  targaRimorchio: string | null;
+  ambito: string | null;
   autistaNome: string | null;
   badgeAutista: string | null;
   tipo: string;
@@ -151,6 +154,7 @@ export type NextAutistiSegnalazioneSectionItem = {
   chiusuraRefId?: string | null;
   chiusuraData?: number | null;
   linkedLavoroId: string | null;
+  linkedLavoroIds: string[];
   hasLinkedLavoro: boolean;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
@@ -344,6 +348,31 @@ function pickPrimaryTarga(record: {
   };
 }
 
+function pickSegnalazioneTarga(record: {
+  targa?: unknown;
+  targaCamion?: unknown;
+  targaMotrice?: unknown;
+  targaRimorchio?: unknown;
+  ambito?: unknown;
+}): {
+  motrice: string | null;
+  rimorchio: string | null;
+  mezzo: string | null;
+} {
+  const primary = normalizeOptionalTarga(record.targa);
+  const motrice = normalizeOptionalTarga(record.targaMotrice ?? record.targaCamion);
+  const explicitRimorchio = normalizeOptionalTarga(record.targaRimorchio);
+  const ambito = normalizeLowerText(record.ambito);
+  const rimorchio =
+    explicitRimorchio ??
+    (ambito === "rimorchio" && primary && primary !== motrice ? primary : null);
+  return {
+    motrice,
+    rimorchio,
+    mezzo: primary ?? rimorchio ?? motrice,
+  };
+}
+
 function normalizeSessionAssignment(
   record: RawRecord,
   index: number,
@@ -488,7 +517,7 @@ function normalizeSegnalazioneSignal(
   record: RawRecord,
   index: number,
 ): NextAutistiCanonicalSignal {
-  const targa = pickPrimaryTarga(record);
+  const targa = pickSegnalazioneTarga(record);
   const titolo = buildSignalTitle(
     "segnalazione",
     normalizeOptionalText(record.tipoProblema ?? record.titolo),
@@ -538,7 +567,7 @@ function normalizeSegnalazioneSectionItem(
   record: RawRecord,
   index: number,
 ): NextAutistiSegnalazioneSectionItem {
-  const targa = pickPrimaryTarga(record);
+  const targa = pickSegnalazioneTarga(record);
   const letta = typeof record.letta === "boolean" ? record.letta : null;
   return {
     id:
@@ -550,6 +579,9 @@ function normalizeSegnalazioneSectionItem(
       ])}`,
     timestamp: toTimestamp(record.timestamp ?? record.data),
     targa: targa.mezzo,
+    targaCamion: targa.motrice,
+    targaRimorchio: targa.rimorchio,
+    ambito: normalizeOptionalText(record.ambito),
     autistaNome: normalizeOptionalText(record.autistaNome ?? record.nomeAutista),
     badgeAutista: normalizeOptionalBadge(record.badgeAutista ?? record.badge),
     tipo: normalizeOptionalText(record.tipoProblema ?? record.tipo ?? record.titolo) ?? "-",
@@ -582,7 +614,27 @@ function normalizeSegnalazioneSectionItem(
     chiusuraRefId: normalizeOptionalText(record.chiusuraRefId),
     chiusuraData: toTimestamp(record.chiusuraData),
     linkedLavoroId: normalizeOptionalText(record.linkedLavoroId),
-    hasLinkedLavoro: Boolean(normalizeOptionalText(record.linkedLavoroId)),
+    linkedLavoroIds: (() => {
+      const ids: string[] = [];
+      const single: string | null = normalizeOptionalText(record.linkedLavoroId);
+      if (single) ids.push(single);
+      if (Array.isArray(record.linkedLavoroIds)) {
+        record.linkedLavoroIds.forEach((entry: unknown) => {
+          const t: string | null = normalizeOptionalText(entry);
+          if (t && !ids.includes(t)) ids.push(t);
+        });
+      }
+      return ids;
+    })(),
+    hasLinkedLavoro: (() => {
+      if (normalizeOptionalText(record.linkedLavoroId)) return true;
+      if (Array.isArray(record.linkedLavoroIds)) {
+        return record.linkedLavoroIds.some((entry: unknown) =>
+          Boolean(normalizeOptionalText(entry)),
+        );
+      }
+      return false;
+    })(),
     sourceDataset: SEGNALAZIONI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -855,6 +907,9 @@ function normalizeCloneSegnalazioneSectionItem(
     id: record.id || `clone-segnalazione:${index}`,
     timestamp: toTimestamp(record.data),
     targa: normalizeOptionalTarga(record.targa ?? record.targaCamion ?? record.targaRimorchio),
+    targaCamion: normalizeOptionalTarga(record.targaCamion),
+    targaRimorchio: normalizeOptionalTarga(record.targaRimorchio),
+    ambito: null,
     autistaNome: record.autistaNome,
     badgeAutista: record.badgeAutista,
     tipo: record.tipoProblema || "-",
@@ -867,6 +922,7 @@ function normalizeCloneSegnalazioneSectionItem(
     dataChiusura: null,
     chiusaBy: null,
     linkedLavoroId: null,
+    linkedLavoroIds: [],
     hasLinkedLavoro: false,
     sourceDataset: "@next_clone_autisti:segnalazioni",
     sourceOrigin: "next_clone_locale",

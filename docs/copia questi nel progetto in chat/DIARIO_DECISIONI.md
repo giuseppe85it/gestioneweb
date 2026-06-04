@@ -625,3 +625,24 @@ MANIFEST), cancellati 126 file MD obsoleti/duplicati/assorbiti
 (PROMPT 57). AGENTS.md sez. 17 nuova + sez. 3 path aggiornati.
 CLAUDE_CHAT_BEHAVIOR.md sez. 3 punta a MANIFEST canonico. Fix
 indice handoff 2026-05-07 (PROMPT 58).
+
+## 2026-06-02
+
+**Sessione fix NEXT (BUG 1/2/3 chiusi, nuovi bug manutenzioni aperti).**
+
+BUG CHIUSI E COMMITTATI:
+- BUG 1 - Hard-delete mezzo (Centro Controllo, Sinottica V2): la modale confermava ma il mezzo restava visibile dopo refresh. Causa: storageSync.setItemSync faceva merge anti-rimozione senza allowRemovals/removedIds. Fix in src/next/nextMezzoHardDeleteWriter.ts (passate opzioni allowRemovals:true + removedIds, default anti-rimozione invariato per altri chiamanti). Testato in browser (cancellati mezzi venduti/dismessi, persistenza confermata dopo refresh).
+- BUG 2 - Classificazione mezzi Sinottica V2: biga/pianale/porta silo container/silo container finivano tra i "mezzi con motore". Causa: categorie mancanti nella whitelist rimorchi di classifyMezzoCategoria. Fix in src/next/domain/nextCentroControlloDomain.ts. Testato in browser.
+- BUG 3 - Manutenzione stato "da fare": non si salvava come "da fare"; compilando Fornitore/Officina diventava "eseguita"; senza quel campo non salvava. Causa: il form non scriveva stato esplicito e il reader deduceva "eseguita" da data/fornitore. Fix in src/next/NextManutenzioniPage.tsx + src/next/domain/nextManutenzioniDomain.ts: stato esplicito, reader non deduce piu' eseguita da data/officina, UI con due bottoni "Da fare"/"Eseguita" (default Eseguita). Nota: lo stato "da fare" e' funzionalita' NEXT, non esiste in madre. Testato in browser.
+
+NUOVI BUG APERTI:
+- BUG 16 - Targa disallineata: premendo "Completa" su una manutenzione di TI113417, l'URL del form di modifica riporta la targa di un altro mezzo (osservato TI285195). Rischio di operare sul record sbagliato. Collegato al bug "filtro targa parte sempre dalla prima invece che vuoto" (BUG 9).
+- BUG 17 - Sospette manutenzioni mancanti in NEXT. Da chiarire se problema di lettura (chiave/targa) o di scrittura (record non persistiti). Apertura chat dedicata: audit Manutenzioni reader/writer/chiavi confrontate con i dati fisici su Firestore, divisi per targa.
+
+DECISIONI:
+- Audit Manutenzioni vs Firestore (BUG 17) si svolge in chat dedicata separata per contesto pulito e accesso ai dati fisici.
+- Eventuale rifacimento completo della logica Manutenzioni e' un cantiere strategico DA FARE SOLO DOPO l'audit Firestore: non ricostruire sopra un possibile problema di perdita dati.
+- Conferma regola operativa: consegna di un solo prompt operativo alla volta, attesa del report prima del successivo.
+
+PUNTO APERTO UX:
+- Nel box autisti-admin manca un pulsante esplicito "Marca risolta" per le segnalazioni (oggi solo campo Stato testuale che non scrive chiusa/dataChiusura/chiusa_by). La chiusura funzionante e' in Centro Controllo (chip segnalazione -> "Marca chiusa"). Decisione se replicare il pulsante in autisti-admin: rimandata.

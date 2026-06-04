@@ -89,11 +89,16 @@ describe("agganciaSorgenteAManutenzioneEsistente (PROMPT 45 T1)", () => {
     // PROMPT 50 R2: il writer P45 patchSegnalazione non scrive piu' dataPresaInCarico.
     expect(segn.dataPresaInCarico).toBeUndefined();
 
-    // Target invariato.
+    // Target aggiornato con back-link multi-origine.
     const tgt = readManutenzioni()[0];
     expect(tgt.id).toBe("M1");
     expect(tgt.stato).toBe("daFare");
-    expect(tgt.origineRefId).toBeUndefined();
+    expect(tgt.origineTipo).toBe("segnalazione");
+    expect(tgt.origineRefId).toBe("S1");
+    expect(tgt.origineRefKey).toBe("@segnalazioni_autisti_tmp");
+    expect(tgt.origineRefs).toEqual([
+      { tipo: "segnalazione", refId: "S1", refKey: "@segnalazioni_autisti_tmp" },
+    ]);
   });
 
   it("B — merge controllo: patch sorgente con linkedLavoroId + letta", async () => {
@@ -112,6 +117,11 @@ describe("agganciaSorgenteAManutenzioneEsistente (PROMPT 45 T1)", () => {
     const ctrl = readControlli()[0];
     expect(ctrl.linkedLavoroId).toBe("M2");
     expect(ctrl.letta).toBe(true);
+
+    const tgt = readManutenzioni()[0];
+    expect(tgt.origineRefs).toEqual([
+      { tipo: "controllo", refId: "C1", refKey: "@controlli_mezzo_autisti" },
+    ]);
   });
 
   it("C — target eseguita: ritorna ok:false con errore esplicito", async () => {

@@ -17,6 +17,7 @@
 
 import { getItemSync } from "../../utils/storageSync";
 import { parseAnyDate, toISO } from "./dateUnica";
+import { readLegamiOrigine } from "./cicloLegame";
 
 export type ManutenzioneCandidataAggancio = {
   id: string;
@@ -27,6 +28,7 @@ export type ManutenzioneCandidataAggancio = {
   fornitore: string | null;
   origineTipo: string | null;
   origineRefId: string | null;
+  origineRefsCount: number;
 };
 
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -108,6 +110,7 @@ export async function getManutenzioniPerAggancio(
         fornitore: normalizeText(record.fornitore) || null,
         origineTipo: normalizeText(record.origineTipo) || null,
         origineRefId: normalizeText(record.origineRefId) || null,
+        origineRefsCount: readLegamiOrigine(record).length,
       },
       sortKey: dataApertura ? dataApertura.getTime() : 0,
     });

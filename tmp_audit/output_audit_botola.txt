@@ -1,0 +1,145 @@
+================================================================
+RICERCA FISICA "botola" — Firestore reale (STEP 3)
+MODALITÀ SOLA LETTURA — nessun metodo di scrittura
+Metodi firebase-admin usati: initializeApp, credential.cert, firestore(), collection(), doc(), get()
+Project: gestionemanutenzione-934ef | soglia 'prima del' = 2026-06-01
+Needles (fold case+accent): ["botola","botole","botol"]
+================================================================
+
+### Record @manutenzioni scansionati: 85 (atteso 85) | shape value=ARRAY_DIRETTO
+### @segnalazioni_autisti_tmp: 47 record | @controlli_mezzo_autisti: 384 record
+
+================== DUMP COMPLETO TI285195 (targaNorm=TI285195) ==================
+Record con targaNorm == TI285195: 5
+
+--- [0] id=1780304942769 ---
+   targaRaw="TI285195" | targaNorm=TI285195
+   data="2026-06-01" | dataEsecuzione=undefined
+   statoRaw=undefined | statoDerivato=daFare
+   tipo="mezzo" | sottotipo=null
+   km=null | ore=null | importo=null
+   fornitore="MILIO" | eseguito=null | eseguitoDa=undefined
+   origineTipo=undefined | origineRefId=undefined | origineRefKey=undefined | segnalatoDa=undefined
+   sourceDocumentId=undefined | chiusuraDi=undefined | chiusuraRefId=undefined | chiusuraData=undefined
+   gommeInterventoTipo=undefined | assiCoinvolti=undefined
+   descrizione (per esteso):
+   >>> CAMBIO GUARNIZIONE E RIFACIMENTO PIANO SECONDA BOTOLA DI CARICO
+   materiali=[]
+   note=null
+   ALTRI CAMPI: updatedAt=1780304942769
+
+--- [1] id=1779298043409 ---
+   targaRaw="TI285195" | targaNorm=TI285195
+   data="2026-05-20" | dataEsecuzione=undefined
+   statoRaw=undefined | statoDerivato=daFare
+   tipo="mezzo" | sottotipo=null
+   km=null | ore=null | importo=null
+   fornitore="Milio" | eseguito=null | eseguitoDa=undefined
+   origineTipo=undefined | origineRefId=undefined | origineRefKey=undefined | segnalatoDa=undefined
+   sourceDocumentId=undefined | chiusuraDi=undefined | chiusuraRefId=undefined | chiusuraData=undefined
+   gommeInterventoTipo=undefined | assiCoinvolti=undefined
+   descrizione (per esteso):
+   >>> TUBO 4.5 MT STORZ FLANGIA
+   materiali=[]
+   note=null
+   ALTRI CAMPI: updatedAt=1779298043409
+
+--- [2] id=1778683506411 ---
+   targaRaw="TI285195" | targaNorm=TI285195
+   data="2026-05-13" | dataEsecuzione=undefined
+   statoRaw=undefined | statoDerivato=daFare
+   tipo="mezzo" | sottotipo=null
+   km=null | ore=null | importo=null
+   fornitore="MILIO" | eseguito=null | eseguitoDa=undefined
+   origineTipo=undefined | origineRefId=undefined | origineRefKey=undefined | segnalatoDa=undefined
+   sourceDocumentId=undefined | chiusuraDi=undefined | chiusuraRefId=undefined | chiusuraData=undefined
+   gommeInterventoTipo=undefined | assiCoinvolti=undefined
+   descrizione (per esteso):
+   >>> TAGLIATO 50 CM DI TUBO E RIPRISITNATO PER USURA SI è ROTTO
+   materiali=[]
+   note=null
+
+--- [3] id=1773066080204 ---
+   targaRaw="TI285195" | targaNorm=TI285195
+   data="2026-03-09" | dataEsecuzione=undefined
+   statoRaw=undefined | statoDerivato=eseguita
+   tipo="mezzo" | sottotipo=null
+   km=294278 | ore=null | importo=undefined
+   fornitore="" | eseguito="VALTELLINA PNEUMATICI" | eseguitoDa=undefined
+   origineTipo=undefined | origineRefId=undefined | origineRefKey=undefined | segnalatoDa=undefined
+   sourceDocumentId=undefined | chiusuraDi=undefined | chiusuraRefId=undefined | chiusuraData=undefined
+   gommeInterventoTipo=undefined | assiCoinvolti=undefined
+   descrizione (per esteso):
+   >>> CAMBIO GOMME – ordinario
+   >>> Categoria mezzo: semirimorchio asse sterzante
+   >>> Asse: 3° asse
+   >>> Gomme cambiate: 2
+   >>> Marca: kumo
+   >>> Km mezzo: 294278
+   materiali=[]
+   note=null
+
+--- [4] id=1777979571388 ---
+   targaRaw="TI285195" | targaNorm=TI285195
+   data="2026-05-05" | dataEsecuzione=undefined
+   statoRaw=undefined | statoDerivato=eseguita
+   tipo="mezzo" | sottotipo=undefined
+   km=300369 | ore=undefined | importo=undefined
+   fornitore=undefined | eseguito=undefined | eseguitoDa=undefined
+   origineTipo=undefined | origineRefId=undefined | origineRefKey=undefined | segnalatoDa=undefined
+   sourceDocumentId=undefined | chiusuraDi=undefined | chiusuraRefId=undefined | chiusuraData=undefined
+   gommeInterventoTipo=undefined | assiCoinvolti=undefined
+   descrizione (per esteso):
+   >>> CAMBIO GOMME
+   >>> asse: 1° asse
+   >>> marca: N/D
+   >>> km mezzo: 300369
+   >>> intervento: sostituzione
+   materiali=[]
+   note=null
+
+================== MATCH BOTOLA IN @manutenzioni (cross-targa, tutti i campi) ==================
+Proprietà stringa totali ispezionate su @manutenzioni: 831 (media/record=9.8)
+Totale record con match: 4
+
+• id=1780304942769 | targaRaw="TI285195" | targaNorm=TI285195 | label="TI285195 - O.ME.P.S. CM35"
+  data="2026-06-01" | dataEsecuzione=undefined | statoDerivato=daFare | importo=null | sourceDocumentId=undefined
+  ↳ campo "descrizione" [botola,botol]: "CAMBIO GUARNIZIONE E RIFACIMENTO PIANO SECONDA BOTOLA DI CARICO"
+  SOGLIA<2026-06-01: data->NO | dataEsecuzione->NON_PARSABILE/ASSENTE
+  VISIBILITÀ: comparirebbe sotto filtro targa = TI285195  (== TI285195)
+
+• id=1776922191247 | targaRaw="TI282780" | targaNorm=TI282780 | label="TI282780 - O.ME.P.S. CM35"
+  data="2026-04-14" | dataEsecuzione=undefined | statoDerivato=daFare | importo=null | sourceDocumentId=undefined
+  ↳ campo "descrizione" [botole,botol]: "RETTIFICA E PULIZIA BOTOLE"
+  SOGLIA<2026-06-01: data->SÌ | dataEsecuzione->NON_PARSABILE/ASSENTE
+  VISIBILITÀ: comparirebbe sotto filtro targa = TI282780  >>> RECORD PRESENTE MA SOTTO ALTRA TARGA: TI282780 <<<
+
+• id=1774962066524 | targaRaw="TI287110" | targaNorm=TI287110 | label="TI287110 - O.ME.P.S. cm"
+  data="2026-03-10" | dataEsecuzione=undefined | statoDerivato=daFare | importo=undefined | sourceDocumentId=undefined
+  ↳ campo "descrizione" [botole,botol]: "SISTEMAZIONE DEL PIANO DELLE BOTOLE DI CARICO PIU CAMBIO GUARNIZIONI E RIFACIMENTO PIANO"
+  SOGLIA<2026-06-01: data->SÌ | dataEsecuzione->NON_PARSABILE/ASSENTE
+  VISIBILITÀ: comparirebbe sotto filtro targa = TI287110  >>> RECORD PRESENTE MA SOTTO ALTRA TARGA: TI287110 <<<
+
+• id=1773161855627 | targaRaw="TI84822" | targaNorm=TI84822 | label="TI84822 - O.ME.P.S CM35"
+  data="2026-03-06" | dataEsecuzione=undefined | statoDerivato=daFare | importo=undefined | sourceDocumentId=undefined
+  ↳ campo "descrizione" [botole,botol]: "PULIZIA E RETTIFICA PIANO DELLE BOTOLE DI CARICO\nSISTEMAZIONE MANOMETRO ARIA PRESSIONE CISTERNA + CAMBIO RACCORDO"
+  SOGLIA<2026-06-01: data->SÌ | dataEsecuzione->NON_PARSABILE/ASSENTE
+  VISIBILITÀ: comparirebbe sotto filtro targa = TI84822  >>> RECORD PRESENTE MA SOTTO ALTRA TARGA: TI84822 <<<
+
+================== MATCH BOTOLA NELLE ORIGINI ==================
+
+---- @segnalazioni_autisti_tmp (47 record) ----
+Proprietà stringa ispezionate: 667
+>>> NESSUN MATCH in @segnalazioni_autisti_tmp <<<
+
+---- @controlli_mezzo_autisti (384 record) ----
+Proprietà stringa ispezionate: 2139
+
+• id="36af4b0d-b646-4da8-96aa-9324946eb228" | targa="TI298409"
+  dataCandidata=1769408737320 | SOGLIA<2026-06-01: SÌ
+  chiusura: chiusuraDi=null | chiusuraRefId=null | chiusuraData=null | stato=null | presaInCarico=null
+  ↳ campo "note" [botola,botol]: "Perdita d'aria non identificata \n\nBotola cisterna ant rotta "
+
+================================================================
+FINE RICERCA
+================================================================

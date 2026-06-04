@@ -19,6 +19,7 @@ import {
 import {
   readNextMezzoManutenzioniSnapshot,
   type NextMaintenanceHistoryItem,
+  type NextManutenzioneOrigineRef,
   type NextManutenzioneStato,
   type NextMezzoManutenzioniSnapshot,
   type NextScheduledMaintenance,
@@ -174,6 +175,7 @@ export type NextDossierLegacyWorkItem = {
   origineTipo?: string | null;
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[];
   segnalatoDa?: string | null;
   urgenza?: string | null;
   chiHaEseguito?: string | null;
@@ -909,6 +911,7 @@ function mapManutenzioneToLegacyWorkItem(
     origineTipo: item.origineTipo ?? undefined,
     origineRefId: item.origineRefId ?? undefined,
     origineRefKey: item.origineRefKey ?? undefined,
+    origineRefs: item.origineRefs,
     segnalatoDa: item.segnalatoDa ?? undefined,
     urgenza: item.urgenza ?? undefined,
     chiHaEseguito: item.eseguitoLabel ?? undefined,

@@ -17,12 +17,14 @@ import "./styles/archivioStorico.css";
 type Props = {
   onApriDettaglio: () => void;
   onElimina: () => void;
+  onRiapri?: () => void;
   apriDettaglioDisabled?: boolean;
 };
 
 export function ArchivioKebabMenu({
   onApriDettaglio,
   onElimina,
+  onRiapri,
   apriDettaglioDisabled,
 }: Props): ReactElement {
   const [open, setOpen] = useState<boolean>(false);
@@ -65,6 +67,12 @@ export function ArchivioKebabMenu({
     onElimina();
   }, [onElimina]);
 
+  const handleRiapri = useCallback((e: ReactMouseEvent<HTMLButtonElement>): void => {
+    e.stopPropagation();
+    setOpen(false);
+    if (onRiapri) onRiapri();
+  }, [onRiapri]);
+
   return (
     <div
       className={`archivio-kebab ${open ? "is-open" : ""}`}
@@ -102,6 +110,16 @@ export function ArchivioKebabMenu({
           >
             Apri dettaglio
           </button>
+          {onRiapri ? (
+            <button
+              type="button"
+              className="archivio-kebab-item"
+              role="menuitem"
+              onClick={handleRiapri}
+            >
+              Riapri
+            </button>
+          ) : null}
           <button
             type="button"
             className="archivio-kebab-item is-danger"

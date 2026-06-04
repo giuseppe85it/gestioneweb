@@ -29,7 +29,13 @@ import {
   CloneWriteBlockedError,
   runWithCloneWriteScopedAllowance,
 } from "../../utils/cloneWriteBarrier";
-import { isLegameOrfano, readLegameLavoro } from "../helpers/cicloLegame";
+import {
+  isLegameOrfano,
+  readLegameLavoro,
+  removeLegameOrigine,
+  writeLegameLavoro,
+  type LegameOrigineRef,
+} from "../helpers/cicloLegame";
 import { CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE } from "./agganciaSegnalazioneAManutenzioneEsistenteWriter";
 
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -63,10 +69,17 @@ export type SganciaLegameOrfanoInput = {
   sorgenteTipo: "segnalazione" | "controllo";
 };
 
+export type SganciaLegameManutenzioneInput = {
+  sorgenteId: string;
+  sorgenteTipo: "segnalazione" | "controllo";
+  manutenzioneId?: string | null;
+};
+
 export type SganciaLegameOrfanoResult = {
   ok: boolean;
   error?: string;
   alreadyClean?: boolean;
+  removedIds?: string[];
 };
 
 function blockedResult(error: unknown): SganciaLegameOrfanoResult {
@@ -81,6 +94,109 @@ function blockedResult(error: unknown): SganciaLegameOrfanoResult {
     ok: false,
     error: error instanceof Error ? error.message : "Errore sgancio legame orfano.",
   };
+}
+
+function buildOrigineRef(
+  sorgenteTipo: "segnalazione" | "controllo",
+  sorgenteId: string,
+  sourceKey: string,
+): LegameOrigineRef {
+  return {
+    tipo: sorgenteTipo,
+    refId: sorgenteId,
+    refKey: sourceKey,
+  };
+}
+
+function patchSourceAfterSgancio(
+  sourceRecord: RawRecord,
+  sorgenteTipo: "segnalazione" | "controllo",
+  remainingIds: string[],
+): RawRecord {
+  const next: RawRecord = {
+    ...sourceRecord,
+    ...writeLegameLavoro(remainingIds),
+    letta: remainingIds.length > 0,
+  };
+  if (remainingIds.length === 0) {
+    next.dataPresaInCarico = null;
+    if (sorgenteTipo === "segnalazione") {
+      next.stato = "nuova";
+    }
+  } else if (sorgenteTipo === "segnalazione") {
+    next.stato = "presa_in_carico";
+  }
+  return next;
+}
+
+export async function sganciaLegameManutenzione(
+  input: SganciaLegameManutenzioneInput,
+): Promise<SganciaLegameOrfanoResult> {
+  const sorgenteId = normalizeText(input.sorgenteId);
+  if (!sorgenteId) return { ok: false, error: "ID sorgente mancante." };
+  if (input.sorgenteTipo !== "segnalazione" && input.sorgenteTipo !== "controllo") {
+    return { ok: false, error: "Tipo sorgente non valido." };
+  }
+
+  const sourceKey = input.sorgenteTipo === "segnalazione" ? SEGNALAZIONI_KEY : CONTROLLI_KEY;
+  const requestedId = normalizeText(input.manutenzioneId);
+
+  try {
+    return await runWithCloneWriteScopedAllowance(
+      CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE,
+      async () => {
+        const sourceRaw = await getItemSync(sourceKey);
+        const sourceList = unwrapList(sourceRaw);
+        const sourceIndex = sourceList.findIndex(
+          (record) => normalizeText(record.id) === sorgenteId,
+        );
+        if (sourceIndex < 0) {
+          return { ok: false, error: "Sorgente non trovata." } as SganciaLegameOrfanoResult;
+        }
+        const sourceRecord = sourceList[sourceIndex];
+        const linked = readLegameLavoro(sourceRecord);
+        if (linked.length === 0) {
+          return { ok: true, alreadyClean: true, removedIds: [] } as SganciaLegameOrfanoResult;
+        }
+        const idsToRemove = requestedId ? linked.filter((id) => id === requestedId) : linked;
+        if (idsToRemove.length === 0) {
+          return { ok: true, alreadyClean: true, removedIds: [] } as SganciaLegameOrfanoResult;
+        }
+        const remainingIds = linked.filter((id) => !idsToRemove.includes(id));
+        const origineRef = buildOrigineRef(input.sorgenteTipo, sorgenteId, sourceKey);
+
+        const manuRaw = await getItemSync(MANUTENZIONI_KEY);
+        const manuList = unwrapList(manuRaw);
+        let manutenzioniChanged = false;
+        const nextManuList = manuList.map((record) => {
+          if (!idsToRemove.includes(normalizeText(record.id))) return record;
+          manutenzioniChanged = true;
+          return {
+            ...record,
+            ...removeLegameOrigine(record, origineRef),
+          };
+        });
+
+        const nextSourceList = [...sourceList];
+        nextSourceList[sourceIndex] = patchSourceAfterSgancio(
+          sourceRecord,
+          input.sorgenteTipo,
+          remainingIds,
+        );
+
+        assertCloneWriteAllowed("storageSync.setItemSync", { key: sourceKey });
+        await setItemSync(sourceKey, nextSourceList);
+        if (manutenzioniChanged) {
+          assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
+          await setItemSync(MANUTENZIONI_KEY, nextManuList);
+        }
+
+        return { ok: true, removedIds: idsToRemove } as SganciaLegameOrfanoResult;
+      },
+    );
+  } catch (error: unknown) {
+    return blockedResult(error);
+  }
 }
 
 export async function sganciaLegameOrfano(

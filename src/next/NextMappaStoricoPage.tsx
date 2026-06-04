@@ -55,6 +55,7 @@ type NextMappaStoricoPageProps = {
   onOpenDossier?: () => void;
   onEditLatest?: () => void;
   onDelete?: (record: SelectedMaintenance) => void;
+  onCompleteMaintenance?: (record: SelectedMaintenance) => void;
   onAgganciaEvento?: (record: SelectedMaintenance) => void;
   onSganciaEvento?: (record: SelectedMaintenance) => void;
   onSelectMaintenance?: (recordId: string | null) => void;
@@ -241,6 +242,7 @@ export default function NextMappaStoricoPage({
   onOpenDossier,
   onEditLatest,
   onDelete,
+  onCompleteMaintenance,
   onAgganciaEvento,
   onSganciaEvento,
   onSelectMaintenance,
@@ -739,6 +741,21 @@ export default function NextMappaStoricoPage({
                           Sgancia evento
                         </button>
                       ) : null}
+                      {selectedMaintenance &&
+                      (selectedMaintenance.stato === "daFare" || selectedMaintenance.stato === "programmata") ? (
+                        <button
+                          type="button"
+                          className="man2-detail-v2__action man2-detail-v2__action--primary"
+                          onClick={() => {
+                            if (selectedMaintenance && onCompleteMaintenance) onCompleteMaintenance(selectedMaintenance);
+                          }}
+                          disabled={!selectedMaintenance || !onCompleteMaintenance}
+                          aria-disabled={!selectedMaintenance || !onCompleteMaintenance}
+                          aria-label="Segna la manutenzione selezionata come eseguita"
+                        >
+                          Eseguita
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="man2-detail-v2__action man2-detail-v2__action--primary"
@@ -794,7 +811,7 @@ export default function NextMappaStoricoPage({
                     <span className="man2-detail-v2__detail-meta-sep">·</span>
                     {selectedRecord.sottotipo?.trim() || "—"}
                     <span className="man2-detail-v2__detail-meta-sep">·</span>
-                    {selectedRecord.fornitore?.trim() || "Fornitore non indicato"}
+                    {selectedRecord.fornitore?.trim() || "Officina non indicata"}
                   </div>
                 </div>
 
@@ -847,7 +864,7 @@ export default function NextMappaStoricoPage({
                       </span>
                     </div>
                     <div className="man2-detail-v2__field">
-                      <span className="man2-detail-v2__field-label">Fornitore</span>
+                      <span className="man2-detail-v2__field-label">Officina</span>
                       <span className={`man2-detail-v2__field-value${selectedRecord.fornitore ? "" : " is-muted"}`}>
                         {selectedRecord.fornitore?.trim() || "Non indicato"}
                       </span>

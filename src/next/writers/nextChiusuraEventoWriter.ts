@@ -8,6 +8,11 @@ import {
   findLegacyRecordIndexByFingerprint,
   type NextManutenzioneEditingFingerprint,
 } from "../domain/nextManutenzioniDomain";
+import {
+  readLegameLavoro,
+  removeLegameOrigine,
+  writeLegameLavoro,
+} from "../helpers/cicloLegame";
 
 export const CHIUSURA_DA_EVENTO_WRITE_SCOPE = "next_chiusura_da_evento_write_scope";
 
@@ -26,6 +31,7 @@ export type ChiusuraDaEventoResult = {
   ok: boolean;
   updated: number;
   error?: string;
+  failures?: string[];
 };
 
 function isRecord(value: unknown): value is RawRecord {
@@ -67,6 +73,19 @@ function buildSgancioPatch(stato: SgancioStato): RawRecord {
     chiusuraDi: null,
     chiusuraRefId: null,
     chiusuraData: null,
+  };
+}
+
+function buildRiaperturaSegnalazionePatch(): RawRecord {
+  return {
+    chiusa: false,
+    dataChiusura: null,
+    chiusa_by: null,
+    stato: "aperta",
+    chiusuraDi: null,
+    chiusuraRefId: null,
+    chiusuraData: null,
+    ...writeLegameLavoro([]),
   };
 }
 
@@ -301,6 +320,85 @@ export function sganciaSegnalazioneDaEvento(
     id: idSegnalazione,
     stato: statoOriginale,
   });
+}
+
+export async function riapriESganciaSegnalazione(
+  idSegnalazione: string,
+): Promise<ChiusuraDaEventoResult> {
+  const recordId = normalizeText(idSegnalazione);
+  if (!recordId) return { ok: false, updated: 0, error: "ID segnalazione mancante." };
+
+  try {
+    return await runWithCloneWriteScopedAllowance(CHIUSURA_DA_EVENTO_WRITE_SCOPE, async () => {
+      const rawSegnalazioni = await getItemSync(SEGNALAZIONI_KEY);
+      const rawManutenzioni = await getItemSync(MANUTENZIONI_KEY);
+      const segnalazioni = unwrapList(rawSegnalazioni);
+      const manutenzioni = unwrapList(rawManutenzioni);
+
+      const source = segnalazioni.find((record) => normalizeText(record.id) === recordId) ?? null;
+      if (!source) {
+        return {
+          ok: false,
+          updated: 0,
+          error: `Segnalazione non trovata in ${SEGNALAZIONI_KEY}: ${recordId}`,
+        };
+      }
+
+      const linkedManutenzioneIds = readLegameLavoro(source);
+      const failures: string[] = [];
+      let updatedManutenzioni = 0;
+      const linkedSet = new Set(linkedManutenzioneIds);
+
+      const nextManutenzioni = manutenzioni.map((record) => {
+        const manutenzioneId = normalizeText(record.id);
+        if (!linkedSet.has(manutenzioneId)) return record;
+        updatedManutenzioni += 1;
+        return {
+          ...record,
+          ...removeLegameOrigine(record, {
+            tipo: "segnalazione",
+            refId: recordId,
+          }),
+        };
+      });
+
+      for (const linkedId of linkedManutenzioneIds) {
+        if (!manutenzioni.some((record) => normalizeText(record.id) === linkedId)) {
+          failures.push(`Manutenzione collegata non trovata: ${linkedId}`);
+        }
+      }
+
+      const nextSegnalazioni = segnalazioni.map((record) =>
+        normalizeText(record.id) === recordId
+          ? {
+              ...record,
+              ...buildRiaperturaSegnalazionePatch(),
+            }
+          : record,
+      );
+
+      assertCloneWriteAllowed("storageSync.setItemSync", { key: SEGNALAZIONI_KEY });
+      await setItemSync(SEGNALAZIONI_KEY, nextSegnalazioni);
+
+      if (linkedManutenzioneIds.length > 0) {
+        assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
+        await setItemSync(MANUTENZIONI_KEY, nextManutenzioni);
+      }
+
+      const updated = 1 + updatedManutenzioni;
+      return {
+        ok: failures.length === 0,
+        updated,
+        failures: failures.length > 0 ? failures : undefined,
+        error:
+          failures.length > 0
+            ? "Segnalazione riaperta e link locali rimossi, ma alcuni target manutenzione non sono stati trovati."
+            : undefined,
+      };
+    });
+  } catch (error) {
+    return blockedResult(error);
+  }
 }
 
 export function sganciaControlloDaEvento(

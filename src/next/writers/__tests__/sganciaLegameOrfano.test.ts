@@ -1,5 +1,3 @@
-// PROMPT 47 T2 — test del writer `sganciaLegameOrfano`.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, unknown>();
@@ -20,7 +18,7 @@ vi.mock("../../../utils/cloneWriteBarrier", () => ({
   ),
 }));
 
-import { sganciaLegameOrfano } from "../sganciaLegameOrfanoWriter";
+import { sganciaLegameManutenzione, sganciaLegameOrfano } from "../sganciaLegameOrfanoWriter";
 
 type RawRecord = Record<string, unknown>;
 
@@ -35,6 +33,10 @@ function seed(
   store.set("@controlli_mezzo_autisti", controlli);
 }
 
+function manutenzioni(): RawRecord[] {
+  return (store.get("@manutenzioni") as RawRecord[]) ?? [];
+}
+
 function segnalazioni(): RawRecord[] {
   return (store.get("@segnalazioni_autisti_tmp") as RawRecord[]) ?? [];
 }
@@ -43,12 +45,12 @@ function controlli(): RawRecord[] {
   return (store.get("@controlli_mezzo_autisti") as RawRecord[]) ?? [];
 }
 
-describe("sganciaLegameOrfano (PROMPT 47 T2)", () => {
+describe("sganciaLegameOrfano / sganciaLegameManutenzione", () => {
   beforeEach(() => {
     store.clear();
   });
 
-  it("A — sgancio segnalazione con linkedLavoroId orfano: cancella legame + ripristina stato='nuova', letta=false", async () => {
+  it("sgancio segnalazione con linkedLavoroId orfano: cancella legame e ripristina stato", async () => {
     seed(
       [{ id: "M-EXISTING", targa: "TI113417", stato: "daFare" }],
       [
@@ -74,16 +76,12 @@ describe("sganciaLegameOrfano (PROMPT 47 T2)", () => {
     expect(segn.dataPresaInCarico).toBeNull();
     expect(segn.stato).toBe("nuova");
     expect(segn.letta).toBe(false);
-    // Non tocca altri campi
     expect(segn.autistaNome).toBe("Mario Rossi");
     expect(segn.targa).toBe("TI113417");
   });
 
-  it("B — idempotente: sorgente senza legami -> alreadyClean", async () => {
-    seed(
-      [],
-      [{ id: "S2", targa: "TI113417", stato: "nuova", letta: false }],
-    );
+  it("idempotente: sorgente senza legami -> alreadyClean", async () => {
+    seed([], [{ id: "S2", targa: "TI113417", stato: "nuova", letta: false }]);
     const segnPre = JSON.stringify(segnalazioni());
     const res = await sganciaLegameOrfano({ sorgenteId: "S2", sorgenteTipo: "segnalazione" });
     expect(res.ok).toBe(true);
@@ -91,18 +89,10 @@ describe("sganciaLegameOrfano (PROMPT 47 T2)", () => {
     expect(JSON.stringify(segnalazioni())).toBe(segnPre);
   });
 
-  it("C — legame NON orfano (target esiste): errore esplicito, zero scritture", async () => {
+  it("legame non orfano nel writer orfano: errore esplicito, zero scritture", async () => {
     seed(
       [{ id: "M-EXISTS", targa: "TI113417", stato: "daFare" }],
-      [
-        {
-          id: "S3",
-          targa: "TI113417",
-          linkedLavoroId: "M-EXISTS",
-          linkedMultiple: false,
-          stato: "presa_in_carico",
-        },
-      ],
+      [{ id: "S3", targa: "TI113417", linkedLavoroId: "M-EXISTS", linkedMultiple: false, stato: "presa_in_carico" }],
     );
     const segnPre = JSON.stringify(segnalazioni());
     const res = await sganciaLegameOrfano({ sorgenteId: "S3", sorgenteTipo: "segnalazione" });
@@ -111,7 +101,7 @@ describe("sganciaLegameOrfano (PROMPT 47 T2)", () => {
     expect(JSON.stringify(segnalazioni())).toBe(segnPre);
   });
 
-  it("D — sgancio controllo: cancella linkedLavoroId, letta=false, NO campo stato", async () => {
+  it("sgancio controllo orfano: cancella linkedLavoroId, letta=false, no campo stato", async () => {
     seed(
       [],
       [],
@@ -133,11 +123,52 @@ describe("sganciaLegameOrfano (PROMPT 47 T2)", () => {
     expect(ctrl.linkedLavoroId).toBeNull();
     expect(ctrl.letta).toBe(false);
     expect(ctrl.stato).toBeUndefined();
-    // check intatto
     expect((ctrl.check as Record<string, unknown>).gomme).toBe(false);
   });
 
-  it("E — sorgente inesistente: errore", async () => {
+  it("sgancio manuale valido: cancella source e rimuove origine dal target", async () => {
+    seed(
+      [
+        {
+          id: "M-VALID",
+          targa: "TI113417",
+          stato: "daFare",
+          origineRefs: [
+            { tipo: "segnalazione", refId: "S-VALID", refKey: "@segnalazioni_autisti_tmp" },
+          ],
+          origineTipo: "segnalazione",
+          origineRefId: "S-VALID",
+          origineRefKey: "@segnalazioni_autisti_tmp",
+        },
+      ],
+      [
+        {
+          id: "S-VALID",
+          targa: "TI113417",
+          linkedLavoroId: "M-VALID",
+          linkedMultiple: false,
+          stato: "presa_in_carico",
+          letta: true,
+        },
+      ],
+    );
+    const res = await sganciaLegameManutenzione({
+      sorgenteId: "S-VALID",
+      sorgenteTipo: "segnalazione",
+      manutenzioneId: "M-VALID",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.removedIds).toEqual(["M-VALID"]);
+    const segn = segnalazioni()[0];
+    expect(segn.linkedLavoroId).toBeNull();
+    expect(segn.linkedLavoroIds).toBeNull();
+    expect(segn.stato).toBe("nuova");
+    const target = manutenzioni()[0];
+    expect(target.origineRefs).toEqual([]);
+    expect(target.origineRefId).toBeNull();
+  });
+
+  it("sorgente inesistente: errore", async () => {
     seed([], []);
     const res = await sganciaLegameOrfano({ sorgenteId: "S-INESISTENTE", sorgenteTipo: "segnalazione" });
     expect(res.ok).toBe(false);

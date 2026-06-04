@@ -11,6 +11,11 @@ import {
   normalizeNextMagazzinoStockUnit,
   normalizeNextMagazzinoStockUnitLoose,
 } from "./nextMagazzinoStockContract";
+import {
+  readLegamiOrigine,
+  writeLegamiOrigine,
+  type LegameOrigineRef,
+} from "../helpers/cicloLegame";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -52,6 +57,7 @@ export type NextScheduledMaintenanceStatus =
 export type NextManutenzioneStato = "daFare" | "programmata" | "eseguita" | "chiusa_da_evento";
 export type NextManutenzioneOrigineTipo = "manuale" | "controllo" | "segnalazione";
 export type NextManutenzioneUrgenza = "alta" | "media" | "bassa";
+export type NextManutenzioneOrigineRef = LegameOrigineRef;
 export type NextChiusuraEventoFields = {
   chiusuraDi?: string | null;
   chiusuraRefId?: string | null;
@@ -99,6 +105,7 @@ export type NextMaintenanceHistoryItem = {
   origineTipo?: NextManutenzioneOrigineTipo | null;
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[];
   segnalatoDa?: string | null;
   urgenza: NextManutenzioneUrgenza | null;
   chiusuraDi?: string | null;
@@ -152,6 +159,7 @@ export type NextManutenzioniLegacyDatasetRecord = {
   origineTipo?: NextManutenzioneOrigineTipo | null;
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[];
   segnalatoDa?: string | null;
   eseguitoDa?: string | null;
   urgenza?: NextManutenzioneUrgenza | null;
@@ -239,6 +247,7 @@ export type NextManutenzioneBusinessSavePayload = {
   origineTipo?: NextManutenzioneOrigineTipo | null;
   origineRefId?: string | null;
   origineRefKey?: string | null;
+  origineRefs?: NextManutenzioneOrigineRef[] | null;
   segnalatoDa?: string | null;
   eseguitoDa?: string | null;
   urgenza?: NextManutenzioneUrgenza | null;
@@ -647,6 +656,7 @@ function toLegacyDatasetRecord(
   const origineTipo = optionalOrigineTipoField(raw);
   const origineRefId = optionalTextField(raw, "origineRefId");
   const origineRefKey = optionalTextField(raw, "origineRefKey");
+  const origineRefs = readLegamiOrigine(raw);
   const segnalatoDa = optionalTextField(raw, "segnalatoDa");
   const eseguitoDa = optionalTextField(raw, "eseguitoDa");
   const urgenza = optionalUrgenzaField(raw);
@@ -670,6 +680,7 @@ function toLegacyDatasetRecord(
     ...(origineTipo !== undefined ? { origineTipo } : {}),
     ...(origineRefId !== undefined ? { origineRefId } : {}),
     ...(origineRefKey !== undefined ? { origineRefKey } : {}),
+    ...(origineRefs.length > 0 ? { origineRefs } : {}),
     ...(segnalatoDa !== undefined ? { segnalatoDa } : {}),
     ...(eseguitoDa !== undefined ? { eseguitoDa } : {}),
     ...(urgenza !== undefined ? { urgenza } : {}),
@@ -752,6 +763,7 @@ function toHistoryItem(
             kmCambio: km,
           }))
         : [];
+  const origineRefs = readLegamiOrigine(raw);
 
   return {
     id: buildHistoryId(raw, index, mezzoTarga),
@@ -778,6 +790,7 @@ function toHistoryItem(
     origineTipo: sanitizeManutenzioneOrigineTipo(raw.origineTipo),
     origineRefId: normalizeOptionalText(raw.origineRefId),
     origineRefKey: normalizeOptionalText(raw.origineRefKey),
+    origineRefs,
     segnalatoDa: normalizeOptionalText(raw.segnalatoDa),
     urgenza: sanitizeManutenzioneUrgenza(raw.urgenza),
     chiusuraDi: normalizeOptionalText(raw.chiusuraDi),
@@ -1060,6 +1073,11 @@ function sanitizeBusinessRecord(
   const origineRefKey = hasOwnField(payloadRaw, "origineRefKey")
     ? normalizeOptionalText(payload.origineRefKey)
     : undefined;
+  const origineRefsPatch = hasOwnField(payloadRaw, "origineRefs")
+    ? (writeLegamiOrigine(
+        Array.isArray(payload.origineRefs) ? payload.origineRefs : [],
+      ) as Partial<NextManutenzioniLegacyDatasetRecord>)
+    : null;
   const segnalatoDa = hasOwnField(payloadRaw, "segnalatoDa")
     ? normalizeOptionalText(payload.segnalatoDa)
     : undefined;
@@ -1083,9 +1101,10 @@ function sanitizeBusinessRecord(
     ...(dataEsecuzione !== undefined ? { dataEsecuzione } : {}),
     ...(stato !== undefined ? { stato } : {}),
     ...(dataProgrammata !== undefined ? { dataProgrammata } : {}),
-    ...(origineTipo !== undefined ? { origineTipo } : {}),
-    ...(origineRefId !== undefined ? { origineRefId } : {}),
-    ...(origineRefKey !== undefined ? { origineRefKey } : {}),
+    ...(origineRefsPatch ?? {}),
+    ...(!origineRefsPatch && origineTipo !== undefined ? { origineTipo } : {}),
+    ...(!origineRefsPatch && origineRefId !== undefined ? { origineRefId } : {}),
+    ...(!origineRefsPatch && origineRefKey !== undefined ? { origineRefKey } : {}),
     ...(segnalatoDa !== undefined ? { segnalatoDa } : {}),
     ...(eseguitoDa !== undefined ? { eseguitoDa } : {}),
     ...(urgenza !== undefined ? { urgenza } : {}),

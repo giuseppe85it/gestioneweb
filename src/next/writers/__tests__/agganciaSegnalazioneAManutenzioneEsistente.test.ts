@@ -1,5 +1,3 @@
-// PROMPT 47 T1 — test del writer `agganciaSegnalazioneAManutenzioneEsistente`.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, unknown>();
@@ -47,12 +45,12 @@ function controlli(): RawRecord[] {
   return (store.get("@controlli_mezzo_autisti") as RawRecord[]) ?? [];
 }
 
-describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
+describe("agganciaSegnalazioneAManutenzioneEsistente", () => {
   beforeEach(() => {
     store.clear();
   });
 
-  it("A — target daFare stand-alone + segnalazione orfana: aggancia, scrive back-link, NO chiusura propagata", async () => {
+  it("target daFare stand-alone + segnalazione: aggancia e scrive origineRefs", async () => {
     seed(
       [{ id: "M1", targa: "TI113417", stato: "daFare", descrizione: "Tagliando" }],
       [{ id: "S1", targa: "TI113417", autistaNome: "Mario Rossi", stato: "nuova", letta: false }],
@@ -68,20 +66,21 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
 
     const segn = segnalazioni()[0];
     expect(segn.linkedLavoroId).toBe("M1");
+    expect(segn.linkedLavoroIds).toBeNull();
     expect(segn.stato).toBe("presa_in_carico");
     expect(segn.letta).toBe(true);
-    // PROMPT 50 R2: dataPresaInCarico NON e' piu' scritta come effetto collaterale
-    // dell'aggancio. Solo `segnaPresaInCaricoSegnalazione` (azione esplicita) la scrive.
     expect(segn.dataPresaInCarico).toBeUndefined();
 
-    // Back-link scritto su target stand-alone
     const target = manutenzioni()[0];
     expect(target.origineTipo).toBe("segnalazione");
     expect(target.origineRefId).toBe("S1");
     expect(target.origineRefKey).toBe("@segnalazioni_autisti_tmp");
+    expect(target.origineRefs).toEqual([
+      { tipo: "segnalazione", refId: "S1", refKey: "@segnalazioni_autisti_tmp" },
+    ]);
   });
 
-  it("B — target eseguita stand-alone + segnalazione orfana: aggancia + back-link + chiusura propagata", async () => {
+  it("target eseguita: aggancia e propaga chiusura ereditando la data manutenzione", async () => {
     seed(
       [{ id: "M2", targa: "TI113417", stato: "eseguita", descrizione: "Cambio gomme", data: "2026-05-12" }],
       [{ id: "S2", targa: "TI113417", autistaNome: "Riccardo F.", stato: "nuova", letta: false }],
@@ -95,26 +94,31 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
     expect(res.chiusuraPropagata).toBe(true);
 
     const segn = segnalazioni()[0];
-    // chiudiSegnalazioneDaEvento scrive stato="chiusa", chiusuraDi="manutenzione", chiusuraRefId=M2
     expect(segn.stato).toBe("chiusa");
     expect(segn.chiusuraDi).toBe("manutenzione");
     expect(segn.chiusuraRefId).toBe("M2");
+    expect(segn.chiusuraData).toBe(new Date(2026, 4, 12, 0, 0, 0, 0).getTime());
 
-    // PROMPT 50 R1: chiusuraData EREDITA dalla data manutenzione (12/05/2026),
-    // NON Date.now() (= 15/05 nel caso TI298409 reale).
-    expect(typeof segn.chiusuraData).toBe("number");
-    const expectedTs = new Date(2026, 4, 12, 0, 0, 0, 0).getTime(); // 12/05/2026 mezzanotte locale
-    expect(segn.chiusuraData).toBe(expectedTs);
-
-    // Back-link sul target stand-alone
     const target = manutenzioni()[0];
-    expect(target.origineTipo).toBe("segnalazione");
-    expect(target.origineRefId).toBe("S2");
+    expect(target.origineRefs).toEqual([
+      { tipo: "segnalazione", refId: "S2", refKey: "@segnalazioni_autisti_tmp" },
+    ]);
   });
 
-  it("C — idempotente: sorgente gia' linked al target -> alreadyLinked, zero scritture", async () => {
+  it("idempotente: sorgente gia' linked e target gia' coerente -> alreadyLinked", async () => {
     seed(
-      [{ id: "M3", targa: "TI113417", stato: "daFare", descrizione: "X", origineTipo: "segnalazione", origineRefId: "S3", origineRefKey: "@segnalazioni_autisti_tmp" }],
+      [
+        {
+          id: "M3",
+          targa: "TI113417",
+          stato: "daFare",
+          descrizione: "X",
+          origineRefs: [{ tipo: "segnalazione", refId: "S3", refKey: "@segnalazioni_autisti_tmp" }],
+          origineTipo: "segnalazione",
+          origineRefId: "S3",
+          origineRefKey: "@segnalazioni_autisti_tmp",
+        },
+      ],
       [{ id: "S3", targa: "TI113417", linkedLavoroId: "M3", linkedMultiple: false, stato: "presa_in_carico", letta: true }],
     );
     const segnPre = JSON.stringify(segnalazioni());
@@ -130,8 +134,7 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
     expect(JSON.stringify(manutenzioni())).toBe(manuPre);
   });
 
-  it("D — cambio link: sorgente linked a M-OLD -> sovrascrive con M-NEW, NON sovrascrive back-link target gia' diverso (errore esplicito)", async () => {
-    // Target M-NEW ha gia' back-link ad altra sorgente: rifiuto.
+  it("cambio link: sposta la sorgente su M-NEW e mantiene il mirror legacy del primo origin", async () => {
     seed(
       [
         {
@@ -151,13 +154,21 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
       sorgenteTipo: "segnalazione",
       manutenzioneTargetId: "M-NEW",
     });
-    expect(res.ok).toBe(false);
-    expect(res.error).toContain("gia' collegata a un'altra sorgente");
-    // Sorgente NON e' stata modificata: linkedLavoroId resta M-OLD
-    expect(segnalazioni()[0].linkedLavoroId).toBe("M-OLD");
+    expect(res.ok).toBe(true);
+    expect(res.previousLinkedId).toBe("M-OLD");
+    expect(segnalazioni()[0].linkedLavoroId).toBe("M-NEW");
+    expect(segnalazioni()[0].linkedLavoroIds).toBeNull();
+
+    const target = manutenzioni()[0];
+    expect(target.origineRefs).toEqual([
+      { tipo: "controllo", refId: "C-ALTRA", refKey: "@controlli_mezzo_autisti" },
+      { tipo: "segnalazione", refId: "S4", refKey: "@segnalazioni_autisti_tmp" },
+    ]);
+    expect(target.origineTipo).toBe("controllo");
+    expect(target.origineRefId).toBe("C-ALTRA");
   });
 
-  it("E — target inesistente: errore esplicito, zero scritture", async () => {
+  it("target inesistente: errore esplicito, zero scritture", async () => {
     seed([], [{ id: "S5", targa: "TI113417" }]);
     const segnPre = JSON.stringify(segnalazioni());
     const res = await agganciaSegnalazioneAManutenzioneEsistente({
@@ -170,7 +181,7 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
     expect(JSON.stringify(segnalazioni())).toBe(segnPre);
   });
 
-  it("F — aggancio controllo a target daFare: linkedLavoroId + letta=true, NO stato/dataPresaInCarico", async () => {
+  it("aggancio controllo a target daFare: linkedLavoroId + origineRefs, senza stato/dataPresaInCarico", async () => {
     seed(
       [{ id: "M6", targa: "TI113417", stato: "daFare", descrizione: "Test" }],
       [],
@@ -185,8 +196,10 @@ describe("agganciaSegnalazioneAManutenzioneEsistente (PROMPT 47 T1)", () => {
     const ctrl = controlli()[0];
     expect(ctrl.linkedLavoroId).toBe("M6");
     expect(ctrl.letta).toBe(true);
-    // I controlli non hanno il campo `stato` o `dataPresaInCarico`
     expect(ctrl.stato).toBeUndefined();
     expect(ctrl.dataPresaInCarico).toBeUndefined();
+    expect(manutenzioni()[0].origineRefs).toEqual([
+      { tipo: "controllo", refId: "C6", refKey: "@controlli_mezzo_autisti" },
+    ]);
   });
 });

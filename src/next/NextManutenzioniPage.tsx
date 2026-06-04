@@ -56,7 +56,12 @@ import {
   type NextOfficinaReadOnlyItem,
 } from "./domain/nextOfficineDomain";
 import {
+  readNextColleghiSnapshot,
+  type NextCollegaReadOnlyItem,
+} from "./domain/nextColleghiDomain";
+import {
   chiudiManutenzioneDaEvento,
+  riapriESganciaSegnalazione,
   sganciaManutenzioneDaEvento,
 } from "./writers/nextChiusuraEventoWriter";
 import PdfPreviewModal from "../components/PdfPreviewModal";
@@ -80,6 +85,26 @@ type InterventoUiSubtype =
 
 type MaterialeManutenzione = NextManutenzioniLegacyMaterialRecord;
 type AsseCoinvoltoId = NextManutenzioneAsseCoinvoltoId;
+
+type CompletionSaveOverrides = {
+  completionFornitore?: string;
+  completionData?: string;
+  completionKm?: string;
+};
+
+const COMPLETION_KM_REQUIRED_CATEGORIES = new Set([
+  "motrice 2 assi",
+  "motrice 3 assi",
+  "motrice 4 assi",
+  "trattore stradale",
+]);
+
+const INITIAL_STATE_TOGGLE_ACTIVE_STYLE: CSSProperties = {
+  background: "#dcfce7",
+  borderColor: "#22c55e",
+  color: "#166534",
+  boxShadow: "0 0 0 1px rgba(34, 197, 94, 0.35)",
+};
 
 type MaterialeInventario = {
   id: string;
@@ -186,6 +211,13 @@ function formatMonthFilterLabel(filter: PdfPeriodFilter) {
 
 function normalizeDateEditorValue(value: string) {
   return toISO(value) ?? fromUserInput(value) ?? value;
+}
+
+function formatDateDigitsInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 function formatDateShort(value: string | null | undefined) {
@@ -298,6 +330,22 @@ function resolveMaintenanceStato(item: NextManutenzioniLegacyDatasetRecord): Nex
     return item.stato;
   }
   return "daFare";
+}
+
+function isManutenzioneCompletabile(item: NextManutenzioniLegacyDatasetRecord): boolean {
+  return item.stato === "daFare" || item.stato === "programmata";
+}
+
+function normalizeCompletionCategory(value: string | null | undefined): string {
+  return normalizeFreeText(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function requiresKmForCompletionCategory(value: string | null | undefined): boolean {
+  return COMPLETION_KM_REQUIRED_CATEGORIES.has(normalizeCompletionCategory(value));
+}
+
+function isStructuredGommeInterventoTipo(value: NextManutenzioneGommeInterventoTipo | null | undefined): boolean {
+  return value === "ordinario" || value === "straordinario";
 }
 
 function formatMaintenanceStatoLabel(stato: NextManutenzioneStato): string {
@@ -1116,6 +1164,7 @@ export default function NextManutenzioniPage() {
 
   const [selectedTarga, setSelectedTarga] = useState("");
   const [selectedDetailRecordId, setSelectedDetailRecordId] = useState<string | null>(null);
+  const manualTargaSelectionRef = useRef(false);
   const [aggancioManutenzioneRecord, setAggancioManutenzioneRecord] =
     useState<NextManutenzioniLegacyDatasetRecord | null>(null);
   const [aggancioManutenzioneBusy, setAggancioManutenzioneBusy] = useState(false);
@@ -1136,9 +1185,10 @@ export default function NextManutenzioniPage() {
   const [pdfDeleteCandidate, setPdfDeleteCandidate] =
     useState<NextManutenzioniLegacyDatasetRecord | null>(null);
   const [pdfDeleteBusy, setPdfDeleteBusy] = useState(false);
-  const [daFareTargaFilter, setDaFareTargaFilter] = useState<string>("tutte");
   const [daFareUrgenzaFilter, setDaFareUrgenzaFilter] = useState<DaFareUrgenzaFilter>("tutte");
   const [daFareOrigineFilter, setDaFareOrigineFilter] = useState<DaFareOrigineFilter>("tutte");
+  const [daFareMenuId, setDaFareMenuId] = useState<string | null>(null);
+  const [origineMenuId, setOrigineMenuId] = useState<string | null>(null);
 
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
@@ -1149,9 +1199,11 @@ export default function NextManutenzioniPage() {
   const [sottotipo, setSottotipo] = useState<SottoTipo>("motrice");
   const [descrizione, setDescrizione] = useState("");
   const [eseguito, setEseguito] = useState("");
+  const [draftSegnalatoDa, setDraftSegnalatoDa] = useState("");
   const [data, setData] = useState(todayLabel());
   const [importo, setImporto] = useState("");
-  const [createAsDaFare, setCreateAsDaFare] = useState(false);
+  const [createAsDaFare, setCreateAsDaFare] = useState(true);
+  const [draftUrgenza, setDraftUrgenza] = useState<NextManutenzioneUrgenza>("media");
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [assiCoinvolti, setAssiCoinvolti] = useState<AsseCoinvoltoId[]>([]);
@@ -1161,8 +1213,14 @@ export default function NextManutenzioniPage() {
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [completionRecordId, setCompletionRecordId] = useState<string | null>(null);
+  const [completionModalRecord, setCompletionModalRecord] =
+    useState<NextManutenzioniLegacyDatasetRecord | null>(null);
+  const [completionDraftFornitore, setCompletionDraftFornitore] = useState("");
+  const [completionDraftData, setCompletionDraftData] = useState(todayLabel());
+  const [completionDraftKm, setCompletionDraftKm] = useState("");
   // PROMPT 42 — T2: officine dell'anagrafica per i suggerimenti dell'autocomplete.
   const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
+  const [autisti, setAutisti] = useState<NextCollegaReadOnlyItem[]>([]);
   const requestedTarga = useMemo(
     () => normalizeText(new URLSearchParams(location.search).get("targa") ?? ""),
     [location.search],
@@ -1188,10 +1246,6 @@ export default function NextManutenzioniPage() {
         setMaterialiInventario(pageData.materialiInventario);
         setKmUltimoByTarga(pageData.kmUltimoByTarga);
         setLavoriInAttesaByTarga(pageData.lavoriInAttesaByTarga);
-
-        const initialTarga = pageData.mezzi[0]?.targa ?? "";
-        setSelectedTarga((current) => current || initialTarga);
-        setTarga((current) => current || initialTarga);
       } catch (loadError) {
         console.error("Errore caricamento Manutenzioni NEXT:", loadError);
         if (cancelled) return;
@@ -1230,7 +1284,7 @@ export default function NextManutenzioniPage() {
   }, [pdfPreviewUrl]);
 
   // PROMPT 42 — T2: carica le officine dell'anagrafica per i suggerimenti
-  // dell'autocomplete del campo Fornitore. Read-only, nessuna scrittura @officine.
+  // dell'autocomplete del campo Officina. Read-only, nessuna scrittura @officine.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -1239,6 +1293,21 @@ export default function NextManutenzioniPage() {
         if (!cancelled) setOfficine(snapshot.items);
       } catch {
         if (!cancelled) setOfficine([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snapshot = await readNextColleghiSnapshot({ includeCloneOverlays: false });
+        if (!cancelled) setAutisti(snapshot.items);
+      } catch {
+        if (!cancelled) setAutisti([]);
       }
     })();
     return () => {
@@ -1269,6 +1338,9 @@ export default function NextManutenzioniPage() {
           note = buildPdfOriginNote(item, origineRecord);
         } catch (originError) {
           console.warn("Origine manutenzione non disponibile per PDF:", item.id, originError);
+        }
+        if (note && item.origineRefs && item.origineRefs.length > 1) {
+          note = `${note} (+${item.origineRefs.length - 1} origini)`;
         }
         if (!note) return;
         cache[item.id] = note;
@@ -1326,6 +1398,22 @@ export default function NextManutenzioniPage() {
     () => isNextCategoriaMotorizzata(categoriaTecnica),
     [categoriaTecnica],
   );
+  const completionRecordTarga = normalizeText(completionModalRecord?.targa ?? "");
+  const completionCategoriaTecnica = useMemo(() => {
+    if (!completionRecordTarga) return categoriaTecnica;
+    const preview = mezzoPreviewByTarga.get(completionRecordTarga);
+    const fallback = mezzi.find((mezzo) => mezzo.targa === completionRecordTarga) ?? null;
+    return preview?.categoria ?? fallback?.categoria ?? null;
+  }, [categoriaTecnica, completionRecordTarga, mezzoPreviewByTarga, mezzi]);
+  const completionKmRequired = useMemo(
+    () =>
+      Boolean(
+        completionModalRecord &&
+          isStructuredGommeInterventoTipo(completionModalRecord.gommeInterventoTipo) &&
+          requiresKmForCompletionCategory(completionCategoriaTecnica),
+      ),
+    [completionCategoriaTecnica, completionModalRecord],
+  );
   const storicoMezzo = useMemo(
     () => storico.filter((item) => item.targa === activeTarga),
     [activeTarga, storico],
@@ -1380,24 +1468,12 @@ export default function NextManutenzioniPage() {
       }),
     [storico],
   );
-  const daFareTargaOptions = useMemo(() => {
-    const values = new Set<string>();
-    mezzi.forEach((mezzo) => {
-      const value = normalizeText(mezzo.targa);
-      if (value) values.add(value);
-    });
-    manutenzioniOperative.forEach((item) => {
-      const value = normalizeText(item.targa);
-      if (value) values.add(value);
-    });
-    return [...values].sort();
-  }, [manutenzioniOperative, mezzi]);
   const manutenzioniOperativeFiltrate = useMemo(
     () =>
       [...manutenzioniOperative]
         .filter((item) => {
           const itemTarga = normalizeText(item.targa);
-          if (daFareTargaFilter !== "tutte" && itemTarga !== daFareTargaFilter) return false;
+          if (activeTarga && itemTarga !== activeTarga) return false;
           if (daFareUrgenzaFilter !== "tutte" && resolveMaintenanceUrgenza(item) !== daFareUrgenzaFilter) {
             return false;
           }
@@ -1416,7 +1492,7 @@ export default function NextManutenzioniPage() {
           if (rightTs !== leftTs) return rightTs - leftTs;
           return right.id.localeCompare(left.id);
         }),
-    [daFareOrigineFilter, daFareTargaFilter, daFareUrgenzaFilter, manutenzioniOperative],
+    [activeTarga, daFareOrigineFilter, daFareUrgenzaFilter, manutenzioniOperative],
   );
   const ultimeManutenzioniMezzo = useMemo(
     () => storicoMezzoOrdinato.filter((item) => item.tipo === "mezzo").slice(0, 4),
@@ -1492,6 +1568,10 @@ export default function NextManutenzioniPage() {
     return [...storico]
       .filter((item) => item.tipo === pdfSubjectType)
       .filter((item) => {
+        const itemTarga = normalizeText(item.targa);
+        return !activeTarga || itemTarga === activeTarga;
+      })
+      .filter((item) => {
         const isOperative = isPdfOperativeMaintenance(item);
         if (pdfIncludeOperative && isOperative) return true;
         const pdfDate = getMaintenancePdfDateValue(item);
@@ -1510,7 +1590,7 @@ export default function NextManutenzioniPage() {
         if (timestampDelta !== 0) return timestampDelta;
         return right.id.localeCompare(left.id);
       });
-  }, [pdfIncludeOperative, pdfPeriodFilter, pdfSubjectType, storico]);
+  }, [activeTarga, pdfIncludeOperative, pdfPeriodFilter, pdfSubjectType, storico]);
   const latestMetricByTargaAndTipo = useMemo(() => {
     const sortedItems = [...storico].sort(
       (left, right) =>
@@ -1675,6 +1755,10 @@ export default function NextManutenzioniPage() {
   const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
   useEffect(() => {
+    if (manualTargaSelectionRef.current) {
+      return;
+    }
+
     if (!requestedTarga || mezzi.length === 0) {
       return;
     }
@@ -1697,6 +1781,10 @@ export default function NextManutenzioniPage() {
 
   // Apertura robusta: recordId senza targa ricava il mezzo dal record letto.
   useEffect(() => {
+    if (manualTargaSelectionRef.current) {
+      return;
+    }
+
     if (!requestedRecordId || loading) {
       return;
     }
@@ -1718,6 +1806,10 @@ export default function NextManutenzioniPage() {
   }, [loading, requestedRecordId, storico]);
 
   useEffect(() => {
+    if (manualTargaSelectionRef.current) {
+      return;
+    }
+
     if (!requestedTarga || !requestedRecordId) {
       return;
     }
@@ -1768,6 +1860,7 @@ export default function NextManutenzioniPage() {
 
   function handleSelectContextTarga(value: string) {
     const normalized = normalizeText(value);
+    manualTargaSelectionRef.current = true;
     setSelectedTarga(normalized);
     setTarga(normalized);
     setNotice(null);
@@ -1784,10 +1877,15 @@ export default function NextManutenzioniPage() {
 
   async function handleOpenOrigineRecord(item: NextManutenzioniLegacyDatasetRecord) {
     if (!item.origineRefKey || !item.origineRefId) return;
+    await handleOpenOrigineRef(item.origineRefKey, item.origineRefId);
+  }
+
+  async function handleOpenOrigineRef(origineRefKey: string | null | undefined, origineRefId: string | null | undefined) {
+    if (!origineRefKey || !origineRefId) return;
     try {
       setOrigineModalLoading(true);
       setOrigineModalError(null);
-      const record = await getNextManutenzioneOrigineRecord(item.origineRefKey, item.origineRefId);
+      const record = await getNextManutenzioneOrigineRecord(origineRefKey, origineRefId);
       if (!record) {
         setOrigineModalRecord(null);
         setOrigineModalError("Origine non trovata.");
@@ -1800,6 +1898,34 @@ export default function NextManutenzioniPage() {
       setOrigineModalError("Lettura origine non riuscita.");
     } finally {
       setOrigineModalLoading(false);
+    }
+  }
+
+  async function handleRiapriOrigineSegnalazione(origineRefId: string | null | undefined) {
+    const segnalazioneId = normalizeText(origineRefId);
+    if (!segnalazioneId) {
+      setNotice("ID segnalazione origine mancante.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Riaprire questa segnalazione e sganciarla dalle manutenzioni collegate?",
+    );
+    if (!confirmed) return;
+    try {
+      setSaving(true);
+      setNotice(null);
+      const result = await riapriESganciaSegnalazione(segnalazioneId);
+      await refreshData();
+      if (!result.ok) {
+        setNotice(result.error || "Segnalazione riaperta con esito parziale.");
+        return;
+      }
+      setNotice("Segnalazione riaperta e sganciata.");
+    } catch (error) {
+      console.error("Errore riapertura segnalazione origine:", error);
+      setNotice("Errore riapertura segnalazione.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1869,9 +1995,11 @@ export default function NextManutenzioniPage() {
     setSottotipo("motrice");
     setDescrizione("");
     setEseguito("");
+    setDraftSegnalatoDa("");
     setData(todayLabel());
     setImporto("");
-    setCreateAsDaFare(false);
+    setCreateAsDaFare(true);
+    setDraftUrgenza("media");
     setMaterialeSearch("");
     setMaterialiTemp([]);
     setAssiCoinvolti([]);
@@ -1881,6 +2009,10 @@ export default function NextManutenzioniPage() {
     setQuantitaTemp("");
     setEditingId(null);
     setCompletionRecordId(null);
+    setCompletionModalRecord(null);
+    setCompletionDraftFornitore("");
+    setCompletionDraftData(todayLabel());
+    setCompletionDraftKm("");
     setTarga(currentTarga);
   }
 
@@ -1914,7 +2046,7 @@ export default function NextManutenzioniPage() {
     setMaterialiTemp((current) => current.filter((item) => item.id !== id));
   }
 
-  function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
+  function loadEditState(item: NextManutenzioniLegacyDatasetRecord) {
     setEditingId(item.id);
     setCompletionRecordId(null);
     setSelectedTarga(item.targa);
@@ -1928,9 +2060,11 @@ export default function NextManutenzioniPage() {
     setUiSubtype(deriveUiSubtype(item));
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
+    setDraftSegnalatoDa(item.segnalatoDa ?? "");
     setData(item.data);
     setImporto(item.importo != null ? String(item.importo) : "");
     setCreateAsDaFare(false);
+    setDraftUrgenza(item.urgenza ?? "media");
     setMaterialiTemp(toMaterialiTemp(item.materiali));
     setAssiCoinvolti(
       normalizeNextAssiCoinvolti(
@@ -1944,16 +2078,38 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioQuantita(
       item.gommeStraordinario?.quantita != null ? String(item.gommeStraordinario.quantita) : "",
     );
+  }
+
+  function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
+    loadEditState(item);
     setView("form");
     setNotice("Modifica caricata dal dataset reale.");
   }
 
   function handleCompleteDaFare(item: NextManutenzioniLegacyDatasetRecord) {
-    handleEdit(item);
+    loadEditState(item);
     setCompletionRecordId(item.id);
-    setData(todayLabel());
+    setCompletionModalRecord(item);
+    setCompletionDraftFornitore(item.fornitore ?? "");
+    setCompletionDraftData(todayLabel());
+    setCompletionDraftKm(item.km != null ? String(item.km) : "");
     setEseguito(item.eseguitoDa ?? item.eseguito ?? "");
-    setNotice("Completamento manutenzione caricato. Inserisci i dati di esecuzione e salva.");
+    setNotice(null);
+  }
+
+  function closeCompletionModal() {
+    const nextTarga = completionModalRecord?.targa ?? activeTarga;
+    resetForm(nextTarga);
+    setCompletionModalRecord(null);
+  }
+
+  async function handleConfirmCompletionModal() {
+    if (!completionModalRecord) return;
+    await handleSave({
+      completionFornitore: completionDraftFornitore,
+      completionData: completionDraftData,
+      completionKm: completionDraftKm,
+    });
   }
 
   async function handleDelete(record: Pick<NextManutenzioniLegacyDatasetRecord, "id">): Promise<void> {
@@ -2099,13 +2255,31 @@ export default function NextManutenzioniPage() {
     );
   }
 
-  async function handleSave() {
+  async function handleSave(overrides: CompletionSaveOverrides = {}) {
     const normalizedTarga = normalizeText(targa);
     const normalizedDescrizione = normalizeFreeText(descrizione);
-    const normalizedData = toISO(data) ?? fromUserInput(data);
-    const normalizedImporto = parseImportoInput(importo);
     const sourceRecord = editingId ? storico.find((item) => item.id === editingId) ?? null : null;
     const isCompletionSave = Boolean(completionRecordId && completionRecordId === editingId);
+    const effectiveFornitore =
+      isCompletionSave && overrides.completionFornitore !== undefined ? overrides.completionFornitore : fornitore;
+    const effectiveDataInput =
+      isCompletionSave && overrides.completionData !== undefined ? overrides.completionData : data;
+    const effectiveKmInput = isCompletionSave && overrides.completionKm !== undefined ? overrides.completionKm : km;
+    const normalizedData = toISO(effectiveDataInput) ?? fromUserInput(effectiveDataInput);
+    const normalizedImporto = parseImportoInput(importo);
+    const isCompletionGomme = isCompletionSave && isStructuredGommeInterventoTipo(sourceRecord?.gommeInterventoTipo);
+    const completionRequiresKm =
+      isCompletionGomme && requiresKmForCompletionCategory(completionCategoriaTecnica ?? categoriaTecnica);
+    const effectiveKmNumber = parseNullableNumberInput(effectiveKmInput);
+    const effectiveGommePerAsseDraft =
+      isCompletionSave && isUiSubtypeGommeOrdinario(uiSubtype)
+        ? buildGommePerAssePayload({
+            assiCoinvolti,
+            data: effectiveDataInput,
+            km: effectiveKmInput,
+            isMotorizzato: requiresKmForCompletionCategory(completionCategoriaTecnica ?? categoriaTecnica),
+          })
+        : gommePerAsseDraft;
     const selectedStato: NextManutenzioneStato = sourceRecord
       ? isCompletionSave
         ? "eseguita"
@@ -2124,22 +2298,27 @@ export default function NextManutenzioniPage() {
       return;
     }
 
-    if (!createAsDaFare && tipo === "mezzo" && categoriaMotorizzata && !km) {
+    if (isCompletionSave && completionRequiresKm && effectiveKmNumber === null) {
+      window.alert("Per completare un intervento gomme su motrice o trattore devi inserire i KM.");
+      return;
+    }
+
+    if (!isCompletionSave && !createAsDaFare && tipo === "mezzo" && categoriaMotorizzata && !km) {
       const confirmed = window.confirm("Non hai inserito i KM. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
 
-    if (!createAsDaFare && tipo !== "mezzo" && !ore) {
+    if (!isCompletionSave && !createAsDaFare && tipo !== "mezzo" && !ore) {
       const confirmed = window.confirm("Non hai inserito le ORE. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
 
-    if (!createAsDaFare && isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
+    if (!isCompletionSave && !createAsDaFare && isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
       window.alert("Per il cambio gomme ordinario devi selezionare almeno un asse.");
       return;
     }
 
-    if (!createAsDaFare && isUiSubtypeGommeStraordinario(uiSubtype) && !normalizeFreeText(gommeStraordinarioMotivo)) {
+    if (!isCompletionSave && !createAsDaFare && isUiSubtypeGommeStraordinario(uiSubtype) && !normalizeFreeText(gommeStraordinarioMotivo)) {
       window.alert("Per l'evento gomme straordinario seleziona un motivo esplicito.");
       return;
     }
@@ -2149,6 +2328,7 @@ export default function NextManutenzioniPage() {
       setError(null);
       setNotice(null);
       const wasEditing = Boolean(editingId);
+      const activeTargaBeforeSave = activeTarga;
       const savedRecord = await saveNextManutenzioneBusinessRecord({
         editingSourceId: editingId,
         editingSourceFingerprint: sourceRecord
@@ -2161,8 +2341,8 @@ export default function NextManutenzioniPage() {
           : null,
         targa: normalizedTarga,
         tipo,
-        fornitore: normalizeFreeText(fornitore) || null,
-        km: km ? Number(km) : null,
+        fornitore: !sourceRecord && createAsDaFare ? null : normalizeFreeText(effectiveFornitore) || null,
+        km: effectiveKmInput ? Number(effectiveKmInput) : null,
         ore: ore ? Number(ore) : null,
         sottotipo: tipo === "compressore" ? sottotipo : null,
         descrizione: normalizedDescrizione,
@@ -2172,7 +2352,7 @@ export default function NextManutenzioniPage() {
         importo: normalizedImporto,
         materiali: createAsDaFare ? [] : materialiTemp,
         assiCoinvolti: isUiSubtypeGommeOrdinario(uiSubtype) ? assiCoinvolti : [],
-        gommePerAsse: isUiSubtypeGommeOrdinario(uiSubtype) ? gommePerAsseDraft : [],
+        gommePerAsse: isUiSubtypeGommeOrdinario(uiSubtype) ? effectiveGommePerAsseDraft : [],
         gommeInterventoTipo: isUiSubtypeGomme(uiSubtype)
           ? isUiSubtypeGommeStraordinario(uiSubtype)
             ? "straordinario"
@@ -2188,7 +2368,7 @@ export default function NextManutenzioniPage() {
               origineRefKey: sourceRecord.origineRefKey ?? null,
               segnalatoDa: sourceRecord.segnalatoDa ?? null,
               eseguitoDa: isCompletionSave
-                ? normalizeFreeText(eseguito) || null
+                ? normalizeFreeText(effectiveFornitore) || null
                 : sourceRecord.eseguitoDa ?? null,
               urgenza: sourceRecord.urgenza ?? null,
               sourceDocumentId: sourceRecord.sourceDocumentId ?? null,
@@ -2202,16 +2382,19 @@ export default function NextManutenzioniPage() {
               origineTipo: "manuale" as const,
               origineRefId: null,
               origineRefKey: null,
-              segnalatoDa: null,
+              segnalatoDa: normalizeFreeText(draftSegnalatoDa) || null,
               eseguitoDa: null,
-              urgenza: "media" as const,
+              urgenza: draftUrgenza,
             }
           : {}),
       });
       await refreshData();
-      setSelectedTarga(savedRecord.targa);
       setSelectedDetailRecordId(savedRecord.id);
-      resetForm(savedRecord.targa);
+      resetForm(activeTargaBeforeSave);
+      setCompletionModalRecord(null);
+      setCompletionDraftFornitore("");
+      setCompletionDraftData(todayLabel());
+      setCompletionDraftKm("");
       setView(isCompletionSave ? "mappa" : createAsDaFare ? "dafare" : "dashboard");
       setNotice(
         isCompletionSave
@@ -2523,7 +2706,7 @@ export default function NextManutenzioniPage() {
           toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
           toPdfText("Tipo", fontReady),
           toPdfText("Descrizione", fontReady),
-          toPdfText("Fornitore", fontReady),
+          toPdfText("Officina", fontReady),
         ]],
         body: (group?.items ?? []).map((item) => {
           const rowMetricInfo = buildPdfMetricInfo({
@@ -2668,7 +2851,7 @@ export default function NextManutenzioniPage() {
           toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
           toPdfText("Tipo", fontReady),
           toPdfText("Descrizione", fontReady),
-          toPdfText("Fornitore", fontReady),
+          toPdfText("Officina", fontReady),
         ]],
         body: group.items.map((item) => {
           const rowMetricInfo = buildPdfMetricInfo({
@@ -2805,22 +2988,7 @@ export default function NextManutenzioniPage() {
           </button>
         </div>
 
-        <div className="man2-field-row3">
-          <div className="man2-field">
-            <label className="man2-field__label">Targa</label>
-            <select
-              value={daFareTargaFilter}
-              onChange={(event) => setDaFareTargaFilter(event.target.value)}
-              aria-label="Filtra manutenzioni da fare per targa"
-            >
-              <option value="tutte">Tutte</option>
-              {daFareTargaOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="man2-field-row">
           <div className="man2-field">
             <label className="man2-field__label">Urgenza</label>
             <select
@@ -2892,13 +3060,47 @@ export default function NextManutenzioniPage() {
                     {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
                     compact
                   />
-                  <div className="man2-form-actions">
-                    <button type="button" className="man2-btn" onClick={() => openDetailForRecord(item)}>
-                      Apri
-                    </button>
+                  <div className="man2-form-actions man2-form-actions--row">
                     <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
-                      Completa
+                      Eseguita
                     </button>
+                    <div className="man2-row-menu">
+                      <button
+                        type="button"
+                        className="man2-row-menu__trigger"
+                        aria-label={`Altre azioni per manutenzione ${item.descrizione}`}
+                        aria-expanded={daFareMenuId === item.id}
+                        onClick={() => setDaFareMenuId((current) => (current === item.id ? null : item.id))}
+                      >
+                        ⋮
+                      </button>
+                      {daFareMenuId === item.id ? (
+                        <div className="man2-row-menu__panel" role="menu">
+                          <button
+                            type="button"
+                            className="man2-row-menu__item"
+                            role="menuitem"
+                            onClick={() => {
+                              setDaFareMenuId(null);
+                              handleEdit(item);
+                            }}
+                          >
+                            Modifica
+                          </button>
+                          <button
+                            type="button"
+                            className="man2-row-menu__item"
+                            role="menuitem"
+                            onClick={() => {
+                              setDaFareMenuId(null);
+                              openDetailForRecord(item);
+                            }}
+                          >
+                            Apri
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </article>
               );
@@ -3020,6 +3222,9 @@ export default function NextManutenzioniPage() {
   }
   function renderForm() {
     const misuraValue = tipo === "mezzo" ? km : ore;
+    const isNewRecordForm = !editingId;
+    const showSegnalataDaField = isNewRecordForm && createAsDaFare;
+    const showOfficinaField = !isNewRecordForm || !createAsDaFare;
 
     return (
       <section className="man2-screen">
@@ -3047,6 +3252,7 @@ export default function NextManutenzioniPage() {
                   <button
                     type="button"
                     className={createAsDaFare ? "man2-nav-btn man2-nav-btn--primary" : "man2-nav-btn"}
+                    style={createAsDaFare ? INITIAL_STATE_TOGGLE_ACTIVE_STYLE : undefined}
                     aria-pressed={createAsDaFare}
                     onClick={() => setCreateAsDaFare(true)}
                   >
@@ -3055,6 +3261,7 @@ export default function NextManutenzioniPage() {
                   <button
                     type="button"
                     className={!createAsDaFare ? "man2-nav-btn man2-nav-btn--primary" : "man2-nav-btn"}
+                    style={!createAsDaFare ? INITIAL_STATE_TOGGLE_ACTIVE_STYLE : undefined}
                     aria-pressed={!createAsDaFare}
                     onClick={() => setCreateAsDaFare(false)}
                   >
@@ -3062,12 +3269,41 @@ export default function NextManutenzioniPage() {
                   </button>
                 </div>
               </div>
+              {createAsDaFare ? (
+                <div className="man2-field">
+                  <label className="man2-field__label">Urgenza</label>
+                  <select
+                    value={draftUrgenza}
+                    onChange={(event) => setDraftUrgenza(event.target.value as NextManutenzioneUrgenza)}
+                    aria-label="Urgenza manutenzione da fare"
+                  >
+                    <option value="alta">Alta</option>
+                    <option value="media">Media</option>
+                    <option value="bassa">Bassa</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
           <section className="man2-form-block">
             <div className="man2-section-title">Campi base</div>
-            <div className="man2-field-row">
+            <div className="man2-field-row3">
+              <div className="man2-field">
+                <label className="man2-field__label">Mezzo</label>
+                <select
+                  value={targa}
+                  onChange={(event) => handleSelectContextTarga(event.target.value)}
+                  aria-label="Seleziona mezzo per la manutenzione"
+                >
+                  <option value="">- Seleziona mezzo -</option>
+                  {mezzi.map((mezzo) => (
+                    <option key={mezzo.id} value={mezzo.targa}>
+                      {mezzo.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="man2-field">
                 <label className="man2-field__label">Tipo</label>
                 <select value={tipo} onChange={(event) => setTipo(event.target.value as TipoVoce)}>
@@ -3102,7 +3338,7 @@ export default function NextManutenzioniPage() {
                   inputMode="numeric"
                   placeholder="GG/MM/AAAA"
                   value={toDisplay(data) || data}
-                  onChange={(event) => setData(normalizeDateEditorValue(event.target.value))}
+                  onChange={(event) => setData(formatDateDigitsInput(event.target.value))}
                 />
                 {(() => {
                   // PROMPT 45 T4: messaggio errore solo se l'utente ha digitato qualcosa di "completo"
@@ -3146,15 +3382,36 @@ export default function NextManutenzioniPage() {
                   inputMode="numeric"
                 />
               </div>
-              <div className="man2-field man2-metric-group man2-metric-group--supplier">
-                <label className="man2-field__label">Fornitore / Officina</label>
-                <OfficinaAutocomplete
-                  value={fornitore}
-                  onChange={setFornitore}
-                  officine={officine}
-                  placeholder="Es. Officina Rossi"
-                />
-              </div>
+              {showSegnalataDaField ? (
+                <div className="man2-field man2-metric-group man2-metric-group--supplier">
+                  <label className="man2-field__label">Segnalata da</label>
+                  <input
+                    className="man2-text-strong-input"
+                    type="text"
+                    value={draftSegnalatoDa}
+                    onChange={(event) => setDraftSegnalatoDa(event.target.value)}
+                    list="man2-segnalata-da-autisti"
+                    placeholder="Es. Mario Rossi"
+                    autoComplete="off"
+                  />
+                  <datalist id="man2-segnalata-da-autisti">
+                    {autisti.map((autista) => (
+                      <option key={autista.id} value={autista.nome} />
+                    ))}
+                  </datalist>
+                </div>
+              ) : null}
+              {showOfficinaField ? (
+                <div className="man2-field man2-metric-group man2-metric-group--supplier man2-text-strong-input">
+                  <label className="man2-field__label">Officina</label>
+                  <OfficinaAutocomplete
+                    value={fornitore}
+                    onChange={setFornitore}
+                    officine={officine}
+                    placeholder="Es. Officina Rossi"
+                  />
+                </div>
+              ) : null}
               <div className="man2-field man2-metric-group man2-metric-group--supplier">
                 <label className="man2-field__label">Importo</label>
                 <input
@@ -3310,6 +3567,7 @@ export default function NextManutenzioniPage() {
             <div className="man2-field">
               <label className="man2-field__label">Dettaglio intervento</label>
               <textarea
+                className="man2-text-strong-input"
                 rows={4}
                 value={descrizione}
                 onChange={(event) => setDescrizione(event.target.value)}
@@ -3341,7 +3599,7 @@ export default function NextManutenzioniPage() {
                   <label className="man-label-block">
                     <span className="man-label-text">Cerca in inventario / inserisci materiale</span>
                     <input
-                      className="man-input"
+                      className="man-input man2-text-strong-input"
                       value={materialeSearch}
                       onChange={(event) => setMaterialeSearch(event.target.value)}
                       placeholder="Es. PASTIGLIE FRENO, OLIO MOTORE..."
@@ -3366,7 +3624,7 @@ export default function NextManutenzioniPage() {
                             <span className="man-autosuggest-label man2-material-suggest-label">{item.label}</span>
                             {item.fornitoreLabel ? (
                               <span className="man-autosuggest-supplier man2-material-suggest-supplier">
-                                Fornitore: {item.fornitoreLabel}
+                                Officina: {item.fornitoreLabel}
                               </span>
                             ) : null}
                           </div>
@@ -3723,7 +3981,7 @@ export default function NextManutenzioniPage() {
                                   <span>
                                     Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
                                   </span>
-                                  {entry.fornitore ? <span>Fornitore: {entry.fornitore}</span> : null}
+                                  {entry.fornitore ? <span>Officina: {entry.fornitore}</span> : null}
                                   {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
                                 </div>
                               ))}
@@ -3828,7 +4086,7 @@ export default function NextManutenzioniPage() {
                           <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
                           <th>Tipo</th>
                           <th>Descrizione</th>
-                          <th>Fornitore</th>
+                          <th>Officina</th>
                           <th>Azioni</th>
                         </tr>
                       </thead>
@@ -3919,29 +4177,93 @@ export default function NextManutenzioniPage() {
   }
 
   function renderOriginePanel() {
-    if (!selectedDetailRecord?.origineRefKey || !selectedDetailRecord.origineRefId) {
+    const origineRefs =
+      selectedDetailRecord?.origineRefs && selectedDetailRecord.origineRefs.length > 0
+        ? selectedDetailRecord.origineRefs
+        : selectedDetailRecord?.origineRefKey && selectedDetailRecord.origineRefId && selectedDetailRecord.origineTipo
+          ? [
+              {
+                tipo: selectedDetailRecord.origineTipo,
+                refKey: selectedDetailRecord.origineRefKey,
+                refId: selectedDetailRecord.origineRefId,
+              },
+            ]
+          : [];
+    if (origineRefs.length === 0) {
       return null;
     }
-    const label =
-      selectedDetailRecord.origineTipo === "segnalazione"
-        ? "Vedi segnalazione"
-        : selectedDetailRecord.origineTipo === "controllo"
-          ? "Vedi controllo"
-          : "Vedi origine";
     return (
       <section className="man2-screen">
         <div className="man2-screen-head man2-screen-head--dashboard">
           <div>
             <h2 className="man2-screen-title">Origine manutenzione</h2>
           </div>
-          <button
-            type="button"
-            className="man2-nav-btn"
-            onClick={() => void handleOpenOrigineRecord(selectedDetailRecord)}
-            disabled={origineModalLoading}
-          >
-            {origineModalLoading ? "Caricamento..." : label}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {origineRefs.map((origine, index) => {
+              const label =
+                origine.tipo === "segnalazione"
+                  ? `Vedi segnalazione${origineRefs.length > 1 ? ` ${index + 1}` : ""}`
+                  : origine.tipo === "controllo"
+                    ? `Vedi controllo${origineRefs.length > 1 ? ` ${index + 1}` : ""}`
+                    : "Vedi origine";
+              const menuKey = `${origine.refKey}:${origine.refId}:${index}`;
+              if (origine.tipo === "segnalazione") {
+                return (
+                  <div className="man2-row-menu" key={menuKey}>
+                    <button
+                      type="button"
+                      className="man2-row-menu__trigger man2-row-menu__trigger--compact"
+                      aria-label={`Altre azioni per ${label}`}
+                      aria-expanded={origineMenuId === menuKey}
+                      onClick={() => setOrigineMenuId((current) => (current === menuKey ? null : menuKey))}
+                      disabled={saving}
+                    >
+                      ⋮
+                    </button>
+                    {origineMenuId === menuKey ? (
+                      <div className="man2-row-menu__panel" role="menu">
+                        <button
+                          type="button"
+                          className="man2-row-menu__item"
+                          role="menuitem"
+                          onClick={() => {
+                            setOrigineMenuId(null);
+                            void handleOpenOrigineRef(origine.refKey, origine.refId);
+                          }}
+                          disabled={origineModalLoading}
+                        >
+                          {origineModalLoading ? "Caricamento..." : label}
+                        </button>
+                        <button
+                          type="button"
+                          className="man2-row-menu__item"
+                          role="menuitem"
+                          onClick={() => {
+                            setOrigineMenuId(null);
+                            void handleRiapriOrigineSegnalazione(origine.refId);
+                          }}
+                          disabled={saving}
+                        >
+                          Riapri
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={menuKey}
+                  type="button"
+                  className="man2-nav-btn"
+                  onClick={() => void handleOpenOrigineRef(origine.refKey, origine.refId)}
+                  disabled={origineModalLoading}
+                >
+                  {origineModalLoading ? "Caricamento..." : label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         {origineModalError ? <div className="man2-feedback man2-feedback--error">{origineModalError}</div> : null}
       </section>
@@ -4088,6 +4410,120 @@ export default function NextManutenzioniPage() {
     return null;
   }
 
+  function renderCompletionModal() {
+    if (!completionModalRecord) return null;
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Segna manutenzione eseguita"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 80,
+          background: "rgba(15, 23, 42, 0.48)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+        }}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !saving) closeCompletionModal();
+        }}
+      >
+        <form
+          className="man2-form-shell man2-completion-modal"
+          style={{ width: "min(520px, 100%)", maxHeight: "90vh", overflowY: "auto" }}
+          onMouseDown={(event) => event.stopPropagation()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleConfirmCompletionModal();
+          }}
+        >
+          <style>
+            {`
+              .man2-completion-modal .officina-ac {
+                position: relative;
+                width: 100%;
+              }
+              .man2-completion-modal .officina-ac__menu {
+                position: absolute;
+                z-index: 80;
+                left: 0;
+                right: 0;
+                top: calc(100% + 6px);
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0;
+                padding: 4px 0;
+                box-sizing: border-box;
+              }
+              .man2-completion-modal .officina-ac__option {
+                display: block;
+                width: 100%;
+                border-radius: 0;
+                white-space: normal;
+                line-height: 1.25;
+                text-align: left;
+              }
+            `}
+          </style>
+          <div className="man2-screen-head man2-screen-head--form">
+            <div>
+              <h2 className="man2-screen-title">Eseguita</h2>
+            </div>
+          </div>
+
+          <section className="man2-form-block">
+            <div className="man2-section-title">Dati esecuzione</div>
+            <div className="man2-field-row" style={{ gridTemplateColumns: "1fr", gap: 12 }}>
+              <div className="man2-field man2-text-strong-input">
+                <label className="man2-field__label">Officina</label>
+                <OfficinaAutocomplete
+                  value={completionDraftFornitore}
+                  onChange={setCompletionDraftFornitore}
+                  officine={officine}
+                  placeholder="Es. Officina Rossi"
+                />
+              </div>
+              <div className="man2-field">
+                <label className="man2-field__label">Data esecuzione</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="GG/MM/AAAA"
+                  value={toDisplay(completionDraftData) || completionDraftData}
+                  onChange={(event) => setCompletionDraftData(formatDateDigitsInput(event.target.value))}
+                />
+              </div>
+              {completionKmRequired ? (
+                <div className="man2-field">
+                  <label className="man2-field__label">KM</label>
+                  <input
+                    type="number"
+                    value={completionDraftKm}
+                    onChange={(event) => setCompletionDraftKm(event.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <div className="man2-form-actions">
+            <button type="button" className="man2-btn" onClick={closeCompletionModal} disabled={saving}>
+              Annulla
+            </button>
+            <button type="submit" className="man2-btn-full" disabled={saving}>
+              {saving ? "Salvataggio..." : "Conferma eseguita"}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="man2-page">
       <div className="man2-head">
@@ -4101,7 +4537,7 @@ export default function NextManutenzioniPage() {
             value={activeTarga}
             onChange={(event) => handleSelectContextTarga(event.target.value)}
           >
-            <option value="">- Seleziona mezzo -</option>
+            <option value="">Tutte</option>
             {(mezziSelezionabili.length > 0 ? mezziSelezionabili : mezzi).map((mezzo) => (
               <option key={mezzo.id} value={mezzo.targa}>
                 {mezzo.label}
@@ -4195,6 +4631,14 @@ export default function NextManutenzioniPage() {
               if (selectedDetailRecord) handleEdit(selectedDetailRecord);
             }}
             onDelete={handleDelete}
+            onCompleteMaintenance={(record) => {
+              const fullRecord = storico.find((item) => item.id === record.id) ?? null;
+              if (!fullRecord) {
+                setError("Record manutenzione non trovato nello storico corrente.");
+                return;
+              }
+              handleCompleteDaFare(fullRecord);
+            }}
             onAgganciaEvento={(record) => setAggancioManutenzioneRecord(record as NextManutenzioniLegacyDatasetRecord)}
             onSganciaEvento={(record) => void handleSganciaManutenzione(record)}
           />
@@ -4202,6 +4646,7 @@ export default function NextManutenzioniPage() {
       ) : (
         renderActiveSurface()
       )}
+      {renderCompletionModal()}
       <PdfPreviewModal
         open={pdfPreviewOpen}
         title={pdfPreviewTitle}

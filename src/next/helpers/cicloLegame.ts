@@ -19,6 +19,12 @@ export type LegameOrigine = {
   refKey: string | null;
 };
 
+export type LegameOrigineRef = {
+  tipo: "segnalazione" | "controllo";
+  refId: string;
+  refKey: string | null;
+};
+
 export type ChiusuraTrace = {
   chiusuraDi: string;
   chiusuraRefId: string | null;
@@ -53,6 +59,37 @@ function resolveOrigineTipo(value: string): LegameOrigineTipo | null {
   return null;
 }
 
+function resolveOrigineRefTipo(value: string): LegameOrigineRef["tipo"] | null {
+  const tipo = resolveOrigineTipo(value);
+  if (tipo === "segnalazione" || tipo === "controllo") return tipo;
+  return null;
+}
+
+function normalizeLegamiOrigine(legami: readonly LegameOrigineRef[]): LegameOrigineRef[] {
+  const result: LegameOrigineRef[] = [];
+  const seen = new Set<string>();
+  for (const legame of legami) {
+    const tipo = resolveOrigineRefTipo(legame.tipo);
+    const refId = normalizeText(legame.refId);
+    if (!tipo || !refId) continue;
+    const refKey = normalizeText(legame.refKey) || null;
+    const key = `${tipo}:${refKey ?? ""}:${refId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ tipo, refId, refKey });
+  }
+  return result;
+}
+
+function readLegameOrigineRefEntry(entry: unknown): LegameOrigineRef | null {
+  if (!isRecord(entry)) return null;
+  const tipo = resolveOrigineRefTipo(readText(entry, ["tipo", "origineTipo"]));
+  const refId = readText(entry, ["refId", "origineRefId", "origineId"]);
+  if (!tipo || !refId) return null;
+  const refKey = readText(entry, ["refKey", "origineRefKey", "origineKey"]) || null;
+  return { tipo, refId, refKey };
+}
+
 /**
  * Legge il back-link manutenzione → sorgente (`origineTipo/origineRefId/origineRefKey`).
  * Ritorna `null` se la manutenzione non ha origine valida (es. record manuale legacy).
@@ -65,6 +102,34 @@ export function readLegameOrigine(record: unknown): LegameOrigine | null {
   const refId = readText(record, ["origineRefId", "origineId"]) || null;
   const refKey = readText(record, ["origineRefKey", "origineKey"]) || null;
   return { tipo, refId, refKey };
+}
+
+export function readLegamiOrigine(record: unknown): LegameOrigineRef[] {
+  if (!isRecord(record)) return [];
+  const refs = record.origineRefs;
+  if (Array.isArray(refs)) {
+    const parsed = normalizeLegamiOrigine(
+      refs
+        .map(readLegameOrigineRefEntry)
+        .filter((entry): entry is LegameOrigineRef => entry !== null),
+    );
+    if (parsed.length > 0) return parsed;
+  }
+  const legacy = readLegameOrigine(record);
+  if (
+    legacy &&
+    (legacy.tipo === "segnalazione" || legacy.tipo === "controllo") &&
+    legacy.refId
+  ) {
+    return normalizeLegamiOrigine([
+      {
+        tipo: legacy.tipo,
+        refId: legacy.refId,
+        refKey: legacy.refKey,
+      },
+    ]);
+  }
+  return [];
 }
 
 /**
@@ -110,11 +175,55 @@ export function readChiusuraTrace(record: unknown): ChiusuraTrace | null {
  * Non scrive campi diversi da quelli del legame (no merge "creativo").
  */
 export function writeLegameOrigine(legame: LegameOrigine): RawRecord {
-  return {
+  const base: RawRecord = {
     origineTipo: legame.tipo,
     origineRefId: legame.refId,
     origineRefKey: legame.refKey,
   };
+  if (
+    (legame.tipo === "segnalazione" || legame.tipo === "controllo") &&
+    normalizeText(legame.refId)
+  ) {
+    return {
+      ...base,
+      origineRefs: normalizeLegamiOrigine([
+        {
+          tipo: legame.tipo,
+          refId: normalizeText(legame.refId),
+          refKey: normalizeText(legame.refKey) || null,
+        },
+      ]),
+    };
+  }
+  return base;
+}
+
+export function writeLegamiOrigine(legami: readonly LegameOrigineRef[]): RawRecord {
+  const dedup = normalizeLegamiOrigine(legami);
+  const first = dedup[0] ?? null;
+  return {
+    origineRefs: dedup,
+    origineTipo: first?.tipo ?? null,
+    origineRefId: first?.refId ?? null,
+    origineRefKey: first?.refKey ?? null,
+  };
+}
+
+export function addLegameOrigine(record: unknown, legame: LegameOrigineRef): RawRecord {
+  return writeLegamiOrigine([...readLegamiOrigine(record), legame]);
+}
+
+export function removeLegameOrigine(record: unknown, legame: Partial<LegameOrigineRef>): RawRecord {
+  const tipo = legame.tipo ? resolveOrigineRefTipo(legame.tipo) : null;
+  const refId = normalizeText(legame.refId);
+  const refKey = normalizeText(legame.refKey);
+  const next = readLegamiOrigine(record).filter((entry) => {
+    if (tipo && entry.tipo !== tipo) return true;
+    if (refId && entry.refId !== refId) return true;
+    if (refKey && normalizeText(entry.refKey) !== refKey) return true;
+    return false;
+  });
+  return writeLegamiOrigine(next);
 }
 
 /**
@@ -124,11 +233,13 @@ export function writeLegameOrigine(legame: LegameOrigine): RawRecord {
  */
 export function writeLegameLavoro(ids: readonly string[]): RawRecord {
   const dedup = Array.from(new Set(ids.map((id) => normalizeText(id)).filter((id) => id.length > 0)));
-  if (dedup.length === 0) return {};
-  if (dedup.length === 1) {
-    return { linkedLavoroId: dedup[0], linkedMultiple: false };
+  if (dedup.length === 0) {
+    return { linkedLavoroId: null, linkedLavoroIds: null, linkedMultiple: false };
   }
-  return { linkedLavoroIds: dedup, linkedMultiple: true };
+  if (dedup.length === 1) {
+    return { linkedLavoroId: dedup[0], linkedLavoroIds: null, linkedMultiple: false };
+  }
+  return { linkedLavoroId: null, linkedLavoroIds: dedup, linkedMultiple: true };
 }
 
 /**

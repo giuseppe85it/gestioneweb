@@ -150,6 +150,11 @@ function readDateRaw(record: RawRecord, keys: string[]): unknown {
   return undefined;
 }
 
+function sourceTimestamp(record: RawRecord): number {
+  const raw = readDateRaw(record, ["dataInserimento", "createdAt", "timestamp", "data", "dataProgrammata"]);
+  return parseAnyDate(raw)?.getTime() ?? 0;
+}
+
 function resolveTipoDaOrigine(origineTipo: string | null): TipoRecordStoria {
   if (origineTipo === "segnalazione") return "segnalazione";
   if (origineTipo === "controllo") return "controllo_ko";
@@ -178,6 +183,7 @@ export type RecordChiusoOptions = {
    * vengono letti da questo record, non dalla manutenzione stessa.
    */
   sourceRecord?: RawRecord | null;
+  sourceRecords?: RawRecord[] | null;
 };
 
 export function recordChiusoFromRaw(
@@ -186,7 +192,11 @@ export function recordChiusoFromRaw(
   options?: RecordChiusoOptions,
 ): RecordChiuso {
   const record: RawRecord = raw ?? {};
-  const source: RawRecord | null = options?.sourceRecord ?? null;
+  const sourceList = options?.sourceRecords?.filter(Boolean) ?? [];
+  const source: RawRecord | null =
+    sourceList.length > 0
+      ? [...sourceList].sort((a, b) => sourceTimestamp(b) - sourceTimestamp(a))[0]
+      : options?.sourceRecord ?? null;
   // PROMPT 52: stato case-insensitive — alcune projection NEXT mettono uppercase
   // (es. nextAutistiDomain.ts segnalazioni: `stato.toUpperCase()`), mentre i
   // record raw @manutenzioni hanno lowercase. Normalizza sempre a lowercase.

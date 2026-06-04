@@ -1,15 +1,3 @@
-/**
- * PROMPT 47 T1 — Modale "Aggancia/Cambia/Sostituisci legame manutenzione".
- *
- * Tre modes nella stessa UI:
- *  - "aggancia"           => sorgente senza legame: dropdown candidati per agganciare
- *  - "cambia"             => sorgente con legame valido: mostra link corrente + dropdown per cambiarlo
- *  - "sostituisci-orfano" => sorgente con legame orfano: banner warning + dropdown per sostituire
- *
- * I candidati sono passati come prop dal chiamante (vedi `getManutenzioniPerAggancio`).
- * Pattern UI copiato da NextMergeManutenzioneModal.tsx (PROMPT 45).
- */
-
 import { useState, type ReactElement } from "react";
 
 import type { ManutenzioneCandidataAggancio } from "../helpers/manutenzioniPerAggancio";
@@ -26,6 +14,7 @@ export type AgganciaLegameMode = "aggancia" | "cambia" | "sostituisci-orfano";
 
 type Props = {
   sorgente: AgganciaLegameSorgente;
+  sorgenti?: AgganciaLegameSorgente[];
   mode: AgganciaLegameMode;
   legameAttuale?: { id: string; descrizione?: string } | null;
   candidati: ManutenzioneCandidataAggancio[];
@@ -34,7 +23,8 @@ type Props = {
   onCancel: () => void;
 };
 
-function buildHeader(mode: AgganciaLegameMode): string {
+function buildHeader(mode: AgganciaLegameMode, count: number): string {
+  if (count > 1) return "Aggancia sorgenti a manutenzione";
   if (mode === "cambia") return "Cambia legame manutenzione";
   if (mode === "sostituisci-orfano") return "Sostituisci link rotto";
   return "Aggancia a manutenzione esistente";
@@ -46,11 +36,13 @@ function buildSubLabel(c: ManutenzioneCandidataAggancio): string {
   const data = toDisplay(c.dataIso);
   if (data) parts.push(data);
   if (c.fornitore) parts.push(c.fornitore);
-  return parts.join(" · ");
+  if (c.origineRefsCount > 0) parts.push(`${c.origineRefsCount} origini`);
+  return parts.join(" - ");
 }
 
 export function NextAgganciaLegameModal({
   sorgente,
+  sorgenti,
   mode,
   legameAttuale,
   candidati,
@@ -59,7 +51,7 @@ export function NextAgganciaLegameModal({
   onCancel,
 }: Props): ReactElement {
   const [choice, setChoice] = useState<string>("");
-
+  const allSorgenti = sorgenti && sorgenti.length > 0 ? sorgenti : [sorgente];
   const tipoLabel = sorgente.tipo === "segnalazione" ? "segnalazione" : "controllo";
 
   const confirm = (): void => {
@@ -75,7 +67,7 @@ export function NextAgganciaLegameModal({
     >
       <div className="aix-modal" onMouseDown={(event) => event.stopPropagation()}>
         <div className="aix-head">
-          <h3>{buildHeader(mode)}</h3>
+          <h3>{buildHeader(mode, allSorgenti.length)}</h3>
           <button className="aix-close" type="button" onClick={onCancel} disabled={busy}>
             CHIUDI
           </button>
@@ -94,20 +86,35 @@ export function NextAgganciaLegameModal({
               }}
             >
               <strong>Attenzione:</strong> questa {tipoLabel} e' collegata a una manutenzione
-              che non esiste piu' (link rotto). Selezionandone una nuova qui sotto, il link
-              verra' sostituito.
+              che non esiste piu'. Selezionandone una nuova qui sotto, il link verra' sostituito.
             </div>
           ) : null}
 
-          <p style={{ marginTop: 0 }}>
-            Sorgente: <strong>{sorgente.targa || "-"}</strong> — {sorgente.descrizione || "(senza descrizione)"}
-          </p>
+          {allSorgenti.length === 1 ? (
+            <p style={{ marginTop: 0 }}>
+              Sorgente: <strong>{sorgente.targa || "-"}</strong> -{" "}
+              {sorgente.descrizione || "(senza descrizione)"}
+            </p>
+          ) : (
+            <div style={{ marginTop: 0, marginBottom: 12 }}>
+              <p style={{ margin: "0 0 6px" }}>
+                Sorgenti selezionate: <strong>{allSorgenti.length}</strong>
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "#475569", fontSize: 13 }}>
+                {allSorgenti.map((entry) => (
+                  <li key={`${entry.tipo}:${entry.id}`}>
+                    <strong>{entry.targa || "-"}</strong> -{" "}
+                    {entry.descrizione || "(senza descrizione)"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {mode === "cambia" && legameAttuale ? (
             <p style={{ color: "#64748b", fontSize: 13 }}>
-              Attualmente collegata a:{" "}
-              <code>{legameAttuale.id}</code>
-              {legameAttuale.descrizione ? ` — ${legameAttuale.descrizione}` : ""}
+              Attualmente collegata a: <code>{legameAttuale.id}</code>
+              {legameAttuale.descrizione ? ` - ${legameAttuale.descrizione}` : ""}
             </p>
           ) : null}
 
@@ -165,8 +172,8 @@ export function NextAgganciaLegameModal({
               {mode === "cambia"
                 ? "CONFERMA CAMBIO"
                 : mode === "sostituisci-orfano"
-                ? "SOSTITUISCI LINK"
-                : "AGGANCIA"}
+                  ? "SOSTITUISCI LINK"
+                  : "AGGANCIA"}
             </button>
           </div>
         </div>
