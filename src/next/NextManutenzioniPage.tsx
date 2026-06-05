@@ -1273,7 +1273,7 @@ export default function NextManutenzioniPage() {
   const [selectedManutenzioneLiberaIds, setSelectedManutenzioneLiberaIds] = useState<string[]>([]);
   const [gruppoManutenzioneBusyKey, setGruppoManutenzioneBusyKey] = useState<string | null>(null);
   const gruppoManutenzioneBusyRef = useRef(false);
-  const [origineMenuId, setOrigineMenuId] = useState<string | null>(null);
+  const [origineInlineMap, setOrigineInlineMap] = useState<Record<string, NextManutenzioneOrigineRecord>>({});
 
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
@@ -1548,6 +1548,42 @@ export default function NextManutenzioniPage() {
     () => storico.find((item) => item.id === selectedDetailRecordId) ?? null,
     [selectedDetailRecordId, storico],
   );
+  useEffect(() => {
+    const refs =
+      selectedDetailRecord?.origineRefs && selectedDetailRecord.origineRefs.length > 0
+        ? selectedDetailRecord.origineRefs
+        : selectedDetailRecord?.origineRefKey &&
+            selectedDetailRecord.origineRefId &&
+            selectedDetailRecord.origineTipo
+          ? [
+              {
+                tipo: selectedDetailRecord.origineTipo,
+                refKey: selectedDetailRecord.origineRefKey,
+                refId: selectedDetailRecord.origineRefId,
+              },
+            ]
+          : [];
+    if (refs.length === 0) {
+      setOrigineInlineMap({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, NextManutenzioneOrigineRecord> = {};
+      for (const ref of refs) {
+        try {
+          const rec = await getNextManutenzioneOrigineRecord(ref.refKey, ref.refId);
+          if (rec) next[`${ref.refKey}:${ref.refId}`] = rec;
+        } catch {
+          // Best-effort: la scheda resta apribile anche se il dettaglio inline non e' leggibile.
+        }
+      }
+      if (!cancelled) setOrigineInlineMap(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDetailRecord]);
   const ultimiInterventi = useMemo(() => storicoMezzoOrdinato.slice(0, 5), [storicoMezzoOrdinato]);
   const manutenzioniOperative = useMemo(
     () =>
@@ -5226,78 +5262,70 @@ export default function NextManutenzioniPage() {
     }
     return (
       <section className="man2-screen">
-        <div className="man2-screen-head man2-screen-head--dashboard">
-          <div>
-            <h2 className="man2-screen-title">Origine manutenzione</h2>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {origineRefs.map((origine, index) => {
-              const label =
-                origine.tipo === "segnalazione"
-                  ? `Vedi segnalazione${origineRefs.length > 1 ? ` ${index + 1}` : ""}`
-                  : origine.tipo === "controllo"
-                    ? `Vedi controllo${origineRefs.length > 1 ? ` ${index + 1}` : ""}`
-                    : "Vedi origine";
-              const menuKey = `${origine.refKey}:${origine.refId}:${index}`;
-              if (origine.tipo === "segnalazione") {
-                return (
-                  <div className="man2-row-menu" key={menuKey}>
-                    <button
-                      type="button"
-                      className="man2-row-menu__trigger man2-row-menu__trigger--compact"
-                      aria-label={`Altre azioni per ${label}`}
-                      aria-expanded={origineMenuId === menuKey}
-                      onClick={() => setOrigineMenuId((current) => (current === menuKey ? null : menuKey))}
-                      disabled={saving}
-                    >
-                      ⋮
-                    </button>
-                    {origineMenuId === menuKey ? (
-                      <div className="man2-row-menu__panel" role="menu">
-                        <button
-                          type="button"
-                          className="man2-row-menu__item"
-                          role="menuitem"
-                          onClick={() => {
-                            setOrigineMenuId(null);
-                            void handleOpenOrigineRef(origine.refKey, origine.refId);
-                          }}
-                          disabled={origineModalLoading}
-                        >
-                          {origineModalLoading ? "Caricamento..." : label}
-                        </button>
-                        <button
-                          type="button"
-                          className="man2-row-menu__item"
-                          role="menuitem"
-                          onClick={() => {
-                            setOrigineMenuId(null);
-                            void handleRiapriOrigineSegnalazione(origine.refId);
-                          }}
-                          disabled={saving}
-                        >
-                          Riapri
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              }
-              return (
-                <button
-                  key={menuKey}
-                  type="button"
-                  className="man2-nav-btn"
-                  onClick={() => void handleOpenOrigineRef(origine.refKey, origine.refId)}
-                  disabled={origineModalLoading}
-                >
-                  {origineModalLoading ? "Caricamento..." : label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="man2-origine-head">
+          <h2 className="man2-screen-title">Origini ({origineRefs.length})</h2>
+          <span className="man2-origine-note">Segnalazioni e controlli che hanno generato questa manutenzione</span>
         </div>
         {origineModalError ? <div className="man2-feedback man2-feedback--error">{origineModalError}</div> : null}
+        <div className="man2-origine-cards">
+          {origineRefs.map((origine, index) => {
+            const key = `${origine.refKey}:${origine.refId}`;
+            const isSegn = origine.tipo === "segnalazione";
+            const vediLabel = isSegn
+              ? "Vedi segnalazione"
+              : origine.tipo === "controllo"
+                ? "Vedi controllo"
+                : "Vedi origine";
+            const rec = origineInlineMap[key] ?? null;
+            const details = rec ? buildOrigineDetails(rec) : [];
+            const get = (lab: string) => details.find((detail) => detail.label === lab)?.value ?? null;
+            const autista = get("Autista");
+            const data = get("Data");
+            const problema = get("Problema") ?? get("KO");
+            const descrizione = get("Descrizione");
+            return (
+              <article key={`${key}:${index}`} className="man2-origine-card">
+                <div className="man2-origine-card__top">
+                  <span className={`man2-origine-chip man2-origine-chip--${isSegn ? "segn" : "ctrl"}`}>
+                    {isSegn ? "Segnalazione" : origine.tipo === "controllo" ? "Controllo" : "Origine"}
+                  </span>
+                  {autista ? <span className="man2-origine-autista">{autista}</span> : null}
+                  {data ? <span className="man2-origine-data">· {data}</span> : null}
+                  <div className="man2-origine-card__actions">
+                    <button
+                      type="button"
+                      className="man2-origine-btn"
+                      onClick={() => void handleOpenOrigineRef(origine.refKey, origine.refId)}
+                      disabled={origineModalLoading}
+                    >
+                      {origineModalLoading ? "..." : vediLabel}
+                    </button>
+                    {isSegn ? (
+                      <button
+                        type="button"
+                        className="man2-origine-btn"
+                        onClick={() => void handleRiapriOrigineSegnalazione(origine.refId)}
+                        disabled={saving}
+                      >
+                        Riapri
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {problema || descrizione ? (
+                  <div className="man2-origine-card__body">
+                    {problema ? <span className="man2-origine-prob">{problema}</span> : null}
+                    {descrizione ? <span className="man2-origine-desc">{descrizione}</span> : null}
+                  </div>
+                ) : (
+                  <div className="man2-origine-card__empty">
+                    Dettaglio non caricato — apri con &quot;{vediLabel}&quot;.
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </section>
     );
   }

@@ -21,6 +21,7 @@ import { parseDataRobusta } from "./helpers/parseRobusto";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import { findSatelliteChiusoDaEventoForRecord } from "./helpers/storiaRecord";
 import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
+import { useSorgentiManutenzione } from "./helpers/useSorgenteManutenzione";
 import { toDisplay } from "./helpers/dateUnica";
 import "./next-mappa-storico.css";
 
@@ -154,6 +155,106 @@ function buildChiusuraDaEventoTitle(record: SelectedMaintenance | ManutenzioneLe
   return data && data !== "-"
     ? `Chiusa dal ${evento} del ${data}`
     : `Chiusa dal ${evento}`;
+}
+
+type RawRecord = Record<string, unknown>;
+
+function readSourceText(record: RawRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") {
+      const normalized = value.trim();
+      if (normalized) return normalized;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function sourceAuthorLabel(record: RawRecord): string {
+  return (
+    readSourceText(record, ["segnalatoDa", "autistaNome", "nomeAutista", "badgeAutista", "badge"]) ??
+    "Autista non indicato"
+  );
+}
+
+function readSourceDateRaw(record: RawRecord, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = record[key];
+    if (toDisplay(value)) return value;
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function sourceDateLabel(record: RawRecord): string {
+  const raw = readSourceDateRaw(record, ["dataInserimento", "createdAt", "timestamp", "data", "dataProgrammata"]);
+  return raw != null ? toDisplay(raw) || String(raw) : "data non disponibile";
+}
+
+function sourceDescriptionLabel(record: RawRecord): string | null {
+  return readSourceText(record, ["descrizione", "note", "messaggio", "dettaglio"]);
+}
+
+function sourceTypeLabel(record: RawRecord): string {
+  const tipo = readSourceText(record, ["__origineTipo", "origineTipo", "tipo"]);
+  if (tipo === "controllo") return "Controllo";
+  return "Segnalazione";
+}
+
+function hasMaintenanceOrigins(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): boolean {
+  if (!record) return false;
+  if (Array.isArray(record.origineRefs) && record.origineRefs.length > 0) return true;
+  return Boolean(record.origineRefKey && record.origineRefId && record.origineTipo);
+}
+
+function countMaintenanceOrigins(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): number {
+  if (!record) return 0;
+  if (Array.isArray(record.origineRefs) && record.origineRefs.length > 0) return record.origineRefs.length;
+  return record.origineRefKey && record.origineRefId && record.origineTipo ? 1 : 0;
+}
+
+export function MappaStoricoOriginiSection(props: {
+  hasOrigins: boolean;
+  originCount: number;
+  sourceRecords: RawRecord[];
+}) {
+  if (!props.hasOrigins) return null;
+  return (
+    <section className="man2-detail-v2__section" data-testid="mappa-storico-origini">
+      <div className="man2-detail-v2__section-title">
+        <span>Origini collegate</span>
+        <span className="man2-detail-v2__section-badge">{props.originCount}</span>
+      </div>
+      {props.sourceRecords.length > 0 ? (
+        <div className="man2-origine-cards">
+          {props.sourceRecords.map((source, index) => {
+            const sourceId = readSourceText(source, ["id"]) ?? String(index);
+            const description = sourceDescriptionLabel(source);
+            const isControllo = readSourceText(source, ["__origineTipo", "origineTipo", "tipo"]) === "controllo";
+            return (
+              <article key={`${sourceId}:${index}`} className="man2-origine-card">
+                <div className="man2-origine-card__top">
+                  <span className={`man2-origine-chip man2-origine-chip--${isControllo ? "ctrl" : "segn"}`}>
+                    {sourceTypeLabel(source)}
+                  </span>
+                  <span className="man2-origine-autista">{sourceAuthorLabel(source)}</span>
+                  <span className="man2-origine-data">· {sourceDateLabel(source)}</span>
+                </div>
+                {description ? (
+                  <div className="man2-origine-card__body">
+                    <span className="man2-origine-desc">{description}</span>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="man2-origine-card__empty">Dettaglio origine non caricato.</div>
+      )}
+    </section>
+  );
 }
 
 function formatMaintenanceTitle(record: SelectedMaintenance | ManutenzioneLegacy): string {
@@ -320,6 +421,9 @@ export default function NextMappaStoricoPage({
     return storicoManutenzioni.find((item) => item.id === selectedMaintenance.id) ?? null;
   }, [selectedMaintenance, storicoManutenzioni]);
   const selectedRecord = selectedLegacyRecord ?? selectedMaintenance;
+  const selectedSourceRecords = useSorgentiManutenzione(selectedRecord as RawRecord | null | undefined);
+  const selectedHasOrigins = hasMaintenanceOrigins(selectedRecord);
+  const selectedOriginCount = countMaintenanceOrigins(selectedRecord);
   const selectedSatelliteRecord = useMemo(
     () =>
       selectedRecord
@@ -343,6 +447,8 @@ export default function NextMappaStoricoPage({
     () => (selectedRecord ? resolveDetailCategory(selectedRecord) : null),
     [selectedRecord],
   );
+  const selectedIsOperativa =
+    selectedRecord?.stato === "daFare" || selectedRecord?.stato === "programmata";
   const selectedAxesNormalized = useMemo(
     () => normalizeNextAssiCoinvolti(selectedRecord?.assiCoinvolti ?? []),
     [selectedRecord],
@@ -702,6 +808,13 @@ export default function NextMappaStoricoPage({
                 <div className="man2-detail-v2__detail-header">
                   <div className="man2-detail-v2__detail-head-top">
                     <h2 className="man2-detail-v2__detail-title">{formatMaintenanceTitle(selectedRecord)}</h2>
+                    <span
+                      className={`man2-detail-v2__status-pill man2-detail-v2__status-pill--${
+                        selectedIsOperativa ? "todo" : "done"
+                      }`}
+                    >
+                      {selectedIsOperativa ? "DA FARE" : "ESEGUITA"}
+                    </span>
                     {selectedRecord.stato === "chiusa_da_evento" ? (
                       <span
                         className="man2-detail-v2__section-badge"
@@ -807,42 +920,68 @@ export default function NextMappaStoricoPage({
                     </div>
                   </div>
                   <div className="man2-detail-v2__detail-meta">
+                    {selectedRecord.targa?.trim() || targa}
+                    <span className="man2-detail-v2__detail-meta-sep">·</span>
                     {formatMaintenanceDateDisplay(selectedRecord.data)}
-                    <span className="man2-detail-v2__detail-meta-sep">·</span>
-                    {selectedRecord.sottotipo?.trim() || "—"}
-                    <span className="man2-detail-v2__detail-meta-sep">·</span>
-                    {selectedRecord.fornitore?.trim() || "Officina non indicata"}
+                    {selectedRecord.urgenza ? (
+                      <>
+                        <span className="man2-detail-v2__detail-meta-sep">·</span>
+                        Urgenza {selectedRecord.urgenza}
+                      </>
+                    ) : null}
+                    {selectedRecord.fornitore?.trim() ? (
+                      <>
+                        <span className="man2-detail-v2__detail-meta-sep">·</span>
+                        {selectedRecord.fornitore.trim()}
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="man2-detail-v2__detail-body">
-                  <div className="man2-detail-v2__kpi-strip">
-                    <div className="man2-detail-v2__kpi-item">
-                      <span className="man2-detail-v2__kpi-label">Km intervento</span>
-                      <strong className="man2-detail-v2__kpi-value">
-                        {selectedRecord.km != null ? `${formatNumberOptional(selectedRecord.km)} km` : "—"}
-                      </strong>
+                  <MappaStoricoOriginiSection
+                    hasOrigins={selectedHasOrigins}
+                    originCount={selectedOriginCount}
+                    sourceRecords={selectedSourceRecords}
+                  />
+
+                  {selectedRecord.km != null ||
+                  selectedDeltaKm != null ||
+                  (selectedRecord.importo != null && Number.isFinite(selectedRecord.importo)) ? (
+                    <div className="man2-detail-v2__kpi-strip">
+                      {selectedRecord.km != null ? (
+                        <div className="man2-detail-v2__kpi-item">
+                          <span className="man2-detail-v2__kpi-label">Km intervento</span>
+                          <strong className="man2-detail-v2__kpi-value">
+                            {`${formatNumberOptional(selectedRecord.km)} km`}
+                          </strong>
+                        </div>
+                      ) : null}
+                      {selectedDeltaKm != null ? (
+                        <div className="man2-detail-v2__kpi-item">
+                          <span className="man2-detail-v2__kpi-label">Δ km da oggi</span>
+                          <strong
+                            className={`man2-detail-v2__kpi-value man2-detail-v2__kpi-value--delta${
+                              selectedDeltaKm > 0 ? " is-positive" : ""
+                            }`}
+                          >
+                            {selectedDeltaKm > 0 ? `+${formatNumberOptional(selectedDeltaKm)}` : "0"}
+                          </strong>
+                        </div>
+                      ) : null}
+                      {selectedRecord.importo != null && Number.isFinite(selectedRecord.importo) ? (
+                        <div className="man2-detail-v2__kpi-item">
+                          <span className="man2-detail-v2__kpi-label">Importo</span>
+                          <strong className="man2-detail-v2__kpi-value">
+                            {formatMaintenanceImporto(
+                              selectedRecord.importo ?? null,
+                              selectedRecord.sourceDocumentCurrency ?? null,
+                            )}
+                          </strong>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="man2-detail-v2__kpi-item">
-                      <span className="man2-detail-v2__kpi-label">Δ km da oggi</span>
-                      <strong
-                        className={`man2-detail-v2__kpi-value man2-detail-v2__kpi-value--delta${
-                          selectedDeltaKm != null && selectedDeltaKm > 0 ? " is-positive" : ""
-                        }`}
-                      >
-                        {selectedDeltaKm == null ? "—" : selectedDeltaKm > 0 ? `+${formatNumberOptional(selectedDeltaKm)}` : "0"}
-                      </strong>
-                    </div>
-                    <div className="man2-detail-v2__kpi-item">
-                      <span className="man2-detail-v2__kpi-label">Importo</span>
-                      <strong className="man2-detail-v2__kpi-value">
-                        {formatMaintenanceImporto(
-                          selectedRecord.importo ?? null,
-                          selectedRecord.sourceDocumentCurrency ?? null,
-                        )}
-                      </strong>
-                    </div>
-                  </div>
+                  ) : null}
 
                   <div className="man2-detail-v2__field-grid">
                     <div className="man2-detail-v2__field">
@@ -857,31 +996,33 @@ export default function NextMappaStoricoPage({
                         </span>
                       </span>
                     </div>
-                    <div className="man2-detail-v2__field">
-                      <span className="man2-detail-v2__field-label">Sottotipo</span>
-                      <span className={`man2-detail-v2__field-value${selectedRecord.sottotipo ? "" : " is-muted"}`}>
-                        {selectedRecord.sottotipo?.trim() || "Non specificato"}
-                      </span>
-                    </div>
-                    <div className="man2-detail-v2__field">
-                      <span className="man2-detail-v2__field-label">Officina</span>
-                      <span className={`man2-detail-v2__field-value${selectedRecord.fornitore ? "" : " is-muted"}`}>
-                        {selectedRecord.fornitore?.trim() || "Non indicato"}
-                      </span>
-                    </div>
-                    <div className="man2-detail-v2__field">
-                      <span className="man2-detail-v2__field-label">Ore di lavoro</span>
-                      <span className={`man2-detail-v2__field-value${selectedRecord.ore != null ? "" : " is-muted"}`}>
-                        {selectedRecord.ore != null ? `${formatNumberOptional(selectedRecord.ore)} h` : "Non registrate"}
-                      </span>
-                    </div>
+                    {selectedRecord.sottotipo?.trim() ? (
+                      <div className="man2-detail-v2__field">
+                        <span className="man2-detail-v2__field-label">Sottotipo</span>
+                        <span className="man2-detail-v2__field-value">{selectedRecord.sottotipo.trim()}</span>
+                      </div>
+                    ) : null}
+                    {selectedRecord.fornitore?.trim() ? (
+                      <div className="man2-detail-v2__field">
+                        <span className="man2-detail-v2__field-label">Officina</span>
+                        <span className="man2-detail-v2__field-value">{selectedRecord.fornitore.trim()}</span>
+                      </div>
+                    ) : null}
+                    {selectedRecord.ore != null ? (
+                      <div className="man2-detail-v2__field">
+                        <span className="man2-detail-v2__field-label">Ore di lavoro</span>
+                        <span className="man2-detail-v2__field-value">{formatNumberOptional(selectedRecord.ore)} h</span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <section className="man2-detail-v2__section">
                     <div className="man2-detail-v2__section-title">Descrizione intervento</div>
-                    <div className="man2-detail-v2__description-box">
-                      {selectedRecord.descrizione?.trim() || "Nessuna descrizione inserita"}
-                    </div>
+                    {selectedRecord.descrizione?.trim() ? (
+                      <div className="man2-detail-v2__description-box">
+                        {selectedRecord.descrizione.trim()}
+                      </div>
+                    ) : null}
                     {selectedRecordChiuso ? (
                       <FraseStoriaRecord {...selectedRecordChiuso} />
                     ) : null}
@@ -931,16 +1072,83 @@ export default function NextMappaStoricoPage({
                     </section>
                   ) : null}
 
-                  <section className="man2-detail-v2__section">
+                  <section
+                    className={`man2-detail-v2__section man2-detail-v2__completion${
+                      selectedIsOperativa ? " is-pending" : " is-done"
+                    }`}
+                  >
                     <div className="man2-detail-v2__section-title">
-                      <span>Materiali / ricambi utilizzati</span>
-                      {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                      {selectedIsOperativa ? "Si compila al completamento" : "Dati completamento"}
+                    </div>
+                    <div className="man2-detail-v2__completion-grid">
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Officina</span>
+                        <strong>{selectedRecord.fornitore?.trim() || (selectedIsOperativa ? "Da compilare" : "—")}</strong>
+                      </div>
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Km</span>
+                        <strong>
+                          {selectedRecord.km != null
+                            ? `${formatNumberOptional(selectedRecord.km)} km`
+                            : selectedIsOperativa
+                              ? "Da compilare"
+                              : "—"}
+                        </strong>
+                      </div>
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Ore</span>
+                        <strong>
+                          {selectedRecord.ore != null
+                            ? `${formatNumberOptional(selectedRecord.ore)} h`
+                            : selectedIsOperativa
+                              ? "Da compilare"
+                              : "—"}
+                        </strong>
+                      </div>
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Importo</span>
+                        <strong>
+                          {selectedRecord.importo != null && Number.isFinite(selectedRecord.importo)
+                            ? formatMaintenanceImporto(
+                                selectedRecord.importo,
+                                selectedRecord.sourceDocumentCurrency ?? null,
+                              )
+                            : selectedIsOperativa
+                              ? "Da compilare"
+                              : "—"}
+                        </strong>
+                      </div>
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Materiali</span>
+                        <strong>
+                          {(selectedRecord.materiali?.length ?? 0) > 0
+                            ? `${selectedRecord.materiali?.length ?? 0} righe`
+                            : selectedIsOperativa
+                              ? "Da compilare"
+                              : "—"}
+                        </strong>
+                      </div>
+                      <div className="man2-detail-v2__completion-item">
+                        <span>Documento</span>
+                        <strong>
+                          {canOpenDocument && selectedLegacyRecord
+                            ? selectedLegacyRecord.sourceDocumentId
+                            : selectedIsOperativa
+                              ? "Da allegare"
+                              : "—"}
+                        </strong>
+                      </div>
+                    </div>
+                  </section>
+
+                  {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                    <section className="man2-detail-v2__section">
+                      <div className="man2-detail-v2__section-title">
+                        <span>Materiali / ricambi utilizzati</span>
                         <span className="man2-detail-v2__section-badge">
                           {selectedRecord.materiali?.length ?? 0}
                         </span>
-                      ) : null}
-                    </div>
-                    {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                      </div>
                       <div className="man2-detail-v2__materials">
                         {(selectedRecord.materiali ?? []).map((materiale) => (
                           <div key={materiale.id} className="man2-detail-v2__material-row">
@@ -951,16 +1159,12 @@ export default function NextMappaStoricoPage({
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="man2-detail-v2__empty-block">
-                        Nessun materiale registrato per questo intervento
-                      </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section className="man2-detail-v2__section">
-                    <div className="man2-detail-v2__section-title">Documento collegato</div>
-                    {canOpenDocument && selectedLegacyRecord ? (
+                  {canOpenDocument && selectedLegacyRecord ? (
+                    <section className="man2-detail-v2__section">
+                      <div className="man2-detail-v2__section-title">Documento collegato</div>
                       <button
                         type="button"
                         className="man2-detail-v2__document-link"
@@ -968,12 +1172,8 @@ export default function NextMappaStoricoPage({
                       >
                         📄 Apri documento originale ({selectedLegacyRecord.sourceDocumentId})
                       </button>
-                    ) : (
-                      <div className="man2-detail-v2__empty-block">
-                        Nessun documento allegato a questa manutenzione
-                      </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
                 </div>
               </>
             )}

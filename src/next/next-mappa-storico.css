@@ -1862,6 +1862,135 @@
   gap: 12px;
 }
 
+.man2-origine-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.man2-origine-note {
+  color: #5f564b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.man2-origine-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.man2-origine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(194, 183, 166, 0.72);
+  border-radius: 14px;
+  background: rgba(255, 251, 245, 0.92);
+  color: #171717;
+}
+
+.man2-origine-card__top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.man2-origine-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.man2-origine-chip--segn {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.man2-origine-chip--ctrl {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.man2-origine-autista {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #171717;
+}
+
+.man2-origine-data {
+  color: #6a6358;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.man2-origine-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.man2-origine-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(188, 176, 159, 0.82);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #171717;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.man2-origine-btn:hover:not(:disabled) {
+  border-color: #171717;
+  background: #171717;
+  color: #ffffff;
+}
+
+.man2-origine-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.man2-origine-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.man2-origine-prob {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.man2-origine-desc {
+  color: #4b5563;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.man2-origine-card__empty {
+  color: #6a6358;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
 .man2-last-item {
   position: relative;
   padding: 16px 20px;
@@ -4099,6 +4228,32 @@
   color: #14532d;
 }
 
+.man2-detail-v2__status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.man2-detail-v2__status-pill--todo {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #78350f;
+}
+
+.man2-detail-v2__status-pill--done {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+  color: #14532d;
+}
+
 .man2-detail-v2__list-empty,
 .man2-detail-v2__empty-block {
   padding: 14px 16px;
@@ -4453,6 +4608,48 @@
   color: #5a3600;
 }
 
+.man2-detail-v2__completion {
+  padding: 14px 16px;
+  border: 1px solid #ede7d9;
+  border-radius: 10px;
+  background: #faf7f0;
+}
+
+.man2-detail-v2__completion.is-done {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.man2-detail-v2__completion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.man2-detail-v2__completion-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.man2-detail-v2__completion-item span {
+  color: #78716c;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.man2-detail-v2__completion-item strong {
+  overflow: hidden;
+  color: #1a1a1a;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .man2-detail-v2__split {
     grid-template-columns: 1fr;
@@ -4471,7 +4668,8 @@
   }
 
   .man2-detail-v2__field-grid,
-  .man2-detail-v2__kpi-strip {
+  .man2-detail-v2__kpi-strip,
+  .man2-detail-v2__completion-grid {
     grid-template-columns: 1fr;
   }
 
