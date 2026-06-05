@@ -47,3 +47,7 @@ scripts/oneoff/cleanup-*-report-*.json
 *.tmp
 *.backup
 *.old
+
+# backup agenti - mai nel repo
+*.bak.*
+tmp_audit/
