@@ -1,13 +1,26 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MappaStoricoOriginiSection,
   buildMappaStoricoSelectedRecordChiuso,
+  getMappaStoricoSegnalazioniAperte,
+  richiudiMappaStoricoSegnalazioniAperte,
 } from "../NextMappaStoricoPage";
 import { buildFraseStoria } from "../helpers/frasestoriaRecord";
 
+const chiudiSegnalazioneDaEventoMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../writers/nextChiusuraEventoWriter", () => ({
+  chiudiSegnalazioneDaEvento: chiudiSegnalazioneDaEventoMock,
+}));
+
 describe("NextMappaStoricoPage dettaglio v2 origini", () => {
+  beforeEach(() => {
+    chiudiSegnalazioneDaEventoMock.mockReset();
+    chiudiSegnalazioneDaEventoMock.mockResolvedValue({ ok: true, updated: 1 });
+  });
+
   it("usa la data origine reale nella frase storia del caso f7fdb252 TI233827", () => {
     const manutenzione = {
       id: "M-f7fdb252",
@@ -66,5 +79,58 @@ describe("NextMappaStoricoPage dettaglio v2 origini", () => {
     );
 
     expect(html).toBe("");
+  });
+
+  it("D4a: segnala solo le segnalazioni origine ancora aperte", () => {
+    const aperte = getMappaStoricoSegnalazioniAperte([
+      { id: "S-APERTA", __origineTipo: "segnalazione", stato: "presa_in_carico" },
+      { id: "S-CHIUSA", __origineTipo: "segnalazione", stato: "chiusa", chiusuraData: 1770000000000 },
+      { id: "C-APERTO", __origineTipo: "controllo", stato: "presa_in_carico" },
+    ]);
+
+    expect(aperte.map((record) => record.id)).toEqual(["S-APERTA"]);
+  });
+
+  it("D4a: richiudi chiama il writer solo sulle segnalazioni aperte", async () => {
+    const result = await richiudiMappaStoricoSegnalazioniAperte({
+      manutenzione: {
+        id: "M-ESEGUITA",
+        targa: "TI233827",
+        stato: "eseguita",
+        data: "2026-05-18",
+      },
+      sourceRecords: [
+        { id: "S-APERTA", __origineTipo: "segnalazione", stato: "presa_in_carico" },
+        { id: "S-CHIUSA", __origineTipo: "segnalazione", stato: "chiusa", chiusuraData: 1770000000000 },
+        { id: "C-APERTO", __origineTipo: "controllo", stato: "presa_in_carico" },
+      ],
+    });
+
+    expect(result.requestedIds).toEqual(["S-APERTA"]);
+    expect(result.closedIds).toEqual(["S-APERTA"]);
+    expect(chiudiSegnalazioneDaEventoMock).toHaveBeenCalledTimes(1);
+    expect(chiudiSegnalazioneDaEventoMock).toHaveBeenCalledWith(
+      "S-APERTA",
+      "manutenzione",
+      "M-ESEGUITA",
+      Date.parse("2026-05-18"),
+    );
+  });
+
+  it("D4a: nessuna segnalazione aperta non genera richiami al writer", async () => {
+    const result = await richiudiMappaStoricoSegnalazioniAperte({
+      manutenzione: {
+        id: "M-ESEGUITA",
+        targa: "TI233827",
+        stato: "eseguita",
+        data: "2026-05-18",
+      },
+      sourceRecords: [
+        { id: "S-CHIUSA", __origineTipo: "segnalazione", stato: "chiusa", chiusuraData: 1770000000000 },
+      ],
+    });
+
+    expect(result.requestedIds).toEqual([]);
+    expect(chiudiSegnalazioneDaEventoMock).not.toHaveBeenCalled();
   });
 });

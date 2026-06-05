@@ -22,6 +22,7 @@ import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import { findSatelliteChiusoDaEventoForRecord } from "./helpers/storiaRecord";
 import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { useSorgentiManutenzione } from "./helpers/useSorgenteManutenzione";
+import { chiudiSegnalazioneDaEvento } from "./writers/nextChiusuraEventoWriter";
 import { toDisplay } from "./helpers/dateUnica";
 import "./next-mappa-storico.css";
 
@@ -202,6 +203,65 @@ function sourceTypeLabel(record: RawRecord): string {
   return "Segnalazione";
 }
 
+function sourceRecordId(record: RawRecord): string | null {
+  return readSourceText(record, ["id", "__origineRefId"]);
+}
+
+function isClosedSegnalazioneSource(record: RawRecord): boolean {
+  const stato = readSourceText(record, ["stato"])?.toLowerCase() ?? "";
+  return stato === "chiusa" || record.chiusa === true || Boolean(record.chiusuraData);
+}
+
+export function getMappaStoricoSegnalazioniAperte(
+  sourceRecords: RawRecord[],
+  ignoredIds: ReadonlySet<string> = new Set(),
+): RawRecord[] {
+  return sourceRecords.filter((record) => {
+    const tipo = readSourceText(record, ["__origineTipo", "origineTipo", "tipo"]);
+    if (tipo !== "segnalazione") return false;
+    const id = sourceRecordId(record);
+    if (!id || ignoredIds.has(id)) return false;
+    return !isClosedSegnalazioneSource(record);
+  });
+}
+
+export function resolveMappaStoricoChiusuraData(record: SelectedMaintenance | ManutenzioneLegacy): number | undefined {
+  if (typeof record.chiusuraData === "number" && Number.isFinite(record.chiusuraData)) {
+    return record.chiusuraData;
+  }
+  const rawDate = record.dataEsecuzione ?? record.data;
+  if (typeof rawDate === "number" && Number.isFinite(rawDate)) return rawDate;
+  if (typeof rawDate === "string" && rawDate.trim()) {
+    const parsed = parseDataRobusta(rawDate);
+    if (parsed !== null) return parsed;
+    const fallback = Date.parse(rawDate);
+    if (Number.isFinite(fallback)) return fallback;
+  }
+  return undefined;
+}
+
+export async function richiudiMappaStoricoSegnalazioniAperte(params: {
+  manutenzione: SelectedMaintenance | ManutenzioneLegacy;
+  sourceRecords: RawRecord[];
+  ignoredIds?: ReadonlySet<string>;
+}): Promise<{ requestedIds: string[]; closedIds: string[]; failedIds: string[] }> {
+  const manutenzioneId = readSourceText(params.manutenzione as RawRecord, ["id"]);
+  if (!manutenzioneId) return { requestedIds: [], closedIds: [], failedIds: [] };
+  const aperte = getMappaStoricoSegnalazioniAperte(params.sourceRecords, params.ignoredIds);
+  const chiusuraData = resolveMappaStoricoChiusuraData(params.manutenzione);
+  const requestedIds = aperte
+    .map(sourceRecordId)
+    .filter((id): id is string => Boolean(id));
+  const closedIds: string[] = [];
+  const failedIds: string[] = [];
+  for (const id of requestedIds) {
+    const result = await chiudiSegnalazioneDaEvento(id, "manutenzione", manutenzioneId, chiusuraData);
+    if (result.ok) closedIds.push(id);
+    else failedIds.push(id);
+  }
+  return { requestedIds, closedIds, failedIds };
+}
+
 function hasMaintenanceOrigins(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): boolean {
   if (!record) return false;
   if (Array.isArray(record.origineRefs) && record.origineRefs.length > 0) return true;
@@ -376,6 +436,8 @@ export default function NextMappaStoricoPage({
   const [searchQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [richiudiOriginiBusyId, setRichiudiOriginiBusyId] = useState<string | null>(null);
+  const [richiuseOriginiIds, setRichiuseOriginiIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (!normalizedTarga) {
@@ -437,6 +499,10 @@ export default function NextMappaStoricoPage({
   const selectedSourceRecords = useSorgentiManutenzione(selectedRecord as RawRecord | null | undefined);
   const selectedHasOrigins = hasMaintenanceOrigins(selectedRecord);
   const selectedOriginCount = countMaintenanceOrigins(selectedRecord);
+  useEffect(() => {
+    setRichiuseOriginiIds(new Set());
+    setRichiudiOriginiBusyId(null);
+  }, [selectedRecord?.id]);
   const selectedSatelliteRecord = useMemo(
     () =>
       selectedRecord
@@ -462,6 +528,13 @@ export default function NextMappaStoricoPage({
   );
   const selectedIsOperativa =
     selectedRecord?.stato === "daFare" || selectedRecord?.stato === "programmata";
+  const selectedSegnalazioniAperteDaRichiudere = useMemo(
+    () =>
+      selectedRecord?.stato === "eseguita"
+        ? getMappaStoricoSegnalazioniAperte(selectedSourceRecords, richiuseOriginiIds)
+        : [],
+    [richiuseOriginiIds, selectedRecord?.stato, selectedSourceRecords],
+  );
   const selectedAxesNormalized = useMemo(
     () => normalizeNextAssiCoinvolti(selectedRecord?.assiCoinvolti ?? []),
     [selectedRecord],
@@ -639,6 +712,33 @@ export default function NextMappaStoricoPage({
       }
     }
     setModalAperto(null);
+  }
+
+  async function handleRichiudiOriginiAperte() {
+    if (!selectedRecord || richiudiOriginiBusyId === selectedRecord.id) return;
+    if (selectedSegnalazioniAperteDaRichiudere.length === 0) return;
+    try {
+      setRichiudiOriginiBusyId(selectedRecord.id);
+      setMessage(null);
+      const result = await richiudiMappaStoricoSegnalazioniAperte({
+        manutenzione: selectedRecord,
+        sourceRecords: selectedSourceRecords,
+        ignoredIds: richiuseOriginiIds,
+      });
+      if (result.closedIds.length > 0) {
+        setRichiuseOriginiIds((current) => new Set([...current, ...result.closedIds]));
+      }
+      if (result.failedIds.length > 0) {
+        setMessage("Richiusura segnalazioni non completata.");
+      } else if (result.closedIds.length > 0) {
+        setMessage("Segnalazioni richiuse.");
+      }
+    } catch (error) {
+      console.error("Errore richiusura segnalazioni origine:", error);
+      setMessage("Richiusura segnalazioni non completata.");
+    } finally {
+      setRichiudiOriginiBusyId(null);
+    }
   }
 
   if (!normalizedTarga) {
@@ -957,6 +1057,19 @@ export default function NextMappaStoricoPage({
                     originCount={selectedOriginCount}
                     sourceRecords={selectedSourceRecords}
                   />
+                  {selectedSegnalazioniAperteDaRichiudere.length > 0 ? (
+                    <div className="man2-detail-v2__richiudi-alert">
+                      <span>{selectedSegnalazioniAperteDaRichiudere.length} segnalazioni non risultano chiuse</span>
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action"
+                        onClick={() => void handleRichiudiOriginiAperte()}
+                        disabled={richiudiOriginiBusyId === selectedRecord.id}
+                      >
+                        {richiudiOriginiBusyId === selectedRecord.id ? "Richiusura..." : "Richiudi"}
+                      </button>
+                    </div>
+                  ) : null}
 
                   {selectedRecord.km != null ||
                   selectedDeltaKm != null ||

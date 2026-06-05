@@ -7,13 +7,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, unknown>();
+const silentWriteSkipKeys = new Set<string>();
 
 vi.mock("../../../utils/storageSync", () => ({
   getItemSync: vi.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
   setItemSync: vi.fn((key: string, value: unknown) => {
+    if (silentWriteSkipKeys.has(key)) return Promise.resolve();
     store.set(key, value);
     return Promise.resolve();
   }),
+}));
+
+vi.mock("../../../utils/cloneWriteBarrier", () => ({
+  CloneWriteBlockedError: class CloneWriteBlockedError extends Error {},
+  assertCloneWriteAllowed: vi.fn(),
+  runWithCloneWriteScopedAllowance: vi.fn(
+    async (_scope: string, fn: () => Promise<unknown>) => fn(),
+  ),
 }));
 
 import { deleteNextManutenzioneBusinessRecord } from "../nextManutenzioniDomain";
@@ -22,7 +32,10 @@ type RawRecord = Record<string, unknown>;
 
 function seed(records: RawRecord[]): void {
   store.clear();
+  silentWriteSkipKeys.clear();
   store.set("@manutenzioni", records);
+  store.set("@segnalazioni_autisti_tmp", []);
+  store.set("@controlli_mezzo_autisti", []);
 }
 
 function readStorico(): RawRecord[] {
@@ -30,9 +43,15 @@ function readStorico(): RawRecord[] {
   return Array.isArray(value) ? (value as RawRecord[]) : [];
 }
 
+function readList(key: string): RawRecord[] {
+  const value = store.get(key);
+  return Array.isArray(value) ? (value as RawRecord[]) : [];
+}
+
 describe("deleteNextManutenzioneBusinessRecord — fix Quadro (PROMPT 42)", () => {
   beforeEach(() => {
     store.clear();
+    silentWriteSkipKeys.clear();
   });
 
   it("delete per id reale: rimuove il record, gli altri restano invariati", async () => {
@@ -81,5 +100,122 @@ describe("deleteNextManutenzioneBusinessRecord — fix Quadro (PROMPT 42)", () =
     const ok = await deleteNextManutenzioneBusinessRecord("solo-1");
     expect(ok).toBe(true);
     expect(readStorico()).toHaveLength(0);
+  });
+
+  it("delete con sorgenti collegate: sgancia segnalazioni e controlli prima di eliminare", async () => {
+    seed([
+      {
+        id: "M-LINK",
+        targa: "TI100000",
+        descrizione: "Lavoro collegato",
+        data: "2026-04-01",
+        origineRefs: [
+          { tipo: "segnalazione", refId: "S-LINK", refKey: "@segnalazioni_autisti_tmp" },
+          { tipo: "controllo", refId: "C-LINK", refKey: "@controlli_mezzo_autisti" },
+        ],
+      },
+    ]);
+    store.set("@segnalazioni_autisti_tmp", [
+      {
+        id: "S-LINK",
+        linkedLavoroId: "M-LINK",
+        linkedMultiple: false,
+        stato: "presa_in_carico",
+        letta: true,
+        dataPresaInCarico: "2026-04-01",
+      },
+    ]);
+    store.set("@controlli_mezzo_autisti", [
+      { id: "C-LINK", linkedLavoroId: "M-LINK", linkedMultiple: false, letta: true },
+    ]);
+
+    const ok = await deleteNextManutenzioneBusinessRecord("M-LINK");
+
+    expect(ok).toBe(true);
+    expect(readStorico()).toHaveLength(0);
+    expect(readList("@segnalazioni_autisti_tmp")[0]).toMatchObject({
+      linkedLavoroId: null,
+      linkedLavoroIds: null,
+      linkedMultiple: false,
+      stato: "nuova",
+      letta: false,
+      dataPresaInCarico: null,
+    });
+    expect(readList("@controlli_mezzo_autisti")[0]).toMatchObject({
+      linkedLavoroId: null,
+      linkedLavoroIds: null,
+      linkedMultiple: false,
+      letta: false,
+    });
+  });
+
+  it("delete senza sorgenti mantiene il comportamento esistente", async () => {
+    seed([
+      { id: "rec-1", targa: "TI100000", descrizione: "A", data: "2026-01-01" },
+      { id: "rec-2", targa: "TI200000", descrizione: "B", data: "2026-02-01" },
+    ]);
+
+    const ok = await deleteNextManutenzioneBusinessRecord("rec-2");
+
+    expect(ok).toBe(true);
+    expect(readStorico()).toEqual([
+      { id: "rec-1", targa: "TI100000", descrizione: "A", data: "2026-01-01" },
+    ]);
+  });
+
+  it("fallimento scrittura sgancio: il record manutenzione non viene eliminato", async () => {
+    seed([
+      {
+        id: "M-FAIL",
+        targa: "TI100000",
+        descrizione: "Lavoro collegato",
+        data: "2026-04-01",
+        origineRefs: [
+          { tipo: "segnalazione", refId: "S-FAIL", refKey: "@segnalazioni_autisti_tmp" },
+        ],
+      },
+    ]);
+    store.set("@segnalazioni_autisti_tmp", [
+      {
+        id: "S-FAIL",
+        linkedLavoroId: "M-FAIL",
+        linkedMultiple: false,
+        stato: "presa_in_carico",
+        letta: true,
+      },
+    ]);
+    silentWriteSkipKeys.add("@segnalazioni_autisti_tmp");
+
+    await expect(deleteNextManutenzioneBusinessRecord("M-FAIL")).rejects.toThrow(
+      "Verifica sgancio sorgente collegata fallita",
+    );
+
+    expect(readStorico()).toHaveLength(1);
+    expect(readStorico()[0].id).toBe("M-FAIL");
+    expect(readList("@segnalazioni_autisti_tmp")[0].linkedLavoroId).toBe("M-FAIL");
+  });
+
+  it("sorgente trovata solo per scan linkedLavoroId viene comunque sganciata", async () => {
+    seed([{ id: "M-SCAN", targa: "TI100000", descrizione: "Senza backlink", data: "2026-04-01" }]);
+    store.set("@segnalazioni_autisti_tmp", [
+      {
+        id: "S-SCAN",
+        linkedLavoroId: "M-SCAN",
+        linkedMultiple: false,
+        stato: "presa_in_carico",
+        letta: true,
+      },
+    ]);
+
+    const ok = await deleteNextManutenzioneBusinessRecord("M-SCAN");
+
+    expect(ok).toBe(true);
+    expect(readStorico()).toHaveLength(0);
+    expect(readList("@segnalazioni_autisti_tmp")[0]).toMatchObject({
+      linkedLavoroId: null,
+      linkedLavoroIds: null,
+      stato: "nuova",
+      letta: false,
+    });
   });
 });

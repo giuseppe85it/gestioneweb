@@ -1385,6 +1385,99 @@ export async function deleteNextManutenzioneBusinessRecord(
   const record = toLegacyDatasetRecord(recordRaw as RawRecord, recordIndex);
   if (!record) return false;
 
+  const targetIds = new Set(
+    [normalizedRecordId, normalizeOptionalText((recordRaw as RawRecord).id), normalizeOptionalText(record.id)]
+      .filter((value): value is string => Boolean(value)),
+  );
+  const sourceSpecs = [
+    {
+      key: SEGNALAZIONI_AUTISTI_KEY,
+      tipo: "segnalazione" as const,
+      records: (await readStoredArrayByKey(SEGNALAZIONI_AUTISTI_KEY)).filter(
+        (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+      ),
+    },
+    {
+      key: CONTROLLI_MEZZO_AUTISTI_KEY,
+      tipo: "controllo" as const,
+      records: (await readStoredArrayByKey(CONTROLLI_MEZZO_AUTISTI_KEY)).filter(
+        (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+      ),
+    },
+  ];
+  const readLinkedLavoroIds = (source: RawRecord): string[] => {
+    const result = new Set<string>();
+    const single = normalizeOptionalText(source.linkedLavoroId);
+    if (single) result.add(single);
+    if (Array.isArray(source.linkedLavoroIds)) {
+      for (const value of source.linkedLavoroIds) {
+        const id = normalizeOptionalText(value);
+        if (id) result.add(id);
+      }
+    }
+    return [...result];
+  };
+  const resolveSourceKey = (
+    tipo: "segnalazione" | "controllo",
+    refKey: string | null | undefined,
+  ): typeof SEGNALAZIONI_AUTISTI_KEY | typeof CONTROLLI_MEZZO_AUTISTI_KEY => {
+    if (refKey === SEGNALAZIONI_AUTISTI_KEY || refKey === CONTROLLI_MEZZO_AUTISTI_KEY) return refKey;
+    return tipo === "segnalazione" ? SEGNALAZIONI_AUTISTI_KEY : CONTROLLI_MEZZO_AUTISTI_KEY;
+  };
+  const sourcesToDetach = new Map<
+    string,
+    { sorgenteId: string; sorgenteTipo: "segnalazione" | "controllo"; sourceKey: string }
+  >();
+  const addSourceToDetach = (
+    sorgenteTipo: "segnalazione" | "controllo",
+    sorgenteId: string | null | undefined,
+    sourceKey: string,
+  ) => {
+    const id = normalizeOptionalText(sorgenteId);
+    if (!id) return;
+    sourcesToDetach.set(`${sorgenteTipo}:${id}`, { sorgenteId: id, sorgenteTipo, sourceKey });
+  };
+
+  for (const origine of readLegamiOrigine(recordRaw as RawRecord)) {
+    const sourceKey = resolveSourceKey(origine.tipo, origine.refKey);
+    const sourceList = sourceSpecs.find((spec) => spec.key === sourceKey)?.records ?? [];
+    if (sourceList.some((source) => normalizeOptionalText(source.id) === origine.refId)) {
+      addSourceToDetach(origine.tipo, origine.refId, sourceKey);
+    }
+  }
+
+  for (const spec of sourceSpecs) {
+    for (const source of spec.records) {
+      if (readLinkedLavoroIds(source).some((id) => targetIds.has(id))) {
+        addSourceToDetach(spec.tipo, normalizeOptionalText(source.id), spec.key);
+      }
+    }
+  }
+
+  if (sourcesToDetach.size > 0) {
+    const { sganciaLegameManutenzione } = await import("../writers/sganciaLegameOrfanoWriter");
+    for (const source of sourcesToDetach.values()) {
+      const result = await sganciaLegameManutenzione({
+        sorgenteId: source.sorgenteId,
+        sorgenteTipo: source.sorgenteTipo,
+        manutenzioneId: normalizedRecordId,
+      });
+      if (!result.ok) {
+        throw new Error(result.error ?? "Sgancio sorgente collegata non riuscito.");
+      }
+      const verifiedRaw = await getItemSync(source.sourceKey);
+      const verifiedList = unwrapStoredValueArray(verifiedRaw).filter(
+        (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+      );
+      const verifiedSource = verifiedList.find(
+        (entry) => normalizeOptionalText(entry.id) === source.sorgenteId,
+      );
+      if (!verifiedSource || readLinkedLavoroIds(verifiedSource).some((id) => targetIds.has(id))) {
+        throw new Error("Verifica sgancio sorgente collegata fallita.");
+      }
+    }
+  }
+
   const inventarioRaw = await getItemSync(INVENTARIO_KEY);
   const inventarioAggiornato = sanitizeInventarioArray(unwrapStoredValueArray(inventarioRaw)).map((item) => ({ ...item }));
 
