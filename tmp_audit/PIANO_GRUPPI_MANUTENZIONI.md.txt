@@ -1,0 +1,76 @@
+# PIANO COMPLETO — Gruppi Di Manutenzioni Da Fare
+
+## Sintesi
+Feature additiva su `/next/manutenzioni`: aggiunge `gruppoManutenzioneId: string | null` ai record `storage/@manutenzioni`, senza fusioni, cancellazioni o repoint di legami. I gruppi sono solo visuali/persistenti e includono esclusivamente manutenzioni `stato === "daFare"` della stessa targa.
+
+Rischio: `ELEVATO`, perché tocca dominio manutenzioni, writer su dato reale e UI operativa. Nessuna implementazione eseguita in questa fase.
+
+## Risultati RG
+- Prototipo `gruppoSegnalazioneId`: trovato in 4 file.
+  `nextAutistiDomain.ts:159,639,929`, `gruppoSegnalazioniWriter.ts:60,162,201,229`, `NextManutenzioniPage.tsx:1592`, `gruppoSegnalazioniWriter.test.ts:56-139`.
+- Collisioni `gruppoManutenzioneId|gruppoManutenzioniId`: `NON TROVATO` in `src/`.
+- Reader divergenti `@manutenzioni`:
+  `toLegacyDatasetRecord` in `nextManutenzioniDomain.ts:618-704`; aggiungere campo nel tipo `NextManutenzioniLegacyDatasetRecord` `:146-179` e nel return `:667-704`.
+  `toHistoryItem` in `nextManutenzioniDomain.ts:733-803`; aggiungere campo nel tipo `NextMaintenanceHistoryItem` `:86-118` e nel return `:768-803`.
+- Save/edit:
+  `sanitizeBusinessRecord` ricostruisce il record `:1032-1118`, ma `saveNextManutenzioneBusinessRecord` fa merge `existingRaw + nextRecord` `:1311-1321`; quindi il campo nuovo sopravvive agli edit esistenti. Aggiungere test di regressione.
+- UI Da fare:
+  `manutenzioniOperative` include `daFare|programmata` `NextManutenzioniPage.tsx:1531-1536`; `renderDaFare` è `:3613-3866`; righe operative esistenti `:3772-3857`.
+- Delete:
+  `deleteNextManutenzioneBusinessRecord` rimuove il record `:1361-1452`; nessuna pulizia gruppo necessaria perché l’uscita è per derivazione.
+- Barrier:
+  `/next/manutenzioni` abilita già `@manutenzioni` `cloneWriteBarrier.ts:9-16` e controllo finale `:888-893`. Verdetto: nessuno scope dedicato richiesto.
+- `storageSync.setItemSync` inghiotte errori generici `storageSync.ts:131-136`; il writer deve fare verifica post-write.
+
+## Dato Fisico
+Lettura Firestore sola lettura: `storage/@manutenzioni`, query `.collection("storage").doc("@manutenzioni").get()` con service account indicato.
+
+- Documento esistente, campo top-level: `value`.
+- Totale record: `85`.
+- Stati fisici: `daFare=10`, `eseguita=41`, vuoto legacy `34`.
+- `gruppoManutenzioneId`: `0` occorrenze.
+- Tutti i `daFare` hanno `raw.id` persistito: `10/10`.
+- DISCREPANZA rispetto all’atteso “randomUUID”: alcuni id reali non sono UUID puri (`from-lavoro-*`, timestamp numerici). Non è blocco: per “id reale” il writer deve richiedere `raw.id` non vuoto e non sintetico `manutenzione:*`.
+- DaFare per targa:
+  `TI315407: 3`, `TI233827: 2`, `TI239045: 1`, `TI279216: 1`, `TI324623: 1`, `TI324633: 1`, `TI84822: 1`.
+
+## A-D — Implementazione
+A. Writer
+- Creare `src/next/writers/gruppoManutenzioniWriter.ts`, specchiando la struttura del writer segnalazioni ma scrivendo solo `@manutenzioni`.
+- API esportate: `creaGruppoManutenzioni(ids)`, `aggiungiAGruppoManutenzioni(gruppoId, ids)`, `rimuoviDaGruppoManutenzioni(ids)`.
+- Validazioni: create richiede `>=2`; record esistenti; `raw.id` reale; `stato === "daFare"`; stessa targa; `programmata` rifiutata; già-in-gruppo rifiutato per create/add; gruppo target esistente e coerente per add.
+- Scrittura: modifica solo `gruppoManutenzioneId`; nessuna modifica a descrizione, origini, legami, urgenza, date, stato.
+- Post-write: dopo `setItemSync("@manutenzioni", nextList)`, rileggere `@manutenzioni` e confrontare i target; se mismatch, ritorno `ok:false`.
+
+B. Domain
+- Aggiungere `gruppoManutenzioneId?: string | null` a `NextManutenzioniLegacyDatasetRecord` e `NextMaintenanceHistoryItem`.
+- Propagare il campo in `toLegacyDatasetRecord` e `toHistoryItem` con `normalizeOptionalText(raw.gruppoManutenzioneId)`.
+- Non aggiungere il campo a `NextManutenzioneBusinessSavePayload`: create/edit form non deve scriverlo. La preservazione sugli edit resta affidata al merge `existingRaw + nextRecord`.
+
+C. UI
+- In `NextManutenzioniPage.tsx`, importare il nuovo writer e aggiungere stati di selezione/menu per manutenzioni non raggruppate e gruppi.
+- Derivare i gruppi dalla lista `manutenzioniOperativeFiltrate`, ma includere nei gruppi solo record `daFare` con `gruppoManutenzioneId`; `programmata` resta riga normale non selezionabile.
+- Renderizzare blocchi gruppo dentro “Manutenzioni operative”, non nella sezione collassata segnalazioni. Le righe mantengono azioni esistenti `Eseguita`, `Modifica`, `Apri`.
+- Checkbox solo sulle `daFare` non raggruppate. Menu `⋮`: `Crea gruppo`, `Aggiungi a gruppo` verso gruppi della stessa targa, `Rimuovi dal gruppo` sui membri.
+- Usare `saving` come guardia anti-doppio-click: bottoni/menu/checkbox disabled durante write. Dopo ogni ok: `refreshData()`.
+
+D. Lotti
+- Lotto A — writer/domain/test. Whitelist: `nextManutenzioniDomain.ts`, nuovo writer, test writer, test save. Gate: `npx vitest run` sui test nuovi + save; `npx tsc -b`. STOP se post-write non verificabile o validazioni non atomiche.
+- Lotto B — UI. Whitelist: `NextManutenzioniPage.tsx`; riusare classi `man2-grp-*` e `man2-row-menu` già in `next-mappa-storico.css`. Gate: `npx tsc -b`, test writer/domain.
+- Lotto C — verifica finale/documenti. Gate: `npx vite build`, test mirati. Aggiornare `CONTEXT_CLAUDE.md` e la SPEC manutenzioni attiva con la nuova chiave Firestore; non creare change-report/continuity-report.
+
+## E — Domande Aperte
+Nessuna decisione prodotto bloccante emersa. Scelte implementative fissate: sono ammessi più gruppi sulla stessa targa; l’azione “Aggiungi a gruppo” espone i gruppi target della stessa targa e li distingue per conteggio/contenuto, senza introdurre nomi gruppo.
+
+## F — Test
+- Nuovo `gruppoManutenzioniWriter.test.ts`: crea, aggiunge, rimuove; rifiuta targa mista, `programmata`, già-in-gruppo, inesistente, senza `raw.id`, id sintetico `manutenzione:*`, gruppo target incoerente.
+- Post-write test: mock `setItemSync` che non persiste deve produrre `ok:false`.
+- Domain test: `gruppoManutenzioneId` passa da raw a `toLegacyDatasetRecord` e `toHistoryItem`.
+- Save regression: edit di record con `gruppoManutenzioneId` conserva il campo.
+- Derivazione: record completato `eseguita` con campo gruppo non appare nei gruppi; gruppo senza `daFare` non renderizzato.
+- Test esistenti a rischio da rilanciare: `saveNextManutenzioneBusinessRecord.test.ts`, `deleteNextManutenzioneBusinessRecord.test.ts`, `gruppoSegnalazioniWriter.test.ts`, `gruppoSegnalazioniTransform.test.ts`, `agganciaSegnalazioneAManutenzioneEsistente.test.ts`, `agganciaSorgente.test.ts`, `chiusuraDaEvento.test.ts`, `manutenzioniCandidatiMerge.test.ts`, `manutenzioniPerAggancio.test.ts`.
+
+## Perimetro Totale
+Da toccare: `src/next/writers/gruppoManutenzioniWriter.ts`, `src/next/writers/__tests__/gruppoManutenzioniWriter.test.ts`, `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/__tests__/saveNextManutenzioneBusinessRecord.test.ts`, `src/next/NextManutenzioniPage.tsx`, `CONTEXT_CLAUDE.md`, SPEC manutenzioni attiva.
+
+Visto e escluso: `src/utils/cloneWriteBarrier.ts` perché `@manutenzioni` è già consentito su `/next/manutenzioni`; `storageSync.ts` sola lettura per vincolo post-write; `deleteNextManutenzioneBusinessRecord` nessuna patch; moduli IA, legacy madre, PDF, routing, segnalazioni writer esistente.

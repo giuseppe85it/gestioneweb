@@ -8,6 +8,12 @@ Percorso: `docs/product/SPEC_MANUTENZIONI_UI_NEXT.md`
 
 Redesign UI del modulo Manutenzioni NEXT (`src/next/NextManutenzioniPage.tsx`).
 
+### Addendum 2026-06-05 - Gruppi manutenzioni Da fare
+
+- La shape `storage/@manutenzioni` ammette il campo additivo `gruppoManutenzioneId: string | null`.
+- Il campo e' scritto solo dal writer dei gruppi manutenzioni per creare, aggiungere o rimuovere manutenzioni `daFare` della stessa targa; non modifica descrizione, origini, legami, urgenza o date.
+- Nel tab `Da fare`, i gruppi sono blocchi dentro `Manutenzioni operative`; `programmata` non e' raggruppabile. Completamento/eliminazione fanno uscire i record dal gruppo solo per derivazione della lista, senza azzerare il campo.
+
 Problema attuale: la card sinistra fissa (`mx-header-grid` + `ms-layout` a due colonne `1.56fr / 1fr`)
 occupa troppo spazio orizzontale e rende il contenuto utile troppo stretto.
 

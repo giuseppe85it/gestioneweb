@@ -31,6 +31,19 @@ function readStorico(): RawRecord[] {
   return Array.isArray(value) ? (value as RawRecord[]) : [];
 }
 
+function expectNoUndefinedValues(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => expectNoUndefinedValues(entry));
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const entry of Object.values(value as RawRecord)) {
+      expect(entry).not.toBeUndefined();
+      expectNoUndefinedValues(entry);
+    }
+  }
+}
+
 const basePayload = {
   targa: "TI298409",
   tipo: "mezzo" as const,
@@ -138,5 +151,60 @@ describe("saveNextManutenzioneBusinessRecord — fix duplicazione (PROMPT 41)", 
     expect(storico).toHaveLength(2);
     expect(typeof saved.id).toBe("string");
     expect(storico.some((record) => record.id === "esistente")).toBe(true);
+  });
+
+  it("creazione Da fare con fornitore nullo e opzionali assenti: non persiste undefined", async () => {
+    seed([]);
+    const saved = (await saveNextManutenzioneBusinessRecord({
+      targa: "TI233827",
+      tipo: "mezzo",
+      fornitore: null,
+      km: null,
+      ore: null,
+      sottotipo: null,
+      descrizione: "Pneumatici - Usura + Freni - Rumore",
+      eseguito: null,
+      data: "2026-06-04",
+      stato: "daFare",
+      materiali: [],
+      assiCoinvolti: [],
+      gommePerAsse: [],
+      importo: null,
+    })) as RawRecord;
+
+    const storico = readStorico();
+    expect(storico).toHaveLength(1);
+    expect(saved.fornitore).toBeNull();
+    expect(storico[0].fornitore).toBeNull();
+    expectNoUndefinedValues(saved);
+    expectNoUndefinedValues(storico[0]);
+    expect(JSON.parse(JSON.stringify(storico[0]))).toEqual(storico[0]);
+  });
+
+  it("preserva gruppoManutenzioneId quando modifica un record esistente", async () => {
+    seed([
+      {
+        id: "rec-gruppo-1",
+        targa: "TI298409",
+        descrizione: "Cambio gomme",
+        data: "2026-05-08",
+        stato: "daFare",
+        gruppoManutenzioneId: "G-MAN-1",
+      },
+    ]);
+
+    const saved = (await saveNextManutenzioneBusinessRecord({
+      ...basePayload,
+      editingSourceId: "rec-gruppo-1",
+      descrizione: "Cambio gomme - nota aggiornata",
+      stato: "daFare",
+    })) as RawRecord;
+
+    const storico = readStorico();
+    expect(storico).toHaveLength(1);
+    expect(saved.id).toBe("rec-gruppo-1");
+    expect(saved.gruppoManutenzioneId).toBe("G-MAN-1");
+    expect(storico[0].gruppoManutenzioneId).toBe("G-MAN-1");
+    expect(storico[0].descrizione).toBe("Cambio gomme - nota aggiornata");
   });
 });

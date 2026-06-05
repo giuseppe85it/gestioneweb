@@ -1,5 +1,6 @@
 ﻿import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRef } from "react";
+import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
 import {
@@ -45,7 +46,15 @@ import {
 } from "./helpers/dateUnica";
 import { buildNextDossierPath } from "./nextStructuralPaths";
 import { NextAggancioEventoModal } from "./components/NextAggancioEventoModal";
+import {
+  NextAgganciaLegameModal,
+  type AgganciaLegameSorgente,
+} from "./components/NextAgganciaLegameModal";
 import type { EventoCompatibile } from "./helpers/eventiCompatibili";
+import {
+  getManutenzioniPerAggancio,
+  type ManutenzioneCandidataAggancio,
+} from "./helpers/manutenzioniPerAggancio";
 import { getDataRiferimentoRecord } from "./helpers/parseRobusto";
 import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
 import { buildFraseStoria, recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
@@ -60,10 +69,25 @@ import {
   type NextCollegaReadOnlyItem,
 } from "./domain/nextColleghiDomain";
 import {
+  readNextAutistiReadOnlySnapshot,
+  type NextAutistiSegnalazioneSectionItem,
+} from "./domain/nextAutistiDomain";
+import {
   chiudiManutenzioneDaEvento,
   riapriESganciaSegnalazione,
   sganciaManutenzioneDaEvento,
 } from "./writers/nextChiusuraEventoWriter";
+import {
+  aggiungiAGruppo,
+  creaGruppoSegnalazioni,
+  rimuoviDaGruppo,
+} from "./writers/gruppoSegnalazioniWriter";
+import {
+  aggiungiAGruppoManutenzioni,
+  creaGruppoManutenzioni,
+  rimuoviDaGruppoManutenzioni,
+} from "./writers/gruppoManutenzioniWriter";
+import { agganciaSegnalazioniAManutenzioneEsistenteBatch } from "./writers/agganciaSegnalazioneAManutenzioneEsistenteWriter";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
 import "./next-mappa-storico.css";
@@ -157,10 +181,48 @@ type PdfDocWithPlugins = {
 type PageLoadData = {
   storico: NextManutenzioniLegacyDatasetRecord[];
   mezzi: NextManutenzioniMezzoOption[];
+  segnalazioniAutisti: NextAutistiSegnalazioneSectionItem[];
   materialiInventario: MaterialeInventario[];
   mezzoPreview: MezzoPreview[];
   kmUltimoByTarga: Record<string, number | null>;
   lavoriInAttesaByTarga: Record<string, number>;
+};
+
+type SegnalazioniDaFareGroup = {
+  key: string;
+  gruppoId: string | null;
+  targa: string;
+  segnalazioni: NextAutistiSegnalazioneSectionItem[];
+};
+
+type ManutenzioniDaFareGroup = {
+  key: string;
+  gruppoId: string;
+  targa: string;
+  manutenzioni: NextManutenzioniLegacyDatasetRecord[];
+};
+
+type ManutenzioniOperativeGrouped = {
+  gruppi: ManutenzioniDaFareGroup[];
+  libere: NextManutenzioniLegacyDatasetRecord[];
+  altre: NextManutenzioniLegacyDatasetRecord[];
+};
+
+type SegnalazioniDaFareTargaGroup = {
+  targa: string;
+  gruppi: SegnalazioniDaFareGroup[];
+  libere: NextAutistiSegnalazioneSectionItem[];
+};
+
+type LavoroGruppoRetryState = {
+  manutenzioneId: string;
+  failedIds: string[];
+};
+
+type AgganciaSegnalazioneModalState = {
+  sorgente: AgganciaLegameSorgente;
+  candidati: ManutenzioneCandidataAggancio[];
+  busy: boolean;
 };
 
 const PDF_UNICODE_FONT_URL =
@@ -1093,12 +1155,23 @@ function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]
 }
 
 async function readPageData(): Promise<PageLoadData> {
-  const [workspace, inventorySnapshot, flottaSnapshot, rifornimentiSnapshot, manutenzioniDaFare] = await Promise.all([
+  const [
+    workspace,
+    inventorySnapshot,
+    flottaSnapshot,
+    rifornimentiSnapshot,
+    manutenzioniDaFare,
+    autistiSnapshot,
+  ] = await Promise.all([
     readNextManutenzioniWorkspaceSnapshot(),
     readNextInventarioSnapshot({ includeCloneOverlays: false }),
     readNextAnagraficheFlottaSnapshot({ includeClonePatches: false }),
     readNextRifornimentiReadOnlySnapshot(),
     readNextManutenzioniDaFareAndProgrammataGlobalSnapshot(),
+    readNextAutistiReadOnlySnapshot(Date.now(), {
+      includeLocalClone: false,
+      includeStorageOverlay: false,
+    }),
   ]);
 
   const fallbackByTarga = new Map(
@@ -1137,6 +1210,7 @@ async function readPageData(): Promise<PageLoadData> {
   return {
     storico: workspace.storico,
     mezzi: workspace.mezzi,
+    segnalazioniAutisti: autistiSnapshot.segnalazioniRows,
     materialiInventario: inventorySnapshot.items.map(mapInventoryItem),
     mezzoPreview,
     kmUltimoByTarga,
@@ -1157,6 +1231,7 @@ export default function NextManutenzioniPage() {
   const [origineModalError, setOrigineModalError] = useState<string | null>(null);
   const [storico, setStorico] = useState<NextManutenzioniLegacyDatasetRecord[]>([]);
   const [mezzi, setMezzi] = useState<NextManutenzioniMezzoOption[]>([]);
+  const [segnalazioniAutisti, setSegnalazioniAutisti] = useState<NextAutistiSegnalazioneSectionItem[]>([]);
   const [mezzoPreview, setMezzoPreview] = useState<MezzoPreview[]>([]);
   const [materialiInventario, setMaterialiInventario] = useState<MaterialeInventario[]>([]);
   const [kmUltimoByTarga, setKmUltimoByTarga] = useState<Record<string, number | null>>({});
@@ -1188,6 +1263,16 @@ export default function NextManutenzioniPage() {
   const [daFareUrgenzaFilter, setDaFareUrgenzaFilter] = useState<DaFareUrgenzaFilter>("tutte");
   const [daFareOrigineFilter, setDaFareOrigineFilter] = useState<DaFareOrigineFilter>("tutte");
   const [daFareMenuId, setDaFareMenuId] = useState<string | null>(null);
+  const [segnalazioniDaFareExpanded, setSegnalazioniDaFareExpanded] = useState(false);
+  const [segnalazioneMenuId, setSegnalazioneMenuId] = useState<string | null>(null);
+  const [gruppoSegnalazioneMenuId, setGruppoSegnalazioneMenuId] = useState<string | null>(null);
+  const [agganciaSegnalazioneModal, setAgganciaSegnalazioneModal] =
+    useState<AgganciaSegnalazioneModalState | null>(null);
+  const [selectedSegnalazioneIds, setSelectedSegnalazioneIds] = useState<string[]>([]);
+  const [selectedGruppoSegnalazioneIds, setSelectedGruppoSegnalazioneIds] = useState<Record<string, string[]>>({});
+  const [selectedManutenzioneLiberaIds, setSelectedManutenzioneLiberaIds] = useState<string[]>([]);
+  const [gruppoManutenzioneBusyKey, setGruppoManutenzioneBusyKey] = useState<string | null>(null);
+  const gruppoManutenzioneBusyRef = useRef(false);
   const [origineMenuId, setOrigineMenuId] = useState<string | null>(null);
 
   const [targa, setTarga] = useState("");
@@ -1215,6 +1300,7 @@ export default function NextManutenzioniPage() {
   const [completionRecordId, setCompletionRecordId] = useState<string | null>(null);
   const [completionModalRecord, setCompletionModalRecord] =
     useState<NextManutenzioniLegacyDatasetRecord | null>(null);
+  const [lavoroGruppoRetryState, setLavoroGruppoRetryState] = useState<LavoroGruppoRetryState | null>(null);
   const [completionDraftFornitore, setCompletionDraftFornitore] = useState("");
   const [completionDraftData, setCompletionDraftData] = useState(todayLabel());
   const [completionDraftKm, setCompletionDraftKm] = useState("");
@@ -1242,6 +1328,7 @@ export default function NextManutenzioniPage() {
 
         setStorico(pageData.storico);
         setMezzi(pageData.mezzi);
+        setSegnalazioniAutisti(pageData.segnalazioniAutisti);
         setMezzoPreview(pageData.mezzoPreview);
         setMaterialiInventario(pageData.materialiInventario);
         setKmUltimoByTarga(pageData.kmUltimoByTarga);
@@ -1251,6 +1338,7 @@ export default function NextManutenzioniPage() {
         if (cancelled) return;
         setStorico([]);
         setMezzi([]);
+        setSegnalazioniAutisti([]);
         setMezzoPreview([]);
         setMaterialiInventario([]);
         setKmUltimoByTarga({});
@@ -1271,6 +1359,7 @@ export default function NextManutenzioniPage() {
     const pageData = await readPageData();
     setStorico(pageData.storico);
     setMezzi(pageData.mezzi);
+    setSegnalazioniAutisti(pageData.segnalazioniAutisti);
     setMezzoPreview(pageData.mezzoPreview);
     setMaterialiInventario(pageData.materialiInventario);
     setKmUltimoByTarga(pageData.kmUltimoByTarga);
@@ -1494,6 +1583,102 @@ export default function NextManutenzioniPage() {
         }),
     [activeTarga, daFareOrigineFilter, daFareUrgenzaFilter, manutenzioniOperative],
   );
+  const manutenzioniOperativeGrouped = useMemo<ManutenzioniOperativeGrouped>(() => {
+    const gruppi: ManutenzioniDaFareGroup[] = [];
+    const libere: NextManutenzioniLegacyDatasetRecord[] = [];
+    const altre: NextManutenzioniLegacyDatasetRecord[] = [];
+
+    for (const item of manutenzioniOperativeFiltrate) {
+      const stato = resolveMaintenanceStato(item);
+      if (stato !== "daFare") {
+        altre.push(item);
+        continue;
+      }
+
+      const gruppoId = normalizeFreeText(item.gruppoManutenzioneId ?? "");
+      if (!gruppoId) {
+        libere.push(item);
+        continue;
+      }
+
+      const targaKey = normalizeText(item.targa);
+      const groupKey = `${targaKey}:${gruppoId}`;
+      let gruppo = gruppi.find((entry) => entry.key === groupKey);
+      if (!gruppo) {
+        gruppo = {
+          key: groupKey,
+          gruppoId,
+          targa: targaKey,
+          manutenzioni: [],
+        };
+        gruppi.push(gruppo);
+      }
+      gruppo.manutenzioni.push(item);
+    }
+
+    return {
+      gruppi: gruppi
+        .filter((gruppo) => gruppo.manutenzioni.length > 0)
+        .sort((left, right) => left.key.localeCompare(right.key, "it")),
+      libere,
+      altre,
+    };
+  }, [manutenzioniOperativeFiltrate]);
+  const segnalazioniEleggibili = useMemo(
+    () =>
+      segnalazioniAutisti
+        .filter((item) => {
+          const itemTarga = normalizeText(item.targa ?? "");
+          if (!itemTarga) return false;
+          if (activeTarga && itemTarga !== activeTarga) return false;
+          return !item.chiusa && !item.hasLinkedLavoro;
+        })
+        .sort((left, right) => {
+          const leftTarga = normalizeText(left.targa ?? "");
+          const rightTarga = normalizeText(right.targa ?? "");
+          if (leftTarga !== rightTarga) return leftTarga.localeCompare(rightTarga, "it");
+          return (right.timestamp ?? 0) - (left.timestamp ?? 0);
+        }),
+    [activeTarga, segnalazioniAutisti],
+  );
+  const segnalazioniDaFareByTarga = useMemo<SegnalazioniDaFareTargaGroup[]>(() => {
+    const byTarga = new Map<string, SegnalazioniDaFareTargaGroup>();
+    for (const segnalazione of segnalazioniEleggibili) {
+      const targaKey = normalizeText(segnalazione.targa ?? "");
+      if (!targaKey) continue;
+      let entry = byTarga.get(targaKey);
+      if (!entry) {
+        entry = { targa: targaKey, gruppi: [], libere: [] };
+        byTarga.set(targaKey, entry);
+      }
+      const gruppoId = normalizeFreeText(segnalazione.gruppoSegnalazioneId ?? "");
+      if (!gruppoId) {
+        entry.libere.push(segnalazione);
+        continue;
+      }
+      const groupKey = `${targaKey}:${gruppoId}`;
+      let gruppo = entry.gruppi.find((item) => item.key === groupKey);
+      if (!gruppo) {
+        gruppo = {
+          key: groupKey,
+          gruppoId,
+          targa: targaKey,
+          segnalazioni: [],
+        };
+        entry.gruppi.push(gruppo);
+      }
+      gruppo.segnalazioni.push(segnalazione);
+    }
+    return Array.from(byTarga.values())
+      .map((entry) => ({
+        ...entry,
+        gruppi: entry.gruppi
+          .filter((gruppo) => gruppo.segnalazioni.length > 0)
+          .sort((left, right) => left.key.localeCompare(right.key, "it")),
+        libere: entry.libere.sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0)),
+      }))
+      .sort((left, right) => left.targa.localeCompare(right.targa, "it"));
+  }, [segnalazioniEleggibili]);
   const ultimeManutenzioniMezzo = useMemo(
     () => storicoMezzoOrdinato.filter((item) => item.tipo === "mezzo").slice(0, 4),
     [storicoMezzoOrdinato],
@@ -2976,6 +3161,778 @@ export default function NextManutenzioniPage() {
     );
   }
 
+  function formatSegnalazioneDateLabel(item: NextAutistiSegnalazioneSectionItem): string {
+    if (!item.timestamp) return "-";
+    return formatDateTimeUI(item.timestamp);
+  }
+
+  function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {
+    return item.autistaNome || item.badgeAutista || "Autista";
+  }
+
+  function toggleSegnalazioneLiberaSelection(id: string) {
+    setSelectedSegnalazioneIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }
+
+  function toggleGruppoSegnalazioneSelection(groupKey: string, id: string) {
+    setSelectedGruppoSegnalazioneIds((current) => {
+      const existing = current[groupKey] ?? [];
+      const nextIds = existing.includes(id)
+        ? existing.filter((entry) => entry !== id)
+        : [...existing, id];
+      return {
+        ...current,
+        [groupKey]: nextIds,
+      };
+    });
+  }
+
+  function clearSegnalazioniLibereSelection(ids: readonly string[]) {
+    const removed = new Set(ids);
+    setSelectedSegnalazioneIds((current) => current.filter((id) => !removed.has(id)));
+  }
+
+  function clearGruppoSegnalazioniSelection(groupKey: string, ids: readonly string[]) {
+    const removed = new Set(ids);
+    setSelectedGruppoSegnalazioneIds((current) => ({
+      ...current,
+      [groupKey]: (current[groupKey] ?? []).filter((id) => !removed.has(id)),
+    }));
+  }
+
+  function toggleManutenzioneLiberaSelection(id: string) {
+    setSelectedManutenzioneLiberaIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }
+
+  function clearManutenzioniLibereSelection(ids: readonly string[]) {
+    const removed = new Set(ids);
+    setSelectedManutenzioneLiberaIds((current) => current.filter((id) => !removed.has(id)));
+  }
+
+  function formatGruppoManutenzioneLabel(gruppo: ManutenzioniDaFareGroup): string {
+    const snippets = gruppo.manutenzioni
+      .slice(0, 2)
+      .map((item) => buildDescrizioneSnippet(item.descrizione, 34))
+      .filter(Boolean);
+    const content = snippets.length > 0 ? snippets.join(" / ") : "senza descrizione";
+    return `${gruppo.targa} - ${content} (${gruppo.manutenzioni.length})`;
+  }
+
+  async function handleCreaGruppoManutenzioni(targaValue: string, manutenzioneIds: string[]) {
+    if (gruppoManutenzioneBusyRef.current) return;
+    if (manutenzioneIds.length === 0) {
+      setError("Seleziona almeno due manutenzioni da fare non raggruppate.");
+      return;
+    }
+    const busyKey = `crea:${targaValue}:${manutenzioneIds.join(",")}`;
+    try {
+      gruppoManutenzioneBusyRef.current = true;
+      setGruppoManutenzioneBusyKey(busyKey);
+      setError(null);
+      setNotice(null);
+      const result = await creaGruppoManutenzioni(manutenzioneIds);
+      if (!result.ok) {
+        setError(result.error ?? "Creazione gruppo manutenzioni non riuscita.");
+        return;
+      }
+      clearManutenzioniLibereSelection(manutenzioneIds);
+      await refreshData();
+      setNotice(`Gruppo manutenzioni creato per ${targaValue}.`);
+    } catch (groupError) {
+      console.error("Errore creazione gruppo manutenzioni:", groupError);
+      setError("Creazione gruppo manutenzioni non riuscita.");
+    } finally {
+      gruppoManutenzioneBusyRef.current = false;
+      setGruppoManutenzioneBusyKey(null);
+    }
+  }
+
+  async function handleAggiungiAGruppoManutenzioni(
+    gruppoId: string,
+    targaValue: string,
+    manutenzioneIds: string[],
+  ) {
+    if (gruppoManutenzioneBusyRef.current) return;
+    if (!gruppoId) {
+      setError("Gruppo manutenzioni non valido.");
+      return;
+    }
+    if (manutenzioneIds.length === 0) {
+      setError("Seleziona almeno una manutenzione da fare non raggruppata.");
+      return;
+    }
+    const busyKey = `aggiungi:${gruppoId}:${manutenzioneIds.join(",")}`;
+    try {
+      gruppoManutenzioneBusyRef.current = true;
+      setGruppoManutenzioneBusyKey(busyKey);
+      setError(null);
+      setNotice(null);
+      const result = await aggiungiAGruppoManutenzioni(gruppoId, manutenzioneIds);
+      if (!result.ok) {
+        setError(result.error ?? "Aggiunta al gruppo manutenzioni non riuscita.");
+        return;
+      }
+      clearManutenzioniLibereSelection(manutenzioneIds);
+      await refreshData();
+      setNotice(`Manutenzioni aggiunte al gruppo ${targaValue}.`);
+    } catch (groupError) {
+      console.error("Errore aggiunta gruppo manutenzioni:", groupError);
+      setError("Aggiunta al gruppo manutenzioni non riuscita.");
+    } finally {
+      gruppoManutenzioneBusyRef.current = false;
+      setGruppoManutenzioneBusyKey(null);
+    }
+  }
+
+  async function handleRimuoviDaGruppoManutenzioni(groupKey: string, manutenzioneId: string) {
+    if (gruppoManutenzioneBusyRef.current) return;
+    const busyKey = `rimuovi:${groupKey}:${manutenzioneId}`;
+    try {
+      gruppoManutenzioneBusyRef.current = true;
+      setGruppoManutenzioneBusyKey(busyKey);
+      setError(null);
+      setNotice(null);
+      const result = await rimuoviDaGruppoManutenzioni([manutenzioneId]);
+      if (!result.ok) {
+        setError(result.error ?? "Rimozione dal gruppo manutenzioni non riuscita.");
+        return;
+      }
+      await refreshData();
+      setNotice("Manutenzione rimossa dal gruppo.");
+    } catch (groupError) {
+      console.error("Errore rimozione gruppo manutenzioni:", groupError);
+      setError("Rimozione dal gruppo manutenzioni non riuscita.");
+    } finally {
+      gruppoManutenzioneBusyRef.current = false;
+      setGruppoManutenzioneBusyKey(null);
+    }
+  }
+
+  async function handleCreaGruppoSegnalazioni(targaValue: string, segnalazioneIds: string[]) {
+    if (segnalazioneIds.length === 0) {
+      setError("Seleziona almeno una segnalazione non raggruppata.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await creaGruppoSegnalazioni(segnalazioneIds);
+      if (!result.ok) {
+        setError(result.error ?? "Creazione gruppo non riuscita.");
+        return;
+      }
+      clearSegnalazioniLibereSelection(segnalazioneIds);
+      await refreshData();
+      setNotice(`Gruppo segnalazioni creato per ${targaValue}.`);
+    } catch (groupError) {
+      console.error("Errore creazione gruppo segnalazioni:", groupError);
+      setError("Creazione gruppo non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAggiungiAGruppo(gruppoId: string | null, targaValue: string, segnalazioneIds: string[]) {
+    if (!gruppoId) {
+      setError("Gruppo segnalazioni non valido.");
+      return;
+    }
+    if (segnalazioneIds.length === 0) {
+      setError("Seleziona almeno una segnalazione non raggruppata.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await aggiungiAGruppo(gruppoId, segnalazioneIds);
+      if (!result.ok) {
+        setError(result.error ?? "Aggiunta al gruppo non riuscita.");
+        return;
+      }
+      clearSegnalazioniLibereSelection(segnalazioneIds);
+      await refreshData();
+      setNotice(`Segnalazioni aggiunte al gruppo ${targaValue}.`);
+    } catch (groupError) {
+      console.error("Errore aggiunta gruppo segnalazioni:", groupError);
+      setError("Aggiunta al gruppo non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRimuoviDaGruppo(groupKey: string, segnalazioneId: string) {
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await rimuoviDaGruppo([segnalazioneId]);
+      if (!result.ok) {
+        setError(result.error ?? "Rimozione dal gruppo non riuscita.");
+        return;
+      }
+      clearGruppoSegnalazioniSelection(groupKey, [segnalazioneId]);
+      await refreshData();
+      setNotice("Segnalazione rimossa dal gruppo.");
+    } catch (groupError) {
+      console.error("Errore rimozione gruppo segnalazioni:", groupError);
+      setError("Rimozione dal gruppo non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function getSegnalazioniTargetGruppo(gruppo: SegnalazioniDaFareGroup): NextAutistiSegnalazioneSectionItem[] {
+    const selectedIds = selectedGruppoSegnalazioneIds[gruppo.key] ?? [];
+    if (selectedIds.length === 0) return gruppo.segnalazioni;
+    const selectedSet = new Set(selectedIds);
+    return gruppo.segnalazioni.filter((item) => selectedSet.has(item.id));
+  }
+
+  function buildLavoroDaGruppoDescrizione(items: NextAutistiSegnalazioneSectionItem[]): string {
+    return items
+      .map((item) => {
+        const tipoLabel = normalizeFreeText(item.tipo);
+        const descrizioneLabel = normalizeFreeText(item.descrizione);
+        return [tipoLabel, descrizioneLabel].filter(Boolean).join(" - ");
+      })
+      .filter(Boolean)
+      .join(" + ");
+  }
+
+  async function agganciaSegnalazioniALavoroDaGruppo(manutenzioneId: string, ids: string[]) {
+    return agganciaSegnalazioniAManutenzioneEsistenteBatch({
+      manutenzioneTargetId: manutenzioneId,
+      sorgenti: ids.map((id) => ({
+        sorgenteId: id,
+        sorgenteTipo: "segnalazione",
+      })),
+    });
+  }
+
+  async function handleCreaLavoroDaGruppo(gruppo: SegnalazioniDaFareGroup) {
+    const targetItems = getSegnalazioniTargetGruppo(gruppo);
+    const targetIds = targetItems.map((item) => item.id);
+    const descrizioneLavoro = buildLavoroDaGruppoDescrizione(targetItems);
+    if (!gruppo.gruppoId || targetItems.length === 0 || !descrizioneLavoro) {
+      setError("Gruppo segnalazioni non valido per creare il lavoro.");
+      return;
+    }
+    const conferma = window.confirm(
+      `Creare un lavoro Da fare per ${gruppo.targa} con ${targetItems.length} segnalazioni?\n\n` +
+        `${targetItems.map((item) => `- ${item.tipo} - ${item.descrizione}`).join("\n")}\n\n` +
+        `Descrizione lavoro:\n${descrizioneLavoro}`,
+    );
+    if (!conferma) return;
+
+    try {
+      const oldestSegnalazioneTimestamp = targetItems.reduce<number | null>((oldest, item) => {
+        if (item.timestamp == null) return oldest;
+        if (oldest == null) return item.timestamp;
+        return item.timestamp < oldest ? item.timestamp : oldest;
+      }, null);
+      const dataInserimentoLavoro = toISO(oldestSegnalazioneTimestamp) ?? todayLabel();
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      setLavoroGruppoRetryState(null);
+      const savedRecord = await saveNextManutenzioneBusinessRecord({
+        targa: gruppo.targa,
+        tipo: "mezzo",
+        fornitore: null,
+        km: null,
+        ore: null,
+        sottotipo: null,
+        descrizione: descrizioneLavoro,
+        eseguito: null,
+        data: dataInserimentoLavoro,
+        dataEsecuzione: null,
+        dataProgrammata: null,
+        stato: "daFare",
+        importo: null,
+        materiali: [],
+        assiCoinvolti: [],
+        gommePerAsse: [],
+        gommeInterventoTipo: null,
+        gommeStraordinario: null,
+        origineTipo: "manuale",
+        origineRefId: null,
+        origineRefKey: null,
+        segnalatoDa: "Autisti",
+        eseguitoDa: null,
+        urgenza: "media",
+      });
+      const aggancio = await agganciaSegnalazioniALavoroDaGruppo(savedRecord.id, targetIds);
+      await refreshData();
+      clearGruppoSegnalazioniSelection(gruppo.key, targetIds);
+      setSelectedDetailRecordId(savedRecord.id);
+      if (aggancio.failures.length > 0) {
+        setLavoroGruppoRetryState({
+          manutenzioneId: savedRecord.id,
+          failedIds: aggancio.failures.map((failure) => failure.sorgenteId),
+        });
+        setNotice(null);
+      } else {
+        setNotice("Lavoro Da fare creato e segnalazioni agganciate.");
+      }
+    } catch (createError) {
+      console.error("Errore creazione lavoro da gruppo segnalazioni:", createError);
+      setError("Creazione lavoro da gruppo non riuscita.");
+    } finally {
+      setSaving(false);
+      setGruppoSegnalazioneMenuId(null);
+    }
+  }
+
+  async function handleRetryAggancioLavoroGruppo() {
+    if (!lavoroGruppoRetryState) return;
+    const retry = lavoroGruppoRetryState;
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await agganciaSegnalazioniALavoroDaGruppo(retry.manutenzioneId, retry.failedIds);
+      await refreshData();
+      if (result.failures.length > 0) {
+        setLavoroGruppoRetryState({
+          manutenzioneId: retry.manutenzioneId,
+          failedIds: result.failures.map((failure) => failure.sorgenteId),
+        });
+      } else {
+        setLavoroGruppoRetryState(null);
+        setNotice("Aggancio segnalazioni completato.");
+      }
+    } catch (retryError) {
+      console.error("Errore retry aggancio lavoro gruppo:", retryError);
+      setError("Riprova aggancio segnalazioni non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleOpenAgganciaSegnalazione(item: NextAutistiSegnalazioneSectionItem) {
+    const targaSegnalazione = normalizeText(item.targa ?? "");
+    if (!targaSegnalazione) {
+      setError("Targa segnalazione non disponibile per l'aggancio.");
+      return;
+    }
+    const sorgente: AgganciaLegameSorgente = {
+      id: item.id,
+      targa: targaSegnalazione,
+      tipo: "segnalazione",
+      descrizione: item.descrizione ?? "",
+    };
+    setAgganciaSegnalazioneModal({ sorgente, candidati: [], busy: true });
+    setError(null);
+    setNotice(null);
+    try {
+      const candidati = await getManutenzioniPerAggancio(targaSegnalazione);
+      setAgganciaSegnalazioneModal({ sorgente, candidati, busy: false });
+    } catch (loadError) {
+      console.error("Errore caricamento candidati aggancio segnalazione:", loadError);
+      setAgganciaSegnalazioneModal(null);
+      setError("Caricamento manutenzioni candidate non riuscito.");
+    }
+  }
+
+  async function handleConfirmAgganciaSegnalazione(manutenzioneTargetId: string) {
+    const modal = agganciaSegnalazioneModal;
+    if (!modal) return;
+    setAgganciaSegnalazioneModal({ ...modal, busy: true });
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await agganciaSegnalazioniAManutenzioneEsistenteBatch({
+        manutenzioneTargetId,
+        sorgenti: [
+          {
+            sorgenteId: modal.sorgente.id,
+            sorgenteTipo: "segnalazione",
+          },
+        ],
+      });
+      await refreshData();
+      if (result.failures.length > 0) {
+        setError(result.failures[0]?.error ?? "Aggancio segnalazione non riuscito.");
+      } else {
+        clearSegnalazioniLibereSelection([modal.sorgente.id]);
+        setSelectedGruppoSegnalazioneIds((current) => {
+          const next = { ...current };
+          for (const key of Object.keys(next)) {
+            next[key] = next[key].filter((id) => id !== modal.sorgente.id);
+          }
+          return next;
+        });
+        setNotice("Segnalazione agganciata alla manutenzione.");
+      }
+      setAgganciaSegnalazioneModal(null);
+    } catch (attachError) {
+      console.error("Errore aggancio segnalazione a manutenzione:", attachError);
+      setError("Aggancio segnalazione non riuscito.");
+      setAgganciaSegnalazioneModal({ ...modal, busy: false });
+    }
+  }
+
+  function renderSegnalazioneRow(args: {
+    item: NextAutistiSegnalazioneSectionItem;
+    checked: boolean;
+    onToggle: () => void;
+    action?: ReactNode;
+  }) {
+    const { item, checked, onToggle, action } = args;
+    return (
+      <label key={item.id} className="man2-grp-row">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          aria-label={`Seleziona segnalazione ${item.descrizione}`}
+        />
+        <span className="man2-grp-row__body">
+          <span className="man2-grp-row__title">{buildDescrizioneSnippet(item.descrizione, 110)}</span>
+          <span className="man2-grp-row__meta">
+            {[
+              formatSegnalazioneAutore(item),
+              formatSegnalazioneDateLabel(item),
+              item.tipo ? `Tipo ${item.tipo}` : null,
+            ]
+              .filter(Boolean)
+              .join(" - ")}
+          </span>
+        </span>
+        {action ? <span className="man2-grp-row__action">{action}</span> : null}
+      </label>
+    );
+  }
+
+  function renderSegnalazioneNonRaggruppataMenu(args: {
+    item: NextAutistiSegnalazioneSectionItem;
+    targaGroup: SegnalazioniDaFareTargaGroup;
+    selectedFreeIdsForTarga: string[];
+  }) {
+    const { item, targaGroup, selectedFreeIdsForTarga } = args;
+    const menuId = `segnalazione-libera:${item.id}`;
+    const targetGroup = targaGroup.gruppi[0] ?? null;
+    const selectedIds = selectedFreeIdsForTarga.length > 0 ? selectedFreeIdsForTarga : [item.id];
+    return (
+      <span className="man2-row-menu">
+        <button
+          type="button"
+          className="man2-row-menu__trigger"
+          aria-label={`Azioni segnalazione ${item.descrizione}`}
+          aria-expanded={segnalazioneMenuId === menuId}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSegnalazioneMenuId((current) => (current === menuId ? null : menuId));
+          }}
+        >
+          ⋮
+        </button>
+        {segnalazioneMenuId === menuId ? (
+          <span className="man2-row-menu__panel" role="menu">
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={!targetGroup || saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                if (targetGroup) {
+                  void handleAggiungiAGruppo(targetGroup.gruppoId, targetGroup.targa, selectedIds);
+                }
+              }}
+            >
+              Aggiungi a gruppo
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleCreaGruppoSegnalazioni(targaGroup.targa, selectedIds);
+              }}
+            >
+              Crea gruppo
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleOpenAgganciaSegnalazione(item);
+              }}
+            >
+              Aggancia a manutenzione esistente
+            </button>
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderSegnalazioneGruppoMenu(args: {
+    item: NextAutistiSegnalazioneSectionItem;
+    groupKey: string;
+  }) {
+    const { item, groupKey } = args;
+    const menuId = `segnalazione-gruppo:${groupKey}:${item.id}`;
+    return (
+      <span className="man2-row-menu">
+        <button
+          type="button"
+          className="man2-row-menu__trigger"
+          aria-label={`Azioni segnalazione ${item.descrizione}`}
+          aria-expanded={segnalazioneMenuId === menuId}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSegnalazioneMenuId((current) => (current === menuId ? null : menuId));
+          }}
+        >
+          ⋮
+        </button>
+        {segnalazioneMenuId === menuId ? (
+          <span className="man2-row-menu__panel" role="menu">
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleRimuoviDaGruppo(groupKey, item.id);
+              }}
+            >
+              Rimuovi dal gruppo
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleOpenAgganciaSegnalazione(item);
+              }}
+            >
+              Aggancia a manutenzione esistente
+            </button>
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderGruppoSegnalazioniMenu(gruppo: SegnalazioniDaFareGroup) {
+    const menuId = `gruppo:${gruppo.key}`;
+    return (
+      <span className="man2-row-menu">
+        <button
+          type="button"
+          className="man2-row-menu__trigger"
+          aria-label={`Azioni gruppo segnalazioni ${gruppo.targa}`}
+          aria-expanded={gruppoSegnalazioneMenuId === menuId}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setGruppoSegnalazioneMenuId((current) => (current === menuId ? null : menuId));
+          }}
+        >
+          ⋮
+        </button>
+        {gruppoSegnalazioneMenuId === menuId ? (
+          <span className="man2-row-menu__panel" role="menu">
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setGruppoSegnalazioneMenuId(null);
+                void handleCreaLavoroDaGruppo(gruppo);
+              }}
+            >
+              Crea lavoro (Da fare)
+            </button>
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderManutenzioneOperativaCard(args: {
+    item: NextManutenzioniLegacyDatasetRecord;
+    checkbox?: {
+      checked: boolean;
+      onToggle: () => void;
+    };
+    targetGroups?: ManutenzioniDaFareGroup[];
+    selectedFreeIdsForTarga?: string[];
+    groupKey?: string;
+  }) {
+    const { item, checkbox, targetGroups = [], selectedFreeIdsForTarga = [], groupKey } = args;
+    const urgenza = resolveMaintenanceUrgenza(item);
+    const origine = resolveMaintenanceOrigine(item);
+    const stato = resolveMaintenanceStato(item);
+    const menuId = `manutenzione-operativa:${item.id}`;
+    const isDaFare = stato === "daFare";
+    const groupActionBusy = Boolean(gruppoManutenzioneBusyKey);
+    const selectedIds = selectedFreeIdsForTarga.length > 0 ? selectedFreeIdsForTarga : [item.id];
+
+    return (
+      <article key={item.id} className="man2-last-item">
+        <div className="man2-last-item__row1">
+          {checkbox ? (
+            <input
+              type="checkbox"
+              checked={checkbox.checked}
+              disabled={groupActionBusy}
+              onChange={checkbox.onToggle}
+              aria-label={`Seleziona manutenzione ${item.descrizione}`}
+              style={{ marginTop: 4 }}
+            />
+          ) : null}
+          <div>
+            <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 80)}</span>
+            <div className="man2-last-item__meta">
+              {[
+                item.targa,
+                `Inserimento ${formatDaFareDateLabel(item)}`,
+                `Origine ${formatMaintenanceOrigineLabel(origine)}`,
+                item.segnalatoDa ? `Segnalato da ${item.segnalatoDa}` : null,
+              ]
+                .filter(Boolean)
+                .join(" - ")}
+            </div>
+          </div>
+          <span className="man2-badge" style={URGENZA_BADGE_STYLE[urgenza]}>
+            {urgenza.toUpperCase()}
+          </span>
+        </div>
+        <div className="man2-last-item__meta">
+          <span
+            className={`man2-badge man2-badge--${item.tipo}`}
+            style={getMaintenanceStatoBadgeStyle(stato)}
+            title={buildChiusuraDaEventoTitle(item)}
+          >
+            {formatMaintenanceStatoLabel(stato)}
+          </span>
+          <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+        </div>
+        <FraseStoriaRecord
+          {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
+          compact
+        />
+        <div className="man2-form-actions man2-form-actions--row">
+          <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
+            Eseguita
+          </button>
+          <div className="man2-row-menu">
+            <button
+              type="button"
+              className="man2-row-menu__trigger"
+              aria-label={`Altre azioni per manutenzione ${item.descrizione}`}
+              aria-expanded={daFareMenuId === menuId}
+              onClick={() => setDaFareMenuId((current) => (current === menuId ? null : menuId))}
+            >
+              ⋮
+            </button>
+            {daFareMenuId === menuId ? (
+              <div className="man2-row-menu__panel" role="menu">
+                {checkbox && isDaFare
+                  ? targetGroups.map((gruppo) => (
+                      <button
+                        key={gruppo.key}
+                        type="button"
+                        className="man2-row-menu__item"
+                        role="menuitem"
+                        onClick={() => {
+                          setDaFareMenuId(null);
+                          void handleAggiungiAGruppoManutenzioni(gruppo.gruppoId, gruppo.targa, selectedIds);
+                        }}
+                      >
+                        Aggiungi a gruppo: {formatGruppoManutenzioneLabel(gruppo)}
+                      </button>
+                    ))
+                  : null}
+                {checkbox && isDaFare ? (
+                  <button
+                    type="button"
+                    className="man2-row-menu__item"
+                    role="menuitem"
+                    onClick={() => {
+                      setDaFareMenuId(null);
+                      void handleCreaGruppoManutenzioni(item.targa, selectedIds);
+                    }}
+                  >
+                    Crea gruppo
+                  </button>
+                ) : null}
+                {groupKey && isDaFare ? (
+                  <button
+                    type="button"
+                    className="man2-row-menu__item"
+                    role="menuitem"
+                    onClick={() => {
+                      setDaFareMenuId(null);
+                      void handleRimuoviDaGruppoManutenzioni(groupKey, item.id);
+                    }}
+                  >
+                    Rimuovi dal gruppo
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="man2-row-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setDaFareMenuId(null);
+                    handleEdit(item);
+                  }}
+                >
+                  Modifica
+                </button>
+                <button
+                  type="button"
+                  className="man2-row-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setDaFareMenuId(null);
+                    openDetailForRecord(item);
+                  }}
+                >
+                  Apri
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   function renderDaFare() {
     return (
       <section className="man2-screen">
@@ -3017,94 +3974,169 @@ export default function NextManutenzioniPage() {
           </div>
         </div>
 
+        <button
+          type="button"
+          className="man2-section-title man2-grp-toggle"
+          aria-expanded={segnalazioniDaFareExpanded}
+          onClick={() => setSegnalazioniDaFareExpanded((current) => !current)}
+        >
+          <span>{segnalazioniDaFareExpanded ? "▾" : "▸"}</span>
+          <span>Segnalazioni aperte ({segnalazioniEleggibili.length})</span>
+        </button>
+        {segnalazioniDaFareExpanded ? (
+          <>
+            {lavoroGruppoRetryState ? (
+              <div className="man2-grp-alert">
+                <span>
+                  Lavoro creato, {lavoroGruppoRetryState.failedIds.length} segnalazioni non agganciate.
+                </span>
+                <button
+                  type="button"
+                  className="man2-grp-btn"
+                  disabled={saving}
+                  onClick={() => void handleRetryAggancioLavoroGruppo()}
+                >
+                  Riprova
+                </button>
+              </div>
+            ) : null}
+            <div className="man2-grp-list">
+              {segnalazioniDaFareByTarga.length > 0 ? (
+                segnalazioniDaFareByTarga.map((targaGroup) => {
+                  const selectedFreeIdsForTarga = targaGroup.libere
+                    .filter((item) => selectedSegnalazioneIds.includes(item.id))
+                    .map((item) => item.id);
+                  return (
+                    <section key={targaGroup.targa} className="man2-grp-targa">
+                      <div className="man2-grp-targa__head">
+                        <span>{targaGroup.targa}</span>
+                        <span>
+                          {targaGroup.gruppi.reduce((sum, gruppo) => sum + gruppo.segnalazioni.length, 0) +
+                            targaGroup.libere.length}{" "}
+                          segnalazioni
+                        </span>
+                      </div>
+                      {targaGroup.gruppi.map((gruppo) => {
+                        const selectedIds = selectedGruppoSegnalazioneIds[gruppo.key] ?? [];
+                        return (
+                          <article key={gruppo.key} className="man2-grp-card">
+                            <div className="man2-grp-card__head">
+                              <div>
+                                <div className="man2-grp-card__title">Gruppo segnalazioni</div>
+                                <div className="man2-grp-card__meta">
+                                  {gruppo.segnalazioni.length} aperte su {gruppo.targa}
+                                  {selectedIds.length > 0 ? ` - ${selectedIds.length} selezionate` : ""}
+                                </div>
+                              </div>
+                              <div className="man2-grp-card__actions">
+                                <button
+                                  type="button"
+                                  className="man2-grp-btn man2-grp-btn--ghost"
+                                  disabled={saving}
+                                  onClick={() => void handleCreaLavoroDaGruppo(gruppo)}
+                                >
+                                  Crea lavoro (Da fare)
+                                </button>
+                                {renderGruppoSegnalazioniMenu(gruppo)}
+                              </div>
+                            </div>
+                            <div className="man2-grp-rows">
+                              {gruppo.segnalazioni.map((item) =>
+                                renderSegnalazioneRow({
+                                  item,
+                                  checked: selectedIds.includes(item.id),
+                                  onToggle: () => toggleGruppoSegnalazioneSelection(gruppo.key, item.id),
+                                  action: renderSegnalazioneGruppoMenu({ item, groupKey: gruppo.key }),
+                                }),
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
+                      {targaGroup.libere.length > 0 ? (
+                        <article className="man2-grp-card man2-grp-card--free">
+                          <div className="man2-grp-card__head">
+                            <div>
+                              <div className="man2-grp-card__title">Non raggruppate</div>
+                              <div className="man2-grp-card__meta">
+                                {targaGroup.libere.length} segnalazioni disponibili
+                                {selectedFreeIdsForTarga.length > 0
+                                  ? ` - ${selectedFreeIdsForTarga.length} selezionate`
+                                  : ""}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="man2-grp-rows">
+                            {targaGroup.libere.map((item) =>
+                              renderSegnalazioneRow({
+                                item,
+                                checked: selectedSegnalazioneIds.includes(item.id),
+                                onToggle: () => toggleSegnalazioneLiberaSelection(item.id),
+                                action: renderSegnalazioneNonRaggruppataMenu({
+                                  item,
+                                  targaGroup,
+                                  selectedFreeIdsForTarga,
+                                }),
+                              }),
+                            )}
+                          </div>
+                        </article>
+                      ) : null}
+                    </section>
+                  );
+                })
+              ) : (
+                <div className="man-empty">Nessuna segnalazione aperta non collegata con i filtri correnti.</div>
+              )}
+            </div>
+          </>
+        ) : null}
+
         <div className="man2-section-title">
           Manutenzioni operative ({manutenzioniOperativeFiltrate.length})
         </div>
         <div className="man2-last-list">
           {manutenzioniOperativeFiltrate.length > 0 ? (
-            manutenzioniOperativeFiltrate.map((item) => {
-              const urgenza = resolveMaintenanceUrgenza(item);
-              const origine = resolveMaintenanceOrigine(item);
-              const stato = resolveMaintenanceStato(item);
-              return (
-                <article key={item.id} className="man2-last-item">
-                  <div className="man2-last-item__row1">
+            <>
+              {manutenzioniOperativeGrouped.gruppi.map((gruppo) => (
+                <article key={gruppo.key} className="man2-grp-card">
+                  <div className="man2-grp-card__head">
                     <div>
-                      <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 80)}</span>
-                      <div className="man2-last-item__meta">
-                        {[
-                          item.targa,
-                          `Inserimento ${formatDaFareDateLabel(item)}`,
-                          `Origine ${formatMaintenanceOrigineLabel(origine)}`,
-                          item.segnalatoDa ? `Segnalato da ${item.segnalatoDa}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" - ")}
+                      <div className="man2-grp-card__title">Gruppo manutenzioni</div>
+                      <div className="man2-grp-card__meta">
+                        {gruppo.manutenzioni.length} da fare su {gruppo.targa}
                       </div>
                     </div>
-                    <span className="man2-badge" style={URGENZA_BADGE_STYLE[urgenza]}>
-                      {urgenza.toUpperCase()}
-                    </span>
                   </div>
-                  <div className="man2-last-item__meta">
-                    <span
-                      className={`man2-badge man2-badge--${item.tipo}`}
-                      style={getMaintenanceStatoBadgeStyle(stato)}
-                      title={buildChiusuraDaEventoTitle(item)}
-                    >
-                      {formatMaintenanceStatoLabel(stato)}
-                    </span>
-                    <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
-                  </div>
-                  <FraseStoriaRecord
-                    {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
-                    compact
-                  />
-                  <div className="man2-form-actions man2-form-actions--row">
-                    <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
-                      Eseguita
-                    </button>
-                    <div className="man2-row-menu">
-                      <button
-                        type="button"
-                        className="man2-row-menu__trigger"
-                        aria-label={`Altre azioni per manutenzione ${item.descrizione}`}
-                        aria-expanded={daFareMenuId === item.id}
-                        onClick={() => setDaFareMenuId((current) => (current === item.id ? null : item.id))}
-                      >
-                        ⋮
-                      </button>
-                      {daFareMenuId === item.id ? (
-                        <div className="man2-row-menu__panel" role="menu">
-                          <button
-                            type="button"
-                            className="man2-row-menu__item"
-                            role="menuitem"
-                            onClick={() => {
-                              setDaFareMenuId(null);
-                              handleEdit(item);
-                            }}
-                          >
-                            Modifica
-                          </button>
-                          <button
-                            type="button"
-                            className="man2-row-menu__item"
-                            role="menuitem"
-                            onClick={() => {
-                              setDaFareMenuId(null);
-                              openDetailForRecord(item);
-                            }}
-                          >
-                            Apri
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
+                  <div className="man2-last-list">
+                    {gruppo.manutenzioni.map((item) =>
+                      renderManutenzioneOperativaCard({
+                        item,
+                        groupKey: gruppo.key,
+                      }),
+                    )}
                   </div>
                 </article>
-              );
-            })
+              ))}
+              {manutenzioniOperativeGrouped.libere.map((item) => {
+                const selectedFreeIdsForTarga = manutenzioniOperativeGrouped.libere
+                  .filter((entry) => entry.targa === item.targa && selectedManutenzioneLiberaIds.includes(entry.id))
+                  .map((entry) => entry.id);
+                const targetGroups = manutenzioniOperativeGrouped.gruppi.filter((gruppo) => gruppo.targa === item.targa);
+                return renderManutenzioneOperativaCard({
+                  item,
+                  checkbox: {
+                    checked: selectedManutenzioneLiberaIds.includes(item.id),
+                    onToggle: () => toggleManutenzioneLiberaSelection(item.id),
+                  },
+                  selectedFreeIdsForTarga,
+                  targetGroups,
+                });
+              })}
+              {manutenzioniOperativeGrouped.altre.map((item) =>
+                renderManutenzioneOperativaCard({ item }),
+              )}
+            </>
           ) : (
             <div className="man-empty">Nessuna manutenzione da fare o programmata con i filtri correnti.</div>
           )}
@@ -4646,6 +5678,19 @@ export default function NextManutenzioniPage() {
       ) : (
         renderActiveSurface()
       )}
+      {agganciaSegnalazioneModal ? (
+        <NextAgganciaLegameModal
+          sorgente={agganciaSegnalazioneModal.sorgente}
+          sorgenti={[agganciaSegnalazioneModal.sorgente]}
+          mode="aggancia"
+          candidati={agganciaSegnalazioneModal.candidati}
+          busy={agganciaSegnalazioneModal.busy}
+          onCancel={() => {
+            if (!agganciaSegnalazioneModal.busy) setAgganciaSegnalazioneModal(null);
+          }}
+          onConfirm={(id) => void handleConfirmAgganciaSegnalazione(id)}
+        />
+      ) : null}
       {renderCompletionModal()}
       <PdfPreviewModal
         open={pdfPreviewOpen}

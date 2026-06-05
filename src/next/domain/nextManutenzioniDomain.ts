@@ -111,6 +111,7 @@ export type NextMaintenanceHistoryItem = {
   chiusuraDi?: string | null;
   chiusuraRefId?: string | null;
   chiusuraData?: number | null;
+  gruppoManutenzioneId?: string | null;
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
   quality: NextManutenzioneQuality;
@@ -166,6 +167,7 @@ export type NextManutenzioniLegacyDatasetRecord = {
   chiusuraDi?: string | null;
   chiusuraRefId?: string | null;
   chiusuraData?: number | null;
+  gruppoManutenzioneId?: string | null;
   fornitore?: string;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
@@ -663,6 +665,7 @@ function toLegacyDatasetRecord(
   const chiusuraDi = optionalTextField(raw, "chiusuraDi");
   const chiusuraRefId = optionalTextField(raw, "chiusuraRefId");
   const chiusuraData = optionalNumberField(raw, "chiusuraData");
+  const gruppoManutenzioneId = optionalTextField(raw, "gruppoManutenzioneId");
 
   return {
     id: buildHistoryId(raw, index, targa),
@@ -687,6 +690,7 @@ function toLegacyDatasetRecord(
     ...(chiusuraDi !== undefined ? { chiusuraDi } : {}),
     ...(chiusuraRefId !== undefined ? { chiusuraRefId } : {}),
     ...(chiusuraData !== undefined ? { chiusuraData } : {}),
+    ...(gruppoManutenzioneId !== undefined ? { gruppoManutenzioneId } : {}),
     fornitore:
       normalizeOptionalText(raw.fornitore) ??
       normalizeOptionalText(raw.fornitoreLabel) ??
@@ -796,6 +800,7 @@ function toHistoryItem(
     chiusuraDi: normalizeOptionalText(raw.chiusuraDi),
     chiusuraRefId: normalizeOptionalText(raw.chiusuraRefId),
     chiusuraData: normalizeNumber(raw.chiusuraData),
+    gruppoManutenzioneId: normalizeOptionalText(raw.gruppoManutenzioneId),
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
     quality: isGomme ? "derived_acceptable" : "source_direct",
@@ -1091,7 +1096,7 @@ function sanitizeBusinessRecord(
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
     tipo: payload.tipo,
-    fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
+    fornitore: normalizeOptionalText(payload.fornitore) ?? null,
     km,
     ore: payload.tipo === "compressore" || payload.tipo === "attrezzature" ? normalizeNumber(payload.ore) : null,
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,

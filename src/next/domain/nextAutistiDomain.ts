@@ -156,6 +156,7 @@ export type NextAutistiSegnalazioneSectionItem = {
   linkedLavoroId: string | null;
   linkedLavoroIds: string[];
   hasLinkedLavoro: boolean;
+  gruppoSegnalazioneId?: string | null;
   sourceDataset: string;
   sourceOrigin: NextAutistiDataOrigin;
   flags: string[];
@@ -635,6 +636,7 @@ function normalizeSegnalazioneSectionItem(
       }
       return false;
     })(),
+    gruppoSegnalazioneId: normalizeOptionalText(record.gruppoSegnalazioneId),
     sourceDataset: SEGNALAZIONI_KEY,
     sourceOrigin: "madre_storage",
     flags: [
@@ -924,6 +926,7 @@ function normalizeCloneSegnalazioneSectionItem(
     linkedLavoroId: null,
     linkedLavoroIds: [],
     hasLinkedLavoro: false,
+    gruppoSegnalazioneId: null,
     sourceDataset: "@next_clone_autisti:segnalazioni",
     sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],

@@ -1,0 +1,43 @@
+MODE = REVISIONE CRITICA DI UN PIANO (SOLA LETTURA — VIETATA QUALSIASI MODIFICA A QUALSIASI FILE. Unica eccezione: script di sola lettura Firestore se serve riverificare il dato fisico.)
+
+IL TUO OBIETTIVO
+Trovare TUTTO ciò che è sfuggito al piano "Fusione Manutenzioni Da Fare" (riportato in fondo) prima che venga implementato, e verificare che il piano porti davvero all'obiettivo finale dell'utente. Persegui questo obiettivo fino in fondo: non fermarti alla prima passata, non accontentarti di "il piano sembra coerente". Un piano che regge narrativamente può comunque essere incompleto meccanicamente. Il tuo successo si misura in problemi REALI trovati con evidenze dal codice, non in conferme.
+
+OBIETTIVO FINALE DELL'UTENTE (Giuseppe) — il metro di giudizio della direzione
+Giuseppe gestisce da solo una flotta di camion. Il suo flusso reale:
+1. Gli autisti mandano segnalazioni di problemi sui mezzi (e ci sono anche controlli periodici). Ogni segnalazione che Giuseppe prende in carico diventa una manutenzione "Da fare" individuale. Risultato: il tab Da fare si riempie di tante manutenzioni separate sullo stesso mezzo, spesso sullo STESSO problema (es. 2-3 segnalazioni di autisti diversi sulla stessa ventola).
+2. Giuseppe porta il camion in officina con N problemi. L'officina ne risolve alcuni, altri no.
+3. Giuseppe vuole: FONDERE le manutenzioni Da fare dello stesso mezzo che riguardano lo stesso problema in UNA sola (sopravvive la più vecchia, che assorbe le origini delle altre; le assorbite si eliminano). Al rientro dall'officina, completa la manutenzione fusa → tutte le segnalazioni/controlli origine si chiudono insieme (motore di propagazione già esistente). I problemi NON risolti restano come manutenzioni Da fare separate.
+4. Vincolo sacro: ZERO perdita di dati di produzione e ZERO record/legami orfani. Ogni segnalazione deve sempre raccontare la storia giusta (chi ha segnalato, quando, come si è chiusa) in tutte le superfici (Da fare, dettaglio, Archivio Storico, Centro Controllo, frasi storia).
+Verifica esplicitamente: il piano realizza QUESTO? C'è qualche punto in cui il piano tradisce o non copre questo flusso?
+
+FONTE DI VERITÀ
+Il codice reale del repository C:\progetti\gestioneweb e il dato fisico Firestore (service account C:\Users\giumi\.firebase-keys\gestionemanutenzione-934ef-firebase-adminsdk-fbsvc-7a0850bcd3.json, SOLO letture). Il piano sotto NON è fonte di verità: è l'imputato. Ogni claim del piano va trattato come da verificare.
+
+COSA DEVI FARE (minimo — poi insisti finché l'obiettivo non è raggiunto)
+1. RIVERIFICA DEI CLAIM: per ogni claim del piano con path+righe, controlla che il codice dica davvero quello. Divergenze = riportale.
+2. CACCIA AI BUCHI MECCANICI: rg tue, indipendenti da quelle del piano, su tutti i simboli centrali (origineRefs, linkedLavoroId/Ids, writeLegameLavoro, readLegameLavoro, deleteNextManutenzioneBusinessRecord, manutenzioniOperative, frasestoria, fingerprint, storageSync) per trovare consumer/superfici/percorsi che il piano non elenca né tra i "da toccare" né tra i "VISTO E ESCLUSO". Ogni file con occorrenze non censito dal piano = BUCO.
+3. CASI LIMITE DEL WRITER: ragiona sui fallimenti a metà col dato reale (TI315407: 3 daFare di cui una con data:null). La strategia di retry del piano regge davvero in ogni punto di fallimento? Il retry è idempotente anche se l'utente NON ripreme e fa altro (es. completa la superstite con repoint a metà)? Cosa succede se la superstite viene completata/eliminata tra un retry e l'altro?
+4. CONCORRENZA E STALE STATE: la pagina tiene snapshot in memoria; la fusione scrive su 3 key. Verifica se esistono fingerprint/versioning su @manutenzioni (il delete usa un fingerprint: il piano lo ignora — è un problema?) e se la fusione può scrivere su dati stale.
+5. SUPERFICI DI LETTURA: censisci TUTTI i punti che leggono il legame (entrambi i lati) e le frasi storia, e verifica uno per uno che dopo una fusione (refs ri-puntate, assorbite eliminate) raccontino la storia giusta. Attenzione a: riferimenti per id alla manutenzione eliminata salvati altrove (chiusuraRefId? storia? PDF? localStorage?), tie-break e id sintetici dei due reader divergenti noti su @manutenzioni.
+6. INTERAZIONE COL CANTIERE GRUPPI: appena chiuso (gruppoSegnalazioneId, sezione Segnalazioni aperte, Crea lavoro dal gruppo). La fusione può creare stati incoerenti con i gruppi?
+7. DIREZIONE: confronta il piano con l'OBIETTIVO FINALE sopra, punto per punto. Manca qualcosa che a Giuseppe servirà al primo uso reale? (es: può fondere, completare la fusa, e vedere la storia giusta in Archivio?)
+
+REGOLE DELLA REVISIONE
+- Ogni problema riportato DEVE avere evidenza: path + simbolo + righe reali, o esito rg, o dato fisico. Niente "potrebbe forse": o lo dimostri o lo classifichi come dubbio con cosa servirebbe per verificarlo.
+- NON riprogettare il piano, NON proporre architetture alternative: segnala i problemi, al massimo UNA riga di direzione di fix per ciascuno.
+- Decisioni di prodotto: NON prenderle, elencale.
+- Se non trovi problemi in un'area dopo verifica seria, dichiaralo esplicitamente ("area X verificata, nessun buco trovato, evidenze: ...").
+
+OUTPUT RICHIESTO IN CHAT
+1. `VERDETTO`: PIANO SOLIDO / PIANO CON LACUNE (n) / PIANO DA RIFARE — con una riga di motivazione
+2. `DIREZIONE`: il piano realizza l'obiettivo finale di Giuseppe? Punto per punto del flusso 1-4 sopra: coperto/non coperto/parziale
+3. `DIVERGENZE SUI CLAIM`: claim del piano smentiti dal codice (path+righe)
+4. `BUCHI MECCANICI`: file/consumer/percorsi con occorrenze dei simboli centrali NON censiti dal piano
+5. `RISCHI WRITER`: problemi concreti su fallimenti/retry/concorrenza/fingerprint con evidenze
+6. `RISCHI SUPERFICI`: punti di lettura che dopo fusione racconterebbero una storia sbagliata
+7. `DOMANDE DI PRODOTTO EMERSE`: solo se nuove rispetto a quelle già note
+8. `AREE PULITE`: cosa hai verificato senza trovare problemi
+
+=== PIANO DA REVISIONARE (riportato integralmente) ===
+[INCOLLA QUI SOTTO IL PIANO COMPLETO "Fusione Manutenzioni Da Fare" — il documento che inizia con "PIANO PARZIALE — Fusione Manutenzioni Da Fare" e finisce con il PERIMETRO TOTALE]
