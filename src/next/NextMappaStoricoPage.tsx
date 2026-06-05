@@ -257,6 +257,19 @@ export function MappaStoricoOriginiSection(props: {
   );
 }
 
+export function buildMappaStoricoSelectedRecordChiuso(
+  selectedRecord: SelectedMaintenance | ManutenzioneLegacy | null | undefined,
+  selectedSatelliteRecord: ManutenzioneLegacy | null | undefined,
+  sourceRecords: RawRecord[],
+) {
+  if (!selectedRecord) return null;
+  return recordChiusoFromRaw(
+    (selectedSatelliteRecord ?? selectedRecord) as Record<string, unknown>,
+    undefined,
+    { sourceRecords },
+  );
+}
+
 function formatMaintenanceTitle(record: SelectedMaintenance | ManutenzioneLegacy): string {
   const sottotipo = record.sottotipo?.trim();
   if (sottotipo) return sottotipo;
@@ -436,12 +449,12 @@ export default function NextMappaStoricoPage({
   );
   const selectedRecordChiuso = useMemo(
     () =>
-      selectedRecord
-        ? recordChiusoFromRaw(
-            (selectedSatelliteRecord ?? selectedRecord) as Record<string, unknown>,
-          )
-        : null,
-    [selectedRecord, selectedSatelliteRecord],
+      buildMappaStoricoSelectedRecordChiuso(
+        selectedRecord,
+        selectedSatelliteRecord,
+        selectedSourceRecords,
+      ),
+    [selectedRecord, selectedSatelliteRecord, selectedSourceRecords],
   );
   const selectedCategory = useMemo(
     () => (selectedRecord ? resolveDetailCategory(selectedRecord) : null),
