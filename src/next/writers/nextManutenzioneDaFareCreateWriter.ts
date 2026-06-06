@@ -147,8 +147,8 @@ function patchSegnalazione(
   const idTrim = normalizeText(origineId);
   if (!idTrim) return list;
   // PROMPT 44 D7 (storico) → PROMPT 50 R2: dataPresaInCarico NON viene piu' scritta
-  // come effetto collaterale della creazione daFare o dell'aggancio. Solo
-  // `segnaPresaInCaricoSegnalazione` (azione utente esplicita) puo' valorizzarla.
+  // come effetto collaterale della creazione daFare o dell'aggancio. Resta
+  // valorizzabile solo da un'azione utente esplicitamente temporale di presa in carico.
   // Senza questo campo, la frase storia P40 omette correttamente la riga
   // "presa in carico il GG/MM/AAAA" — comportamento atteso.
   return list.map((record) => {
@@ -506,8 +506,8 @@ export async function agganciaSorgenteAManutenzioneEsistente(
         }
 
         // Patch della sola sorgente. Riusa gli helper esistenti del writer create:
-        // - patchSegnalazione: writeLegameLavoro([targetId]) + dataPresaInCarico +
-        //   stato=presa_in_carico + letta=true (PROMPT 44 D7)
+        // - patchSegnalazione: writeLegameLavoro([targetId]) +
+        //   stato=presa_in_carico + letta=true
         // - patchControllo: writeLegameLavoro([targetId]) + letta=true
         const sourceRaw = await getItemSync(sourceKey);
         const sourceList = unwrapList(sourceRaw);

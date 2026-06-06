@@ -318,8 +318,8 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
 
         // Patch sorgente: forward-link + flag stato.
         // PROMPT 50 R2: `dataPresaInCarico` NON viene scritta qui (era effetto
-        // collaterale dell'aggancio). E' valorizzata solo da
-        // `segnaPresaInCaricoSegnalazione` (azione utente esplicita "Prendi in carico").
+        // collaterale dell'aggancio). Resta valorizzabile solo da un'azione utente
+        // esplicitamente temporale di presa in carico.
         // Lo stato "presa_in_carico" resta scritto perche' e' lo stato logico del
         // record dopo l'aggancio (= ha una manutenzione collegata in lavorazione),
         // ma non implica un timestamp di presa in carico.
