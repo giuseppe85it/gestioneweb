@@ -169,7 +169,10 @@ describe("gruppo segnalazioni -> lavoro Da fare", () => {
     expect(retry.ok).toBe(true);
     expect(retry.successes).toHaveLength(1);
     expect(readList("@segnalazioni_autisti_tmp").find((item) => item.id === "S2")?.linkedLavoroId).toBe(saved.id);
-    expect(readList("@manutenzioni")[0].origineRefs).toHaveLength(2);
+    expect(readList("@manutenzioni")[0].origineRefs).toEqual([
+      { tipo: "segnalazione", refId: "S1", refKey: "@segnalazioni_autisti_tmp" },
+      { tipo: "segnalazione", refId: "S2", refKey: "@segnalazioni_autisti_tmp" },
+    ]);
   });
 
   it("usa come data lavoro la segnalazione piu' vecchia tra quelle selezionate", async () => {
