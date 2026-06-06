@@ -330,6 +330,9 @@ export async function agganciaSegnalazioneAManutenzioneEsistente(
         };
         if (input.sorgenteTipo === "segnalazione") {
           sourceBasePatch.stato = "presa_in_carico";
+          if (normalizeText(sourceRecord.gruppoSegnalazioneId)) {
+            sourceBasePatch.gruppoSegnalazioneId = null;
+          }
         }
 
         // Scrivi

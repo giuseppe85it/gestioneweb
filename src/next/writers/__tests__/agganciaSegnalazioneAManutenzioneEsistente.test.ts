@@ -70,6 +70,7 @@ describe("agganciaSegnalazioneAManutenzioneEsistente", () => {
     expect(segn.stato).toBe("presa_in_carico");
     expect(segn.letta).toBe(true);
     expect(segn.dataPresaInCarico).toBeUndefined();
+    expect(segn.gruppoSegnalazioneId).toBeUndefined();
 
     const target = manutenzioni()[0];
     expect(target.origineTipo).toBe("segnalazione");
@@ -78,6 +79,35 @@ describe("agganciaSegnalazioneAManutenzioneEsistente", () => {
     expect(target.origineRefs).toEqual([
       { tipo: "segnalazione", refId: "S1", refKey: "@segnalazioni_autisti_tmp" },
     ]);
+  });
+
+  it("se la segnalazione e' raggruppata, l'aggancio azzera gruppoSegnalazioneId", async () => {
+    seed(
+      [{ id: "M-GRP", targa: "TI113417", stato: "daFare", descrizione: "Tagliando" }],
+      [
+        {
+          id: "S-GRP",
+          targa: "TI113417",
+          autistaNome: "Mario Rossi",
+          stato: "nuova",
+          letta: false,
+          gruppoSegnalazioneId: "GRUPPO-1",
+        },
+      ],
+    );
+
+    const res = await agganciaSegnalazioneAManutenzioneEsistente({
+      sorgenteId: "S-GRP",
+      sorgenteTipo: "segnalazione",
+      manutenzioneTargetId: "M-GRP",
+    });
+
+    expect(res.ok).toBe(true);
+    const segn = segnalazioni()[0];
+    expect(segn.linkedLavoroId).toBe("M-GRP");
+    expect(segn.linkedLavoroIds).toBeNull();
+    expect(segn.stato).toBe("presa_in_carico");
+    expect(segn.gruppoSegnalazioneId).toBeNull();
   });
 
   it("target eseguita: aggancia e propaga chiusura ereditando la data manutenzione", async () => {

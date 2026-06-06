@@ -162,6 +162,9 @@ function patchSegnalazione(
     if ("stato" in record || record.stato) {
       next.stato = "presa_in_carico";
     }
+    if (normalizeText(record.gruppoSegnalazioneId)) {
+      next.gruppoSegnalazioneId = null;
+    }
     return next;
   });
 }

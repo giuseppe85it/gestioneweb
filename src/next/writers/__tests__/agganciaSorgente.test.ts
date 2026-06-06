@@ -88,6 +88,7 @@ describe("agganciaSorgenteAManutenzioneEsistente (PROMPT 45 T1)", () => {
     expect(segn.letta).toBe(true);
     // PROMPT 50 R2: il writer P45 patchSegnalazione non scrive piu' dataPresaInCarico.
     expect(segn.dataPresaInCarico).toBeUndefined();
+    expect(segn.gruppoSegnalazioneId).toBeUndefined();
 
     // Target aggiornato con back-link multi-origine.
     const tgt = readManutenzioni()[0];
@@ -99,6 +100,35 @@ describe("agganciaSorgenteAManutenzioneEsistente (PROMPT 45 T1)", () => {
     expect(tgt.origineRefs).toEqual([
       { tipo: "segnalazione", refId: "S1", refKey: "@segnalazioni_autisti_tmp" },
     ]);
+  });
+
+  it("A2 â€” merge segnalazione raggruppata: linkedLavoroId e gruppoSegnalazioneId null", async () => {
+    seed(
+      [{ id: "M-GRP", targa: "TI113417", stato: "daFare", descrizione: "Tagliando" }],
+      [
+        {
+          id: "S-GRP",
+          targa: "TI113417",
+          autistaNome: "Mario Rossi",
+          stato: "nuova",
+          letta: false,
+          gruppoSegnalazioneId: "GRUPPO-1",
+        },
+      ],
+    );
+
+    const res = await agganciaSorgenteAManutenzioneEsistente({
+      manutenzioneTargetId: "M-GRP",
+      origineTipo: "segnalazione",
+      origineRecord: readSegnalazioni()[0],
+    });
+
+    expect(res.ok).toBe(true);
+    const segn = readSegnalazioni()[0];
+    expect(segn.linkedLavoroId).toBe("M-GRP");
+    expect(segn.linkedLavoroIds).toBeNull();
+    expect(segn.stato).toBe("presa_in_carico");
+    expect(segn.gruppoSegnalazioneId).toBeNull();
   });
 
   it("B — merge controllo: patch sorgente con linkedLavoroId + letta", async () => {
