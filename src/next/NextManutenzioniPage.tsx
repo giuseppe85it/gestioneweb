@@ -3202,8 +3202,28 @@ export default function NextManutenzioniPage() {
     return formatDateTimeUI(item.timestamp);
   }
 
+  function resolveSegnalazioneAutoreReale(
+    item: NextAutistiSegnalazioneSectionItem,
+  ): string | null {
+    return normalizeFreeText(item.autistaNome) || normalizeFreeText(item.badgeAutista) || null;
+  }
+
   function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {
-    return item.autistaNome || item.badgeAutista || "Autista";
+    return resolveSegnalazioneAutoreReale(item) || "Autista";
+  }
+
+  function buildSegnalatoDaGruppo(items: NextAutistiSegnalazioneSectionItem[]): string {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    items.forEach((item) => {
+      const autore = resolveSegnalazioneAutoreReale(item);
+      if (!autore) return;
+      const key = autore.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      names.push(autore);
+    });
+    return names.length > 0 ? names.join(", ") : "Autisti";
   }
 
   function toggleSegnalazioneLiberaSelection(id: string) {
@@ -3499,7 +3519,7 @@ export default function NextManutenzioniPage() {
         origineTipo: "manuale",
         origineRefId: null,
         origineRefKey: null,
-        segnalatoDa: "Autisti",
+        segnalatoDa: buildSegnalatoDaGruppo(targetItems),
         eseguitoDa: null,
         urgenza: "media",
       });

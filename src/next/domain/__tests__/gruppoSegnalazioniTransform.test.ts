@@ -35,6 +35,28 @@ function seed(segnalazioni: RawRecord[]): void {
   store.set("@segnalazioni_autisti_tmp", segnalazioni);
 }
 
+function normalizeTestText(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function resolveSegnalazioneAutoreReale(item: RawRecord): string | null {
+  return normalizeTestText(item.autistaNome) || normalizeTestText(item.badgeAutista) || null;
+}
+
+function buildSegnalatoDaGruppo(items: RawRecord[]): string {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  items.forEach((item) => {
+    const autore = resolveSegnalazioneAutoreReale(item);
+    if (!autore) return;
+    const key = autore.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    names.push(autore);
+  });
+  return names.length > 0 ? names.join(", ") : "Autisti";
+}
+
 async function creaLavoroDaGruppo(ids: string[]) {
   const segnalazioniTarget = ids
     .map((id) => readList("@segnalazioni_autisti_tmp").find((item) => item.id === id))
@@ -67,7 +89,7 @@ async function creaLavoroDaGruppo(ids: string[]) {
     origineTipo: "manuale",
     origineRefId: null,
     origineRefKey: null,
-    segnalatoDa: "Autisti",
+    segnalatoDa: buildSegnalatoDaGruppo(segnalazioniTarget),
     eseguitoDa: null,
     urgenza: "media",
   });
@@ -181,5 +203,64 @@ describe("gruppo segnalazioni -> lavoro Da fare", () => {
 
     expect(saved.data).toBe("2026-06-04");
     expect(readList("@manutenzioni")[0].data).toBe("2026-06-04");
+  });
+
+  it("valorizza segnalatoDa con un solo autista reale", async () => {
+    seed([
+      {
+        id: "S1",
+        targa: "TI298409",
+        stato: "nuova",
+        descrizione: "Pedale duro",
+        tipo: "Freni",
+        autistaNome: "Mario Rossi",
+      },
+      {
+        id: "S2",
+        targa: "TI298409",
+        stato: "nuova",
+        descrizione: "Faro spento",
+        tipo: "Luci",
+        autistaNome: "Mario Rossi",
+      },
+    ]);
+
+    const { saved } = await creaLavoroDaGruppo(["S1", "S2"]);
+
+    expect(saved.segnalatoDa).toBe("Mario Rossi");
+    expect(readList("@manutenzioni")[0].segnalatoDa).toBe("Mario Rossi");
+  });
+
+  it("valorizza segnalatoDa concatenando autisti diversi in ordine", async () => {
+    seed([
+      {
+        id: "S1",
+        targa: "TI298409",
+        stato: "nuova",
+        descrizione: "Pedale duro",
+        tipo: "Freni",
+        autistaNome: "Mario Rossi",
+      },
+      {
+        id: "S2",
+        targa: "TI298409",
+        stato: "nuova",
+        descrizione: "Faro spento",
+        tipo: "Luci",
+        autistaNome: "Luigi Verdi",
+      },
+    ]);
+
+    const { saved } = await creaLavoroDaGruppo(["S1", "S2"]);
+
+    expect(saved.segnalatoDa).toBe("Mario Rossi, Luigi Verdi");
+    expect(readList("@manutenzioni")[0].segnalatoDa).toBe("Mario Rossi, Luigi Verdi");
+  });
+
+  it("usa fallback Autisti se nessuna origine ha nome o badge", async () => {
+    const { saved } = await creaLavoroDaGruppo(["S1", "S2"]);
+
+    expect(saved.segnalatoDa).toBe("Autisti");
+    expect(readList("@manutenzioni")[0].segnalatoDa).toBe("Autisti");
   });
 });
