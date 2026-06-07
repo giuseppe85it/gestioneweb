@@ -1,0 +1,4191 @@
+{
+  "version": "2.13",
+  "children": [
+    {
+      "type": "frame",
+      "id": "Oa3qm",
+      "x": 0,
+      "y": 0,
+      "name": "comp/Field",
+      "reusable": true,
+      "layout": "vertical",
+      "gap": 4,
+      "children": [
+        {
+          "type": "text",
+          "id": "qbK9L",
+          "name": "L",
+          "fill": "#9A8F77",
+          "content": "OFFICINA",
+          "fontFamily": "Inter",
+          "fontSize": 11,
+          "fontWeight": "700",
+          "letterSpacing": 0.4
+        },
+        {
+          "type": "text",
+          "id": "opRy2",
+          "name": "V",
+          "fill": "#1A1A1A",
+          "content": "—",
+          "fontFamily": "Inter",
+          "fontSize": 15,
+          "fontWeight": "500"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "x0Cq4",
+      "x": 117,
+      "y": 0,
+      "name": "comp/OriginRow",
+      "reusable": true,
+      "width": 560,
+      "fill": "#FBF6EA",
+      "cornerRadius": 12,
+      "stroke": "#D7A33C",
+      "strokeWidth": {
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "left": 4
+      },
+      "layout": "vertical",
+      "gap": 7,
+      "padding": [
+        12,
+        14
+      ],
+      "children": [
+        {
+          "type": "frame",
+          "id": "lVPse",
+          "name": "R1",
+          "width": "fill_container",
+          "gap": 10,
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "gOCRJ",
+              "name": "LeftGrp",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "v8caTt",
+                  "name": "TipoChip",
+                  "fill": "#111111",
+                  "cornerRadius": 6,
+                  "padding": [
+                    3,
+                    8
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "WOD02",
+                      "name": "L",
+                      "fill": "#FFFFFF",
+                      "content": "SEGNALAZIONE",
+                      "fontFamily": "Inter",
+                      "fontSize": 10,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "Ub4cR",
+                  "name": "Autista",
+                  "fill": "#1A1A1A",
+                  "content": "ELTON SELIMI",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "H1xYo",
+                  "name": "Data",
+                  "fill": "#7A7059",
+                  "content": "· 29/05/2026 09:55",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "NHOsq",
+              "name": "RightGrp",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "o6g7D",
+                  "name": "BtnVedi",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 8,
+                  "stroke": "#DAD3C3",
+                  "strokeWidth": 1,
+                  "padding": [
+                    5,
+                    11
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RsVU0",
+                      "name": "L",
+                      "fill": "#2A2A2A",
+                      "content": "Vedi",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "wVp12",
+                  "name": "BtnRiapri",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 8,
+                  "stroke": "#DAD3C3",
+                  "strokeWidth": 1,
+                  "padding": [
+                    5,
+                    11
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "p94T3",
+                      "name": "L",
+                      "fill": "#374151",
+                      "content": "Riapri",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "kKYxp",
+          "name": "R2",
+          "width": "fill_container",
+          "gap": 8,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "bEl6l",
+              "name": "ProbChip",
+              "fill": "#F0E8D7",
+              "cornerRadius": 6,
+              "padding": [
+                2,
+                8
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "POyTX",
+                  "name": "L",
+                  "fill": "#6E5A33",
+                  "content": "altro",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "aaex5",
+              "name": "Descrizione",
+              "fill": "#3A3A3A",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Valvole di non ritorno",
+              "lineHeight": 1.4,
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "gZhr5",
+      "x": 117,
+      "y": 194,
+      "name": "Dettaglio manutenzione — esempio stato DA FARE",
+      "clip": true,
+      "width": 1340,
+      "fill": "#F0E8D7",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "I4VmO",
+          "name": "DarkHeader",
+          "width": "fill_container",
+          "fill": "#111111",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            22,
+            28
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "BfRSp",
+              "name": "Top",
+              "width": "fill_container",
+              "gap": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ww7YW",
+                  "name": "TitleGrp",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "meL2M",
+                      "name": "Kicker",
+                      "fill": "#8C8472",
+                      "content": "OPERATIVITÀ",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.6
+                    },
+                    {
+                      "type": "text",
+                      "id": "CNR5J",
+                      "name": "H1",
+                      "fill": "#FFFFFF",
+                      "content": "Manutenzioni",
+                      "fontFamily": "Inter",
+                      "fontSize": 26,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "e66kqq",
+                  "name": "Controls",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "gahL1",
+                      "name": "Selector",
+                      "width": 320,
+                      "fill": "#F3ECDD",
+                      "cornerRadius": 10,
+                      "gap": 10,
+                      "padding": [
+                        10,
+                        14
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "kdvyz",
+                          "name": "L",
+                          "fill": "#1A1A1A",
+                          "content": "TI233827 - RENAULT C460 8x4",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "KlAFy",
+                          "name": "C",
+                          "fill": "#6B6B6B",
+                          "content": "▾",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HWdjz",
+                      "name": "Search",
+                      "width": 240,
+                      "fill": "#F3ECDD",
+                      "cornerRadius": 10,
+                      "padding": [
+                        10,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "V1pgN",
+                          "name": "L",
+                          "fill": "#9A9281",
+                          "content": "Cerca targa / modello / autista",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "avSV5",
+              "name": "InfoStrip",
+              "width": "fill_container",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Paatv",
+                  "name": "DI TARGA",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "lOiT0",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "TARGA",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "bTa8A",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "TI233827",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RLazz",
+                  "name": "DI MODELLO",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Zdmr4",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "MODELLO",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "G42d26",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "RENAULT C460 8x4",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "HTAP8",
+                  "name": "DI AUTISTA SOLITO",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "F3SL4S",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "AUTISTA SOLITO",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "UiFDl",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "ELTON SELIMI",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "wLzs8",
+                  "name": "DI KM ATTUALI",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "xDeWe",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "KM ATTUALI",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "Vhfy0",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "301.613",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ciwVp",
+                  "name": "DI ULTIMA MANUTENZIONE",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "e92vuv",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "ULTIMA MANUTENZIONE",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "wPA0D",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "20/05/2026",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "beh7K",
+              "name": "Tabs",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Nq3dj",
+                  "name": "Tab Da fare",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rl01b",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Da fare",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "oz1Rl",
+                  "name": "Tab Dashboard",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "v7Wsb",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Dashboard",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MwOvs",
+                  "name": "Tab Nuova / Modifica",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "zn8g3",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Nuova / Modifica",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "JdHb6",
+                  "name": "Tab Dettaglio",
+                  "fill": "#F0E8D7",
+                  "cornerRadius": 10,
+                  "stroke": "#F0E8D7",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XEA7h",
+                      "name": "L",
+                      "fill": "#1A1A1A",
+                      "content": "Dettaglio",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "dvO4T",
+                  "name": "Tab Quadro manutenzioni PDF",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "AaDbi",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Quadro manutenzioni PDF",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "V7Nvf4",
+          "name": "Content",
+          "width": "fill_container",
+          "fill": "#F0E8D7",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": [
+            20,
+            28
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "WxGmL",
+              "name": "OriginePanel",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "cornerRadius": 14,
+              "stroke": "#ECE0C6",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "I6TtqF",
+                  "name": "OHead",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "gR4mf",
+                      "name": "L",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "aHfSg",
+                          "name": "T",
+                          "fill": "#1A1A1A",
+                          "content": "Origine manutenzione",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "xdwce",
+                          "name": "Cnt",
+                          "fill": "#111111",
+                          "cornerRadius": 999,
+                          "padding": [
+                            1,
+                            9
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "xMOuA",
+                              "name": "N",
+                              "fill": "#FFFFFF",
+                              "content": "2",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "mNTKh",
+                      "name": "Note",
+                      "fill": "#8A7F66",
+                      "content": "Segnalazioni che hanno generato questa manutenzione",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "I9sPoW",
+                  "name": "OCards",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "vlbDK",
+                      "type": "ref",
+                      "ref": "x0Cq4",
+                      "name": "Origine 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "Bl8Iu",
+                      "type": "ref",
+                      "ref": "x0Cq4",
+                      "name": "Origine 2",
+                      "width": "fill_container",
+                      "descendants": {
+                        "H1xYo": {
+                          "content": "· 20/05/2026 06:24"
+                        },
+                        "POyTX": {
+                          "content": "motore"
+                        },
+                        "aaex5": {
+                          "content": "Motore in protezione"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "E5CMM",
+              "name": "Split",
+              "width": "fill_container",
+              "gap": 18,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Gqxrd",
+                  "name": "StoricoList",
+                  "width": 380,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": "#ECE0C6",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xSg0w",
+                      "name": "LH",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "g77cc",
+                          "name": "T",
+                          "fill": "#1A1A1A",
+                          "content": "Storico",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Wncoi",
+                          "name": "C",
+                          "fill": "#EFE7D3",
+                          "cornerRadius": 999,
+                          "padding": [
+                            2,
+                            9
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "oJDXI",
+                              "name": "N",
+                              "fill": "#8A7F66",
+                              "content": "13 interventi",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BWwUY",
+                      "name": "Chips",
+                      "width": "fill_container",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "w3Qi5z",
+                          "name": "Chip Tutte 13",
+                          "fill": "#111111",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "OiDA9",
+                              "name": "L",
+                              "fill": "#FFFFFF",
+                              "content": "Tutte 13",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ucOKl",
+                          "name": "Chip Mezzo 11",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "z5PCqY",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Mezzo 11",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "VYzxH",
+                          "name": "Chip Gomme 1",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "r52ac",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Gomme 1",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ny1W3",
+                          "name": "Chip Compr. 1",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Gg2uA",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Compr. 1",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pg82l",
+                      "name": "Rows",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "eFrnL",
+                          "name": "R Motore in protezione",
+                          "width": "fill_container",
+                          "fill": "#FBF5E8",
+                          "cornerRadius": 10,
+                          "stroke": "#E7BE63",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 1,
+                            "bottom": 1,
+                            "left": 4
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "d2wFbH",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F6ECCF",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "N8buV",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "MAG '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "OQ3mD",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "20",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "n22kj8",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NAhI1",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Motore in protezione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Wn1b3",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "da segnalazione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "AD1uH",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "cm2Oc",
+                                  "name": "Stato",
+                                  "fill": "#FBEBCB",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "NUcyQ",
+                                      "name": "L",
+                                      "fill": "#97670F",
+                                      "content": "DA FARE",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "YGBuh",
+                          "name": "R Motore si è spento in autostrada",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "b1zlsm",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "TeGJw",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "MAG '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "stfvl",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "18",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "nI1O9",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "avOqW",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Motore si è spento in autostrada",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Q2zP0",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 300.210",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "fkNWe",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "nH0MS",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "lG8bI",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "t3ZBUL",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+1.403 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "R11SE7",
+                          "name": "R Intervento -22",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "qULzW",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KtR8i",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "APR '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "cKBar",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "29",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "xQ0aP",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "sPeGz",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Intervento -22",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "A9jvc",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 299.231",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "YNMzI",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "vudpD",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "NoGo2",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "KzE4u",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+2.382 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "zD2bJ",
+                          "name": "R Perdita potenza motore",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "LAF9S",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VKYXC",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "APR '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "TIJkf",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "21",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Sdetq",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "TGDHG",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Perdita potenza motore",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "P5iUUn",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "da segnalazione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ixxEs",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "SxACc",
+                                  "name": "Stato",
+                                  "fill": "#FBEBCB",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "iT5fi",
+                                      "name": "L",
+                                      "fill": "#97670F",
+                                      "content": "DA FARE",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "IFTMQ",
+                          "name": "R Ammortizzatori posteriori 4° asse",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "wcigx",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mEVMG",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "FEB '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ozvpk",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "12",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "t6mAtt",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "C0F1hn",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Ammortizzatori posteriori 4° asse",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "dJpIk",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 287.461",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "iZkMR",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "gFQql",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "gD1Lf",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "EPFBr",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+14.152 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "i5zrY",
+                          "name": "R Tagliando completo",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "m8sln",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "j3ELU7",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "GEN '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "SKQdG",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "16",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "pOD7O",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "xH1Pt",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Tagliando completo",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "cXxBx",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 285.564",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "UAcjC",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "MAoA2",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "sWYt5",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "AZoYl",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+16.049 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "UKTlj",
+                          "name": "R Compressore motrice",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Tg115",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "CACqg",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "GEN '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "j5rxde",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "13",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "uPnU6",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "iDl20",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Compressore motrice",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ikHvh",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "MILIO · 4357 ore · Compressore",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "q26lId",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "FdGZk",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "xIskc",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "iGtMd",
+                  "name": "Detail",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 16,
+                  "stroke": "#ECE0C6",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "kUge5",
+                      "name": "Pad",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": 20,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "QAm8o",
+                          "name": "Top",
+                          "width": "fill_container",
+                          "gap": 16,
+                          "justifyContent": "space_between",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "TGwSV",
+                              "name": "TL",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "C9t0A",
+                                  "name": "TitleRow",
+                                  "width": "fill_container",
+                                  "gap": 10,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "m36ai2",
+                                      "name": "Title",
+                                      "fill": "#111111",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container",
+                                      "content": "motore - Motore in protezione",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 20,
+                                      "fontWeight": "700"
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "Ebqac",
+                                      "name": "TipoPill",
+                                      "fill": "#ECDDBB",
+                                      "cornerRadius": 6,
+                                      "padding": [
+                                        2,
+                                        9
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "kfbKK",
+                                          "name": "L",
+                                          "fill": "#6E5A33",
+                                          "content": "MEZZO",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "700"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "yFwdG",
+                                  "name": "GreenHint",
+                                  "fill": "#5C8A5E",
+                                  "content": "Verde = pulsante appena cliccato",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "E55ei",
+                                  "name": "Meta",
+                                  "fill": "#8A7F66",
+                                  "content": "20/05/2026  ·  da segnalazione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "TAHNQ",
+                              "name": "Actions",
+                              "gap": 6,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "dPY93",
+                                  "name": "Btn ESEGUITA",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "SmD5K",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "dQIYF",
+                                  "name": "Btn MODIFICA",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "jzWaM",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "MODIFICA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "mYVtA",
+                                  "name": "Btn DOSSIER",
+                                  "fill": "#DEF3E2",
+                                  "cornerRadius": 9,
+                                  "stroke": "#6FB683",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "t9lbb",
+                                      "name": "L",
+                                      "fill": "#2E7D32",
+                                      "content": "DOSSIER",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "LdkN6",
+                                  "name": "Btn DOCUMENTO",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#E6DFCE",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "IUBlT",
+                                      "name": "L",
+                                      "fill": "#B7AF9E",
+                                      "content": "DOCUMENTO",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "TxT2M",
+                                  "name": "Btn PDF",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Slfla",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "PDF",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Hvyha",
+                                  "name": "Btn Elimina",
+                                  "fill": "#FDECEE",
+                                  "cornerRadius": 9,
+                                  "stroke": "#F3C6CC",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "fpVOE",
+                                      "name": "L",
+                                      "fill": "#D14B5E",
+                                      "content": "Elimina",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "e60gy",
+                          "name": "Sep",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "#F0EAD9"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NVuUM",
+                          "name": "DescrRow",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "tKvEr",
+                              "name": "DLab",
+                              "fill": "#9A8F77",
+                              "content": "DESCRIZIONE",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "700",
+                              "letterSpacing": 0.4
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Dxvsh",
+                              "name": "Box",
+                              "width": "fill_container",
+                              "fill": "#F6F0E2",
+                              "cornerRadius": 10,
+                              "layout": "vertical",
+                              "padding": 14,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "h6oazZ",
+                                  "name": "Tx",
+                                  "fill": "#333333",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "motore - Motore in protezione",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "AGDFX",
+                              "name": "Frase",
+                              "fill": "#8A7F66",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Segnalazione di Autisti del 20/05/2026.",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "normal",
+                              "fontStyle": "italic"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "SDmdo",
+      "x": 1577,
+      "y": 194,
+      "name": "Dettaglio manutenzione — esempio stato ESEGUITA",
+      "clip": true,
+      "width": 1340,
+      "fill": "#F0E8D7",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "BuaKN",
+          "name": "DarkHeader",
+          "width": "fill_container",
+          "fill": "#111111",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            22,
+            28
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "Xt89K",
+              "name": "Top",
+              "width": "fill_container",
+              "gap": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ghnxX",
+                  "name": "TitleGrp",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "VegTY",
+                      "name": "Kicker",
+                      "fill": "#8C8472",
+                      "content": "OPERATIVITÀ",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.6
+                    },
+                    {
+                      "type": "text",
+                      "id": "FMOjf",
+                      "name": "H1",
+                      "fill": "#FFFFFF",
+                      "content": "Manutenzioni",
+                      "fontFamily": "Inter",
+                      "fontSize": 26,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "pJpyT",
+                  "name": "Controls",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Ye9Bf",
+                      "name": "Selector",
+                      "width": 320,
+                      "fill": "#F3ECDD",
+                      "cornerRadius": 10,
+                      "gap": 10,
+                      "padding": [
+                        10,
+                        14
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Cdr7j",
+                          "name": "L",
+                          "fill": "#1A1A1A",
+                          "content": "TI233827 - RENAULT C460 8x4",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "VF4q0",
+                          "name": "C",
+                          "fill": "#6B6B6B",
+                          "content": "▾",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "glNzt",
+                      "name": "Search",
+                      "width": 240,
+                      "fill": "#F3ECDD",
+                      "cornerRadius": 10,
+                      "padding": [
+                        10,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "WPvIJ",
+                          "name": "L",
+                          "fill": "#9A9281",
+                          "content": "Cerca targa / modello / autista",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bKker",
+              "name": "InfoStrip",
+              "width": "fill_container",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "J187Zh",
+                  "name": "DI TARGA",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "jqAbO",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "TARGA",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "zAGEe",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "TI233827",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "weIAA",
+                  "name": "DI MODELLO",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "o49SqQ",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "MODELLO",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "LWzXY",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "RENAULT C460 8x4",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "wtYqs",
+                  "name": "DI AUTISTA SOLITO",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "VBHyv",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "AUTISTA SOLITO",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "Rel3n",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "ELTON SELIMI",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "XADUy",
+                  "name": "DI KM ATTUALI",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ixB0F",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "KM ATTUALI",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "axFF3",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "301.613",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "k7pfT",
+                  "name": "DI ULTIMA MANUTENZIONE",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "v0bDO",
+                      "name": "L",
+                      "fill": "#8C8472",
+                      "content": "ULTIMA MANUTENZIONE",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "700",
+                      "letterSpacing": 0.4
+                    },
+                    {
+                      "type": "text",
+                      "id": "DysRA",
+                      "name": "V",
+                      "fill": "#F3ECDD",
+                      "content": "20/05/2026",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "IzYYI",
+              "name": "Tabs",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GjuCR",
+                  "name": "Tab Da fare",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "V0mOK",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Da fare",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "CPSIR",
+                  "name": "Tab Dashboard",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "h1biO",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Dashboard",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "H39i1",
+                  "name": "Tab Nuova / Modifica",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "p8quvz",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Nuova / Modifica",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fpbuO",
+                  "name": "Tab Dettaglio",
+                  "fill": "#F0E8D7",
+                  "cornerRadius": 10,
+                  "stroke": "#F0E8D7",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Vtlpd",
+                      "name": "L",
+                      "fill": "#1A1A1A",
+                      "content": "Dettaglio",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "uWq8C",
+                  "name": "Tab Quadro manutenzioni PDF",
+                  "fill": "#1E1E1E",
+                  "cornerRadius": 10,
+                  "stroke": "#3A3A3A",
+                  "strokeWidth": 1,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "zJ6Ze",
+                      "name": "L",
+                      "fill": "#E8E2D5",
+                      "content": "Quadro manutenzioni PDF",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "uafFx",
+          "name": "Content",
+          "width": "fill_container",
+          "fill": "#F0E8D7",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": [
+            20,
+            28
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "GlNQB",
+              "name": "Split",
+              "width": "fill_container",
+              "gap": 18,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "WzzL6",
+                  "name": "StoricoList",
+                  "width": 380,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": "#ECE0C6",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "PY2Vz",
+                      "name": "LH",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "n6suiq",
+                          "name": "T",
+                          "fill": "#1A1A1A",
+                          "content": "Storico",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ivoJl",
+                          "name": "C",
+                          "fill": "#EFE7D3",
+                          "cornerRadius": 999,
+                          "padding": [
+                            2,
+                            9
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "k9QQEh",
+                              "name": "N",
+                              "fill": "#8A7F66",
+                              "content": "13 interventi",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "gGtN7",
+                      "name": "Chips",
+                      "width": "fill_container",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Qngva",
+                          "name": "Chip Tutte 13",
+                          "fill": "#111111",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Kgtu8",
+                              "name": "L",
+                              "fill": "#FFFFFF",
+                              "content": "Tutte 13",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yk4tT",
+                          "name": "Chip Mezzo 11",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "GvrTe",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Mezzo 11",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "P255DJ",
+                          "name": "Chip Gomme 1",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "sfLpu",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Gomme 1",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Y3ZV0a",
+                          "name": "Chip Compr. 1",
+                          "fill": "#F1ECDD",
+                          "cornerRadius": 999,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "CenrD",
+                              "name": "L",
+                              "fill": "#5C5544",
+                              "content": "Compr. 1",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "j6kIH",
+                      "name": "Rows",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "jQ0DR",
+                          "name": "R Motore in protezione",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "svmgW",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "w2kut6",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "MAG '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "mCCVz",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "20",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "y6K52",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "jQfr9",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Motore in protezione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "oKoYF",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "da segnalazione",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "O4E5E",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "EvaFW",
+                                  "name": "Stato",
+                                  "fill": "#FBEBCB",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Iq4mU",
+                                      "name": "L",
+                                      "fill": "#97670F",
+                                      "content": "DA FARE",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Fx8GW",
+                          "name": "R Motore si è spento in autostrada",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "mxH0f",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "S8Oma",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "MAG '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "f6nsLX",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "18",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wwW6A",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "uYUWa",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Motore si è spento in autostrada",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "hwAwm",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 300.210",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "c7nvff",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "T8v14v",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "w8ZS1",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "xuy7f",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+1.403 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ops61",
+                          "name": "R Intervento -22",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "IavNu",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "st8eU",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "APR '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "s9Aab",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "29",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "tovdQ",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "INEZj",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Intervento -22",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "KjWUi",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 299.231",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "pKiB2",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "w9l4e",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "QPGmm",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "i8lvI",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+2.382 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ddOhm",
+                          "name": "R Ammortizzatori posteriori 4° asse",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "WoVND",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "CqyKT",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "FEB '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "AzGs6",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "12",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "SvpGl",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "eiXJe",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Ammortizzatori posteriori 4° asse",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "i3rt5y",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 287.461",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "OJd9b",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "O2qRZn",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Sa8Q2",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "gutYL",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+14.152 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "iew7p",
+                          "name": "R Tagliando completo",
+                          "width": "fill_container",
+                          "fill": "#FBF5E8",
+                          "cornerRadius": 10,
+                          "stroke": "#E7BE63",
+                          "strokeWidth": {
+                            "top": 1,
+                            "right": 1,
+                            "bottom": 1,
+                            "left": 4
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "XE4DE",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F6ECCF",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "q0Xlcl",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "GEN '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "z0zBS",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "16",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "rTjbD",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "acozs",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Tagliando completo",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "LO1Px",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 285.564",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "dpb9w",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "y6TeJe",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "BYosk",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "tLxNa",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+16.049 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bMZgl",
+                          "name": "R Sostituito fascio cavi posteriore",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "o4lxG",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "PsfE4",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "OTT '25",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "PBfH0",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "24",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "oWpkg",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "y5x3cH",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Sostituito fascio cavi posteriore",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "rHrbd",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "AUGUSTONI TRUCK · Km 276.258",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "phAq9",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "ZtRuo",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "dLIxi",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "gfD8y",
+                                  "name": "DL",
+                                  "fill": "#5C8A5E",
+                                  "content": "+25.355 km",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "l5NOIH",
+                          "name": "R Compressore motrice",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "stroke": "#F0EAD9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "gap": 12,
+                          "padding": [
+                            11,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "q1T1s6",
+                              "name": "D",
+                              "width": 56,
+                              "fill": "#F2ECDE",
+                              "cornerRadius": 8,
+                              "layout": "vertical",
+                              "gap": 1,
+                              "padding": [
+                                6,
+                                4
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "b6F17",
+                                  "name": "M",
+                                  "fill": "#8C8472",
+                                  "content": "GEN '26",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "s0RVT",
+                                  "name": "G",
+                                  "fill": "#1A1A1A",
+                                  "content": "13",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 18,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Z6ud0Z",
+                              "name": "B",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Yq7Cx",
+                                  "name": "T",
+                                  "fill": "#1A1A1A",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Compressore motrice",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "c7GVR",
+                                  "name": "S",
+                                  "fill": "#8A7F66",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "MILIO · 4357 ore · Compressore",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "CWwGV",
+                              "name": "RT",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "alignItems": "end",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "jbvPU",
+                                  "name": "Stato",
+                                  "fill": "#E2F3E6",
+                                  "cornerRadius": 6,
+                                  "padding": [
+                                    3,
+                                    9
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "aJiTI",
+                                      "name": "L",
+                                      "fill": "#2F7D4F",
+                                      "content": "ESEGUITA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "700",
+                                      "letterSpacing": 0.3
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Bucjx",
+                  "name": "Detail",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 16,
+                  "stroke": "#ECE0C6",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "fnGdg",
+                      "name": "Pad",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 14,
+                      "padding": 20,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Sz6EI",
+                          "name": "Top",
+                          "width": "fill_container",
+                          "gap": 16,
+                          "justifyContent": "space_between",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "v2cIK",
+                              "name": "TL",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 5,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "xACDH",
+                                  "name": "TitleRow",
+                                  "width": "fill_container",
+                                  "gap": 10,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "XZOAe",
+                                      "name": "Title",
+                                      "fill": "#111111",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container",
+                                      "content": "TAGLIANDO - Servizio completo",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 20,
+                                      "fontWeight": "700"
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "nPZwR",
+                                      "name": "TipoPill",
+                                      "fill": "#ECDDBB",
+                                      "cornerRadius": 6,
+                                      "padding": [
+                                        2,
+                                        9
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "pJGYZ",
+                                          "name": "L",
+                                          "fill": "#6E5A33",
+                                          "content": "MEZZO",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "700"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "sbnAY",
+                                  "name": "Meta",
+                                  "fill": "#8A7F66",
+                                  "content": "16/01/2026  ·  AUGUSTONI TRUCK",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "d6NN0I",
+                              "name": "Actions",
+                              "gap": 6,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "X6OnGu",
+                                  "name": "Btn MODIFICA",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "V5lLo",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "MODIFICA",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "cxx99",
+                                  "name": "Btn DOSSIER",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "GJdAO",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "DOSSIER",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "fzmZG",
+                                  "name": "Btn DOCUMENTO",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#E6DFCE",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "r0JixV",
+                                      "name": "L",
+                                      "fill": "#B7AF9E",
+                                      "content": "DOCUMENTO",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "DOBct",
+                                  "name": "Btn PDF",
+                                  "fill": "#FFFFFF",
+                                  "cornerRadius": 9,
+                                  "stroke": "#DAD3C3",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "gyV57",
+                                      "name": "L",
+                                      "fill": "#2A2A2A",
+                                      "content": "PDF",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "s9eft",
+                                  "name": "Btn Elimina",
+                                  "fill": "#FDECEE",
+                                  "cornerRadius": 9,
+                                  "stroke": "#F3C6CC",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    12
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "mFPA5",
+                                      "name": "L",
+                                      "fill": "#D14B5E",
+                                      "content": "Elimina",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 12,
+                                      "fontWeight": "600",
+                                      "letterSpacing": 0.4
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Rz4ND",
+                          "name": "Sep",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "#F0EAD9"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dLr8I",
+                          "name": "Fields",
+                          "width": "fill_container",
+                          "gap": 16,
+                          "children": [
+                            {
+                              "id": "S8wtZ1",
+                              "type": "ref",
+                              "ref": "Oa3qm",
+                              "name": "F OFFICINA",
+                              "width": "fill_container",
+                              "descendants": {
+                                "qbK9L": {
+                                  "content": "OFFICINA"
+                                },
+                                "opRy2": {
+                                  "content": "AUGUSTONI TRUCK",
+                                  "fill": "#1A1A1A"
+                                }
+                              }
+                            },
+                            {
+                              "id": "t78qC3",
+                              "type": "ref",
+                              "ref": "Oa3qm",
+                              "name": "F KM INTERVENTO",
+                              "width": "fill_container",
+                              "descendants": {
+                                "qbK9L": {
+                                  "content": "KM INTERVENTO"
+                                },
+                                "opRy2": {
+                                  "content": "285.564 km",
+                                  "fill": "#1A1A1A"
+                                }
+                              }
+                            },
+                            {
+                              "id": "Jxbvt",
+                              "type": "ref",
+                              "ref": "Oa3qm",
+                              "name": "F Δ KM DA OGGI",
+                              "width": "fill_container",
+                              "descendants": {
+                                "qbK9L": {
+                                  "content": "Δ KM DA OGGI"
+                                },
+                                "opRy2": {
+                                  "content": "+16.049",
+                                  "fill": "#2E7D32"
+                                }
+                              }
+                            },
+                            {
+                              "id": "R56JpQ",
+                              "type": "ref",
+                              "ref": "Oa3qm",
+                              "name": "F DATA",
+                              "width": "fill_container",
+                              "descendants": {
+                                "qbK9L": {
+                                  "content": "DATA"
+                                },
+                                "opRy2": {
+                                  "content": "16/01/2026",
+                                  "fill": "#1A1A1A"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Fbyol",
+                          "name": "Sep2",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "#F0EAD9"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nYoa1",
+                          "name": "DescrRow",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ltJ2n",
+                              "name": "DLab",
+                              "fill": "#9A8F77",
+                              "content": "DESCRIZIONE",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "700",
+                              "letterSpacing": 0.4
+                            },
+                            {
+                              "type": "frame",
+                              "id": "UR2uS",
+                              "name": "Box",
+                              "width": "fill_container",
+                              "fill": "#F6F0E2",
+                              "cornerRadius": 10,
+                              "layout": "vertical",
+                              "padding": 14,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "V35Zkb",
+                                  "name": "Tx",
+                                  "fill": "#333333",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "TAGLIANDO - Effettuato servizio completo + sostituito cinghie servizi + eliminazione perdita aria.",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "j0feDm",
+                              "name": "Frase",
+                              "fill": "#8A7F66",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Manutenzione del 16/01/2026, eseguita il 16/01/2026. Risolta dall'intervento officina AUGUSTONI TRUCK.",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "normal",
+                              "fontStyle": "italic"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

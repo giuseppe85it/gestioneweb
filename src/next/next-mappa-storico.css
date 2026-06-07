@@ -4026,7 +4026,7 @@
 
 .man2-detail-v2__split {
   display: grid;
-  grid-template-columns: 420px minmax(0, 1fr);
+  grid-template-columns: 380px minmax(0, 1fr);
   gap: 16px;
   min-height: 720px;
 }
@@ -4310,8 +4310,16 @@
   margin-bottom: 6px;
 }
 
-.man2-detail-v2__detail-title {
+.man2-detail-v2__detail-title-wrap {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.man2-detail-v2__detail-title {
   margin: 0;
   color: #1a1a1a;
   font-size: 18px;

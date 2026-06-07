@@ -262,18 +262,6 @@ export async function richiudiMappaStoricoSegnalazioniAperte(params: {
   return { requestedIds, closedIds, failedIds };
 }
 
-function hasMaintenanceOrigins(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): boolean {
-  if (!record) return false;
-  if (Array.isArray(record.origineRefs) && record.origineRefs.length > 0) return true;
-  return Boolean(record.origineRefKey && record.origineRefId && record.origineTipo);
-}
-
-function countMaintenanceOrigins(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): number {
-  if (!record) return 0;
-  if (Array.isArray(record.origineRefs) && record.origineRefs.length > 0) return record.origineRefs.length;
-  return record.origineRefKey && record.origineRefId && record.origineTipo ? 1 : 0;
-}
-
 export function MappaStoricoOriginiSection(props: {
   hasOrigins: boolean;
   originCount: number;
@@ -497,8 +485,6 @@ export default function NextMappaStoricoPage({
   }, [selectedMaintenance, storicoManutenzioni]);
   const selectedRecord = selectedLegacyRecord ?? selectedMaintenance;
   const selectedSourceRecords = useSorgentiManutenzione(selectedRecord as RawRecord | null | undefined);
-  const selectedHasOrigins = hasMaintenanceOrigins(selectedRecord);
-  const selectedOriginCount = countMaintenanceOrigins(selectedRecord);
   useEffect(() => {
     setRichiuseOriginiIds(new Set());
     setRichiudiOriginiBusyId(null);
@@ -875,6 +861,7 @@ export default function NextMappaStoricoPage({
                     currentKmValue != null && item.km != null ? currentKmValue - item.km : null,
                   );
                   const isSelected = selectedRecord?.id === item.id;
+                  const itemIsOperativa = item.stato === "daFare" || item.stato === "programmata";
 
                   return (
                     <button
@@ -897,6 +884,13 @@ export default function NextMappaStoricoPage({
                         </div>
                       </div>
                       <div className="man2-detail-v2__row-right">
+                        <span
+                          className={`man2-detail-v2__status-pill man2-detail-v2__status-pill--${
+                            itemIsOperativa ? "todo" : "done"
+                          }`}
+                        >
+                          {itemIsOperativa ? "DA FARE" : "ESEGUITA"}
+                        </span>
                         <span className={`man2-detail-v2__type-pill man2-detail-v2__type-pill--${category}`}>
                           {DETAIL_FILTER_LABELS[category]}
                         </span>
@@ -920,23 +914,32 @@ export default function NextMappaStoricoPage({
               <>
                 <div className="man2-detail-v2__detail-header">
                   <div className="man2-detail-v2__detail-head-top">
-                    <h2 className="man2-detail-v2__detail-title">{formatMaintenanceTitle(selectedRecord)}</h2>
-                    <span
-                      className={`man2-detail-v2__status-pill man2-detail-v2__status-pill--${
-                        selectedIsOperativa ? "todo" : "done"
-                      }`}
-                    >
-                      {selectedIsOperativa ? "DA FARE" : "ESEGUITA"}
-                    </span>
-                    {selectedRecord.stato === "chiusa_da_evento" ? (
+                    <div className="man2-detail-v2__detail-title-wrap">
+                      <h2 className="man2-detail-v2__detail-title">{formatMaintenanceTitle(selectedRecord)}</h2>
                       <span
-                        className="man2-detail-v2__section-badge"
-                        style={{ background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" }}
-                        title={buildChiusuraDaEventoTitle(selectedRecord)}
+                        className={`man2-detail-v2__status-pill man2-detail-v2__status-pill--${
+                          selectedIsOperativa ? "todo" : "done"
+                        }`}
                       >
-                        CHIUSA DA EVENTO
+                        {selectedIsOperativa ? "DA FARE" : "ESEGUITA"}
                       </span>
-                    ) : null}
+                      <span
+                        className={`man2-detail-v2__type-pill man2-detail-v2__type-pill--${
+                          selectedCategory ?? "mezzo"
+                        }`}
+                      >
+                        {DETAIL_FILTER_LABELS[selectedCategory ?? "mezzo"]}
+                      </span>
+                      {selectedRecord.stato === "chiusa_da_evento" ? (
+                        <span
+                          className="man2-detail-v2__section-badge"
+                          style={{ background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" }}
+                          title={buildChiusuraDaEventoTitle(selectedRecord)}
+                        >
+                          CHIUSA DA EVENTO
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="man2-detail-v2__actions">
                       {selectedMaintenance &&
                       (selectedMaintenance.stato === "daFare" || selectedMaintenance.stato === "programmata") &&
@@ -1052,11 +1055,6 @@ export default function NextMappaStoricoPage({
                 </div>
 
                 <div className="man2-detail-v2__detail-body">
-                  <MappaStoricoOriginiSection
-                    hasOrigins={selectedHasOrigins}
-                    originCount={selectedOriginCount}
-                    sourceRecords={selectedSourceRecords}
-                  />
                   {selectedSegnalazioniAperteDaRichiudere.length > 0 ? (
                     <div className="man2-detail-v2__richiudi-alert">
                       <span>{selectedSegnalazioniAperteDaRichiudere.length} segnalazioni non risultano chiuse</span>
@@ -1110,18 +1108,6 @@ export default function NextMappaStoricoPage({
                   ) : null}
 
                   <div className="man2-detail-v2__field-grid">
-                    <div className="man2-detail-v2__field">
-                      <span className="man2-detail-v2__field-label">Tipo intervento</span>
-                      <span className="man2-detail-v2__field-value">
-                        <span
-                          className={`man2-detail-v2__type-pill man2-detail-v2__type-pill--${
-                            selectedCategory ?? "mezzo"
-                          }`}
-                        >
-                          {DETAIL_FILTER_LABELS[selectedCategory ?? "mezzo"]}
-                        </span>
-                      </span>
-                    </div>
                     {selectedRecord.sottotipo?.trim() ? (
                       <div className="man2-detail-v2__field">
                         <span className="man2-detail-v2__field-label">Sottotipo</span>
@@ -1132,12 +1118,6 @@ export default function NextMappaStoricoPage({
                       <div className="man2-detail-v2__field">
                         <span className="man2-detail-v2__field-label">Officina</span>
                         <span className="man2-detail-v2__field-value">{selectedRecord.fornitore.trim()}</span>
-                      </div>
-                    ) : null}
-                    {selectedRecord.ore != null ? (
-                      <div className="man2-detail-v2__field">
-                        <span className="man2-detail-v2__field-label">Ore di lavoro</span>
-                        <span className="man2-detail-v2__field-value">{formatNumberOptional(selectedRecord.ore)} h</span>
                       </div>
                     ) : null}
                   </div>
@@ -1198,74 +1178,58 @@ export default function NextMappaStoricoPage({
                     </section>
                   ) : null}
 
-                  <section
-                    className={`man2-detail-v2__section man2-detail-v2__completion${
-                      selectedIsOperativa ? " is-pending" : " is-done"
-                    }`}
-                  >
-                    <div className="man2-detail-v2__section-title">
-                      {selectedIsOperativa ? "Si compila al completamento" : "Dati completamento"}
-                    </div>
-                    <div className="man2-detail-v2__completion-grid">
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Officina</span>
-                        <strong>{selectedRecord.fornitore?.trim() || (selectedIsOperativa ? "Da compilare" : "—")}</strong>
+                  {selectedRecord.fornitore?.trim() ||
+                  selectedRecord.km != null ||
+                  (selectedRecord.importo != null && Number.isFinite(selectedRecord.importo)) ||
+                  (selectedRecord.materiali?.length ?? 0) > 0 ||
+                  (canOpenDocument && selectedLegacyRecord) ? (
+                    <section
+                      className={`man2-detail-v2__section man2-detail-v2__completion${
+                        selectedIsOperativa ? " is-pending" : " is-done"
+                      }`}
+                    >
+                      <div className="man2-detail-v2__section-title">
+                        {selectedIsOperativa ? "Si compila al completamento" : "Dati completamento"}
                       </div>
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Km</span>
-                        <strong>
-                          {selectedRecord.km != null
-                            ? `${formatNumberOptional(selectedRecord.km)} km`
-                            : selectedIsOperativa
-                              ? "Da compilare"
-                              : "—"}
-                        </strong>
-                      </div>
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Ore</span>
-                        <strong>
-                          {selectedRecord.ore != null
-                            ? `${formatNumberOptional(selectedRecord.ore)} h`
-                            : selectedIsOperativa
-                              ? "Da compilare"
-                              : "—"}
-                        </strong>
-                      </div>
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Importo</span>
-                        <strong>
-                          {selectedRecord.importo != null && Number.isFinite(selectedRecord.importo)
-                            ? formatMaintenanceImporto(
+                      <div className="man2-detail-v2__completion-grid">
+                        {selectedRecord.fornitore?.trim() ? (
+                          <div className="man2-detail-v2__completion-item">
+                            <span>Officina</span>
+                            <strong>{selectedRecord.fornitore.trim()}</strong>
+                          </div>
+                        ) : null}
+                        {selectedRecord.km != null ? (
+                          <div className="man2-detail-v2__completion-item">
+                            <span>Km</span>
+                            <strong>{`${formatNumberOptional(selectedRecord.km)} km`}</strong>
+                          </div>
+                        ) : null}
+                        {selectedRecord.importo != null && Number.isFinite(selectedRecord.importo) ? (
+                          <div className="man2-detail-v2__completion-item">
+                            <span>Importo</span>
+                            <strong>
+                              {formatMaintenanceImporto(
                                 selectedRecord.importo,
                                 selectedRecord.sourceDocumentCurrency ?? null,
-                              )
-                            : selectedIsOperativa
-                              ? "Da compilare"
-                              : "—"}
-                        </strong>
+                              )}
+                            </strong>
+                          </div>
+                        ) : null}
+                        {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                          <div className="man2-detail-v2__completion-item">
+                            <span>Materiali</span>
+                            <strong>{`${selectedRecord.materiali?.length ?? 0} righe`}</strong>
+                          </div>
+                        ) : null}
+                        {canOpenDocument && selectedLegacyRecord ? (
+                          <div className="man2-detail-v2__completion-item">
+                            <span>Documento</span>
+                            <strong>{selectedLegacyRecord.sourceDocumentId}</strong>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Materiali</span>
-                        <strong>
-                          {(selectedRecord.materiali?.length ?? 0) > 0
-                            ? `${selectedRecord.materiali?.length ?? 0} righe`
-                            : selectedIsOperativa
-                              ? "Da compilare"
-                              : "—"}
-                        </strong>
-                      </div>
-                      <div className="man2-detail-v2__completion-item">
-                        <span>Documento</span>
-                        <strong>
-                          {canOpenDocument && selectedLegacyRecord
-                            ? selectedLegacyRecord.sourceDocumentId
-                            : selectedIsOperativa
-                              ? "Da allegare"
-                              : "—"}
-                        </strong>
-                      </div>
-                    </div>
-                  </section>
+                    </section>
+                  ) : null}
 
                   {(selectedRecord.materiali?.length ?? 0) > 0 ? (
                     <section className="man2-detail-v2__section">
