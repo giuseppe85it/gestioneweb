@@ -4664,6 +4664,41 @@
   white-space: nowrap;
 }
 
+.next-aggancia-legame-modal {
+  color: #1a1a1a;
+}
+
+.next-aggancia-legame-modal .aix-body {
+  color: #1a1a1a;
+}
+
+.next-aggancia-legame-source,
+.next-aggancia-legame-source strong,
+.next-aggancia-legame-source-list strong {
+  color: #1a1a1a;
+}
+
+.next-aggancia-legame-source-list {
+  color: #57534e !important;
+}
+
+.next-aggancia-legame-option {
+  color: #1a1a1a;
+}
+
+.next-aggancia-legame-option:has(input:disabled) {
+  opacity: 0.72;
+}
+
+.next-aggancia-legame-option__title {
+  color: #1a1a1a;
+  font-weight: 800;
+}
+
+.next-aggancia-legame-option__meta {
+  color: #78716c !important;
+}
+
 @media (max-width: 900px) {
   .man2-detail-v2__split {
     grid-template-columns: 1fr;

@@ -65,7 +65,10 @@ export function NextAgganciaLegameModal({
       onMouseDown={busy ? undefined : onCancel}
       data-testid="aggancia-legame-backdrop"
     >
-      <div className="aix-modal" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="aix-modal next-aggancia-legame-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="aix-head">
           <h3>{buildHeader(mode, allSorgenti.length)}</h3>
           <button className="aix-close" type="button" onClick={onCancel} disabled={busy}>
@@ -91,7 +94,7 @@ export function NextAgganciaLegameModal({
           ) : null}
 
           {allSorgenti.length === 1 ? (
-            <p style={{ marginTop: 0 }}>
+            <p className="next-aggancia-legame-source" style={{ marginTop: 0 }}>
               Sorgente: <strong>{sorgente.targa || "-"}</strong> -{" "}
               {sorgente.descrizione || "(senza descrizione)"}
             </p>
@@ -100,7 +103,10 @@ export function NextAgganciaLegameModal({
               <p style={{ margin: "0 0 6px" }}>
                 Sorgenti selezionate: <strong>{allSorgenti.length}</strong>
               </p>
-              <ul style={{ margin: 0, paddingLeft: 18, color: "#475569", fontSize: 13 }}>
+              <ul
+                className="next-aggancia-legame-source-list"
+                style={{ margin: 0, paddingLeft: 18, color: "#475569", fontSize: 13 }}
+              >
                 {allSorgenti.map((entry) => (
                   <li key={`${entry.tipo}:${entry.id}`}>
                     <strong>{entry.targa || "-"}</strong> -{" "}
@@ -131,6 +137,7 @@ export function NextAgganciaLegameModal({
                 {candidati.map((c) => (
                   <label
                     key={c.id}
+                    className="next-aggancia-legame-option"
                     style={{
                       display: "flex",
                       gap: 10,
@@ -146,9 +153,14 @@ export function NextAgganciaLegameModal({
                       onChange={() => setChoice(c.id)}
                       disabled={busy}
                     />
-                    <span>
-                      <strong>{c.descrizione}</strong>
-                      <span style={{ display: "block", color: "#64748b", fontSize: 12 }}>
+                    <span className="next-aggancia-legame-option__body">
+                      <strong className="next-aggancia-legame-option__title">
+                        {c.descrizione}
+                      </strong>
+                      <span
+                        className="next-aggancia-legame-option__meta"
+                        style={{ display: "block", color: "#64748b", fontSize: 12 }}
+                      >
                         {buildSubLabel(c)}
                       </span>
                     </span>
