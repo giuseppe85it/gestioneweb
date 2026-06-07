@@ -23,7 +23,6 @@ deploy_debug.txt
 GoogleCloudSDKInstaller.exe
 gsutil.zip
 gsutil/
-tools/
 
 # PROMPT 53 — non committare artefatti delle sessioni di sviluppo
 
