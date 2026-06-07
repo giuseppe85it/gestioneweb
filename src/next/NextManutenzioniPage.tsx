@@ -271,10 +271,6 @@ function formatMonthFilterLabel(filter: PdfPeriodFilter) {
   return toDisplay(`${yearRaw}-${monthRaw}-01`) || key;
 }
 
-function normalizeDateEditorValue(value: string) {
-  return toISO(value) ?? fromUserInput(value) ?? value;
-}
-
 function formatDateDigitsInput(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   if (digits.length <= 2) return digits;
@@ -392,10 +388,6 @@ function resolveMaintenanceStato(item: NextManutenzioniLegacyDatasetRecord): Nex
     return item.stato;
   }
   return "daFare";
-}
-
-function isManutenzioneCompletabile(item: NextManutenzioniLegacyDatasetRecord): boolean {
-  return item.stato === "daFare" || item.stato === "programmata";
 }
 
 function normalizeCompletionCategory(value: string | null | undefined): string {
@@ -2096,11 +2088,6 @@ export default function NextManutenzioniPage() {
     setView("mappa");
   }
 
-  async function handleOpenOrigineRecord(item: NextManutenzioniLegacyDatasetRecord) {
-    if (!item.origineRefKey || !item.origineRefId) return;
-    await handleOpenOrigineRef(item.origineRefKey, item.origineRefId);
-  }
-
   async function handleOpenOrigineRef(origineRefKey: string | null | undefined, origineRefId: string | null | undefined) {
     if (!origineRefKey || !origineRefId) return;
     try {
@@ -2123,7 +2110,7 @@ export default function NextManutenzioniPage() {
   }
 
   async function handleRiapriOrigineSegnalazione(origineRefId: string | null | undefined) {
-    const segnalazioneId = normalizeText(origineRefId);
+    const segnalazioneId = normalizeText(origineRefId ?? "");
     if (!segnalazioneId) {
       setNotice("ID segnalazione origine mancante.");
       return;
@@ -3205,7 +3192,7 @@ export default function NextManutenzioniPage() {
   function resolveSegnalazioneAutoreReale(
     item: NextAutistiSegnalazioneSectionItem,
   ): string | null {
-    return normalizeFreeText(item.autistaNome) || normalizeFreeText(item.badgeAutista) || null;
+    return normalizeFreeText(item.autistaNome ?? "") || normalizeFreeText(item.badgeAutista ?? "") || null;
   }
 
   function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {

@@ -1096,7 +1096,7 @@ function sanitizeBusinessRecord(
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
     tipo: payload.tipo,
-    fornitore: normalizeOptionalText(payload.fornitore) ?? null,
+    fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
     km,
     ore: payload.tipo === "compressore" || payload.tipo === "attrezzature" ? normalizeNumber(payload.ore) : null,
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
