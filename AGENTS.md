@@ -92,6 +92,7 @@ Tutti i path sotto puntano alla cartella canonica `docs/copia questi nel progett
 - Se il task e documentale, non toccare codice runtime.
 - Se il task modifica file del repo, change report e continuity report sono obbligatori.
 - Eseguire build o lint solo se il task tocca runtime, logica, contratti o se il prompt lo richiede.
+- Gate build canonico per cantieri e deploy: usare `npm run build` completo (`tsc -b && vite build`), non i comandi separati come prova finale.
 - Se un fatto non e dimostrabile, scrivere `DA VERIFICARE`.
 
 ## 11. Rischio e sicurezza
