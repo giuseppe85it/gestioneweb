@@ -1,6 +1,6 @@
 # DIARIO DECISIONI STRATEGICHE
 
-Ultimo aggiornamento: 2026-05-15 (PROMPT 53 — pulizia pre-commit)
+Ultimo aggiornamento: 2026-06-08 (maratona risanamento segnalazioni/gomme + ripristino deploy Vercel)
 Responsabile: Giuseppe
 
 ## Come funziona questo file
@@ -646,3 +646,39 @@ DECISIONI:
 
 PUNTO APERTO UX:
 - Nel box autisti-admin manca un pulsante esplicito "Marca risolta" per le segnalazioni (oggi solo campo Stato testuale che non scrive chiusa/dataChiusura/chiusa_by). La chiusura funzionante e' in Centro Controllo (chip segnalazione -> "Marca chiusa"). Decisione se replicare il pulsante in autisti-admin: rimandata.
+
+## 2026-06-06
+
+**Maratona risanamento flusso segnalazioni↔manutenzioni (Cantiere A) + riconciliazione dati di massa.**
+
+- Risanamento flusso segnalazioni↔manutenzioni completato: Fase 1 (sgancio automatico delle sorgenti all'eliminazione di una manutenzione + avviso "Richiudi" sulle manutenzioni eseguite con sorgenti ancora aperte) e Fase 2 (riparazione dei dati pregressi). Motivo: l'archivio aveva ~1/3 di record incoerenti (fantasmi, contraddittori); fonte di verità = dato fisico Firestore.
+- Decisione D1a: l'hard-delete di una manutenzione sgancia automaticamente tutte le sorgenti collegate (ricerca bidirezionale), con ordine sgancio→delete, per non lasciare record fantasma.
+- Decisione D2a: gruppo e collegata sono incompatibili — una segnalazione collegata a una manutenzione non può stare in un gruppo. Enforcement completato nel codice (Cantiere A).
+- Decisione D3b: `presaInCaricoSegnalazioneWriter` eliminato (codice morto, mai cablato). Lo STATO `presa_in_carico` nei dati resta valido e leggibile.
+- Riconciliazione di massa eseguita: 8 chiusure ricucite su prova documentale (legacy @lavori + legami già corretti). Verdetto: 46 segnalazioni tutte coerenti, ~11-14 problemi davvero ancora aperti.
+- Audit legacy: la migrazione @lavori→@manutenzioni portava la chiusura sulla manutenzione ma MAI sulla segnalazione → causa storica delle segnalazioni "aperte" con il lavoro già fatto.
+
+## 2026-06-07
+
+**Bonifica storico gomme (D1) + ripristino deploy Vercel + regola push=deploy.**
+
+- D1 gomme: storico gomme bonificato. 9 record solo-testo riparati con marcatore strutturato additivo, 1 intervento importato (TI282780, valvola, 26/05), 7 record di test cancellati (TI313387 km implausibili + test futuri). Motivo: il marcatore era presente solo su 6 record su ~16 reali → gli altri erano invisibili alla logica gomme.
+- Regola anti-associazione: mai ricucire per somiglianza; ogni ricucitura va fatta su prova (targa+data+descrizione) o su memoria operativa confermata di Giuseppe. (Caso TI279216: ricucitura respinta da Giuseppe.)
+- Vercel: deploy rotto da ~28/04. Causa provata: `.gitignore` ignorava `src/next/chat-ia/tools/` (sorgenti mai pushati) + errori `tsc -b` in strict mode. Fix applicato, produzione riallineata. Audit compatibilità dati: COMPATIBILE (writer autisti invariati da aprile, reader NEXT nuovi più difensivi).
+- DECISIONE: push = deploy. Da ora `git push` pubblica in produzione agli autisti → si pusha solo con `npm run build` verde, mai con lavoro a metà. Gate di build canonico aggiornato a `npm run build` (che include `tsc -b`), non più i due comandi separati.
+
+## 2026-06-08
+
+**Strategia ponte gomme NEXT + perimetro madre + roadmap Cantiere C.**
+
+- Tappo ponte gomme NEXT: decisione 1a (marker gomme scritto alla creazione quando la sorgente è esplicitamente gomme; tipo ordinario/straordinario valorizzato al completamento) + 3a (guardia anti-doppio-submit su app autisti e su import admin NEXT). Implementati.
+- DECISIONE: i percorsi gomme della MADRE muoiono con la madre, NON si tappano. Concentrazione sul rendere NEXT impeccabile nella ricezione/visualizzazione dei dati.
+- Decisione 2b: il ponte "evento gomma → manutenzione in @manutenzioni" oggi NON esiste in nessun percorso (né NEXT né madre, accertato da diagnosi); va costruito come funzione NUOVA nella chat dedicata UI gomme, non come fix tampone.
+- Decisione 4b: l'Archivista non classifica il marcatore gomme; la classificazione avviene più avanti nel flusso Manutenzioni.
+- Chat IA NEXT: confermata la decisione di maggio (perimetro chiuso, nessuna cancellazione). Rivalutazione rimandata al futuro.
+- Cantiere C (strutturale, punto unico di lettura): si farà a tappe. C0 (analisi inbox autisti NEXT + verifica letture Manutenzioni/Centro Controllo) PRIMA di C1 (centralina). Niente centralina costruita su assunzioni.
+
+### Regola di metodo (permanente)
+- Backup SOLO in `C:\tmp`, mai file `.bak` nel repo.
+- Commit a fine di ogni lotto verde nella stessa sessione.
+- Piani Plan-mode salvati in `docs/`.
