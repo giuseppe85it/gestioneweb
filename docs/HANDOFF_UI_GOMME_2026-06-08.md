@@ -336,3 +336,48 @@ Metodo per la chat nuova:
 3. Duplicati storici in `@gomme_eventi`: la guardia evita nuovi duplicati, ma non ripulisce quelli gia presenti.
 4. `gommeInterventoTipo` puo essere derivato da testo dal reader anche quando non e' persistito raw. Per UI di gestione usare sempre distinzione tra dato raw e dato derivato.
 5. KM obbligatori: oggi il blocco forte vale solo in completamento gomme di record gia tipizzato e solo per categorie motorizzate; la nuova UI ponte deve decidere se applicarlo anche all'import evento.
+
+## 8. STATO REALE DEL PONTE IMPORT GOMME (diagnosi 2026-06-08)
+
+Questa sezione integra la diagnosi del ponte import gomme NEXT del 2026-06-08. I fatti sotto sono da trattare come stato reale del flusso attuale.
+
+### Flusso NEXT esistente
+
+Il flusso di import gomme NEXT in `NextAutistiAdminNative.tsx`, funzione `confirmImportGommeRecord` circa righe 1912-1954, scrive l'evento nel Dossier tramite `@gomme_eventi` e chiude eventuali record gia aperti selezionati:
+
+- manutenzioni in `@manutenzioni`;
+- segnalazioni in `@segnalazioni_autisti_tmp`;
+- controlli in `@controlli_mezzo_autisti`;
+- chiusura tramite `chiudi*DaEvento`.
+
+Il flusso NON crea mai una nuova manutenzione in `@manutenzioni`.
+
+### Flusso madre esistente
+
+Anche il percorso MADRE in `AutistiAdmin.tsx` circa righe 1628-1633 scrive solo `@gomme_eventi` e non crea manutenzioni.
+
+Conclusione: la creazione manutenzione-da-evento-gomma NON esiste in nessun percorso attuale.
+
+### Blocchi reali da NEXT
+
+Da NEXT l'import e' bloccato a due livelli:
+
+1. Guard applicativo `shouldBlockAdminMutations` in `NextAutistiAdminNative.tsx:774-776`, sempre true nel browser, che rende l'intera superficie autisti-admin NEXT sola-lettura.
+2. `cloneWriteBarrier` senza deroghe per le key `@gomme_eventi` e `@cambi_gomme_autisti_tmp`; lo scope `CHIUSURA_DA_EVENTO` non include il path `/next/autisti-admin`. Path ammessi: `/next/manutenzioni`, `/next/autisti-inbox`, `/next/centro-controllo`.
+
+In piu', `storageSync.setItemSync` inghiotte `CloneWriteBlockedError` (`storageSync.ts:134`): le scritture bloccate falliscono in modo silenzioso.
+
+### REQUISITO PER LA NUOVA UI
+
+La UI gomme nuova deve realizzare il flusso completo:
+
+`evento gomma` -> `Dossier` -> `MANUTENZIONE in @manutenzioni`.
+
+La nuova UI deve nascere con permessi e deroghe barriera corretti per il proprio path, senza dipendere dai percorsi madre in dismissione e senza dipendere dal vecchio autisti-admin NEXT.
+
+Il flusso deve:
+
+- riusare il marcatore gomme strutturato descritto nella sezione 2;
+- creare o aggiornare `@manutenzioni` con campi dedotti/confermati, non solo `@gomme_eventi`;
+- mantenere la guardia anti-doppio-submit gia attiva;
+- gestire esplicitamente il caso in cui non esiste un candidato gia aperto da chiudere.
