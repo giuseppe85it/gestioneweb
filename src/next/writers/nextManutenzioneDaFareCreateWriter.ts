@@ -40,6 +40,15 @@ export type ManutenzioneDaFareCreateResult = {
 };
 
 type RawRecord = Record<string, unknown>;
+type AsseGommaId = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
+type GommeStraordinarioDraft = {
+  asseId: AsseGommaId | null;
+  quantita: null;
+  motivo: string | null;
+};
+type GommeMarkerDraft = {
+  gommeStraordinario?: GommeStraordinarioDraft;
+};
 
 function isRecord(value: unknown): value is RawRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -75,8 +84,112 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function normalizeLowerText(value: unknown): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function normalizeTargaUp(value: unknown): string {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeAsseGomma(value: unknown): AsseGommaId | null {
+  const normalized = normalizeLowerText(value)
+    .replace(/[°º]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+  if (normalized === "anteriore") return "anteriore";
+  if (normalized === "posteriore") return "posteriore";
+  if (normalized === "asse1" || normalized === "asse 1" || normalized === "1 asse") {
+    return "asse1";
+  }
+  if (normalized === "asse2" || normalized === "asse 2" || normalized === "2 asse") {
+    return "asse2";
+  }
+  if (normalized === "asse3" || normalized === "asse 3" || normalized === "3 asse") {
+    return "asse3";
+  }
+
+  const asseMatch =
+    normalized.match(/\basse\s*([123])\b/) ?? normalized.match(/\b([123])\s*asse\b/);
+  if (asseMatch?.[1] === "1") return "asse1";
+  if (asseMatch?.[1] === "2") return "asse2";
+  if (asseMatch?.[1] === "3") return "asse3";
+  return null;
+}
+
+function firstNormalizedText(...values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function hasGommeKeyword(value: unknown): boolean {
+  return /\b(gomma|gomme|pneumatico|pneumatici)\b/.test(normalizeLowerText(value));
+}
+
+function hasMotivoGommeKeyword(value: unknown): boolean {
+  return /\b(forat\w*|usur\w*|tagli\w*|valvol\w*|pressione|controllare|pneumatic\w*|gomma|gomme)\b/.test(
+    normalizeLowerText(value),
+  );
+}
+
+function buildGommeMarkerDraft(args: {
+  asseId?: AsseGommaId | null;
+  motivo?: string | null;
+}): GommeMarkerDraft {
+  const asseId = args.asseId ?? null;
+  const motivo = normalizeText(args.motivo) || null;
+  if (!asseId && !motivo) return {};
+  return {
+    // Il tipo ordinario/straordinario resta non valorizzato alla creazione:
+    // viene scritto solo il contenitore strutturato con i campi certi.
+    gommeStraordinario: {
+      asseId,
+      quantita: null,
+      motivo,
+    },
+  };
+}
+
+function deriveGommeMarkerFromSegnalazione(record: RawRecord): GommeMarkerDraft {
+  if (normalizeLowerText(record.tipoProblema) !== "gomme") return {};
+  const asseId = normalizeAsseGomma(record.posizioneGomma);
+  const motivo = firstNormalizedText(record.problemaGomma);
+  return buildGommeMarkerDraft({ asseId, motivo });
+}
+
+function deriveGommeMarkerFromControllo(record: RawRecord): GommeMarkerDraft {
+  const check = isRecord(record.check) ? record.check : {};
+  if (check.gomme !== false) return {};
+  const asseId = normalizeAsseGomma(
+    record.posizioneGomma ??
+      record.asseId ??
+      record.asse ??
+      record.asseLabel ??
+      record.note ??
+      record.descrizione,
+  );
+  const motivoFromDedicatedField = firstNormalizedText(record.problemaGomma);
+  const motivoFromText = firstNormalizedText(record.note, record.descrizione);
+  const motivo =
+    motivoFromDedicatedField ??
+    (motivoFromText && hasMotivoGommeKeyword(motivoFromText) ? motivoFromText : null);
+  return buildGommeMarkerDraft({ asseId, motivo });
+}
+
+function deriveGommeMarkerFromEventoText(descrizione: string): GommeMarkerDraft {
+  if (!hasGommeKeyword(descrizione)) return {};
+  return buildGommeMarkerDraft({
+    asseId: normalizeAsseGomma(descrizione),
+    motivo: hasMotivoGommeKeyword(descrizione) ? descrizione : null,
+  });
 }
 
 function normalizeUrgenza(
@@ -112,6 +225,7 @@ function buildManutenzioneDaFareRecord(args: {
   origineTipo: ManutenzioneDaFareOrigineTipo;
   origineRefId: string | null;
   origineRefKey: string | null;
+  gommeMarker?: GommeMarkerDraft;
 }): RawRecord {
   return {
     id: args.id,
@@ -136,6 +250,7 @@ function buildManutenzioneDaFareRecord(args: {
     importo: null,
     sottotipo: null,
     materiali: [],
+    ...(args.gommeMarker ?? {}),
   };
 }
 
@@ -251,6 +366,7 @@ export async function createManutenzioneDaFareFromEvento(
     origineTipo: input.origineTipo,
     origineRefId: origineId || null,
     origineRefKey: sourceKey,
+    gommeMarker: deriveGommeMarkerFromEventoText(descrizione),
   });
 
   try {
@@ -304,6 +420,7 @@ export async function createManutenzioneDaFareFromSegnalazione(
     origineTipo: "segnalazione",
     origineRefId: origineId,
     origineRefKey: SEGNALAZIONI_KEY,
+    gommeMarker: deriveGommeMarkerFromSegnalazione(record),
   });
 
   try {
@@ -373,6 +490,7 @@ export async function createManutenzioneDaFareFromControllo(
       origineTipo: "controllo",
       origineRefId: origineId,
       origineRefKey: CONTROLLI_KEY,
+      gommeMarker: deriveGommeMarkerFromControllo(record),
     }),
   );
   const manutenzioneIds = manutenzioni.map((item) => normalizeText(item.id));
