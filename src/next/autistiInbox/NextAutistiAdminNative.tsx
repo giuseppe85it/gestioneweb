@@ -68,6 +68,33 @@ const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
 const KEY_GOMME_EVENTI = "@gomme_eventi";
 
+type RawGommeEventoRecord = Record<string, any>;
+
+function unwrapGommeEventiList(raw: any): RawGommeEventoRecord[] {
+  return Array.isArray(raw) ? raw : [];
+}
+
+function hasGommeEventoId(list: RawGommeEventoRecord[], recordId: string): boolean {
+  return list.some((entry) => String(entry?.id ?? "") === recordId);
+}
+
+export async function appendGommeEventoUfficialeIfMissing(
+  record: RawGommeEventoRecord,
+): Promise<{ appended: boolean; idEvento: string; records: RawGommeEventoRecord[] }> {
+  const ufficiale = { ...(record ?? {}) };
+  delete ufficiale.letta;
+  delete ufficiale.stato;
+  const idEvento = String(ufficiale.id ?? record?.id ?? "").trim();
+  const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
+  const list = unwrapGommeEventiList(raw);
+  if (idEvento && hasGommeEventoId(list, idEvento)) {
+    return { appended: false, idEvento, records: list };
+  }
+  const next = [...list, ufficiale];
+  await setItemSync(KEY_GOMME_EVENTI, next);
+  return { appended: true, idEvento, records: next };
+}
+
 type TabKey =
   | "rifornimenti"
   | "segnalazioni"
@@ -206,6 +233,7 @@ export default function AutistiAdmin() {
   const [gommeRaw, setGommeRaw] = useState<any[]>([]);
   const [gommeChiusuraRecord, setGommeChiusuraRecord] = useState<any | null>(null);
   const [gommeImportBusy, setGommeImportBusy] = useState(false);
+  const gommeImportBusyRef = useRef(false);
   const [aggancioEventoState, setAggancioEventoState] = useState<{
     kind: Exclude<AggancioEventoTipoRecord, "manutenzione">;
     record: any;
@@ -1884,15 +1912,11 @@ function shouldBlockAdminMutations() {
   async function confirmImportGommeRecord(selected: NextImportGommeChiusuraSelection[]) {
     const record = gommeChiusuraRecord;
     if (!record?.id) return;
+    if (gommeImportBusyRef.current) return;
+    gommeImportBusyRef.current = true;
     setGommeImportBusy(true);
     try {
-      const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
-      const list = Array.isArray(raw) ? raw : [];
-      const ufficiale = { ...(record ?? {}) };
-      delete ufficiale.letta;
-      delete ufficiale.stato;
-      await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
-      const idEvento = String(ufficiale.id ?? record.id);
+      const { idEvento } = await appendGommeEventoUfficialeIfMissing(record);
       const chiusuraResults = await Promise.all(
         selected.map((entry) => {
           if (entry.kind === "manutenzione") {
@@ -1925,6 +1949,7 @@ function shouldBlockAdminMutations() {
       window.alert("Errore import cambio gomme. Nessuna chiusura collegata eseguita.");
     } finally {
       setGommeImportBusy(false);
+      gommeImportBusyRef.current = false;
     }
   }
 

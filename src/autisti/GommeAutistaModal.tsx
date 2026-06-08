@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import ModalGomme, { type CambioGommeData } from "../pages/ModalGomme";
@@ -29,6 +29,8 @@ type AsseConfig = { id: string; label: string; wheelsCount: number };
 type ConfigGomme = { tipoLabel: string; assi: AsseConfig[] };
 
 const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
+
+type RawGommeRecord = Record<string, any>;
 
 function normalizeTarga(value?: string | null) {
   return value ? String(value).toUpperCase().replace(/\s+/g, "").trim() : "";
@@ -146,6 +148,30 @@ function genId() {
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function unwrapGommeTmpList(raw: any): RawGommeRecord[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw?.value && Array.isArray(raw.value)) return raw.value;
+  return [];
+}
+
+function hasRecordId(list: RawGommeRecord[], recordId: string): boolean {
+  return list.some((entry) => String(entry?.id ?? "") === recordId);
+}
+
+export async function appendGommeAutistaTmpRecordIfMissing(
+  record: RawGommeRecord,
+): Promise<{ appended: boolean; records: RawGommeRecord[] }> {
+  const recordId = String(record?.id ?? "").trim();
+  const raw = await getItemSync(KEY_GOMME_TMP);
+  const list = unwrapGommeTmpList(raw);
+  if (recordId && hasRecordId(list, recordId)) {
+    return { appended: false, records: list };
+  }
+  const next = [record, ...list];
+  await setItemSync(KEY_GOMME_TMP, next);
+  return { appended: true, records: next };
+}
+
 export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
   const [targetType, setTargetType] = useState<TargetType>("motrice");
   const [mode, setMode] = useState<ModeType>("cambio");
@@ -164,6 +190,7 @@ export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
   const [autistaLocal, setAutistaLocal] = useState<any>(null);
   const [mezziList, setMezziList] = useState<MezzoRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const saveInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -255,10 +282,13 @@ export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
   const canSave = targetOk && categoriaOk && kmValid && (cambioOk || rotazioneOk);
 
   async function handleSave() {
+    if (saveInFlightRef.current) return;
     if (!canSave) {
       setError("Compila i campi obbligatori.");
       return;
     }
+    saveInFlightRef.current = true;
+    try {
     const asseCambioNum = (() => {
       const asseId = gommeData?.asseId || "";
       const match = /asse(\d+)/i.exec(String(asseId));
@@ -340,13 +370,7 @@ export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
       stato: "nuovo",
       letta: false,
     };
-    const raw = await getItemSync(KEY_GOMME_TMP);
-    const list = Array.isArray(raw)
-      ? raw
-      : raw?.value && Array.isArray(raw.value)
-      ? raw.value
-      : [];
-    await setItemSync(KEY_GOMME_TMP, [record, ...list]);
+    await appendGommeAutistaTmpRecordIfMissing(record);
     setError(null);
     setGommeData(null);
     setRotazioneSchema("");
@@ -354,6 +378,9 @@ export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
     setHaSostituitoGomme(null);
     onSaved?.();
     onClose();
+    } finally {
+      saveInFlightRef.current = false;
+    }
   }
 
   return (
