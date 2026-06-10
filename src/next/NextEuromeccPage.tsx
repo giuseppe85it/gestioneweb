@@ -43,6 +43,15 @@ import {
   type UpdateEuromeccPendingTaskInput,
 } from "./domain/nextEuromeccDomain";
 import { formatDateInput, formatDateUI } from "./nextDateFormat";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import "./next-euromecc.css";
 
 type TabKey = "home" | "maintenance" | "issues" | "report" | "relazioni";
@@ -3558,7 +3567,7 @@ async function generatePdfRiepilogo(
   snapshot: EuromeccSnapshot,
   range: EuromeccRange,
   cards: RiepilogoCardData[],
-): Promise<void> {
+): Promise<{ blob: Blob; fileName: string }> {
   const { default: JsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
 
@@ -3775,7 +3784,7 @@ async function generatePdfRiepilogo(
 
   void snapshot; // snapshot passato per eventuali estensioni future
   const fileName = `euromecc-riepilogo-${new Date().toISOString().slice(0, 10)}.pdf`;
-  doc.save(fileName);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 function buildRiepilogoCards(
@@ -4086,6 +4095,11 @@ function RiepilogoTab(props: {
   reportIssues: EuromeccIssue[];
 }) {
   const [exporting, setExporting] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("euromecc-riepilogo.pdf");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   const cards = useMemo(
     () =>
@@ -4107,10 +4121,71 @@ function RiepilogoTab(props: {
     return [...withUrgency, ...withPending, ...doneOnly];
   }, [cards]);
 
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Euromecc — Riepilogo impianto",
+      dateLabel: formatDateUI(new Date().toISOString().slice(0, 10)),
+      fileName: pdfPreviewFileName || "euromecc-riepilogo.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "euromecc-riepilogo.pdf",
+      title: "Anteprima PDF riepilogo Euromecc",
+      text: buildPdfShareMessage(),
+    });
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    window.open(buildWhatsAppShareUrl(buildPdfShareMessage()), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
   const handleExportPdf = async () => {
     setExporting(true);
+    setPdfShareHint(null);
     try {
-      await generatePdfRiepilogo(props.snapshot, props.reportRange, sortedCards);
+      const preview = await openPreview({
+        source: () => generatePdfRiepilogo(props.snapshot, props.reportRange, sortedCards),
+        fileName: `euromecc-riepilogo-${new Date().toISOString().slice(0, 10)}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
     } catch (err) {
       console.error("Errore export PDF riepilogo:", err);
     } finally {
@@ -4172,6 +4247,17 @@ function RiepilogoTab(props: {
           )}
         </div>
       )}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title="Riepilogo impianto Euromecc"
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={() => void handleSharePDF()}
+        onCopyLink={() => void handleCopyPDFText()}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </>
   );
 }
