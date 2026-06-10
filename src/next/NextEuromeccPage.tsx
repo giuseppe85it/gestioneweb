@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { assertCloneWriteAllowed } from "../utils/cloneWriteBarrier";
 import type { Ordine } from "../types/ordini";
@@ -2351,9 +2351,81 @@ function RelazioniSectionPending(props: {
   );
 }
 
+// Carica il documento su Storage con avanzamento reale (uploadBytesResumable) e
+// restituisce i campi gia esistenti del record. NON ingoia l'errore: chi chiama gestisce.
+// Riusato da relazione e lista ricambi. Path identico al pattern esistente.
+async function uploadEuromeccDocumentoConProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<{ fileStoragePath: string; fileUrl: string; fileSize: number }> {
+  const uploadRelazioneId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const storagePath = `euromecc/relazioni/${uploadRelazioneId}/${Date.now()}_${file.name}`;
+  assertCloneWriteAllowed("storage.uploadBytes", { path: storagePath });
+  const storageRef = ref(storage, storagePath);
+  const task = uploadBytesResumable(storageRef, file);
+  await new Promise<void>((resolve, reject) => {
+    task.on(
+      "state_changed",
+      (snapshot) => {
+        const percent =
+          snapshot.totalBytes > 0
+            ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+            : 0;
+        onProgress(percent);
+      },
+      (error) => reject(error),
+      () => resolve(),
+    );
+  });
+  const fileUrl = await getDownloadURL(storageRef);
+  return { fileStoragePath: storagePath, fileUrl, fileSize: file.size };
+}
+
+// Barra avanzamento upload + messaggio errore esplicito, condivisa dai due flussi.
+function EuromeccSaveProgress(props: { progress: number | null; error: string | null }) {
+  if (props.progress !== null) {
+    return (
+      <div
+        style={{ margin: "8px 0" }}
+        role="progressbar"
+        aria-valuenow={props.progress}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          style={{
+            height: 8,
+            borderRadius: 4,
+            background: "#e5e7eb",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${props.progress}%`,
+              background: "#3b82f6",
+              transition: "width 0.2s ease",
+            }}
+          />
+        </div>
+        <span className="eur-ts">Caricamento documento: {props.progress}%</span>
+      </div>
+    );
+  }
+  if (props.error) {
+    return <p className="eur-error">{props.error}</p>;
+  }
+  return null;
+}
+
 function RelazioniActionBar(props: {
   noteGenerali: string;
   saving: boolean;
+  uploadProgress: number | null;
+  errorMsg: string | null;
+  soloDocumento: boolean;
+  onSoloDocumentoChange: (v: boolean) => void;
   onNoteChange: (v: string) => void;
   onSaveBozza: () => void;
   onConferma: () => void;
@@ -2369,6 +2441,16 @@ function RelazioniActionBar(props: {
           placeholder="Note libere sull'importazione..."
         />
       </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}>
+        <input
+          type="checkbox"
+          checked={props.soloDocumento}
+          disabled={props.saving}
+          onChange={(e) => props.onSoloDocumentoChange(e.target.checked)}
+        />
+        Salva solo il documento (non aggiornare i lavori)
+      </label>
+      <EuromeccSaveProgress progress={props.uploadProgress} error={props.errorMsg} />
       <div className="eur-relazioni-action-bar-buttons">
         <button type="button" onClick={props.onSaveBozza} disabled={props.saving}>
           Salva bozza
@@ -2389,6 +2471,10 @@ function RelazioniActionBar(props: {
 function RelazioniExtracted(props: {
   payload: RelazioneAiPayload;
   saving: boolean;
+  uploadProgress: number | null;
+  errorMsg: string | null;
+  soloDocumento: boolean;
+  onSoloDocumentoChange: (v: boolean) => void;
   noteGenerali: string;
   onToggleMatched: (i: number) => void;
   onUpdateMatched: (i: number, patch: Partial<RelazioneItemMatched>) => void;
@@ -2425,6 +2511,10 @@ function RelazioniExtracted(props: {
       <RelazioniActionBar
         noteGenerali={props.noteGenerali}
         saving={props.saving}
+        uploadProgress={props.uploadProgress}
+        errorMsg={props.errorMsg}
+        soloDocumento={props.soloDocumento}
+        onSoloDocumentoChange={props.onSoloDocumentoChange}
         onNoteChange={props.onNoteChange}
         onSaveBozza={props.onSaveBozza}
         onConferma={props.onConferma}
@@ -2436,6 +2526,9 @@ function RelazioniExtracted(props: {
 function RelazioniReview(props: {
   state: RelazioniTabState;
   saving: boolean;
+  uploadProgress: number | null;
+  soloDocumento: boolean;
+  onSoloDocumentoChange: (v: boolean) => void;
   onToggleMatched: (i: number) => void;
   onUpdateMatched: (i: number, patch: Partial<RelazioneItemMatched>) => void;
   onUpdatePartial: (i: number, patch: Partial<RelazioneItemPartial>) => void;
@@ -2452,6 +2545,10 @@ function RelazioniReview(props: {
       <RelazioniExtracted
         payload={props.state.payload}
         saving={props.saving}
+        uploadProgress={props.uploadProgress}
+        errorMsg={props.state.error}
+        soloDocumento={props.soloDocumento}
+        onSoloDocumentoChange={props.onSoloDocumentoChange}
         noteGenerali={props.state.noteGenerali}
         onToggleMatched={props.onToggleMatched}
         onUpdateMatched={props.onUpdateMatched}
@@ -2467,8 +2564,11 @@ function RelazioniReview(props: {
 
 function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
   const r = props.relazione;
-  const isRelazione = r.doneCount > 0 || r.pendingCount > 0;
-  const isRicambi = !!r.ordineId;
+  // Natura del record dai campi gia persistiti: una vera bozza (handleSaveBozza) ha
+  // statoImportazione "bozza"; un record-ricambi porta sempre le chiavi ordineId/
+  // ordineMateriali (anche a null in "solo documento"), che relazione/bozza non hanno.
+  const isBozza = r.statoImportazione === "bozza";
+  const isRicambi = r.ordineId !== undefined || r.ordineMateriali !== undefined;
   const hasFileImported = !!(r.fileStoragePath || r.fileName);
   return (
     <article className="eur-relazioni-storico-item">
@@ -2478,12 +2578,12 @@ function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
         <span className="eur-relazioni-storico-counts">
           {r.doneCount} lavori &middot; {r.pendingCount} interventi futuri
         </span>
-        {isRelazione ? (
-          <span className="eur-mini-badge eur-mini-badge--info">Relazione</span>
+        {isBozza ? (
+          <span className="eur-mini-badge eur-mini-badge--media">Bozza</span>
         ) : isRicambi ? (
           <span className="eur-mini-badge eur-mini-badge--ok">Lista ricambi</span>
         ) : (
-          <span className="eur-mini-badge eur-mini-badge--media">Bozza</span>
+          <span className="eur-mini-badge eur-mini-badge--info">Relazione</span>
         )}
         {r.ordineId ? (
           <span className="eur-mini-badge eur-mini-badge--ok">
@@ -2517,8 +2617,20 @@ function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
 
 function RelazioniStorico(props: { relazioni: EuromeccRelazioneDoc[] }) {
   if (props.relazioni.length === 0) return null;
-  const relazioni = props.relazioni.filter((r) => r.doneCount > 0 || r.pendingCount > 0);
-  const ricambi = props.relazioni.filter((r) => !!r.ordineId);
+  // Un record ha un documento apribile se ha file allegato (fileStoragePath o fileUrl).
+  const hasFile = (r: EuromeccRelazioneDoc) => !!(r.fileStoragePath || r.fileUrl);
+  // I record nati dal flusso ricambi portano sempre le chiavi ordineId/ordineMateriali
+  // (anche a null in modalita "solo documento"); quelli relazione non le hanno mai.
+  const isRicambiRecord = (r: EuromeccRelazioneDoc) =>
+    r.ordineId !== undefined || r.ordineMateriali !== undefined;
+  // Criterio additivo (OR): oltre ai casi gia mostrati, includi i record "solo documento"
+  // (file allegato senza lavori/ordine), instradandoli nella sezione coerente.
+  const relazioni = props.relazioni.filter(
+    (r) => r.doneCount > 0 || r.pendingCount > 0 || (hasFile(r) && !isRicambiRecord(r)),
+  );
+  const ricambi = props.relazioni.filter(
+    (r) => !!r.ordineId || (hasFile(r) && isRicambiRecord(r)),
+  );
   return (
     <>
       {relazioni.length > 0 && (
@@ -2558,6 +2670,10 @@ function RicambiReviewUI(props: {
   fornitore: string;
   dataOrdine: string;
   saving: boolean;
+  uploadProgress: number | null;
+  errorMsg: string | null;
+  soloDocumento: boolean;
+  onSoloDocumentoChange: (v: boolean) => void;
   onToggleItem: (i: number) => void;
   onUpdateItem: (i: number, patch: Partial<RicambiAiItem>) => void;
   onFornitorChange: (v: string) => void;
@@ -2629,14 +2745,32 @@ function RicambiReviewUI(props: {
           />
         </label>
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}>
+        <input
+          type="checkbox"
+          checked={props.soloDocumento}
+          disabled={props.saving}
+          onChange={(e) => props.onSoloDocumentoChange(e.target.checked)}
+        />
+        Salva solo il documento (non creare l&apos;ordine)
+      </label>
+      <EuromeccSaveProgress progress={props.uploadProgress} error={props.errorMsg} />
       <div className="eur-ricambi-actions">
         <button
           type="button"
           className="eur-btn-primary"
-          disabled={props.saving || payload.items.filter((i) => i.selected).length === 0}
+          disabled={
+            props.saving ||
+            (!props.soloDocumento &&
+              payload.items.filter((i) => i.selected).length === 0)
+          }
           onClick={props.onCreaOrdine}
         >
-          {props.saving ? "Salvataggio..." : "Crea ordine in Materiali da ordinare"}
+          {props.saving
+            ? "Salvataggio..."
+            : props.soloDocumento
+              ? "Salva documento"
+              : "Crea ordine in Materiali da ordinare"}
         </button>
       </div>
     </div>
@@ -2657,6 +2791,9 @@ function RelazioniTab() {
     ricambiPayload: null,
   });
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [soloDocumentoRelazione, setSoloDocumentoRelazione] = useState(false);
+  const [soloDocumentoRicambi, setSoloDocumentoRicambi] = useState(false);
   const [storico, setStorico] = useState<EuromeccRelazioneDoc[]>([]);
   const [ricambiFornitore, setRicambiFornitore] = useState("Euromecc");
   const [ricambiDataOrdine, setRicambiDataOrdine] = useState("");
@@ -2996,39 +3133,64 @@ REGOLE:
   }
 
   async function handleCreaOrdineRicambiAndSave() {
+    if (saving) return; // anti-doppio-invio
     if (!state.ricambiPayload || !state.file || !state.fileType) return;
     setSaving(true);
+    setState((prev) => ({ ...prev, error: null }));
     try {
-      assertCloneWriteAllowed("storageSync.setItemSync", { key: "@ordini" });
-      const ordiniRef = doc(collection(db, "storage"), "@ordini");
-      const snap = await getDoc(ordiniRef);
-      const existing: Ordine[] = snap.exists()
-        ? ((snap.data()?.value as Ordine[]) ?? [])
-        : [];
+      // Regola "C": il file e' il primo cancello. Niente ordine ne record finche'
+      // l'upload non e' confermato riuscito. Se fallisce: STOP pulito, zero scritture.
+      let uploaded: { fileStoragePath: string; fileUrl: string; fileSize: number };
+      try {
+        setUploadProgress(0);
+        uploaded = await uploadEuromeccDocumentoConProgress(state.file, setUploadProgress);
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          error: "Caricamento del documento non riuscito, riprova.",
+        }));
+        return;
+      }
+      setUploadProgress(null);
 
-      const selectedItems = state.ricambiPayload.items.filter((i) => i.selected);
-      const ordineId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
       const effectiveDataOrdine =
         ricambiDataOrdine || new Date().toISOString().slice(0, 10);
+      let ordineId: string | null = null;
+      let ordineMateriali: number | null = null;
 
-      const nuovoOrdine = {
-        id: ordineId,
-        idFornitore: "euromecc",
-        nomeFornitore: ricambiFornitore,
-        dataOrdine: effectiveDataOrdine,
-        materiali: selectedItems.map((item) => ({
-          id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-          descrizione: item.codiceArticolo
-            ? `${item.descrizione} [${item.codiceArticolo}]`
-            : item.descrizione,
-          quantita: item.quantita,
-          unita: item.unita,
+      // "Salva solo il documento": salta la creazione dell'ordine su storage/@ordini.
+      // Il record viene comunque creato, con ordineId/ordineMateriali a null.
+      if (!soloDocumentoRicambi) {
+        assertCloneWriteAllowed("storageSync.setItemSync", { key: "@ordini" });
+        const ordiniRef = doc(collection(db, "storage"), "@ordini");
+        const snap = await getDoc(ordiniRef);
+        const existing: Ordine[] = snap.exists()
+          ? ((snap.data()?.value as Ordine[]) ?? [])
+          : [];
+
+        const selectedItems = state.ricambiPayload.items.filter((i) => i.selected);
+        ordineId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+        const nuovoOrdine = {
+          id: ordineId,
+          idFornitore: "euromecc",
+          nomeFornitore: ricambiFornitore,
+          dataOrdine: effectiveDataOrdine,
+          materiali: selectedItems.map((item) => ({
+            id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            descrizione: item.codiceArticolo
+              ? `${item.descrizione} [${item.codiceArticolo}]`
+              : item.descrizione,
+            quantita: item.quantita,
+            unita: item.unita,
+            arrivato: false,
+          })),
           arrivato: false,
-        })),
-        arrivato: false,
-      };
+        };
 
-      await setDoc(ordiniRef, { value: [...existing, nuovoOrdine] }, { merge: true });
+        await setDoc(ordiniRef, { value: [...existing, nuovoOrdine] }, { merge: true });
+        ordineMateriali = selectedItems.length;
+      }
 
       await addDoc(collection(db, "euromecc_relazioni"), {
         fileName: state.file.name,
@@ -3040,11 +3202,11 @@ REGOLE:
         doneCount: 0,
         pendingCount: 0,
         extraComponentsCount: 0,
-        fileUrl: null,
-        fileStoragePath: null,
-        fileSize: null,
+        fileUrl: uploaded.fileUrl,
+        fileStoragePath: uploaded.fileStoragePath,
+        fileSize: uploaded.fileSize,
         ordineId,
-        ordineMateriali: selectedItems.length,
+        ordineMateriali,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -3063,6 +3225,7 @@ REGOLE:
       });
       setRicambiFornitore("Euromecc");
       setRicambiDataOrdine("");
+      setSoloDocumentoRicambi(false);
 
       const storicoSnap = await getDocs(collection(db, "euromecc_relazioni"));
       const docs = storicoSnap.docs.map((d) => ({
@@ -3073,19 +3236,40 @@ REGOLE:
       setStorico(docs);
     } finally {
       setSaving(false);
+      setUploadProgress(null);
     }
   }
 
   async function handleConferma() {
+    if (saving) return; // anti-doppio-invio
     if (!state.payload || !state.file || !state.fileType) return;
     setSaving(true);
+    setState((prev) => ({ ...prev, error: null }));
     try {
+      // File primo cancello: carica il documento PRIMA di creare task/record.
+      // Se l'upload fallisce: STOP esplicito, nessun record orfano.
+      let uploaded: { fileStoragePath: string; fileUrl: string; fileSize: number };
+      try {
+        setUploadProgress(0);
+        uploaded = await uploadEuromeccDocumentoConProgress(state.file, setUploadProgress);
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          error: "Caricamento del documento non riuscito, riprova.",
+        }));
+        return;
+      }
+      setUploadProgress(null);
+
       const today = new Date().toISOString().slice(0, 10);
       const relazioneId = state.bozzaId ?? uuidv4();
       let doneCount = 0;
       let pendingCount = 0;
       let extraComponentsCount = 0;
 
+      // "Salva solo il documento": salta la generazione dei lavori. Il record viene
+      // comunque creato con i contatori a 0 e i campi file valorizzati.
+      if (!soloDocumentoRelazione) {
       for (const item of state.payload.matched.filter((m) => m.selected)) {
         await addEuromeccDoneTask(
           {
@@ -3157,26 +3341,7 @@ REGOLE:
         });
         pendingCount++;
       }
-
-      // Feature A: Upload documento originale su Storage
-      let fileUrl: string | null = null;
-      let fileStoragePath: string | null = null;
-      let fileSize: number | null = null;
-
-      if (state.file) {
-        try {
-          const uploadRelazioneId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-          const storagePath = `euromecc/relazioni/${uploadRelazioneId}/${Date.now()}_${state.file.name}`;
-          assertCloneWriteAllowed("storage.uploadBytes", { path: storagePath });
-          const storageRef = ref(storage, storagePath);
-          await uploadBytes(storageRef, state.file);
-          fileUrl = await getDownloadURL(storageRef);
-          fileStoragePath = storagePath;
-          fileSize = state.file.size;
-        } catch {
-          // upload fallisce silenziosamente — la relazione viene salvata comunque
-        }
-      }
+      } // fine blocco generazione lavori (saltato se "Salva solo il documento")
 
       await addDoc(collection(db, "euromecc_relazioni"), {
         fileName: state.file.name,
@@ -3188,9 +3353,9 @@ REGOLE:
         doneCount,
         pendingCount,
         extraComponentsCount,
-        fileUrl,
-        fileStoragePath,
-        fileSize,
+        fileUrl: uploaded.fileUrl,
+        fileStoragePath: uploaded.fileStoragePath,
+        fileSize: uploaded.fileSize,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -3207,6 +3372,7 @@ REGOLE:
         documentoTipo: "relazione",
         ricambiPayload: null,
       });
+      setSoloDocumentoRelazione(false);
 
       const snap = await getDocs(collection(db, "euromecc_relazioni"));
       const docs = snap.docs.map((d) => ({
@@ -3217,6 +3383,7 @@ REGOLE:
       setStorico(docs);
     } finally {
       setSaving(false);
+      setUploadProgress(null);
     }
   }
 
@@ -3252,6 +3419,10 @@ REGOLE:
             fornitore={ricambiFornitore}
             dataOrdine={ricambiDataOrdine}
             saving={saving}
+            uploadProgress={uploadProgress}
+            errorMsg={state.error}
+            soloDocumento={soloDocumentoRicambi}
+            onSoloDocumentoChange={setSoloDocumentoRicambi}
             onToggleItem={(i) =>
               setState((prev) => {
                 if (!prev.ricambiPayload) return prev;
@@ -3298,6 +3469,9 @@ REGOLE:
           <RelazioniReview
             state={state}
             saving={saving}
+            uploadProgress={uploadProgress}
+            soloDocumento={soloDocumentoRelazione}
+            onSoloDocumentoChange={setSoloDocumentoRelazione}
             onToggleMatched={handleToggleMatched}
             onUpdateMatched={handleUpdateMatched}
             onUpdatePartial={handleUpdatePartial}
