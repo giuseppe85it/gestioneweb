@@ -64,6 +64,8 @@ export type EuromeccIssueDoc = EuromeccFirestoreMeta & {
   reportedBy: string;
   note: string;
   closedDate?: string | null;
+  imageUrls?: string[];
+  imageStoragePaths?: string[];
 };
 
 export type EuromeccAreaMetaDoc = EuromeccFirestoreMeta & {
@@ -117,6 +119,8 @@ export type EuromeccIssue = {
   reportedBy: string;
   note: string;
   closedDate: string | null;
+  imageUrls: string[];
+  imageStoragePaths: string[];
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -288,15 +292,16 @@ function mapDoneDoc(id: string, raw: Partial<EuromeccDoneDoc>): EuromeccDoneTask
 }
 
 function mapIssueDoc(id: string, raw: Partial<EuromeccIssueDoc>): EuromeccIssue {
+  // areaKey/subKey possono essere valori convenzionali liberi (es. "__generale__")
+  // per i problemi generali: niente required in lettura, altrimenti la snapshot crasha.
+  const issueAreaKey = normalizeText(raw.areaKey);
+  const issueSubKey = normalizeText(raw.subKey);
   return {
     id,
-    areaKey: normalizeRequiredText(raw.areaKey, "areaKey"),
-    areaLabel: areaLabel(normalizeRequiredText(raw.areaKey, "areaKey")),
-    subKey: normalizeRequiredText(raw.subKey, "subKey"),
-    subLabel: subLabel(
-      normalizeRequiredText(raw.areaKey, "areaKey"),
-      normalizeRequiredText(raw.subKey, "subKey"),
-    ),
+    areaKey: issueAreaKey,
+    areaLabel: areaLabel(issueAreaKey),
+    subKey: issueSubKey,
+    subLabel: subLabel(issueAreaKey, issueSubKey),
     title: normalizeRequiredText(raw.title, "title"),
     check: normalizeRequiredText(raw.check, "check"),
     type: normalizeIssueType(raw.type),
@@ -305,6 +310,10 @@ function mapIssueDoc(id: string, raw: Partial<EuromeccIssueDoc>): EuromeccIssue 
     reportedBy: normalizeRequiredText(raw.reportedBy, "reportedBy"),
     note: normalizeText(raw.note),
     closedDate: normalizeIsoDate(raw.closedDate, "closedDate", false),
+    imageUrls: Array.isArray(raw.imageUrls) ? raw.imageUrls.filter((u): u is string => typeof u === "string") : [],
+    imageStoragePaths: Array.isArray(raw.imageStoragePaths)
+      ? raw.imageStoragePaths.filter((p): p is string => typeof p === "string")
+      : [],
     createdAt: formatDateInput(raw.createdAt ?? null) || null,
     updatedAt: formatDateInput(raw.updatedAt ?? null) || null,
   };
@@ -555,18 +564,24 @@ export async function deleteEuromeccDoneTask(id: string): Promise<void> {
 
 export async function addEuromeccIssue(
   payload: AddEuromeccIssueInput,
+  initialState: EuromeccIssueState = "aperta",
 ): Promise<string> {
+  const state = normalizeIssueState(initialState);
   const ref = await addDoc(collection(db, EUROMECC_ISSUES_COLLECTION), {
-    areaKey: normalizeRequiredText(payload.areaKey, "areaKey"),
-    subKey: normalizeRequiredText(payload.subKey, "subKey"),
+    // areaKey/subKey liberi (segnalazione "generale"): non obbligatori.
+    // title/check/reportedBy restano obbligatori.
+    areaKey: normalizeText(payload.areaKey),
+    subKey: normalizeText(payload.subKey),
     title: normalizeRequiredText(payload.title, "title"),
     check: normalizeRequiredText(payload.check, "check"),
     type: normalizeIssueType(payload.type),
-    state: "aperta",
+    state,
     reportedAt: normalizeIsoDate(payload.reportedAt, "reportedAt"),
     reportedBy: normalizeRequiredText(payload.reportedBy, "reportedBy"),
     note: normalizeText(payload.note),
-    closedDate: null,
+    closedDate: state === "chiusa" ? todayIso() : null,
+    imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls : [],
+    imageStoragePaths: Array.isArray(payload.imageStoragePaths) ? payload.imageStoragePaths : [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -585,8 +600,8 @@ export async function updateEuromeccIssue(
       : null;
 
   await updateDoc(doc(db, EUROMECC_ISSUES_COLLECTION, issueId), {
-    areaKey: normalizeRequiredText(payload.areaKey, "areaKey"),
-    subKey: normalizeRequiredText(payload.subKey, "subKey"),
+    areaKey: normalizeText(payload.areaKey),
+    subKey: normalizeText(payload.subKey),
     title: normalizeRequiredText(payload.title, "title"),
     check: normalizeRequiredText(payload.check, "check"),
     type: normalizeIssueType(payload.type),

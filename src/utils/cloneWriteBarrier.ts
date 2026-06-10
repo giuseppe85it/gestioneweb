@@ -780,7 +780,10 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     }
     if (kind === "storage.uploadBytes") {
       const storagePath = readMetaPath(meta);
-      return storagePath.startsWith("euromecc/relazioni/");
+      return (
+        storagePath.startsWith("euromecc/relazioni/") ||
+        storagePath.startsWith("euromecc/segnalazioni/")
+      );
     }
     if (kind === "storageSync.setItemSync") {
       const key = readMetaKey(meta);

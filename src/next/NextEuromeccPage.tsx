@@ -32,6 +32,7 @@ import {
   type EuromeccDoneTask,
   type EuromeccIssue,
   type EuromeccIssueType,
+  type EuromeccIssueState,
   type EuromeccPendingTask,
   type EuromeccPriority,
   type EuromeccRange,
@@ -412,6 +413,9 @@ const EMPTY_ISSUE_FORM = {
   note: "",
 };
 
+// subKey/areaKey convenzionale per una segnalazione "generale" non legata a un componente.
+const GENERAL_ISSUE_KEY = "__generale__";
+
 const EMPTY_CEMENT_TYPE = "";
 const EMPTY_CEMENT_TYPE_SHORT = "";
 
@@ -602,6 +606,8 @@ function TaskRows(props: {
   kind: "pending" | "done" | "issue-open" | "issue-closed";
   onDeletePending?: (id: string) => void;
   onCloseIssue?: (id: string) => void;
+  onDeleteIssue?: (id: string) => void;
+  showArea?: boolean;
   busy?: boolean;
 }) {
   if (props.items.length === 0) {
@@ -661,16 +667,38 @@ function TaskRows(props: {
 
         const issue = item as EuromeccIssue;
         const closed = props.kind === "issue-closed";
+        const showAreaChip =
+          props.showArea && !!issue.areaKey && issue.areaKey !== GENERAL_ISSUE_KEY;
         return (
           <article key={issue.id} className="eur-task-item">
             <div>
               <strong>{issue.title}</strong>
               <div className="eur-task-meta">
                 <span>{ISSUE_TYPE_LABELS[issue.type]}</span>
+                {showAreaChip ? <span>Area: {issue.areaLabel}</span> : null}
                 <span>{formatDateUI(closed ? issue.closedDate ?? issue.reportedAt : issue.reportedAt)}</span>
                 <span>{closed ? issue.reportedBy : issue.check}</span>
                 {issue.note ? <span>{issue.note}</span> : null}
               </div>
+              {issue.imageUrls && issue.imageUrls.length > 0 ? (
+                <div className="eur-issue-photos" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  {issue.imageUrls.map((url, idx) => (
+                    <a
+                      key={url}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Foto ${idx + 1}`}
+                    >
+                      <img
+                        src={url}
+                        alt={`Foto ${idx + 1}`}
+                        style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid #d1d5db" }}
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="eur-task-actions">
               <span className={miniIssueClass(issue.type)}>
@@ -683,6 +711,15 @@ function TaskRows(props: {
                   disabled={props.busy}
                 >
                   Chiudi
+                </button>
+              ) : null}
+              {props.onDeleteIssue ? (
+                <button
+                  type="button"
+                  onClick={() => props.onDeleteIssue?.(issue.id)}
+                  disabled={props.busy}
+                >
+                  Elimina
                 </button>
               ) : null}
             </div>
@@ -2357,9 +2394,10 @@ function RelazioniSectionPending(props: {
 async function uploadEuromeccDocumentoConProgress(
   file: File,
   onProgress: (percent: number) => void,
+  prefix: string = "euromecc/relazioni/",
 ): Promise<{ fileStoragePath: string; fileUrl: string; fileSize: number }> {
   const uploadRelazioneId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-  const storagePath = `euromecc/relazioni/${uploadRelazioneId}/${Date.now()}_${file.name}`;
+  const storagePath = `${prefix}${uploadRelazioneId}/${Date.now()}_${file.name}`;
   assertCloneWriteAllowed("storage.uploadBytes", { path: storagePath });
   const storageRef = ref(storage, storagePath);
   const task = uploadBytesResumable(storageRef, file);
@@ -4163,6 +4201,13 @@ export default function NextEuromeccPage() {
   const [pendingForm, setPendingForm] = useState(EMPTY_PENDING_FORM);
   const [doneForm, setDoneForm] = useState(EMPTY_DONE_FORM);
   const [issueForm, setIssueForm] = useState(EMPTY_ISSUE_FORM);
+  // Destinazione della nuova segnalazione (componente o "__generale__"); null = usa il
+  // componente attualmente selezionato nella lista (continuita UX), senza accoppiarsi al selettore.
+  const [issueFormSubKey, setIssueFormSubKey] = useState<string | null>(null);
+  const [issueGeneralArea, setIssueGeneralArea] = useState<string>(GENERAL_ISSUE_KEY);
+  const [issueInitialState, setIssueInitialState] = useState<EuromeccIssueState>("aperta");
+  const [issuePhotos, setIssuePhotos] = useState<File[]>([]);
+  const [issueUploadProgress, setIssueUploadProgress] = useState<number | null>(null);
   const [editingPending, setEditingPending] = useState<UpdateEuromeccPendingTaskInput | null>(null);
   const [editingDone, setEditingDone] = useState<DoneEditState | null>(null);
   const [editingIssue, setEditingIssue] = useState<IssueEditState | null>(null);
@@ -4358,6 +4403,17 @@ export default function NextEuromeccPage() {
         .slice(0, 10),
     [closedIssues, currentAreaData.key, issueSubKey],
   );
+  // Problemi generali (subKey convenzionale): non legati a un componente, mostrati a parte.
+  const openGeneralIssues = useMemo(
+    () => openIssues.filter((item) => item.subKey === GENERAL_ISSUE_KEY),
+    [openIssues],
+  );
+  const closedGeneralIssues = useMemo(
+    () => closedIssues.filter((item) => item.subKey === GENERAL_ISSUE_KEY).slice(0, 20),
+    [closedIssues],
+  );
+  const effectiveIssueFormSub = issueFormSubKey ?? issueSubKey;
+  const isGeneralIssueForm = effectiveIssueFormSub === GENERAL_ISSUE_KEY;
 
   const reportPending = useMemo(
     () => pending.filter((item) => withinRange(item.dueDate, reportRange)),
@@ -4639,23 +4695,60 @@ export default function NextEuromeccPage() {
 
   const handleIssueSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!issueComponent) return;
+    if (saving) return; // anti-doppio-invio
+    const isGeneral = effectiveIssueFormSub === GENERAL_ISSUE_KEY;
+    // Per un problema su componente serve un componente reale dell'area corrente.
+    const targetComponent = isGeneral
+      ? null
+      : currentAreaData.components.find((c) => c.key === effectiveIssueFormSub);
+    if (!isGeneral && !targetComponent) return;
 
     setSaving(true);
     setNotice("");
     setError(null);
     try {
-      await addEuromeccIssue({
-        areaKey: currentAreaData.key,
-        subKey: issueComponent.key,
-        title: issueForm.title,
-        check: issueForm.check,
-        type: issueForm.type,
-        reportedAt: issueForm.reportedAt,
-        reportedBy: issueForm.reportedBy,
-        note: issueForm.note,
-      });
+      // File primo cancello: se ci sono foto e l'upload fallisce, la issue NON viene salvata.
+      const imageUrls: string[] = [];
+      const imageStoragePaths: string[] = [];
+      if (issuePhotos.length > 0) {
+        try {
+          setIssueUploadProgress(0);
+          for (const photo of issuePhotos) {
+            const up = await uploadEuromeccDocumentoConProgress(
+              photo,
+              setIssueUploadProgress,
+              "euromecc/segnalazioni/",
+            );
+            imageUrls.push(up.fileUrl);
+            imageStoragePaths.push(up.fileStoragePath);
+          }
+        } catch {
+          setError("Caricamento delle foto non riuscito, riprova.");
+          return; // niente issue salvata; il finally ripristina saving/progress
+        }
+        setIssueUploadProgress(null);
+      }
+
+      await addEuromeccIssue(
+        {
+          areaKey: isGeneral ? issueGeneralArea : currentAreaData.key,
+          subKey: isGeneral ? GENERAL_ISSUE_KEY : (targetComponent as { key: string }).key,
+          title: issueForm.title,
+          check: issueForm.check,
+          type: issueForm.type,
+          reportedAt: issueForm.reportedAt,
+          reportedBy: issueForm.reportedBy,
+          note: issueForm.note,
+          imageUrls,
+          imageStoragePaths,
+        },
+        issueInitialState,
+      );
       setIssueForm(EMPTY_ISSUE_FORM);
+      setIssuePhotos([]);
+      setIssueInitialState("aperta");
+      setIssueGeneralArea(GENERAL_ISSUE_KEY);
+      setIssueFormSubKey(null);
       await reloadSnapshot();
       setNotice("Segnalazione registrata con successo.");
     } catch (saveError) {
@@ -4664,6 +4757,7 @@ export default function NextEuromeccPage() {
       );
     } finally {
       setSaving(false);
+      setIssueUploadProgress(null);
     }
   };
 
@@ -5333,13 +5427,21 @@ export default function NextEuromeccPage() {
                   <div className="eur-section-head">
                     <div>
                       <h2>Nuova segnalazione</h2>
-                      <p>{issueComponent?.name ?? "Seleziona un componente"}</p>
+                      <p>
+                        {isGeneralIssueForm
+                          ? "Problema generale (non legato a un componente)"
+                          : issueComponent?.name ?? "Seleziona un componente"}
+                      </p>
                     </div>
                   </div>
                   <form className="eur-form" onSubmit={handleIssueSubmit}>
                     <label>
                       Componente
-                      <select value={issueSubKey} onChange={(event) => setCurrentIssueSub(event.target.value)}>
+                      <select
+                        value={effectiveIssueFormSub}
+                        onChange={(event) => setIssueFormSubKey(event.target.value)}
+                      >
+                        <option value={GENERAL_ISSUE_KEY}>Problema generale</option>
                         {currentAreaData.components.map((component) => (
                           <option key={component.key} value={component.key}>
                             {component.name}
@@ -5347,6 +5449,22 @@ export default function NextEuromeccPage() {
                         ))}
                       </select>
                     </label>
+                    {isGeneralIssueForm ? (
+                      <label>
+                        Area (facoltativa)
+                        <select
+                          value={issueGeneralArea}
+                          onChange={(event) => setIssueGeneralArea(event.target.value)}
+                        >
+                          <option value={GENERAL_ISSUE_KEY}>Nessuna area</option>
+                          {EUROMECC_AREA_KEYS.map((key) => (
+                            <option key={key} value={key}>
+                              {EUROMECC_AREAS[key]?.title ?? key}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <label>
                       Tipo
                       <select
@@ -5361,6 +5479,18 @@ export default function NextEuromeccPage() {
                         <option value="criticita">Criticita</option>
                         <option value="anomalia">Anomalia</option>
                         <option value="osservazione">Osservazione</option>
+                      </select>
+                    </label>
+                    <label>
+                      Stato
+                      <select
+                        value={issueInitialState}
+                        onChange={(event) =>
+                          setIssueInitialState(event.target.value as EuromeccIssueState)
+                        }
+                      >
+                        <option value="aperta">Aperto</option>
+                        <option value="chiusa">Risolto</option>
                       </select>
                     </label>
                     <label>
@@ -5423,12 +5553,58 @@ export default function NextEuromeccPage() {
                         rows={3}
                       />
                     </label>
+                    <label>
+                      Foto (facoltative)
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(event) =>
+                          setIssuePhotos(event.target.files ? Array.from(event.target.files) : [])
+                        }
+                      />
+                    </label>
+                    {issuePhotos.length > 0 ? (
+                      <span className="eur-ts">{issuePhotos.length} foto selezionate</span>
+                    ) : null}
+                    <EuromeccSaveProgress progress={issueUploadProgress} error={null} />
                     <button type="submit" disabled={saving}>
                       Salva segnalazione
                     </button>
                   </form>
                 </section>
               </div>
+              <section className="eur-segment">
+                <div className="eur-section-head">
+                  <div>
+                    <h2>Problemi generali</h2>
+                    <p>Segnalazioni non legate a un componente specifico</p>
+                  </div>
+                </div>
+                <div className="eur-list-block">
+                  <h3>Aperti</h3>
+                  <TaskRows
+                    items={openGeneralIssues}
+                    emptyLabel="Nessun problema generale aperto."
+                    kind="issue-open"
+                    onCloseIssue={handleCloseIssue}
+                    onDeleteIssue={handleDeleteIssue}
+                    showArea
+                    busy={saving}
+                  />
+                </div>
+                <div className="eur-list-block">
+                  <h3>Chiusi</h3>
+                  <TaskRows
+                    items={closedGeneralIssues}
+                    emptyLabel="Nessun problema generale chiuso."
+                    kind="issue-closed"
+                    onDeleteIssue={handleDeleteIssue}
+                    showArea
+                    busy={saving}
+                  />
+                </div>
+              </section>
             </>
           ) : null}
           {activeTab === "report" ? (
