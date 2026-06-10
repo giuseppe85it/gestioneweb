@@ -227,6 +227,7 @@ type RiepilogoCardData = {
   pendingItems: EuromeccPendingTask[];
   doneItems: EuromeccDoneTask[];
   openIssues: EuromeccIssue[];
+  closedIssues: EuromeccIssue[];
   hasUrgency: boolean;
 };
 
@@ -3563,11 +3564,116 @@ async function svgToImageData(svgElement: SVGElement): Promise<string | null> {
   }
 }
 
+type PdfCategorie = {
+  mappa: boolean;
+  kpi: boolean;
+  daFare: boolean;
+  fatte: boolean;
+  problemi: boolean;
+  urgenze: boolean;
+};
+
+type PdfRiepilogoOptions = {
+  categorie: PdfCategorie;
+  generalOpen?: EuromeccIssue[];
+  generalClosed?: EuromeccIssue[];
+};
+
+const ALL_PDF_CATEGORIE: PdfCategorie = {
+  mappa: true,
+  kpi: true,
+  daFare: true,
+  fatte: true,
+  problemi: true,
+  urgenze: true,
+};
+
+// "come/perche" di un problema: azione suggerita + nota, unite in modo leggibile.
+function issueDettagli(iss: EuromeccIssue): string {
+  const parts = [iss.check, iss.note].map((s) => (s ?? "").trim()).filter(Boolean);
+  return parts.length ? parts.join(" — ") : "—";
+}
+
+// Riga tabella problema APERTO: cosa / quando / chi / come-perche.
+function issueOpenRow(iss: EuromeccIssue, label: string): string[] {
+  return [
+    label,
+    iss.title,
+    ISSUE_TYPE_LABELS[iss.type],
+    formatDateUI(iss.reportedAt),
+    iss.reportedBy || "—",
+    issueDettagli(iss),
+  ];
+}
+
+// Riga tabella problema CHIUSO/RISOLTO: aggiunge la data di chiusura.
+function issueClosedRow(iss: EuromeccIssue, label: string): string[] {
+  return [
+    label,
+    iss.title,
+    ISSUE_TYPE_LABELS[iss.type],
+    formatDateUI(iss.reportedAt),
+    iss.closedDate ? formatDateUI(iss.closedDate) : "—",
+    iss.reportedBy || "—",
+    issueDettagli(iss),
+  ];
+}
+
+const ISSUE_OPEN_HEAD_AREA = [["Componente", "Descrizione", "Tipo", "Dal", "Segnalato da", "Dettagli"]];
+const ISSUE_CLOSED_HEAD_AREA = [
+  ["Componente", "Descrizione", "Tipo", "Dal", "Chiuso il", "Segnalato da", "Dettagli"],
+];
+const ISSUE_OPEN_HEAD_GENERAL = [["Area", "Descrizione", "Tipo", "Dal", "Segnalato da", "Dettagli"]];
+const ISSUE_CLOSED_HEAD_GENERAL = [
+  ["Area", "Descrizione", "Tipo", "Dal", "Chiuso il", "Segnalato da", "Dettagli"],
+];
+
+// Etichetta area per un problema generale: nome area se presente, altrimenti "Impianto".
+// Mai mostrare la stringa tecnica "__generale__".
+function generaleAreaLabel(iss: EuromeccIssue): string {
+  if (iss.areaKey && iss.areaKey !== GENERAL_ISSUE_KEY) {
+    return EUROMECC_AREAS[iss.areaKey]?.title ?? "Impianto";
+  }
+  return "Impianto";
+}
+
+// Carica un'immagine remota (URL Firebase con token) come dataURL + dimensioni naturali.
+// Ritorna null su QUALSIASI errore (rete/CORS/lettura): il chiamante salta la foto
+// senza mai bloccare la generazione del PDF.
+async function loadIssueImageDataUrl(
+  url: string,
+): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("read fail"));
+      reader.readAsDataURL(blob);
+    });
+    const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+      img.onerror = () => reject(new Error("img fail"));
+      img.src = dataUrl;
+    });
+    return { dataUrl, w: dims.w, h: dims.h };
+  } catch {
+    return null;
+  }
+}
+
 async function generatePdfRiepilogo(
   snapshot: EuromeccSnapshot,
   range: EuromeccRange,
   cards: RiepilogoCardData[],
+  opts: PdfRiepilogoOptions = { categorie: ALL_PDF_CATEGORIE },
 ): Promise<{ blob: Blob; fileName: string }> {
+  const cat = opts.categorie;
+  const generalOpen = opts.generalOpen ?? [];
+  const generalClosed = opts.generalClosed ?? [];
   const { default: JsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
 
@@ -3581,6 +3687,59 @@ async function generatePdfRiepilogo(
     if (y + needed > pageH - margin) {
       doc.addPage();
       y = margin;
+    }
+  };
+
+  // Scrive testo andando a capo entro la larghezza utile (evita troncamenti al margine).
+  const usableW = pageW - margin * 2;
+  const writeWrappedLine = (text: string, lineH = 5) => {
+    const lines = doc.splitTextToSize(text, usableW) as string[];
+    for (const line of lines) {
+      checkPage(lineH + 1);
+      doc.text(line, margin, y);
+      y += lineH;
+    }
+  };
+
+  // Miniature foto di un problema: max 3 leggibili + "+N altre". Degrada senza bloccare:
+  // foto che non si caricano vengono saltate; se tutte falliscono, il blocco non appare.
+  const THUMB_MM = 30;
+  const addIssuePhotos = async (iss: EuromeccIssue) => {
+    const urls = (iss.imageUrls ?? []).filter((u) => typeof u === "string" && u.length > 0);
+    if (urls.length === 0) return;
+    const toShow = urls.slice(0, 3);
+    const loaded: Array<{ dataUrl: string; w: number; h: number }> = [];
+    for (const u of toShow) {
+      const img = await loadIssueImageDataUrl(u);
+      if (img) loaded.push(img);
+    }
+    if (loaded.length === 0) return; // tutte fallite: nessun blocco, nessun crash
+    checkPage(THUMB_MM + 12);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    writeWrappedLine(`Foto — ${iss.title}`, 4);
+    let x = margin;
+    const rowTop = y;
+    let maxH = 0;
+    for (const im of loaded) {
+      const ratio = im.w > 0 ? im.h / im.w : 0.75;
+      const w = THUMB_MM;
+      const h = Math.max(8, Math.min(THUMB_MM, THUMB_MM * ratio));
+      const fmt = im.dataUrl.includes("image/png") ? "PNG" : "JPEG";
+      try {
+        doc.addImage(im.dataUrl, fmt, x, rowTop, w, h);
+      } catch {
+        // singola immagine non aggiungibile: salta senza bloccare il PDF
+      }
+      x += w + 4;
+      if (h > maxH) maxH = h;
+    }
+    y = rowTop + (maxH || THUMB_MM) + 2;
+    const remaining = urls.length - loaded.length;
+    if (remaining > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.text(`+${remaining} altre foto`, margin, y);
+      y += 5;
     }
   };
 
@@ -3600,93 +3759,123 @@ async function generatePdfRiepilogo(
   y += 10;
 
   // KPI row
-  const kpiValues = [
-    { label: "Da fare", value: String(cards.reduce((s, c) => s + c.pendingItems.length, 0)) },
-    { label: "Problemi", value: String(cards.reduce((s, c) => s + c.openIssues.length, 0)) },
-    { label: "Fatte", value: String(cards.reduce((s, c) => s + c.doneItems.length, 0)) },
-    { label: "Urgenze", value: String(cards.filter((c) => c.hasUrgency).length) },
-  ];
-  const kpiW = (pageW - margin * 2) / 4;
-  kpiValues.forEach((kpi, i) => {
-    const x = margin + i * kpiW;
-    doc.setFillColor(245, 245, 245);
-    doc.rect(x, y, kpiW - 2, 16, "F");
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text(kpi.value, x + kpiW / 2 - 1, y + 9, { align: "center" });
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(kpi.label, x + kpiW / 2 - 1, y + 14, { align: "center" });
-  });
-  y += 22;
+  if (cat.kpi) {
+    const kpiValues = [
+      { label: "Da fare", value: String(cards.reduce((s, c) => s + c.pendingItems.length, 0)) },
+      { label: "Problemi", value: String(cards.reduce((s, c) => s + c.openIssues.length, 0)) },
+      { label: "Fatte", value: String(cards.reduce((s, c) => s + c.doneItems.length, 0)) },
+      { label: "Urgenze", value: String(cards.filter((c) => c.hasUrgency).length) },
+    ];
+    const kpiW = (pageW - margin * 2) / 4;
+    kpiValues.forEach((kpi, i) => {
+      const x = margin + i * kpiW;
+      doc.setFillColor(245, 245, 245);
+      doc.rect(x, y, kpiW - 2, 16, "F");
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(kpi.value, x + kpiW / 2 - 1, y + 9, { align: "center" });
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(kpi.label, x + kpiW / 2 - 1, y + 14, { align: "center" });
+    });
+    y += 22;
+  }
 
   // Mappa SVG come immagine
-  const mapEl = document.querySelector(".eur-map") as SVGElement | null;
-  if (mapEl) {
-    try {
-      const imgData = await svgToImageData(mapEl);
-      if (imgData) {
-        const imgW = pageW - margin * 2;
-        const imgH = imgW * (860 / 1480);
-        checkPage(imgH + 5);
-        doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
-        y += imgH + 8;
-      }
-    } catch {
-      y += 2;
-    }
-  }
-
-  // Legenda colori
-  checkPage(10);
-  const legendItems = statusLegendItems();
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  let lx = margin;
-  for (const item of legendItems) {
-    const rgb = item.color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
-    if (rgb) {
-      doc.setFillColor(parseInt(rgb[1], 16), parseInt(rgb[2], 16), parseInt(rgb[3], 16));
-      doc.circle(lx + 2, y + 2, 2, "F");
-    }
-    doc.text(item.label, lx + 5, y + 3.5);
-    lx += 32;
-    if (lx > pageW - margin - 20) {
-      lx = margin;
-      y += 7;
-    }
-  }
-  y += 8;
-
-  // Pagine dettaglio per area
-  for (const card of cards) {
-    doc.addPage();
-    y = margin;
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${card.areaLabel} — ${card.areaCode}`, margin, y);
-    y += 7;
-
-    // SVG schema tecnico area
-    const svgEl = document.querySelector(
-      `[data-area-key="${card.areaKey}"] .eur-silo-diagram`,
-    ) as SVGElement | null;
-    if (svgEl) {
+  if (cat.mappa) {
+    const mapEl = document.querySelector(".eur-map") as SVGElement | null;
+    if (mapEl) {
       try {
-        const imgData = await svgToImageData(svgEl);
+        const imgData = await svgToImageData(mapEl);
         if (imgData) {
-          const imgW = 80;
-          const imgH = imgW * (700 / 680);
+          const imgW = pageW - margin * 2;
+          const imgH = imgW * (860 / 1480);
           checkPage(imgH + 5);
           doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
-          y += imgH + 5;
+          y += imgH + 8;
         }
       } catch {
         y += 2;
       }
     }
 
-    if (card.pendingItems.length > 0) {
+    // Legenda colori (parte della mappa)
+    checkPage(10);
+    const legendItems = statusLegendItems();
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    let lx = margin;
+    for (const item of legendItems) {
+      const rgb = item.color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+      if (rgb) {
+        doc.setFillColor(parseInt(rgb[1], 16), parseInt(rgb[2], 16), parseInt(rgb[3], 16));
+        doc.circle(lx + 2, y + 2, 2, "F");
+      }
+      doc.text(item.label, lx + 5, y + 3.5);
+      lx += 32;
+      if (lx > pageW - margin - 20) {
+        lx = margin;
+        y += 7;
+      }
+    }
+    y += 8;
+  }
+
+  // Sezioni per area — flusso continuo: si concatenano dopo intestazione/KPI/mappa,
+  // con salto pagina solo quando lo spazio finisce (nessuna pagina iniziale vuota).
+  for (const card of cards) {
+    // I problemi "generali" hanno una sezione dedicata: esclusi dalle tabelle per-area.
+    const areaOpenIssues = card.openIssues.filter((i) => i.subKey !== GENERAL_ISSUE_KEY);
+    const areaClosedIssues = card.closedIssues.filter((i) => i.subKey !== GENERAL_ISSUE_KEY);
+    const showPending = cat.daFare && card.pendingItems.length > 0;
+    const showDone = cat.fatte && card.doneItems.length > 0;
+    const showOpenIssues = cat.problemi && areaOpenIssues.length > 0;
+    const showClosedIssues = cat.problemi && areaClosedIssues.length > 0;
+    if (!showPending && !showDone && !showOpenIssues && !showClosedIssues) continue; // area senza contenuto
+
+    if (y > margin) y += 6; // distacco tra aree
+    checkPage(28); // spazio minimo per il titolo area; break solo se serve
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${card.areaLabel} — ${card.areaCode}`, margin, y);
+    y += 7;
+
+    // SVG schema tecnico area (parte della categoria Mappa)
+    if (cat.mappa) {
+      const svgEl = document.querySelector(
+        `[data-area-key="${card.areaKey}"] .eur-silo-diagram`,
+      ) as SVGElement | null;
+      if (svgEl) {
+        try {
+          const imgData = await svgToImageData(svgEl);
+          if (imgData) {
+            const imgWFull = 80;
+            const imgHFull = imgWFull * (700 / 680); // ~82mm a dimensione piena
+            const avail = pageH - margin - y; // spazio rimasto nella pagina corrente
+            let imgW = imgWFull;
+            let imgH = imgHFull;
+            if (imgHFull > avail) {
+              if (avail >= 35) {
+                // riduci lo schema per riempire lo spazio rimasto (niente grande vuoto)
+                imgH = avail;
+                imgW = imgWFull * (imgH / imgHFull);
+              } else {
+                // spazio troppo poco: pagina nuova, schema a dimensione piena
+                checkPage(imgHFull + 5);
+                imgW = imgWFull;
+                imgH = imgHFull;
+              }
+            }
+            doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
+            y += imgH + 5;
+          }
+        } catch {
+          y += 2;
+        }
+      }
+    }
+
+    if (showPending) {
       checkPage(20);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
@@ -3708,7 +3897,7 @@ async function generatePdfRiepilogo(
       y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
     }
 
-    if (card.doneItems.length > 0) {
+    if (showDone) {
       checkPage(20);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
@@ -3725,7 +3914,7 @@ async function generatePdfRiepilogo(
       y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
     }
 
-    if (card.openIssues.length > 0) {
+    if (showOpenIssues) {
       checkPage(20);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
@@ -3734,25 +3923,93 @@ async function generatePdfRiepilogo(
       autoTable(doc as Parameters<typeof autoTable>[0], {
         startY: y,
         margin: { left: margin, right: margin },
-        head: [["Componente", "Descrizione", "Tipo", "Dal"]],
-        body: card.openIssues.map((iss) => [
-          iss.subLabel,
-          iss.title,
-          ISSUE_TYPE_LABELS[iss.type],
-          formatDateUI(iss.reportedAt),
-        ]),
-        styles: { fontSize: 8 },
+        head: ISSUE_OPEN_HEAD_AREA,
+        body: areaOpenIssues.map((iss) => issueOpenRow(iss, iss.subLabel)),
+        styles: { fontSize: 8, overflow: "linebreak" },
         headStyles: { fillColor: [239, 68, 68] },
       });
       y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
     }
+
+    if (showClosedIssues) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Problemi chiusi / risolti", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: ISSUE_CLOSED_HEAD_AREA,
+        body: areaClosedIssues.map((iss) => issueClosedRow(iss, iss.subLabel)),
+        styles: { fontSize: 8, overflow: "linebreak" },
+        headStyles: { fillColor: [107, 114, 128] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+
+    // Foto dei problemi dell'area (aperti + chiusi)
+    if (cat.problemi) {
+      for (const iss of [...areaOpenIssues, ...areaClosedIssues]) {
+        await addIssuePhotos(iss);
+      }
+    }
   }
 
-  // Ultima pagina — urgenze riepilogo
-  const urgentCards = cards.filter((c) => c.hasUrgency);
+  // Problemi generali — non legati a un componente. Etichetta "Generale" (+ area se presente).
+  if (cat.problemi && (generalOpen.length > 0 || generalClosed.length > 0)) {
+    if (y > margin) y += 6;
+    checkPage(28);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Problemi generali", margin, y);
+    y += 7;
+
+    if (generalOpen.length > 0) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Aperti", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: ISSUE_OPEN_HEAD_GENERAL,
+        body: generalOpen.map((iss) => issueOpenRow(iss, generaleAreaLabel(iss))),
+        styles: { fontSize: 8, overflow: "linebreak" },
+        headStyles: { fillColor: [239, 68, 68] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+
+    if (generalClosed.length > 0) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Chiusi / risolti", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: ISSUE_CLOSED_HEAD_GENERAL,
+        body: generalClosed.map((iss) => issueClosedRow(iss, generaleAreaLabel(iss))),
+        styles: { fontSize: 8, overflow: "linebreak" },
+        headStyles: { fillColor: [107, 114, 128] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+
+    // Foto dei problemi generali (aperti + chiusi)
+    for (const iss of [...generalOpen, ...generalClosed]) {
+      await addIssuePhotos(iss);
+    }
+  }
+
+  // Urgenze riepilogo — concatenate dopo le aree, page-break solo se serve.
+  const urgentCards = cat.urgenze ? cards.filter((c) => c.hasUrgency) : [];
   if (urgentCards.length > 0) {
-    doc.addPage();
-    y = margin;
+    y += 8;
+    checkPage(24);
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
     doc.text("URGENZE RIEPILOGO", margin, y);
@@ -3763,14 +4020,10 @@ async function generatePdfRiepilogo(
       const urgentPending = card.pendingItems.filter((p) => p.priority === "alta");
       const urgentIssues = card.openIssues.filter((i) => i.type !== "osservazione");
       for (const p of urgentPending) {
-        checkPage(6);
-        doc.text(`[MANUTENZIONE] ${card.areaLabel} / ${p.subLabel}: ${p.title}`, margin, y);
-        y += 5;
+        writeWrappedLine(`[MANUTENZIONE] ${card.areaLabel} / ${p.subLabel}: ${p.title}`);
       }
       for (const iss of urgentIssues) {
-        checkPage(6);
-        doc.text(`[PROBLEMA] ${card.areaLabel} / ${iss.subLabel}: ${iss.title}`, margin, y);
-        y += 5;
+        writeWrappedLine(`[PROBLEMA] ${card.areaLabel} / ${iss.subLabel}: ${iss.title}`);
       }
     }
     y += 5;
@@ -3792,12 +4045,14 @@ function buildRiepilogoCards(
   reportPending: EuromeccPendingTask[],
   reportDone: EuromeccDoneTask[],
   reportIssues: EuromeccIssue[],
+  reportIssuesClosed: EuromeccIssue[] = [],
 ): RiepilogoCardData[] {
   return EUROMECC_AREA_KEYS.map((areaKey) => {
     const area = EUROMECC_AREAS[areaKey];
     const pendingItems = reportPending.filter((item) => item.areaKey === areaKey);
     const doneItems = reportDone.filter((item) => item.areaKey === areaKey);
     const openIssues = reportIssues.filter((item) => item.areaKey === areaKey);
+    const closedIssues = reportIssuesClosed.filter((item) => item.areaKey === areaKey);
     const hasUrgency =
       pendingItems.some((item) => item.priority === "alta") ||
       openIssues.some((item) => item.type !== "osservazione");
@@ -3811,11 +4066,15 @@ function buildRiepilogoCards(
       pendingItems,
       doneItems,
       openIssues,
+      closedIssues,
       hasUrgency,
     };
   }).filter(
     (card) =>
-      card.pendingItems.length > 0 || card.doneItems.length > 0 || card.openIssues.length > 0,
+      card.pendingItems.length > 0 ||
+      card.doneItems.length > 0 ||
+      card.openIssues.length > 0 ||
+      card.closedIssues.length > 0,
   );
 }
 
@@ -4093,6 +4352,9 @@ function RiepilogoTab(props: {
   reportPending: EuromeccPendingTask[];
   reportDone: EuromeccDoneTask[];
   reportIssues: EuromeccIssue[];
+  reportIssuesClosed: EuromeccIssue[];
+  reportGeneralOpen: EuromeccIssue[];
+  reportGeneralClosed: EuromeccIssue[];
 }) {
   const [exporting, setExporting] = useState(false);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -4100,6 +4362,7 @@ function RiepilogoTab(props: {
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("euromecc-riepilogo.pdf");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [pdfCategorie, setPdfCategorie] = useState<PdfCategorie>({ ...ALL_PDF_CATEGORIE });
 
   const cards = useMemo(
     () =>
@@ -4108,8 +4371,15 @@ function RiepilogoTab(props: {
         props.reportPending,
         props.reportDone,
         props.reportIssues,
+        props.reportIssuesClosed,
       ),
-    [props.snapshot, props.reportPending, props.reportDone, props.reportIssues],
+    [
+      props.snapshot,
+      props.reportPending,
+      props.reportDone,
+      props.reportIssues,
+      props.reportIssuesClosed,
+    ],
   );
 
   const sortedCards = useMemo(() => {
@@ -4178,7 +4448,12 @@ function RiepilogoTab(props: {
     setPdfShareHint(null);
     try {
       const preview = await openPreview({
-        source: () => generatePdfRiepilogo(props.snapshot, props.reportRange, sortedCards),
+        source: () =>
+          generatePdfRiepilogo(props.snapshot, props.reportRange, sortedCards, {
+            categorie: pdfCategorie,
+            generalOpen: props.reportGeneralOpen,
+            generalClosed: props.reportGeneralClosed,
+          }),
         fileName: `euromecc-riepilogo-${new Date().toISOString().slice(0, 10)}.pdf`,
         previousUrl: pdfPreviewUrl,
       });
@@ -4206,6 +4481,36 @@ function RiepilogoTab(props: {
             >
               {item.label}
             </button>
+          ))}
+        </div>
+        <div
+          className="eur-pdf-categorie"
+          style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}
+        >
+          {(
+            [
+              { key: "mappa", label: "Mappa" },
+              { key: "kpi", label: "KPI" },
+              { key: "daFare", label: "Da fare" },
+              { key: "fatte", label: "Fatte" },
+              { key: "problemi", label: "Problemi" },
+              { key: "urgenze", label: "Urgenze" },
+            ] as Array<{ key: keyof PdfCategorie; label: string }>
+          ).map((item) => (
+            <label
+              key={item.key}
+              style={{ display: "flex", alignItems: "center", gap: 4 }}
+              title={`Includi "${item.label}" nel PDF`}
+            >
+              <input
+                type="checkbox"
+                checked={pdfCategorie[item.key]}
+                onChange={(event) =>
+                  setPdfCategorie((prev) => ({ ...prev, [item.key]: event.target.checked }))
+                }
+              />
+              {item.label}
+            </label>
           ))}
         </div>
         <button
@@ -4512,6 +4817,24 @@ export default function NextEuromeccPage() {
   const reportIssues = useMemo(
     () => openIssues.filter((item) => withinRange(item.reportedAt, reportRange)),
     [openIssues, reportRange],
+  );
+  const reportIssuesClosed = useMemo(
+    () =>
+      closedIssues.filter((item) =>
+        withinRange(item.closedDate ?? item.reportedAt, reportRange),
+      ),
+    [closedIssues, reportRange],
+  );
+  const reportGeneralOpen = useMemo(
+    () => openGeneralIssues.filter((item) => withinRange(item.reportedAt, reportRange)),
+    [openGeneralIssues, reportRange],
+  );
+  const reportGeneralClosed = useMemo(
+    () =>
+      closedGeneralIssues.filter((item) =>
+        withinRange(item.closedDate ?? item.reportedAt, reportRange),
+      ),
+    [closedGeneralIssues, reportRange],
   );
   const reportUrgencies = useMemo(
     () =>
@@ -5702,6 +6025,9 @@ export default function NextEuromeccPage() {
               reportPending={reportPending}
               reportDone={reportDone}
               reportIssues={reportIssues}
+              reportIssuesClosed={reportIssuesClosed}
+              reportGeneralOpen={reportGeneralOpen}
+              reportGeneralClosed={reportGeneralClosed}
             />
           ) : null}
 
