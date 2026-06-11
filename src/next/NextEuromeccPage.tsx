@@ -3536,25 +3536,50 @@ REGOLE:
 
 // --- RIEPILOGO TAB ---
 
+// Rasterizza un SVG del DOM in JPEG ad alta qualita per il PDF.
+// Dimensiona dal viewBox (i diagrammi usano width="100%", quindi naturalWidth non
+// e' affidabile): clona l'SVG, imposta width/height = viewBox x SCALE, sfondo bianco,
+// esporta JPEG q~0.92 (nitido ma leggero). Ingombro in mm invariato.
+// Scala di rasterizzazione: compromesso nitidezza/peso. 1.5x con JPEG q~0.92 mantiene
+// i disegni leggibili tenendo il PDF condivisibile (il PNG 2x gonfiava il file a ~31MB).
+const SVG_RASTER_SCALE = 1.5;
+const SVG_RASTER_JPEG_QUALITY = 0.92;
+
 async function svgToImageData(svgElement: SVGElement): Promise<string | null> {
   try {
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svgElement);
+    const SCALE = SVG_RASTER_SCALE;
+    let vbW = 1480;
+    let vbH = 860;
+    const vb = svgElement.getAttribute("viewBox");
+    if (vb) {
+      const parts = vb.split(/[\s,]+/).map(Number);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        vbW = parts[2];
+        vbH = parts[3];
+      }
+    }
+    const renderW = Math.max(1, Math.round(vbW * SCALE));
+    const renderH = Math.max(1, Math.round(vbH * SCALE));
+
+    const clone = svgElement.cloneNode(true) as SVGElement;
+    clone.setAttribute("width", String(renderW));
+    clone.setAttribute("height", String(renderH));
+    const svgStr = new XMLSerializer().serializeToString(clone);
     const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(svgBlob);
     return await new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || 1480;
-        canvas.height = img.naturalHeight || 860;
+        canvas.width = renderW;
+        canvas.height = renderH;
         const ctx = canvas.getContext("2d");
         if (!ctx) { reject(new Error("no ctx")); return; }
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, renderW, renderH);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL("image/jpeg", 0.85));
+        resolve(canvas.toDataURL("image/jpeg", SVG_RASTER_JPEG_QUALITY));
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("img load failed")); };
       img.src = url;
@@ -3783,7 +3808,7 @@ async function generatePdfRiepilogo(
 
   // Mappa SVG come immagine
   if (cat.mappa) {
-    const mapEl = document.querySelector(".eur-map") as SVGElement | null;
+    const mapEl = document.querySelector("#eur-pdf-capture .eur-map") as SVGElement | null;
     if (mapEl) {
       try {
         const imgData = await svgToImageData(mapEl);
@@ -3843,7 +3868,7 @@ async function generatePdfRiepilogo(
     // SVG schema tecnico area (parte della categoria Mappa)
     if (cat.mappa) {
       const svgEl = document.querySelector(
-        `[data-area-key="${card.areaKey}"] .eur-silo-diagram`,
+        `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
       ) as SVGElement | null;
       if (svgEl) {
         try {
@@ -4344,6 +4369,33 @@ function RiepilogoAreaCard({ card }: { card: RiepilogoCardData }) {
   );
 }
 
+// Restituisce il diagramma SVG dell'area (stessa mappatura del modale dettaglio) o
+// null per le aree generiche senza disegno. Riusato per il contenitore nascosto di
+// cattura PDF. I diagrammi sono in sola visualizzazione: onSelectSub = noop.
+function renderAreaDiagram(area: EuromeccAreaStatic, snapshot: EuromeccSnapshot) {
+  const noop = () => undefined;
+  if (area.type === "silo") {
+    return <SiloDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+  }
+  if (area.key === "carico1" || area.key === "carico2") {
+    return <CaricoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+  }
+  if (area.key === "compressore" || area.key === "compressore2") {
+    return (
+      <SalaCompressoriDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />
+    );
+  }
+  if (area.key === "caricoRail") {
+    return <CaricoTrenoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+  }
+  if (area.key === "scaricoFornitore") {
+    return (
+      <ScaricoFornitoreDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />
+    );
+  }
+  return null;
+}
+
 function RiepilogoTab(props: {
   snapshot: EuromeccSnapshot;
   reportRange: EuromeccRange;
@@ -4563,6 +4615,37 @@ function RiepilogoTab(props: {
         onCopyLink={() => void handleCopyPDFText()}
         onWhatsApp={handleWhatsAppPDF}
       />
+      {/* Contenitore nascosto off-screen (NON display:none): fornisce al PDF la mappa
+          generale (.eur-map) e lo schema di ogni area con disegno ([data-area-key]
+          .eur-silo-diagram). Le query di cattura sono scopate a #eur-pdf-capture. */}
+      <div
+        id="eur-pdf-capture"
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: -100000,
+          top: 0,
+          width: 1480,
+          pointerEvents: "none",
+          opacity: 0,
+        }}
+      >
+        <MapSvg
+          snapshot={props.snapshot}
+          currentArea={EUROMECC_AREA_KEYS[0] ?? ""}
+          onSelectArea={() => undefined}
+        />
+        {EUROMECC_AREA_KEYS.map((key) => {
+          const area = EUROMECC_AREAS[key];
+          const diagram = area ? renderAreaDiagram(area, props.snapshot) : null;
+          if (!diagram) return null;
+          return (
+            <div key={key} data-area-key={key} style={{ width: 700 }}>
+              {diagram}
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }
