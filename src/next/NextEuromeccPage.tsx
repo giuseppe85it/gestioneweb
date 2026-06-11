@@ -3976,13 +3976,14 @@ async function generatePdfRiepilogo(
   // --- Stime di altezza per il keep-with-next "area atomica" (PUNTO 2): servono a decidere
   // PRIMA di stampare il titolo se l'intera area (titolo + schema/tabelle + problemi) entra nello
   // spazio rimasto; se non entra, l'area intera va a pagina nuova (problemi mai staccati dal silo).
+  const SIDE_COL_W = 30; // larghezza stimata della colonna "Lavoro" quando la tabella e' a FIANCO
   const estimateTableH = (body: string[][], fullWidth: boolean): number => {
-    const colW = fullWidth ? 78 : 33; // larghezza stimata della colonna "Lavoro"
+    const colW = fullWidth ? 78 : SIDE_COL_W; // larghezza stimata della colonna "Lavoro"
     doc.setFontSize(FS_BODY);
     let h = 10 + 9; // titolo sezione + gap + riga intestazione
     for (const row of body) {
       const lines = Math.max(1, (doc.splitTextToSize(row[1] ?? "", colW) as string[]).length);
-      h += lines * 4 + 5; // ~4mm per riga di testo + padding cella
+      h += lines * 4.4 + 5; // ~4.4mm per riga di testo + padding cella (stima leggermente prudente)
     }
     return h;
   };
@@ -4043,29 +4044,52 @@ async function generatePdfRiepilogo(
     const doneHead = [["Componente", "Lavoro", "Data", "Tecnico"]];
     const doneBody = card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]);
 
+    const areaTables: Array<{
+      title: string;
+      head: string[][];
+      body: string[][];
+      color: [number, number, number];
+    }> = [];
+    if (showPending)
+      areaTables.push({ title: "Da fare", head: pendingHead, body: pendingBody, color: [59, 130, 246] });
+    if (showDone)
+      areaTables.push({ title: "Fatte nel periodo", head: doneHead, body: doneBody, color: [34, 197, 94] });
+
+    // Classificazione (ramo CON schema): una tabella sta ACCANTO allo schema solo se e' piccola —
+    // poche righe, nessuna riga che andrebbe a capo troppe volte nella colonna stretta, e altezza
+    // stimata non superiore allo schema. Le tabelle lunghe o con RIGHE MOLTO ALTE vanno a PIENA
+    // LARGHEZZA sotto lo schema (colonna larga = meno righe a capo): niente riga orfana ne pagina
+    // semivuota, e lo schema non deve "inseguire" una tabella che si spezza nella colonna stretta.
+    const isSideTable = (body: string[][]): boolean => {
+      if (body.length > FULLWIDTH_ROW_THRESHOLD) return false;
+      doc.setFontSize(FS_BODY);
+      const tallRow = body.some((row) => (doc.splitTextToSize(row[1] ?? "", SIDE_COL_W) as string[]).length > 3);
+      if (tallRow) return false;
+      return estimateTableH(body, false) <= SCHEMA_FULL_H;
+    };
+    const sideTables: typeof areaTables = [];
+    const fullTables: typeof areaTables = [];
+    {
+      let gf = false;
+      for (const t of areaTables) {
+        if (!gf && isSideTable(t.body)) sideTables.push(t);
+        else {
+          gf = true;
+          fullTables.push(t);
+        }
+      }
+    }
+
     // PUNTO 2 (area atomica): stimo l'altezza dell'INTERA area (titolo + schema/tabelle + problemi)
     // e, se non entra nello spazio rimasto ma starebbe in una pagina intera, mando TUTTA l'area a
     // pagina nuova: i problemi non si staccano mai dal loro silo. Caso limite (area piu alta di una
     // pagina): parte qui e prosegue (puo spezzarsi solo una tabella enorme, non i problemi).
-    const estTables: string[][][] = [];
-    if (showPending) estTables.push(pendingBody);
-    if (showDone) estTables.push(doneBody);
-    let goneFullEst = false;
-    let sideTablesEstH = 0;
-    let fullTablesEstH = 0;
-    let hasSideEst = false;
-    for (const b of estTables) {
-      if (!goneFullEst && b.length <= FULLWIDTH_ROW_THRESHOLD) {
-        sideTablesEstH += estimateTableH(b, false);
-        hasSideEst = true;
-      } else {
-        goneFullEst = true;
-        fullTablesEstH += estimateTableH(b, true);
-      }
-    }
+    const sideTablesEstH = sideTables.reduce((s, t) => s + estimateTableH(t.body, false), 0);
+    const fullTablesEstH = fullTables.reduce((s, t) => s + estimateTableH(t.body, true), 0);
+    const hasSideEst = sideTables.length > 0;
     const columnBlockEstH = schemaEl
       ? (hasSideEst ? Math.max(sideTablesEstH, SCHEMA_MIN_H) : SCHEMA_FULL_H) + fullTablesEstH
-      : sideTablesEstH + fullTablesEstH;
+      : areaTables.reduce((s, t) => s + estimateTableH(t.body, true), 0); // senza schema: tutte a piena larghezza
     let problemsEstH = 0;
     if (showOpenIssues || showClosedIssues) {
       problemsEstH += 8; // gap + titolo "PROBLEMI"
@@ -4107,47 +4131,31 @@ async function generatePdfRiepilogo(
     }
 
     if (schema) {
-      // Due colonne: schema a SINISTRA (incorniciato e centrato), tabelle a DESTRA.
-      // Tabelle corte (<= soglia) accanto allo schema; tabelle lunghe a piena larghezza sotto.
+      // Due colonne: schema a SINISTRA, tabelle corte a DESTRA, tabelle lunghe/alte a piena
+      // larghezza SOTTO (classificazione sideTables/fullTables gia calcolata sopra). Lo schema
+      // viene DISEGNATO PER PRIMO sulla pagina del titolo: cosi' non puo "scivolare" sulla pagina
+      // dove una tabella che si spezza e' finita, e l'altezza si basa sulla stima (niente calcolo
+      // a cavallo di pagina). Niente piu buco bianco a fianco ne riga orfana nella colonna stretta.
       const top = y;
       const rightX = COL_RIGHT_X;
-      const areaTables: Array<{
-        title: string;
-        head: string[][];
-        body: string[][];
-        color: [number, number, number];
-      }> = [];
-      if (showPending)
-        areaTables.push({ title: "Da fare", head: pendingHead, body: pendingBody, color: [59, 130, 246] });
-      if (showDone)
-        areaTables.push({ title: "Fatte nel periodo", head: doneHead, body: doneBody, color: [34, 197, 94] });
-
-      // 1) Renderizzo PRIMA le tabelle corte nella colonna destra: cosi' ne conosco l'altezza reale.
-      let yRight = top;
-      let goneFull = false;
-      const fullTables: typeof areaTables = [];
-      for (const t of areaTables) {
-        if (!goneFull && t.body.length <= FULLWIDTH_ROW_THRESHOLD) {
-          yRight = renderSectionTable(t.title, t.head, t.body, t.color, yRight, rightX);
-        } else {
-          goneFull = true;
-          fullTables.push(t);
-        }
-      }
-      // 2) PUNTO 1 (pareggio): dimensiono lo schema all'altezza del contenuto affiancato, entro
-      // [SCHEMA_MIN_H, SCHEMA_FULL_H] e dentro la pagina. Schema e tabella finiscono ~insieme:
-      // niente piu buco bianco a fianco. Senza tabella a fianco lo schema resta a piena altezza.
-      const sideContentH = yRight - top;
+      // 1) Altezza schema: pareggio con la stima delle tabelle affiancate, entro [MIN, FULL] e in pagina.
+      const sideEstH = sideTables.reduce((s, t) => s + estimateTableH(t.body, false), 0);
       const availH = CONTENT_BOTTOM - top;
       let schemaH = SCHEMA_FULL_H;
-      if (sideContentH > 0) schemaH = Math.min(Math.max(SCHEMA_MIN_H, sideContentH), SCHEMA_FULL_H);
+      if (sideEstH > 0) schemaH = Math.min(Math.max(SCHEMA_MIN_H, sideEstH), SCHEMA_FULL_H);
       schemaH = Math.min(schemaH, availH); // mai oltre il fondo pagina (sicurezza caso limite)
       const schemaW = SCHEMA_W * (schemaH / SCHEMA_FULL_H);
       const schemaX = COL_LEFT_X + (85 - schemaW) / 2;
+      // 2) Disegno lo schema PRIMA (immagine: non avanza pagina) -> resta sulla pagina del titolo.
       drawFramedImage(schema.data, schemaX, top, schemaW, schemaH);
       const schemaBottom = top + schemaH;
+      // 3) Tabelle corte a FIANCO (colonna destra): piccole per costruzione, non spezzano la pagina.
+      let yRight = top;
+      for (const t of sideTables) {
+        yRight = renderSectionTable(t.title, t.head, t.body, t.color, yRight, rightX);
+      }
       y = Math.max(schemaBottom, yRight) + 4;
-      // 3) Tabelle lunghe a piena larghezza sotto schema+tabelle.
+      // 4) Tabelle lunghe/alte a PIENA LARGHEZZA sotto (colonna larga: meno righe a capo, break pulito).
       for (const t of fullTables) {
         checkPage(24);
         y = renderSectionTable(t.title, t.head, t.body, t.color, y, margin);
