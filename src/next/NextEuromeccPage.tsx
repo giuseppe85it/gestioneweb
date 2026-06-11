@@ -4099,7 +4099,8 @@ async function generatePdfRiepilogo(
           try {
             const imgData = await svgToImageData(svgEl);
             if (imgData) {
-              const tw = 80;
+              // miniatura compatta: lo schema grande e' gia nella sezione dell'area.
+              const tw = 50;
               const th = tw * (700 / 680);
               schema = { data: imgData, w: tw, h: th };
             }
@@ -4110,7 +4111,7 @@ async function generatePdfRiepilogo(
       }
 
       // Testo a DESTRA della miniatura (o a piena larghezza se l'area non ha disegno).
-      const textLeftX = schema ? margin + 85 : margin;
+      const textLeftX = schema ? margin + 55 : margin;
       const textW = pageW - margin - textLeftX;
       const entries = [
         ...urgentPending.map((p) => `[MANUTENZIONE] ${p.subLabel}: ${p.title}`),
@@ -4122,8 +4123,8 @@ async function generatePdfRiepilogo(
       const textBlockH = 6 + textLinesCount * 5;
       const blockH = Math.max(schema ? schema.h : 0, textBlockH);
 
-      y += 4;
-      checkPage(blockH + 4);
+      y += 2;
+      checkPage(blockH + 3);
       const top = y;
       if (schema) {
         doc.addImage(schema.data, "JPEG", margin, top, schema.w, schema.h);
@@ -4141,7 +4142,7 @@ async function generatePdfRiepilogo(
           ty += 5;
         }
       }
-      y = Math.max(top + (schema ? schema.h : 0), ty) + 6;
+      y = Math.max(top + (schema ? schema.h : 0), ty) + 3;
     }
     y += 5;
     doc.setFontSize(8);
