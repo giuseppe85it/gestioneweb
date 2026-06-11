@@ -3761,6 +3761,9 @@ async function generatePdfRiepilogo(
   const COL_LEFT_X = M; // colonna sinistra (schema)
   const COL_RIGHT_X = M + 85; // colonna destra (tabelle), accanto allo schema
   const SCHEMA_W = 80; // larghezza unica dello schema area
+  // Soglia righe per le tabelle Da fare/Fatte nelle aree CON schema: <= soglia restano accanto
+  // allo schema (colonna stretta), oltre la soglia vanno a piena larghezza sotto (piu leggibili).
+  const FULLWIDTH_ROW_THRESHOLD = 4;
   const FRAME_PAD = 2; // padding interno cornice schema
   const FS_META = 8; // testo header/footer (periodo, paginazione, data)
   const FS_BODY = 9; // corpo tabelle
@@ -3801,7 +3804,9 @@ async function generatePdfRiepilogo(
     doc.setTextColor(0, 0, 0);
     autoTable(doc as Parameters<typeof autoTable>[0], {
       startY: startY + 4,
-      margin: { left: leftX, right: margin },
+      // FIX impaginazione: top/bottom riservano le fasce header/footer, cosi' una tabella che
+      // continua a pagina nuova riparte SOTTO l'header (a CONTENT_TOP) — niente overlap col titolo.
+      margin: { top: CONTENT_TOP, bottom: pageH - CONTENT_BOTTOM, left: leftX, right: margin },
       head,
       body,
       styles: { fontSize: FS_BODY, overflow: "linebreak", cellPadding: 2.5 },
@@ -3905,17 +3910,19 @@ async function generatePdfRiepilogo(
       { label: "Fatte", value: String(cards.reduce((s, c) => s + c.doneItems.length, 0)) },
       { label: "Urgenze", value: String(cards.filter((c) => c.hasUrgency).length) },
     ];
-    const kpiW = (pageW - margin * 2) / 4;
+    // 4 riquadri con 3 gap interni, allineati esattamente entro [margin, pageW - margin].
+    const KPI_GAP = 4;
+    const kpiW = (pageW - margin * 2 - KPI_GAP * 3) / 4;
     kpiValues.forEach((kpi, i) => {
-      const x = margin + i * kpiW;
+      const x = margin + i * (kpiW + KPI_GAP);
       doc.setFillColor(245, 245, 245);
-      doc.rect(x, y, kpiW - 2, 16, "F");
+      doc.rect(x, y, kpiW, 16, "F");
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
-      doc.text(kpi.value, x + kpiW / 2 - 1, y + 9, { align: "center" });
+      doc.text(kpi.value, x + kpiW / 2, y + 9, { align: "center" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      doc.text(kpi.label, x + kpiW / 2 - 1, y + 14, { align: "center" });
+      doc.text(kpi.label, x + kpiW / 2, y + 14, { align: "center" });
     });
     y += 22;
   }
@@ -3943,19 +3950,23 @@ async function generatePdfRiepilogo(
     const legendItems = statusLegendItems();
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
+    const LEG_DOT = 5; // offset del testo dopo il pallino colorato
+    const LEG_GAP = 7; // spazio tra una voce e la successiva
     let lx = margin;
     for (const item of legendItems) {
+      const itemW = LEG_DOT + doc.getTextWidth(item.label);
+      // a capo se la voce sborderebbe il margine destro: la legenda resta entro [margin, pageW - margin].
+      if (lx > margin && lx + itemW > pageW - margin) {
+        lx = margin;
+        y += 7;
+      }
       const rgb = item.color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
       if (rgb) {
         doc.setFillColor(parseInt(rgb[1], 16), parseInt(rgb[2], 16), parseInt(rgb[3], 16));
         doc.circle(lx + 2, y + 2, 2, "F");
       }
-      doc.text(item.label, lx + 5, y + 3.5);
-      lx += 32;
-      if (lx > pageW - margin - 20) {
-        lx = margin;
-        y += 7;
-      }
+      doc.text(item.label, lx + LEG_DOT, y + 3.5);
+      lx += itemW + LEG_GAP;
     }
     y += 8;
   }
@@ -4034,19 +4045,42 @@ async function generatePdfRiepilogo(
 
     if (schema) {
       // Due colonne: schema a sinistra (incorniciato e centrato), tabelle a destra.
+      // Tabelle corte (<= soglia) accanto allo schema; tabelle lunghe a piena larghezza sotto
+      // (piu leggibili, meno righe spezzate). Una volta passati a piena larghezza ci si resta,
+      // cosi' l'ordine Da fare -> Fatte non si inverte mai.
       const top = y;
       const schemaX = COL_LEFT_X + (85 - schema.w) / 2;
       drawFramedImage(schema.data, schemaX, top, schema.w, schema.h);
       const schemaBottom = top + schema.h;
       const rightX = COL_RIGHT_X;
+      const areaTables: Array<{
+        title: string;
+        head: string[][];
+        body: string[][];
+        color: [number, number, number];
+      }> = [];
+      if (showPending)
+        areaTables.push({ title: "Da fare", head: pendingHead, body: pendingBody, color: [59, 130, 246] });
+      if (showDone)
+        areaTables.push({ title: "Fatte nel periodo", head: doneHead, body: doneBody, color: [34, 197, 94] });
+
       let yRight = top;
-      if (showPending) {
-        yRight = renderSectionTable("Da fare", pendingHead, pendingBody, [59, 130, 246], yRight, rightX);
-      }
-      if (showDone) {
-        yRight = renderSectionTable("Fatte nel periodo", doneHead, doneBody, [34, 197, 94], yRight, rightX);
+      let goneFull = false;
+      const fullTables: typeof areaTables = [];
+      for (const t of areaTables) {
+        if (!goneFull && t.body.length <= FULLWIDTH_ROW_THRESHOLD) {
+          yRight = renderSectionTable(t.title, t.head, t.body, t.color, yRight, rightX);
+        } else {
+          goneFull = true;
+          fullTables.push(t);
+        }
       }
       y = Math.max(schemaBottom, yRight) + 4;
+      // Tabelle lunghe a piena larghezza sotto lo schema (checkPage prima: titolo mai orfano).
+      for (const t of fullTables) {
+        checkPage(24);
+        y = renderSectionTable(t.title, t.head, t.body, t.color, y, margin);
+      }
     } else {
       // Nessuno schema: Da fare/Fatte a piena larghezza (come prima).
       if (showPending) {
