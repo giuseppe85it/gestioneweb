@@ -4235,9 +4235,11 @@ async function generatePdfRiepilogo(
       }
       y = Math.max(top + (schema ? schema.h : 0), ty) + 3;
     }
-    // R4: firma sempre staccata dall'ultimo contenuto (mai incollata a foto/tabella).
-    const firmaH = 8;
-    const stacco = 14;
+    // R4: firma staccata dall'ultimo contenuto ma SENZA pagina dedicata quasi vuota.
+    // Stacco piccolo + altezza reale del blocco (una riga a fontSize 8): resta in fondo alle
+    // urgenze sulla pagina corrente quando c'e spazio, va a pagina nuova SOLO se non entra.
+    const firmaH = 4; // altezza reale di una riga di firma (fontSize 8)
+    const stacco = 8; // stacco minimo sopra la firma
     if (y + stacco + firmaH > CONTENT_BOTTOM) {
       doc.addPage();
       y = CONTENT_TOP;
