@@ -3995,7 +3995,12 @@ async function generatePdfRiepilogo(
       : null;
     const schemaFullH = SCHEMA_W * (700 / 680); // ~82mm
     const titleH = 7;
-    const firstBlockH = schemaEl ? schemaFullH + 2 : 30; // schema atomico, oppure min contenuto
+    // Spazio minimo da garantire prima di iniziare un'area (titolo mai orfano). Con schema NON
+    // serve riservare l'intera altezza: lo shrink-to-fit sotto adatta lo schema allo spazio reale
+    // (mai sotto SCHEMA_MIN_H, resta leggibile e "titolo+schema uniti"). Cosi' un'area entra anche
+    // a fondo pagina invece di saltare a pagina nuova lasciando meta' pagina vuota.
+    const SCHEMA_MIN_H = 62; // schema mai ridotto sotto ~62mm prima di forzare pagina nuova
+    const firstBlockH = schemaEl ? SCHEMA_MIN_H : 30; // schema ridotto adattabile, oppure min contenuto
     if (CONTENT_BOTTOM - y < titleH + firstBlockH) {
       doc.addPage();
       y = CONTENT_TOP;
@@ -4174,10 +4179,20 @@ async function generatePdfRiepilogo(
     doc.setLineWidth(0.2);
     doc.line(margin, y + GAP_AFTER_TITLE, pageW - margin, y + GAP_AFTER_TITLE);
     y += 8;
-    for (const card of urgentCards) {
+    // Pre-filtro le urgenze con contenuto reale, per riconoscere l'ULTIMA: la firma resta
+    // attaccata all'ultimo blocco urgenza (blocco unico), mai su una pagina dedicata.
+    const urgentRenderable = urgentCards.filter(
+      (c) =>
+        c.pendingItems.some((p) => p.priority === "alta") ||
+        c.openIssues.some((i) => i.type !== "osservazione"),
+    );
+    const FIRMA_STACCO = 8; // stacco minimo sopra la firma
+    const FIRMA_H = 4; // altezza reale di una riga di firma (fontSize 8)
+    const FIRMA_RESERVE = FIRMA_STACCO + FIRMA_H; // riservato insieme all'ultima urgenza
+    for (let idx = 0; idx < urgentRenderable.length; idx += 1) {
+      const card = urgentRenderable[idx];
       const urgentPending = card.pendingItems.filter((p) => p.priority === "alta");
       const urgentIssues = card.openIssues.filter((i) => i.type !== "osservazione");
-      if (urgentPending.length === 0 && urgentIssues.length === 0) continue;
 
       // Schema dell'area (se ha un disegno) -> a SINISTRA, come per le aree.
       let schema: { data: string; w: number; h: number } | null = null;
@@ -4213,8 +4228,11 @@ async function generatePdfRiepilogo(
       const textBlockH = 6 + textLinesCount * 5;
       const blockH = Math.max(schema ? schema.h : 0, textBlockH);
 
+      // L'ultima urgenza riserva anche lo spazio della firma: se non entra, vanno a pagina nuova
+      // INSIEME (niente firma orfana, niente pagina con sola firma).
+      const isLast = idx === urgentRenderable.length - 1;
       y += 2;
-      checkPage(blockH + 3);
+      checkPage(blockH + 3 + (isLast ? FIRMA_RESERVE : 0));
       const top = y;
       if (schema) {
         const miniX = margin + (55 - schema.w) / 2;
@@ -4235,16 +4253,14 @@ async function generatePdfRiepilogo(
       }
       y = Math.max(top + (schema ? schema.h : 0), ty) + 3;
     }
-    // R4: firma staccata dall'ultimo contenuto ma SENZA pagina dedicata quasi vuota.
-    // Stacco piccolo + altezza reale del blocco (una riga a fontSize 8): resta in fondo alle
-    // urgenze sulla pagina corrente quando c'e spazio, va a pagina nuova SOLO se non entra.
-    const firmaH = 4; // altezza reale di una riga di firma (fontSize 8)
-    const stacco = 8; // stacco minimo sopra la firma
-    if (y + stacco + firmaH > CONTENT_BOTTOM) {
+    // R4: firma come blocco unico con l'ultima urgenza. Lo spazio e' gia stato riservato sopra
+    // (FIRMA_RESERVE sull'ultima card), quindi qui resta sulla pagina corrente; il fallback a
+    // pagina nuova scatta solo se non c'erano urgenze reali che la trascinassero con se'.
+    if (y + FIRMA_STACCO + FIRMA_H > CONTENT_BOTTOM) {
       doc.addPage();
       y = CONTENT_TOP;
     } else {
-      y += stacco;
+      y += FIRMA_STACCO;
     }
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
