@@ -682,3 +682,23 @@ PUNTO APERTO UX:
 - Backup SOLO in `C:\tmp`, mai file `.bak` nel repo.
 - Commit a fine di ogni lotto verde nella stessa sessione.
 - Piani Plan-mode salvati in `docs/`.
+
+## 2026-06-11
+
+**PDF Riepilogo Euromecc: restyling + impaginazione professionale.**
+
+Decisione: adottato uno standard grafico per il PDF del Riepilogo Euromecc (modulo NEXT, route /next/euromecc, funzione generatePdfRiepilogo in src/next/NextEuromeccPage.tsx), replicando dentro il file lo stile gia presente in pdfEngine.ts SENZA importarlo ne modificarlo. Elementi: logo Ghielmicementi (public/logo.png) + header "EUROMECC — Riepilogo impianto" + periodo + footer "Pagina X di Y" e data su ogni pagina; margini 18mm con sistema di costanti centrali; titoli area con linea sotto; sottotitoli maiuscoletto grigio; cornice bianca uniforme + centratura per tutti gli schemi (tinte SVG NON toccate, schermo invariato); tabelle con respiro e righe alternate.
+
+Capitolato impaginazione deciso dal PO via domande numerate Q1-Q12: prima pagina = KPI + mappa media (no copertina dedicata); KPI e stile tabelle invariati; schema e tabella affiancati PAREGGIATI in altezza (eliminato il "buco bianco a fianco"); AREA ATOMICA = titolo + schema + tabelle + problemi dello stesso silo restano uniti, e se non entrano l'area intera va a pagina nuova (mai sezioni spezzate; i problemi non si staccano piu dal loro silo); tabella con riga molto alta (testo lungo) → resa a piena larghezza sotto lo schema invece che soffocata nella colonna stretta; firma coesa con l'ultima urgenza (niente pagina finale con sola firma).
+
+Tradeoff esplicitamente accettato dal PO: l'atomicita delle aree e la leggibilita possono aumentare il numero di pagine (es. filtro "Da fare" 2→3, "tutto" ~15) — preferito ordine/leggibilita alla compattazione.
+
+Commit principali: restyling 65022cda; fix overlap header/tabella + tabelle larghe + KPI nei margini 0f6edfe8; firma blocco-unico dd8d49d0; packing aree senza schema dfd4dd7a; pareggio colonne + area atomica f0865d38; fix tabella riga-alta nel ramo 2-colonne 81ee89ce. Tutto in locale, push a discrezione del PO.
+
+**Metodo: auto-verifica visiva di Claude Code via Playwright.**
+
+Decisione/scoperta: Claude Code puo auto-verificare l'output PDF generando il file reale in locale, catturando screenshot e analizzandone le posizioni testo (pdfjs), iterando fino a risoluzione del difetto. Validato sui fix di impaginazione Euromecc (confronto BEFORE/AFTER reale via stash della patch). Riduce i cicli di download manuale del PO. Limite dichiarato: i casi non coperti dal dataset in sessione (es. filtri categoria con 0 dati) restano da validare al PO con dati reali; Claude Code deve DICHIARARLO e non simulare la verifica.
+
+**Euromecc: punti sospesi.**
+
+Restano aperti su Euromecc, come capitoli separati: (1) etichette sovrapposte sulla mappa generale (codici sili vicini 2A/2B, 6A/6B che si accavallano) — tocca il disegno della mappa, non l'impaginazione, da fare come intervento dedicato; (2) push su Vercel del lavoro PDF (tutto committato in locale, non ancora online).
