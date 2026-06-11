@@ -3676,39 +3676,6 @@ function issueDettagli(iss: EuromeccIssue): string {
   return parts.length ? parts.join(" — ") : "—";
 }
 
-// Riga tabella problema APERTO: cosa / quando / chi / come-perche.
-function issueOpenRow(iss: EuromeccIssue, label: string): string[] {
-  return [
-    label,
-    iss.title,
-    ISSUE_TYPE_LABELS[iss.type],
-    formatDateUI(iss.reportedAt),
-    iss.reportedBy || "—",
-    issueDettagli(iss),
-  ];
-}
-
-// Riga tabella problema CHIUSO/RISOLTO: aggiunge la data di chiusura.
-function issueClosedRow(iss: EuromeccIssue, label: string): string[] {
-  return [
-    label,
-    iss.title,
-    ISSUE_TYPE_LABELS[iss.type],
-    formatDateUI(iss.reportedAt),
-    iss.closedDate ? formatDateUI(iss.closedDate) : "—",
-    iss.reportedBy || "—",
-    issueDettagli(iss),
-  ];
-}
-
-const ISSUE_OPEN_HEAD_AREA = [["Componente", "Descrizione", "Tipo", "Dal", "Segnalato da", "Dettagli"]];
-const ISSUE_CLOSED_HEAD_AREA = [
-  ["Componente", "Descrizione", "Tipo", "Dal", "Chiuso il", "Segnalato da", "Dettagli"],
-];
-const ISSUE_OPEN_HEAD_GENERAL = [["Area", "Descrizione", "Tipo", "Dal", "Segnalato da", "Dettagli"]];
-const ISSUE_CLOSED_HEAD_GENERAL = [
-  ["Area", "Descrizione", "Tipo", "Dal", "Chiuso il", "Segnalato da", "Dettagli"],
-];
 
 // Etichetta area per un problema generale: nome area se presente, altrimenti "Impianto".
 // Mai mostrare la stringa tecnica "__generale__".
@@ -3772,57 +3739,108 @@ async function generatePdfRiepilogo(
     }
   };
 
-  // Scrive testo andando a capo entro la larghezza utile (evita troncamenti al margine).
-  const usableW = pageW - margin * 2;
-  const writeWrappedLine = (text: string, lineH = 5) => {
-    const lines = doc.splitTextToSize(text, usableW) as string[];
-    for (const line of lines) {
-      checkPage(lineH + 1);
-      doc.text(line, margin, y);
-      y += lineH;
-    }
+  // Titolo sezione + tabella autotable a partire da (leftX, startY); ritorna la Y finale.
+  // leftX = margin -> piena larghezza; leftX = margin+85 -> colonna destra (accanto allo schema).
+  const renderSectionTable = (
+    title: string,
+    head: string[][],
+    body: string[][],
+    headColor: [number, number, number],
+    startY: number,
+    leftX: number,
+  ): number => {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, leftX, startY);
+    autoTable(doc as Parameters<typeof autoTable>[0], {
+      startY: startY + 4,
+      margin: { left: leftX, right: margin },
+      head,
+      body,
+      styles: { fontSize: 8, overflow: "linebreak" },
+      headStyles: { fillColor: headColor },
+    });
+    return (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
   };
 
-  // Miniature foto di un problema: max 3 leggibili + "+N altre". Degrada senza bloccare:
-  // foto che non si caricano vengono saltate; se tutte falliscono, il blocco non appare.
-  const THUMB_MM = 30;
-  const addIssuePhotos = async (iss: EuromeccIssue) => {
+  const issueTypeColor = (t: EuromeccIssueType): [number, number, number] =>
+    t === "criticita" ? [185, 28, 28] : t === "anomalia" ? [217, 119, 6] : [109, 40, 217];
+
+  // Scheda di un problema: foto a sinistra (la prima, ~28mm, + "+N" se piu di una) e a destra
+  // la descrizione in grassetto colorata per tipo + tipo/data/segnalato/azione. Degrada senza
+  // bloccare se la foto non carica. Page-break prima della scheda (niente schede spezzate male).
+  const addIssueCard = async (iss: EuromeccIssue, label: string, closed: boolean) => {
     const urls = (iss.imageUrls ?? []).filter((u) => typeof u === "string" && u.length > 0);
-    if (urls.length === 0) return;
-    const toShow = urls.slice(0, 3);
-    const loaded: Array<{ dataUrl: string; w: number; h: number }> = [];
-    for (const u of toShow) {
-      const img = await loadIssueImageDataUrl(u);
-      if (img) loaded.push(img);
-    }
-    if (loaded.length === 0) return; // tutte fallite: nessun blocco, nessun crash
-    checkPage(THUMB_MM + 12);
-    doc.setFontSize(8);
+    const firstImg = urls.length > 0 ? await loadIssueImageDataUrl(urls[0]) : null;
+    const photoW = firstImg ? 28 : 0;
+    const textX = margin + photoW + (firstImg ? 4 : 0);
+    const textW = pageW - margin - textX;
+
+    doc.setFontSize(9.5);
     doc.setFont("helvetica", "bold");
-    writeWrappedLine(`Foto — ${iss.title}`, 4);
-    let x = margin;
-    const rowTop = y;
-    let maxH = 0;
-    for (const im of loaded) {
-      const ratio = im.w > 0 ? im.h / im.w : 0.75;
-      const w = THUMB_MM;
-      const h = Math.max(8, Math.min(THUMB_MM, THUMB_MM * ratio));
-      const fmt = im.dataUrl.includes("image/png") ? "PNG" : "JPEG";
+    const titleLines = doc.splitTextToSize(`${label}: ${iss.title}`, textW) as string[];
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    const metaBits = [
+      ISSUE_TYPE_LABELS[iss.type],
+      `dal ${formatDateUI(iss.reportedAt)}`,
+      closed && iss.closedDate ? `chiuso il ${formatDateUI(iss.closedDate)}` : null,
+      iss.reportedBy ? `da ${iss.reportedBy}` : null,
+    ]
+      .filter(Boolean)
+      .join("  ·  ");
+    const metaLines = doc.splitTextToSize(metaBits, textW) as string[];
+    const dett = issueDettagli(iss);
+    const dettLines =
+      dett && dett !== "—" ? (doc.splitTextToSize(`Azione/nota: ${dett}`, textW) as string[]) : [];
+
+    const ratio = firstImg && firstImg.w > 0 ? firstImg.h / firstImg.w : 0.75;
+    const photoH = firstImg ? Math.min(photoW, photoW * ratio) + (urls.length > 1 ? 4 : 0) : 0;
+    const textH = 3.5 + titleLines.length * 4.6 + metaLines.length * 3.8 + dettLines.length * 3.8;
+    checkPage(Math.max(textH, photoH) + 4);
+
+    const top = y;
+    if (firstImg) {
+      const h = Math.min(photoW, photoW * ratio);
+      const fmt = firstImg.dataUrl.includes("image/png") ? "PNG" : "JPEG";
       try {
-        doc.addImage(im.dataUrl, fmt, x, rowTop, w, h);
+        doc.addImage(firstImg.dataUrl, fmt, margin, top, photoW, h);
       } catch {
-        // singola immagine non aggiungibile: salta senza bloccare il PDF
+        // foto non aggiungibile: salta senza bloccare
       }
-      x += w + 4;
-      if (h > maxH) maxH = h;
+      if (urls.length > 1) {
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(90, 90, 90);
+        doc.text(`+${urls.length - 1} foto`, margin, top + h + 3);
+        doc.setTextColor(0, 0, 0);
+      }
     }
-    y = rowTop + (maxH || THUMB_MM) + 2;
-    const remaining = urls.length - loaded.length;
-    if (remaining > 0) {
-      doc.setFont("helvetica", "normal");
-      doc.text(`+${remaining} altre foto`, margin, y);
-      y += 5;
+
+    let ty = top + 3.5;
+    const [cr, cg, cb] = issueTypeColor(iss.type);
+    doc.setFontSize(9.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(cr, cg, cb);
+    for (const line of titleLines) {
+      doc.text(line, textX, ty);
+      ty += 4.6;
     }
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(90, 90, 90);
+    for (const line of metaLines) {
+      doc.text(line, textX, ty);
+      ty += 3.8;
+    }
+    doc.setTextColor(40, 40, 40);
+    for (const line of dettLines) {
+      doc.text(line, textX, ty);
+      ty += 3.8;
+    }
+    doc.setTextColor(0, 0, 0);
+
+    y = Math.max(top + photoH, ty) + 3;
   };
 
   // Pagina 1 — intestazione
@@ -3922,7 +3940,8 @@ async function generatePdfRiepilogo(
     doc.text(`${card.areaLabel} — ${card.areaCode}`, margin, y);
     y += 7;
 
-    // SVG schema tecnico area (parte della categoria Mappa)
+    // Cattura lo schema tecnico dell'area (categoria Mappa), per disporlo a SINISTRA.
+    let schema: { data: string; w: number; h: number } | null = null;
     if (cat.mappa) {
       const svgEl = document.querySelector(
         `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
@@ -3933,157 +3952,126 @@ async function generatePdfRiepilogo(
           if (imgData) {
             const imgWFull = 80;
             const imgHFull = imgWFull * (700 / 680); // ~82mm a dimensione piena
-            const avail = pageH - margin - y; // spazio rimasto nella pagina corrente
+            // se non entra e c'e' poco spazio, pagina nuova per evitare un grande vuoto
+            if (imgHFull > pageH - margin - y && pageH - margin - y < 35) {
+              checkPage(imgHFull + 5);
+            }
+            const avail = pageH - margin - y;
             let imgW = imgWFull;
             let imgH = imgHFull;
-            if (imgHFull > avail) {
-              if (avail >= 35) {
-                // riduci lo schema per riempire lo spazio rimasto (niente grande vuoto)
-                imgH = avail;
-                imgW = imgWFull * (imgH / imgHFull);
-              } else {
-                // spazio troppo poco: pagina nuova, schema a dimensione piena
-                checkPage(imgHFull + 5);
-                imgW = imgWFull;
-                imgH = imgHFull;
-              }
+            if (imgHFull > avail && avail >= 35) {
+              imgH = avail;
+              imgW = imgWFull * (imgH / imgHFull);
             }
-            doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
-            y += imgH + 5;
+            schema = { data: imgData, w: imgW, h: imgH };
           }
         } catch {
-          y += 2;
+          schema = null;
         }
       }
     }
 
-    if (showPending) {
-      checkPage(20);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("Da fare", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: [["Componente", "Lavoro", "Priorità", "Scadenza"]],
-        body: card.pendingItems.map((p) => [
-          p.subLabel,
-          p.title,
-          PRIORITY_LABELS[p.priority],
-          p.dueDate ? formatDateUI(p.dueDate) : "—",
-        ]),
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [59, 130, 246] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    const pendingHead = [["Componente", "Lavoro", "Priorità", "Scadenza"]];
+    const pendingBody = card.pendingItems.map((p) => [
+      p.subLabel,
+      p.title,
+      PRIORITY_LABELS[p.priority],
+      p.dueDate ? formatDateUI(p.dueDate) : "—",
+    ]);
+    const doneHead = [["Componente", "Lavoro", "Data", "Tecnico"]];
+    const doneBody = card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]);
+
+    if (schema) {
+      // Due colonne: schema a sinistra, Da fare/Fatte a destra (accanto), allineati in alto.
+      const top = y;
+      doc.addImage(schema.data, "JPEG", margin, top, schema.w, schema.h);
+      const schemaBottom = top + schema.h;
+      const rightX = margin + 85;
+      let yRight = top;
+      if (showPending) {
+        yRight = renderSectionTable("Da fare", pendingHead, pendingBody, [59, 130, 246], yRight, rightX);
+      }
+      if (showDone) {
+        yRight = renderSectionTable("Fatte nel periodo", doneHead, doneBody, [34, 197, 94], yRight, rightX);
+      }
+      y = Math.max(schemaBottom, yRight) + 4;
+    } else {
+      // Nessuno schema: Da fare/Fatte a piena larghezza (come prima).
+      if (showPending) {
+        checkPage(20);
+        y = renderSectionTable("Da fare", pendingHead, pendingBody, [59, 130, 246], y, margin);
+      }
+      if (showDone) {
+        checkPage(20);
+        y = renderSectionTable("Fatte nel periodo", doneHead, doneBody, [34, 197, 94], y, margin);
+      }
     }
 
-    if (showDone) {
-      checkPage(20);
-      doc.setFontSize(10);
+    if (showOpenIssues || showClosedIssues) {
+      // Titolo "PROBLEMI" grande e rosso, poi schede (piena larghezza per leggibilita).
+      if (y > margin) y += 2;
+      checkPage(16);
+      doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("Fatte nel periodo", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: [["Componente", "Lavoro", "Data", "Tecnico"]],
-        body: card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]),
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [34, 197, 94] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
-    }
+      doc.setTextColor(220, 38, 38);
+      doc.text("PROBLEMI", margin, y);
+      doc.setTextColor(0, 0, 0);
+      y += 6;
 
-    if (showOpenIssues) {
-      checkPage(20);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("Problemi aperti", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: ISSUE_OPEN_HEAD_AREA,
-        body: areaOpenIssues.map((iss) => issueOpenRow(iss, iss.subLabel)),
-        styles: { fontSize: 8, overflow: "linebreak" },
-        headStyles: { fillColor: [239, 68, 68] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
-    }
-
-    if (showClosedIssues) {
-      checkPage(20);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("Problemi chiusi / risolti", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: ISSUE_CLOSED_HEAD_AREA,
-        body: areaClosedIssues.map((iss) => issueClosedRow(iss, iss.subLabel)),
-        styles: { fontSize: 8, overflow: "linebreak" },
-        headStyles: { fillColor: [107, 114, 128] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
-    }
-
-    // Foto dei problemi dell'area (aperti + chiusi)
-    if (cat.problemi) {
-      for (const iss of [...areaOpenIssues, ...areaClosedIssues]) {
-        await addIssuePhotos(iss);
+      if (showOpenIssues) {
+        checkPage(8);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("Aperti", margin, y);
+        y += 5;
+        for (const iss of areaOpenIssues) {
+          await addIssueCard(iss, iss.subLabel, false);
+        }
+      }
+      if (showClosedIssues) {
+        checkPage(8);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("Chiusi / risolti", margin, y);
+        y += 5;
+        for (const iss of areaClosedIssues) {
+          await addIssueCard(iss, iss.subLabel, true);
+        }
       }
     }
   }
 
   // Problemi generali — non legati a un componente. Etichetta "Generale" (+ area se presente).
   if (cat.problemi && (generalOpen.length > 0 || generalClosed.length > 0)) {
-    if (y > margin) y += 6;
-    checkPage(28);
-    doc.setFontSize(13);
+    if (y > margin) y += 4;
+    checkPage(16);
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("Problemi generali", margin, y);
-    y += 7;
+    doc.setTextColor(220, 38, 38);
+    doc.text("PROBLEMI GENERALI", margin, y);
+    doc.setTextColor(0, 0, 0);
+    y += 6;
 
     if (generalOpen.length > 0) {
-      checkPage(20);
+      checkPage(8);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("Aperti", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: ISSUE_OPEN_HEAD_GENERAL,
-        body: generalOpen.map((iss) => issueOpenRow(iss, generaleAreaLabel(iss))),
-        styles: { fontSize: 8, overflow: "linebreak" },
-        headStyles: { fillColor: [239, 68, 68] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+      y += 5;
+      for (const iss of generalOpen) {
+        await addIssueCard(iss, generaleAreaLabel(iss), false);
+      }
     }
 
     if (generalClosed.length > 0) {
-      checkPage(20);
+      checkPage(8);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("Chiusi / risolti", margin, y);
-      y += 4;
-      autoTable(doc as Parameters<typeof autoTable>[0], {
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: ISSUE_CLOSED_HEAD_GENERAL,
-        body: generalClosed.map((iss) => issueClosedRow(iss, generaleAreaLabel(iss))),
-        styles: { fontSize: 8, overflow: "linebreak" },
-        headStyles: { fillColor: [107, 114, 128] },
-      });
-      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
-    }
-
-    // Foto dei problemi generali (aperti + chiusi)
-    for (const iss of [...generalOpen, ...generalClosed]) {
-      await addIssuePhotos(iss);
+      y += 5;
+      for (const iss of generalClosed) {
+        await addIssueCard(iss, generaleAreaLabel(iss), true);
+      }
     }
   }
 
@@ -4101,17 +4089,8 @@ async function generatePdfRiepilogo(
       const urgentIssues = card.openIssues.filter((i) => i.type !== "osservazione");
       if (urgentPending.length === 0 && urgentIssues.length === 0) continue;
 
-      // Intestazione area urgente
-      y += 4;
-      checkPage(18);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text(card.areaLabel, margin, y);
-      y += 5;
-
-      // Una miniatura dello schema dell'area (se ha un disegno): mostra a colpo d'occhio
-      // dove sta il guasto (marker gia colorato + alone evidenziatore della Parte 2).
-      // Parte della categoria "Mappa" (coerente con gli schemi delle aree).
+      // Schema dell'area (se ha un disegno) -> a SINISTRA, come per le aree.
+      let schema: { data: string; w: number; h: number } | null = null;
       if (cat.mappa) {
         const svgEl = document.querySelector(
           `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
@@ -4120,27 +4099,49 @@ async function generatePdfRiepilogo(
           try {
             const imgData = await svgToImageData(svgEl);
             if (imgData) {
-              const tw = 42; // miniatura compatta (mm)
+              const tw = 80;
               const th = tw * (700 / 680);
-              checkPage(th + 4);
-              doc.addImage(imgData, "JPEG", margin, y, tw, th);
-              y += th + 3;
+              schema = { data: imgData, w: tw, h: th };
             }
           } catch {
-            y += 1;
+            schema = null;
           }
         }
       }
 
-      // Elenco urgenze dell'area (area gia in intestazione: non ripetuta nelle righe)
+      // Testo a DESTRA della miniatura (o a piena larghezza se l'area non ha disegno).
+      const textLeftX = schema ? margin + 85 : margin;
+      const textW = pageW - margin - textLeftX;
+      const entries = [
+        ...urgentPending.map((p) => `[MANUTENZIONE] ${p.subLabel}: ${p.title}`),
+        ...urgentIssues.map((iss) => `[PROBLEMA] ${iss.subLabel}: ${iss.title}`),
+      ];
+      doc.setFontSize(9);
+      const wrapped = entries.map((t) => doc.splitTextToSize(t, textW) as string[]);
+      const textLinesCount = wrapped.reduce((s, w) => s + w.length, 0);
+      const textBlockH = 6 + textLinesCount * 5;
+      const blockH = Math.max(schema ? schema.h : 0, textBlockH);
+
+      y += 4;
+      checkPage(blockH + 4);
+      const top = y;
+      if (schema) {
+        doc.addImage(schema.data, "JPEG", margin, top, schema.w, schema.h);
+      }
+      let ty = top + 4;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(card.areaLabel, textLeftX, ty);
+      ty += 6;
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      for (const p of urgentPending) {
-        writeWrappedLine(`[MANUTENZIONE] ${p.subLabel}: ${p.title}`);
+      for (const w of wrapped) {
+        for (const line of w) {
+          doc.text(line, textLeftX, ty);
+          ty += 5;
+        }
       }
-      for (const iss of urgentIssues) {
-        writeWrappedLine(`[PROBLEMA] ${iss.subLabel}: ${iss.title}`);
-      }
+      y = Math.max(top + (schema ? schema.h : 0), ty) + 6;
     }
     y += 5;
     doc.setFontSize(8);
