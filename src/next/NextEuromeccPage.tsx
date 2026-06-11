@@ -3714,6 +3714,24 @@ async function loadIssueImageDataUrl(
   }
 }
 
+// Carica /logo.png come dataURL per l'header del PDF. Ritorna null su QUALSIASI errore
+// (rete/lettura): l'header degrada a solo testo senza bloccare la generazione.
+async function loadLogo(): Promise<string | null> {
+  try {
+    const res = await fetch("/logo.png");
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("logo read fail"));
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function generatePdfRiepilogo(
   snapshot: EuromeccSnapshot,
   range: EuromeccRange,
@@ -3729,14 +3747,41 @@ async function generatePdfRiepilogo(
   const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
   const pageH = 297;
-  const margin = 15;
-  let y = margin;
+  // --- Sistema di misure centrale (PROMPT 112 T1) ---
+  const M = 18; // margine uniforme su tutti i lati
+  const HEADER_H = 22; // banda alta riservata all'header (disegnato in T4)
+  const FOOTER_H = 12; // banda bassa riservata al footer (disegnato in T4)
+  const CONTENT_TOP = M + HEADER_H; // y di partenza del contenuto su ogni pagina
+  const CONTENT_BOTTOM = pageH - M - FOOTER_H; // limite inferiore del contenuto
+  const GAP_SECTION = 6; // gap verticale costante prima dei titoli area
+  const GAP_AFTER_TITLE = 3; // gap tra titolo area e linea/contenuto
+  const FS_H1 = 16; // titolo documento / header
+  const FS_H2 = 12; // titoli area / sezione (con linea sotto)
+  const FS_H3 = 9; // sottotitoli (maiuscoletto grigio)
+  const COL_LEFT_X = M; // colonna sinistra (schema)
+  const COL_RIGHT_X = M + 85; // colonna destra (tabelle), accanto allo schema
+  const SCHEMA_W = 80; // larghezza unica dello schema area
+  const FRAME_PAD = 2; // padding interno cornice schema
+  const FS_META = 8; // testo header/footer (periodo, paginazione, data)
+  const FS_BODY = 9; // corpo tabelle
+  const margin = M; // alias per le X dei bordi (sinistra/destra)
+  let y = CONTENT_TOP;
 
   const checkPage = (needed: number) => {
-    if (y + needed > pageH - margin) {
+    if (y + needed > CONTENT_BOTTOM) {
       doc.addPage();
-      y = margin;
+      y = CONTENT_TOP;
     }
+  };
+
+  // Cornice bianca uniforme attorno a uno schema rasterizzato (solo PDF: disegnata in
+  // jsPDF, non tocca gli SVG ne la vista a schermo). Fondo bianco + bordo grigio sottile.
+  const drawFramedImage = (data: string, x: number, top: number, w: number, h: number) => {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.2);
+    doc.rect(x - FRAME_PAD, top - FRAME_PAD, w + FRAME_PAD * 2, h + FRAME_PAD * 2, "FD");
+    doc.addImage(data, "JPEG", x, top, w, h);
   };
 
   // Titolo sezione + tabella autotable a partire da (leftX, startY); ritorna la Y finale.
@@ -3749,16 +3794,23 @@ async function generatePdfRiepilogo(
     startY: number,
     leftX: number,
   ): number => {
-    doc.setFontSize(10);
+    doc.setFontSize(FS_H3);
     doc.setFont("helvetica", "bold");
-    doc.text(title, leftX, startY);
+    doc.setTextColor(110, 110, 110);
+    doc.text(title.toUpperCase(), leftX, startY);
+    doc.setTextColor(0, 0, 0);
     autoTable(doc as Parameters<typeof autoTable>[0], {
       startY: startY + 4,
       margin: { left: leftX, right: margin },
       head,
       body,
-      styles: { fontSize: 8, overflow: "linebreak" },
-      headStyles: { fillColor: headColor },
+      styles: { fontSize: FS_BODY, overflow: "linebreak", cellPadding: 2.5 },
+      headStyles: {
+        fillColor: headColor,
+        textColor: [255, 255, 255] as [number, number, number],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [245, 245, 245] as [number, number, number] },
     });
     return (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
   };
@@ -3843,20 +3895,7 @@ async function generatePdfRiepilogo(
     y = Math.max(top + photoH, ty) + 3;
   };
 
-  // Pagina 1 — intestazione
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text("EUROMECC — RIEPILOGO IMPIANTO", margin, y);
-  y += 8;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  const rangeLabel = RANGE_OPTIONS.find((r) => r.value === range)?.label ?? "Tutto";
-  doc.text(
-    `Periodo: ${rangeLabel} | Generato il: ${formatDateUI(new Date().toISOString().slice(0, 10))}`,
-    margin,
-    y,
-  );
-  y += 10;
+  // Intestazione e pie di pagina sono disegnati nella passata finale (header/footer per pagina).
 
   // KPI row
   if (cat.kpi) {
@@ -3891,7 +3930,7 @@ async function generatePdfRiepilogo(
           const imgW = pageW - margin * 2;
           const imgH = imgW * (860 / 1480);
           checkPage(imgH + 5);
-          doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
+          drawFramedImage(imgData, margin, y, imgW, imgH);
           y += imgH + 8;
         }
       } catch {
@@ -3933,41 +3972,53 @@ async function generatePdfRiepilogo(
     const showClosedIssues = cat.problemi && areaClosedIssues.length > 0;
     if (!showPending && !showDone && !showOpenIssues && !showClosedIssues) continue; // area senza contenuto
 
-    if (y > margin) y += 6; // distacco tra aree
-    checkPage(28); // spazio minimo per il titolo area; break solo se serve
-    doc.setFontSize(13);
+    if (y > CONTENT_TOP) y += GAP_SECTION; // distacco tra aree
+
+    // R1/R2/R3 keep-with-next: il titolo non deve mai restare orfano in fondo pagina.
+    // Misuro PRIMA di stampare il titolo l'altezza del titolo + primo contenuto (schema se
+    // presente, altrimenti ~30mm di tabella) e, se non entra, vado a pagina nuova ORA.
+    const schemaEl = cat.mappa
+      ? (document.querySelector(
+          `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
+        ) as SVGElement | null)
+      : null;
+    const schemaFullH = SCHEMA_W * (700 / 680); // ~82mm
+    const titleH = 7;
+    const firstBlockH = schemaEl ? schemaFullH + 2 : 30; // schema atomico, oppure min contenuto
+    if (CONTENT_BOTTOM - y < titleH + firstBlockH) {
+      doc.addPage();
+      y = CONTENT_TOP;
+    }
+
+    doc.setFontSize(FS_H2);
     doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
     doc.text(`${card.areaLabel} — ${card.areaCode}`, margin, y);
-    y += 7;
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.line(margin, y + GAP_AFTER_TITLE, pageW - margin, y + GAP_AFTER_TITLE);
+    y += titleH;
 
     // Cattura lo schema tecnico dell'area (categoria Mappa), per disporlo a SINISTRA.
+    // Lo spazio per titolo+schema e' gia stato garantito sopra (niente break dopo il titolo).
     let schema: { data: string; w: number; h: number } | null = null;
-    if (cat.mappa) {
-      const svgEl = document.querySelector(
-        `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
-      ) as SVGElement | null;
-      if (svgEl) {
-        try {
-          const imgData = await svgToImageData(svgEl);
-          if (imgData) {
-            const imgWFull = 80;
-            const imgHFull = imgWFull * (700 / 680); // ~82mm a dimensione piena
-            // se non entra e c'e' poco spazio, pagina nuova per evitare un grande vuoto
-            if (imgHFull > pageH - margin - y && pageH - margin - y < 35) {
-              checkPage(imgHFull + 5);
-            }
-            const avail = pageH - margin - y;
-            let imgW = imgWFull;
-            let imgH = imgHFull;
-            if (imgHFull > avail && avail >= 35) {
-              imgH = avail;
-              imgW = imgWFull * (imgH / imgHFull);
-            }
-            schema = { data: imgData, w: imgW, h: imgH };
+    if (schemaEl) {
+      try {
+        const imgData = await svgToImageData(schemaEl);
+        if (imgData) {
+          const imgWFull = SCHEMA_W;
+          const imgHFull = schemaFullH;
+          const avail = CONTENT_BOTTOM - y;
+          let imgW = imgWFull;
+          let imgH = imgHFull;
+          if (imgHFull > avail && avail >= 35) {
+            imgH = avail;
+            imgW = imgWFull * (imgH / imgHFull);
           }
-        } catch {
-          schema = null;
+          schema = { data: imgData, w: imgW, h: imgH };
         }
+      } catch {
+        schema = null;
       }
     }
 
@@ -3982,11 +4033,12 @@ async function generatePdfRiepilogo(
     const doneBody = card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]);
 
     if (schema) {
-      // Due colonne: schema a sinistra, Da fare/Fatte a destra (accanto), allineati in alto.
+      // Due colonne: schema a sinistra (incorniciato e centrato), tabelle a destra.
       const top = y;
-      doc.addImage(schema.data, "JPEG", margin, top, schema.w, schema.h);
+      const schemaX = COL_LEFT_X + (85 - schema.w) / 2;
+      drawFramedImage(schema.data, schemaX, top, schema.w, schema.h);
       const schemaBottom = top + schema.h;
-      const rightX = margin + 85;
+      const rightX = COL_RIGHT_X;
       let yRight = top;
       if (showPending) {
         yRight = renderSectionTable("Da fare", pendingHead, pendingBody, [59, 130, 246], yRight, rightX);
@@ -4009,11 +4061,11 @@ async function generatePdfRiepilogo(
 
     if (showOpenIssues || showClosedIssues) {
       // Titolo "PROBLEMI" grande e rosso, poi schede (piena larghezza per leggibilita).
-      if (y > margin) y += 2;
+      if (y > CONTENT_TOP) y += 2;
       checkPage(16);
-      doc.setFontSize(14);
+      doc.setFontSize(FS_H3);
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(220, 38, 38);
+      doc.setTextColor(110, 110, 110);
       doc.text("PROBLEMI", margin, y);
       doc.setTextColor(0, 0, 0);
       y += 6;
@@ -4043,11 +4095,11 @@ async function generatePdfRiepilogo(
 
   // Problemi generali — non legati a un componente. Etichetta "Generale" (+ area se presente).
   if (cat.problemi && (generalOpen.length > 0 || generalClosed.length > 0)) {
-    if (y > margin) y += 4;
+    if (y > CONTENT_TOP) y += 4;
     checkPage(16);
-    doc.setFontSize(14);
+    doc.setFontSize(FS_H3);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(220, 38, 38);
+    doc.setTextColor(110, 110, 110);
     doc.text("PROBLEMI GENERALI", margin, y);
     doc.setTextColor(0, 0, 0);
     y += 6;
@@ -4080,9 +4132,13 @@ async function generatePdfRiepilogo(
   if (urgentCards.length > 0) {
     y += 8;
     checkPage(24);
-    doc.setFontSize(13);
+    doc.setFontSize(FS_H2);
     doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
     doc.text("URGENZE RIEPILOGO", margin, y);
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.line(margin, y + GAP_AFTER_TITLE, pageW - margin, y + GAP_AFTER_TITLE);
     y += 8;
     for (const card of urgentCards) {
       const urgentPending = card.pendingItems.filter((p) => p.priority === "alta");
@@ -4127,7 +4183,8 @@ async function generatePdfRiepilogo(
       checkPage(blockH + 3);
       const top = y;
       if (schema) {
-        doc.addImage(schema.data, "JPEG", margin, top, schema.w, schema.h);
+        const miniX = margin + (55 - schema.w) / 2;
+        drawFramedImage(schema.data, miniX, top, schema.w, schema.h);
       }
       let ty = top + 4;
       doc.setFontSize(11);
@@ -4144,13 +4201,62 @@ async function generatePdfRiepilogo(
       }
       y = Math.max(top + (schema ? schema.h : 0), ty) + 3;
     }
-    y += 5;
+    // R4: firma sempre staccata dall'ultimo contenuto (mai incollata a foto/tabella).
+    const firmaH = 8;
+    const stacco = 14;
+    if (y + stacco + firmaH > CONTENT_BOTTOM) {
+      doc.addPage();
+      y = CONTENT_TOP;
+    } else {
+      y += stacco;
+    }
     doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
     doc.text(
       `Firma: _______________________ Data: ${formatDateUI(new Date().toISOString().slice(0, 10))}`,
       margin,
       y,
     );
+  }
+
+  // --- Header + footer ripetuti su ogni pagina (passata finale, pattern pdfEngine) ---
+  const logoData = await loadLogo();
+  const rangeLabel = RANGE_OPTIONS.find((r) => r.value === range)?.label ?? "Tutto";
+  const periodoLabel = `Periodo: ${rangeLabel}`;
+  const genLabel = `Generato il ${formatDateUI(new Date().toISOString().slice(0, 10))}`;
+  const headerTitle = "EUROMECC — Riepilogo impianto";
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i += 1) {
+    doc.setPage(i);
+    // Header: logo a sinistra + titolo, periodo a destra, linea orizzontale sotto.
+    let titleX = margin;
+    if (logoData) {
+      try {
+        doc.addImage(logoData, "PNG", margin, 10, 20, 15);
+        titleX = margin + 26;
+      } catch {
+        titleX = margin;
+      }
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(FS_H1);
+    doc.setTextColor(0, 0, 0);
+    doc.text(headerTitle, titleX, 20);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(FS_META);
+    doc.setTextColor(110, 110, 110);
+    doc.text(periodoLabel, pageW - margin, 16, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.line(margin, CONTENT_TOP - 10, pageW - margin, CONTENT_TOP - 10);
+    // Footer: "Pagina X di Y" a destra, data generazione a sinistra.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(FS_META);
+    doc.setTextColor(110, 110, 110);
+    doc.text(`Pagina ${i} di ${totalPages}`, pageW - margin, pageH - 10, { align: "right" });
+    doc.text(genLabel, margin, pageH - 10);
+    doc.setTextColor(0, 0, 0);
   }
 
   void snapshot; // snapshot passato per eventuali estensioni future
