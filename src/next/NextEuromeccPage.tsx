@@ -3761,6 +3761,8 @@ async function generatePdfRiepilogo(
   const COL_LEFT_X = M; // colonna sinistra (schema)
   const COL_RIGHT_X = M + 85; // colonna destra (tabelle), accanto allo schema
   const SCHEMA_W = 80; // larghezza unica dello schema area
+  const SCHEMA_FULL_H = SCHEMA_W * (700 / 680); // ~82mm: altezza schema a piena dimensione
+  const SCHEMA_MIN_H = 62; // altezza minima leggibile dello schema (floor per shrink-to-fit e pareggio)
   // Soglia righe per le tabelle Da fare/Fatte nelle aree CON schema: <= soglia restano accanto
   // allo schema (colonna stretta), oltre la soglia vanno a piena larghezza sotto (piu leggibili).
   const FULLWIDTH_ROW_THRESHOLD = 4;
@@ -3971,6 +3973,44 @@ async function generatePdfRiepilogo(
     y += 8;
   }
 
+  // --- Stime di altezza per il keep-with-next "area atomica" (PUNTO 2): servono a decidere
+  // PRIMA di stampare il titolo se l'intera area (titolo + schema/tabelle + problemi) entra nello
+  // spazio rimasto; se non entra, l'area intera va a pagina nuova (problemi mai staccati dal silo).
+  const estimateTableH = (body: string[][], fullWidth: boolean): number => {
+    const colW = fullWidth ? 78 : 33; // larghezza stimata della colonna "Lavoro"
+    doc.setFontSize(FS_BODY);
+    let h = 10 + 9; // titolo sezione + gap + riga intestazione
+    for (const row of body) {
+      const lines = Math.max(1, (doc.splitTextToSize(row[1] ?? "", colW) as string[]).length);
+      h += lines * 4 + 5; // ~4mm per riga di testo + padding cella
+    }
+    return h;
+  };
+  const estimateIssueCardH = (iss: EuromeccIssue, label: string): number => {
+    const urls = (iss.imageUrls ?? []).filter((u) => typeof u === "string" && u.length > 0);
+    const hasImg = urls.length > 0;
+    const textX = margin + (hasImg ? 28 + 4 : 0);
+    const textW = pageW - margin - textX;
+    doc.setFontSize(9.5);
+    const titleLines = (doc.splitTextToSize(`${label}: ${iss.title}`, textW) as string[]).length;
+    doc.setFontSize(8);
+    const metaBits = [
+      ISSUE_TYPE_LABELS[iss.type],
+      `dal ${formatDateUI(iss.reportedAt)}`,
+      iss.closedDate ? `chiuso il ${formatDateUI(iss.closedDate)}` : null,
+      iss.reportedBy ? `da ${iss.reportedBy}` : null,
+    ]
+      .filter(Boolean)
+      .join("  ·  ");
+    const metaLines = (doc.splitTextToSize(metaBits, textW) as string[]).length;
+    const dett = issueDettagli(iss);
+    const dettLines =
+      dett && dett !== "—" ? (doc.splitTextToSize(`Azione/nota: ${dett}`, textW) as string[]).length : 0;
+    const textH = 3.5 + titleLines * 4.6 + metaLines * 3.8 + dettLines * 3.8;
+    const photoH = hasImg ? 28 + (urls.length > 1 ? 4 : 0) : 0;
+    return Math.max(textH, photoH) + 3;
+  };
+
   // Sezioni per area — flusso continuo: si concatenano dopo intestazione/KPI/mappa,
   // con salto pagina solo quando lo spazio finisce (nessuna pagina iniziale vuota).
   for (const card of cards) {
@@ -3985,24 +4025,63 @@ async function generatePdfRiepilogo(
 
     if (y > CONTENT_TOP) y += GAP_SECTION; // distacco tra aree
 
-    // R1/R2/R3 keep-with-next: il titolo non deve mai restare orfano in fondo pagina.
-    // Misuro PRIMA di stampare il titolo l'altezza del titolo + primo contenuto (schema se
-    // presente, altrimenti ~30mm di tabella) e, se non entra, vado a pagina nuova ORA.
+    // Schema tecnico dell'area (categoria Mappa): se presente va a SINISTRA in due colonne.
     const schemaEl = cat.mappa
       ? (document.querySelector(
           `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
         ) as SVGElement | null)
       : null;
-    const schemaFullH = SCHEMA_W * (700 / 680); // ~82mm
     const titleH = 7;
-    // Spazio minimo da garantire prima di iniziare un'area (titolo mai orfano). Con schema NON
-    // serve riservare l'intera altezza: lo shrink-to-fit sotto adatta lo schema allo spazio reale
-    // (mai sotto SCHEMA_MIN_H, resta leggibile e "titolo+schema uniti"). Cosi' un'area entra anche
-    // a fondo pagina invece di saltare a pagina nuova lasciando meta' pagina vuota.
-    const SCHEMA_MIN_H = 62; // schema mai ridotto sotto ~62mm prima di forzare pagina nuova
-    const firstBlockH = schemaEl ? SCHEMA_MIN_H : 30; // schema ridotto adattabile, oppure min contenuto
-    if (CONTENT_BOTTOM - y < titleH + firstBlockH) {
-      doc.addPage();
+
+    const pendingHead = [["Componente", "Lavoro", "Priorità", "Scadenza"]];
+    const pendingBody = card.pendingItems.map((p) => [
+      p.subLabel,
+      p.title,
+      PRIORITY_LABELS[p.priority],
+      p.dueDate ? formatDateUI(p.dueDate) : "—",
+    ]);
+    const doneHead = [["Componente", "Lavoro", "Data", "Tecnico"]];
+    const doneBody = card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]);
+
+    // PUNTO 2 (area atomica): stimo l'altezza dell'INTERA area (titolo + schema/tabelle + problemi)
+    // e, se non entra nello spazio rimasto ma starebbe in una pagina intera, mando TUTTA l'area a
+    // pagina nuova: i problemi non si staccano mai dal loro silo. Caso limite (area piu alta di una
+    // pagina): parte qui e prosegue (puo spezzarsi solo una tabella enorme, non i problemi).
+    const estTables: string[][][] = [];
+    if (showPending) estTables.push(pendingBody);
+    if (showDone) estTables.push(doneBody);
+    let goneFullEst = false;
+    let sideTablesEstH = 0;
+    let fullTablesEstH = 0;
+    let hasSideEst = false;
+    for (const b of estTables) {
+      if (!goneFullEst && b.length <= FULLWIDTH_ROW_THRESHOLD) {
+        sideTablesEstH += estimateTableH(b, false);
+        hasSideEst = true;
+      } else {
+        goneFullEst = true;
+        fullTablesEstH += estimateTableH(b, true);
+      }
+    }
+    const columnBlockEstH = schemaEl
+      ? (hasSideEst ? Math.max(sideTablesEstH, SCHEMA_MIN_H) : SCHEMA_FULL_H) + fullTablesEstH
+      : sideTablesEstH + fullTablesEstH;
+    let problemsEstH = 0;
+    if (showOpenIssues || showClosedIssues) {
+      problemsEstH += 8; // gap + titolo "PROBLEMI"
+      if (showOpenIssues)
+        problemsEstH += 5 + areaOpenIssues.reduce((s, iss) => s + estimateIssueCardH(iss, iss.subLabel), 0);
+      if (showClosedIssues)
+        problemsEstH += 5 + areaClosedIssues.reduce((s, iss) => s + estimateIssueCardH(iss, iss.subLabel), 0);
+    }
+    const areaBlockH = titleH + columnBlockEstH + problemsEstH + 4;
+    const pageContentH = CONTENT_BOTTOM - CONTENT_TOP;
+    const remaining = CONTENT_BOTTOM - y;
+    if (remaining < areaBlockH && areaBlockH <= pageContentH) {
+      doc.addPage(); // l'area intera entra in una pagina ma non nello spazio rimasto -> tutta a capo
+      y = CONTENT_TOP;
+    } else if (remaining < titleH + (schemaEl ? SCHEMA_MIN_H : 30)) {
+      doc.addPage(); // caso limite (area > pagina): garantisci almeno titolo + schema/contenuto
       y = CONTENT_TOP;
     }
 
@@ -4015,48 +4094,22 @@ async function generatePdfRiepilogo(
     doc.line(margin, y + GAP_AFTER_TITLE, pageW - margin, y + GAP_AFTER_TITLE);
     y += titleH;
 
-    // Cattura lo schema tecnico dell'area (categoria Mappa), per disporlo a SINISTRA.
-    // Lo spazio per titolo+schema e' gia stato garantito sopra (niente break dopo il titolo).
+    // Cattura lo schema a piena dimensione: il dimensionamento (pareggio col contenuto a fianco
+    // e fit pagina) avviene piu sotto, nel ramo a due colonne.
     let schema: { data: string; w: number; h: number } | null = null;
     if (schemaEl) {
       try {
         const imgData = await svgToImageData(schemaEl);
-        if (imgData) {
-          const imgWFull = SCHEMA_W;
-          const imgHFull = schemaFullH;
-          const avail = CONTENT_BOTTOM - y;
-          let imgW = imgWFull;
-          let imgH = imgHFull;
-          if (imgHFull > avail && avail >= 35) {
-            imgH = avail;
-            imgW = imgWFull * (imgH / imgHFull);
-          }
-          schema = { data: imgData, w: imgW, h: imgH };
-        }
+        if (imgData) schema = { data: imgData, w: SCHEMA_W, h: SCHEMA_FULL_H };
       } catch {
         schema = null;
       }
     }
 
-    const pendingHead = [["Componente", "Lavoro", "Priorità", "Scadenza"]];
-    const pendingBody = card.pendingItems.map((p) => [
-      p.subLabel,
-      p.title,
-      PRIORITY_LABELS[p.priority],
-      p.dueDate ? formatDateUI(p.dueDate) : "—",
-    ]);
-    const doneHead = [["Componente", "Lavoro", "Data", "Tecnico"]];
-    const doneBody = card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]);
-
     if (schema) {
-      // Due colonne: schema a sinistra (incorniciato e centrato), tabelle a destra.
-      // Tabelle corte (<= soglia) accanto allo schema; tabelle lunghe a piena larghezza sotto
-      // (piu leggibili, meno righe spezzate). Una volta passati a piena larghezza ci si resta,
-      // cosi' l'ordine Da fare -> Fatte non si inverte mai.
+      // Due colonne: schema a SINISTRA (incorniciato e centrato), tabelle a DESTRA.
+      // Tabelle corte (<= soglia) accanto allo schema; tabelle lunghe a piena larghezza sotto.
       const top = y;
-      const schemaX = COL_LEFT_X + (85 - schema.w) / 2;
-      drawFramedImage(schema.data, schemaX, top, schema.w, schema.h);
-      const schemaBottom = top + schema.h;
       const rightX = COL_RIGHT_X;
       const areaTables: Array<{
         title: string;
@@ -4069,6 +4122,7 @@ async function generatePdfRiepilogo(
       if (showDone)
         areaTables.push({ title: "Fatte nel periodo", head: doneHead, body: doneBody, color: [34, 197, 94] });
 
+      // 1) Renderizzo PRIMA le tabelle corte nella colonna destra: cosi' ne conosco l'altezza reale.
       let yRight = top;
       let goneFull = false;
       const fullTables: typeof areaTables = [];
@@ -4080,8 +4134,20 @@ async function generatePdfRiepilogo(
           fullTables.push(t);
         }
       }
+      // 2) PUNTO 1 (pareggio): dimensiono lo schema all'altezza del contenuto affiancato, entro
+      // [SCHEMA_MIN_H, SCHEMA_FULL_H] e dentro la pagina. Schema e tabella finiscono ~insieme:
+      // niente piu buco bianco a fianco. Senza tabella a fianco lo schema resta a piena altezza.
+      const sideContentH = yRight - top;
+      const availH = CONTENT_BOTTOM - top;
+      let schemaH = SCHEMA_FULL_H;
+      if (sideContentH > 0) schemaH = Math.min(Math.max(SCHEMA_MIN_H, sideContentH), SCHEMA_FULL_H);
+      schemaH = Math.min(schemaH, availH); // mai oltre il fondo pagina (sicurezza caso limite)
+      const schemaW = SCHEMA_W * (schemaH / SCHEMA_FULL_H);
+      const schemaX = COL_LEFT_X + (85 - schemaW) / 2;
+      drawFramedImage(schema.data, schemaX, top, schemaW, schemaH);
+      const schemaBottom = top + schemaH;
       y = Math.max(schemaBottom, yRight) + 4;
-      // Tabelle lunghe a piena larghezza sotto lo schema (checkPage prima: titolo mai orfano).
+      // 3) Tabelle lunghe a piena larghezza sotto schema+tabelle.
       for (const t of fullTables) {
         checkPage(24);
         y = renderSectionTable(t.title, t.head, t.body, t.color, y, margin);
