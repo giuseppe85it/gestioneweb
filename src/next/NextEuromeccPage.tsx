@@ -937,30 +937,51 @@ function MapSvg(props: {
       <text x="54" y="44" className="eur-map-structure-label">
         Linea centralizzata / collettore superiore
       </text>
-      <line x1="124" y1="74" x2="1360" y2="74" className="eur-map-line" />
+      {/* Attributi inline (= valori del CSS .eur-map-line/.eur-map-link-line/.eur-map-family-bar)
+          per la rasterizzazione standalone del PDF: a schermo il CSS resta identico, nel PDF
+          (senza CSS esterno) gli elementi non escono piu neri. */}
+      <line
+        x1="124"
+        y1="74"
+        x2="1360"
+        y2="74"
+        className="eur-map-line"
+        stroke="#7f9abc"
+        strokeWidth={8}
+        strokeLinecap="round"
+      />
 
       {MAP_SILOS.map((item) => renderSingleSilo(item))}
       {MAP_SILO_GROUPS.map((group) => renderDoubleSiloGroup(group))}
 
-      <line x1="128" y1="450" x2="1360" y2="450" className="eur-map-line" />
-      <line x1="240" y1="450" x2="240" y2="528" className="eur-map-link-line" />
-      <line x1="736" y1="450" x2="736" y2="528" className="eur-map-link-line" />
-      <line x1="1092" y1="450" x2="1092" y2="528" className="eur-map-link-line" />
-      <line x1="240" y1="450" x2="240" y2="640" className="eur-map-link-line" />
-      <line x1="576" y1="450" x2="576" y2="726" className="eur-map-link-line" />
-      <line x1="1092" y1="450" x2="1092" y2="802" className="eur-map-link-line" />
+      <line
+        x1="128"
+        y1="450"
+        x2="1360"
+        y2="450"
+        className="eur-map-line"
+        stroke="#7f9abc"
+        strokeWidth={8}
+        strokeLinecap="round"
+      />
+      <line x1="240" y1="450" x2="240" y2="528" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
+      <line x1="736" y1="450" x2="736" y2="528" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
+      <line x1="1092" y1="450" x2="1092" y2="528" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
+      <line x1="240" y1="450" x2="240" y2="640" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
+      <line x1="576" y1="450" x2="576" y2="726" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
+      <line x1="1092" y1="450" x2="1092" y2="802" className="eur-map-link-line" stroke="#9ab0c7" strokeWidth={4.5} strokeLinecap="round" />
 
-      <rect x="82" y="324" width="1278" height="36" rx="12" className="eur-map-family-bar" />
+      <rect x="82" y="324" width="1278" height="36" rx="12" className="eur-map-family-bar" fill="rgba(255, 255, 255, 0.72)" stroke="#bfd0e2" strokeWidth={1.6} />
       <text x="721" y="347" textAnchor="middle" className="eur-map-family-label">
         Filtri silo - famiglia trasversale
       </text>
 
-      <rect x="82" y="378" width="1278" height="36" rx="12" className="eur-map-family-bar" />
+      <rect x="82" y="378" width="1278" height="36" rx="12" className="eur-map-family-bar" fill="rgba(255, 255, 255, 0.72)" stroke="#bfd0e2" strokeWidth={1.6} />
       <text x="721" y="401" textAnchor="middle" className="eur-map-family-label">
         Coclee / motori / ingrassaggi linee
       </text>
 
-      <rect x="240" y="612" width="918" height="36" rx="12" className="eur-map-family-bar" />
+      <rect x="240" y="612" width="918" height="36" rx="12" className="eur-map-family-bar" fill="rgba(255, 255, 255, 0.72)" stroke="#bfd0e2" strokeWidth={1.6} />
       <text x="699" y="635" textAnchor="middle" className="eur-map-family-label">
         Filtri punti di carico
       </text>
@@ -970,11 +991,36 @@ function MapSvg(props: {
   );
 }
 
+// Alone evidenziatore attorno al marker di un componente in problema/manutenzione.
+// Reso SOLO quando `show` e' true (passato esclusivamente nei diagrammi del contenitore
+// di cattura PDF #eur-pdf-capture); a schermo i diagrammi non lo passano -> invariati.
+function IssueHalo(props: {
+  cx: number;
+  cy: number;
+  r: number;
+  status: EuromeccStatus;
+  show?: boolean;
+}) {
+  if (!props.show || (props.status !== "issue" && props.status !== "maint")) return null;
+  return (
+    <circle
+      cx={props.cx}
+      cy={props.cy}
+      r={props.r * 1.9}
+      fill="none"
+      stroke={STATUS_COLORS[props.status]}
+      strokeWidth={3}
+      opacity={0.95}
+    />
+  );
+}
+
 function SiloDiagram(props: {
   area: EuromeccAreaStatic;
   snapshot: EuromeccSnapshot;
   currentSub: string | null;
   onSelectSub: (key: string) => void;
+  emphasizeIssues?: boolean;
 }) {
   const renderHotspotLabel = (label: string) => {
     const parts = label.split(" ");
@@ -1041,6 +1087,7 @@ function SiloDiagram(props: {
             <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
               {STATUS_LABELS[status]}
             </text>
+            <IssueHalo cx={spot.x + spot.width - 18} cy={spot.y + 18} r={10} status={status} show={props.emphasizeIssues} />
             <circle cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10" fill={STATUS_COLORS[status]} />
           </g>
         );
@@ -1054,6 +1101,7 @@ function CaricoDiagram(props: {
   snapshot: EuromeccSnapshot;
   currentSub: string | null;
   onSelectSub: (key: string) => void;
+  emphasizeIssues?: boolean;
 }) {
   return (
     <svg width="100%" viewBox="0 0 680 700" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
@@ -1177,6 +1225,7 @@ function CaricoDiagram(props: {
                 strokeDasharray="4 3"
                 opacity="0.7"
               />
+              <IssueHalo cx={cx} cy={cy} r={7} status={status} show={props.emphasizeIssues} />
               <circle
                 cx={cx} cy={cy} r="7"
                 fill={STATUS_COLORS[status]}
@@ -1239,6 +1288,7 @@ function CaricoDiagram(props: {
             <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
               {STATUS_LABELS[status]}
             </text>
+            <IssueHalo cx={spot.x + spot.width - 18} cy={spot.y + 18} r={10} status={status} show={props.emphasizeIssues} />
             <circle
               cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10"
               fill={STATUS_COLORS[status]}
@@ -1255,6 +1305,7 @@ function SalaCompressoriDiagram(props: {
   snapshot: EuromeccSnapshot;
   currentSub: string | null;
   onSelectSub: (key: string) => void;
+  emphasizeIssues?: boolean;
 }) {
   return (
     <svg width="100%" viewBox="0 0 760 640" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
@@ -1342,6 +1393,7 @@ function SalaCompressoriDiagram(props: {
                 x1={cx} y1={cy} x2={lx} y2={ly}
                 stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7"
               />
+              <IssueHalo cx={cx} cy={cy} r={7} status={status} show={props.emphasizeIssues} />
               <circle
                 cx={cx} cy={cy} r="7"
                 fill={STATUS_COLORS[status]}
@@ -1398,6 +1450,7 @@ function SalaCompressoriDiagram(props: {
             <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
               {STATUS_LABELS[status]}
             </text>
+            <IssueHalo cx={spot.x + spot.width - 18} cy={spot.y + 18} r={10} status={status} show={props.emphasizeIssues} />
             <circle cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10" fill={STATUS_COLORS[status]} />
           </g>
         );
@@ -1411,6 +1464,7 @@ function ScaricoFornitoreDiagram(props: {
   snapshot: EuromeccSnapshot;
   currentSub: string | null;
   onSelectSub: (key: string) => void;
+  emphasizeIssues?: boolean;
 }) {
   return (
     <svg width="100%" viewBox="0 0 680 820" className="eur-silo-diagram">
@@ -1584,6 +1638,7 @@ function ScaricoFornitoreDiagram(props: {
             style={{ cursor: "pointer" }}>
             <line x1={cx} y1={cy} x2={spot.labelX} y2={spot.labelY}
               stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7"/>
+            <IssueHalo cx={cx} cy={cy} r={7} status={status} show={props.emphasizeIssues} />
             <circle cx={cx} cy={cy} r="7"
               fill={STATUS_COLORS[status]}
               stroke={active ? "#0f6fff" : "white"}
@@ -1609,6 +1664,7 @@ function CaricoTrenoDiagram(props: {
   snapshot: EuromeccSnapshot;
   currentSub: string | null;
   onSelectSub: (key: string) => void;
+  emphasizeIssues?: boolean;
 }) {
   return (
     <svg width="100%" viewBox="0 0 680 820" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
@@ -1764,6 +1820,7 @@ function CaricoTrenoDiagram(props: {
             style={{ cursor: "pointer" }}
           >
             <line x1={cx} y1={cy} x2={lx} y2={ly} stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7" />
+            <IssueHalo cx={cx} cy={cy} r={7} status={status} show={props.emphasizeIssues} />
             <circle cx={cx} cy={cy} r="7" fill={STATUS_COLORS[status]} stroke={active ? "#0f6fff" : "white"} strokeWidth={active ? "3" : "1.5"} />
             <circle cx={cx} cy={cy} r="18" fill="transparent" />
             <text x={lx} y={ly - 6} className="eur-hotspot-label" fontSize="12" fill="var(--color-text-primary)" fontWeight={active ? "600" : "400"}>
@@ -4039,16 +4096,50 @@ async function generatePdfRiepilogo(
     doc.setFont("helvetica", "bold");
     doc.text("URGENZE RIEPILOGO", margin, y);
     y += 8;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
     for (const card of urgentCards) {
       const urgentPending = card.pendingItems.filter((p) => p.priority === "alta");
       const urgentIssues = card.openIssues.filter((i) => i.type !== "osservazione");
+      if (urgentPending.length === 0 && urgentIssues.length === 0) continue;
+
+      // Intestazione area urgente
+      y += 4;
+      checkPage(18);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(card.areaLabel, margin, y);
+      y += 5;
+
+      // Una miniatura dello schema dell'area (se ha un disegno): mostra a colpo d'occhio
+      // dove sta il guasto (marker gia colorato + alone evidenziatore della Parte 2).
+      // Parte della categoria "Mappa" (coerente con gli schemi delle aree).
+      if (cat.mappa) {
+        const svgEl = document.querySelector(
+          `#eur-pdf-capture [data-area-key="${card.areaKey}"] .eur-silo-diagram`,
+        ) as SVGElement | null;
+        if (svgEl) {
+          try {
+            const imgData = await svgToImageData(svgEl);
+            if (imgData) {
+              const tw = 42; // miniatura compatta (mm)
+              const th = tw * (700 / 680);
+              checkPage(th + 4);
+              doc.addImage(imgData, "JPEG", margin, y, tw, th);
+              y += th + 3;
+            }
+          } catch {
+            y += 1;
+          }
+        }
+      }
+
+      // Elenco urgenze dell'area (area gia in intestazione: non ripetuta nelle righe)
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
       for (const p of urgentPending) {
-        writeWrappedLine(`[MANUTENZIONE] ${card.areaLabel} / ${p.subLabel}: ${p.title}`);
+        writeWrappedLine(`[MANUTENZIONE] ${p.subLabel}: ${p.title}`);
       }
       for (const iss of urgentIssues) {
-        writeWrappedLine(`[PROBLEMA] ${card.areaLabel} / ${iss.subLabel}: ${iss.title}`);
+        writeWrappedLine(`[PROBLEMA] ${iss.subLabel}: ${iss.title}`);
       }
     }
     y += 5;
@@ -4374,23 +4465,31 @@ function RiepilogoAreaCard({ card }: { card: RiepilogoCardData }) {
 // cattura PDF. I diagrammi sono in sola visualizzazione: onSelectSub = noop.
 function renderAreaDiagram(area: EuromeccAreaStatic, snapshot: EuromeccSnapshot) {
   const noop = () => undefined;
+  // emphasizeIssues attivo SOLO qui (contenitore di cattura PDF): evidenzia i componenti
+  // in problema/manutenzione. I diagrammi a schermo non usano questo helper -> invariati.
   if (area.type === "silo") {
-    return <SiloDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+    return (
+      <SiloDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} emphasizeIssues />
+    );
   }
   if (area.key === "carico1" || area.key === "carico2") {
-    return <CaricoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+    return (
+      <CaricoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} emphasizeIssues />
+    );
   }
   if (area.key === "compressore" || area.key === "compressore2") {
     return (
-      <SalaCompressoriDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />
+      <SalaCompressoriDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} emphasizeIssues />
     );
   }
   if (area.key === "caricoRail") {
-    return <CaricoTrenoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />;
+    return (
+      <CaricoTrenoDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} emphasizeIssues />
+    );
   }
   if (area.key === "scaricoFornitore") {
     return (
-      <ScaricoFornitoreDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} />
+      <ScaricoFornitoreDiagram area={area} snapshot={snapshot} currentSub={null} onSelectSub={noop} emphasizeIssues />
     );
   }
   return null;
