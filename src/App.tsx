@@ -17,16 +17,6 @@ import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
 import NextCisternaPage from "./next/NextCisternaPage";
 import NextCisternaIAPage from "./next/NextCisternaIAPage";
 import NextCisternaSchedeTestPage from "./next/NextCisternaSchedeTestPage";
-import NextAutistiCloneLayout from "./next/autisti/NextAutistiCloneLayout";
-import NextAutistiGatePage from "./next/NextAutistiGatePage";
-import NextAutistiLoginPage from "./next/NextAutistiLoginPage";
-import NextAutistiHomePage from "./next/NextAutistiHomePage";
-import NextAutistiSetupMezzoPage from "./next/NextAutistiSetupMezzoPage";
-import NextAutistiCambioMezzoPage from "./next/NextAutistiCambioMezzoPage";
-import NextAutistiControlloPage from "./next/NextAutistiControlloPage";
-import NextAutistiRifornimentoPage from "./next/autisti/NextAutistiRifornimentoPage";
-import NextAutistiRichiestaAttrezzaturePage from "./next/autisti/NextAutistiRichiestaAttrezzaturePage";
-import NextAutistiSegnalazioniPage from "./next/autisti/NextAutistiSegnalazioniPage";
 import NextAutistiInboxCambioMezzoPage from "./next/NextAutistiInboxCambioMezzoPage";
 import NextAutistiInboxLogAccessiPage from "./next/NextAutistiInboxLogAccessiPage";
 import NextAutistiInboxGommePage from "./next/NextAutistiInboxGommePage";
@@ -164,29 +154,11 @@ function App() {
 
   return (
     <Routes>
-      <Route
-        path="/next/autisti"
-        element={
-          <NextRoleGuard areaId="autista-separato">
-            <NextAutistiCloneLayout />
-          </NextRoleGuard>
-        }
-      >
-        <Route index element={<NextAutistiGatePage />} />
-        <Route path="login" element={<NextAutistiLoginPage />} />
-        <Route path="home" element={<NextAutistiHomePage />} />
-        <Route path="setup-mezzo" element={<NextAutistiSetupMezzoPage />} />
-        <Route path="cambio-mezzo" element={<NextAutistiCambioMezzoPage />} />
-        <Route path="controllo" element={<NextAutistiControlloPage />} />
-        <Route path="rifornimento" element={<NextAutistiRifornimentoPage />} />
-        <Route path="segnalazioni" element={<NextAutistiSegnalazioniPage />} />
-        <Route
-          path="richiesta-attrezzature"
-          element={<NextAutistiRichiestaAttrezzaturePage />}
-        />
-        <Route path="*" element={<Navigate replace to="/next/autisti" />} />
+      <Route path="/next/autisti">
+        <Route index element={<Navigate replace to="/autisti" />} />
+        <Route path="*" element={<Navigate replace to="/autisti" />} />
       </Route>
-      <Route path="/next/autista" element={<Navigate replace to="/next/autisti" />} />
+      <Route path="/next/autista" element={<Navigate replace to="/autisti" />} />
       <Route path="/next" element={<NextShell />}>
         <Route index element={<NextHomePage />} />
         <Route

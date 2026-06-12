@@ -20,7 +20,7 @@ export const toolGetWheelGeometryConfig: ChatIaToolHandler<Input> = {
       blocked: true,
       reason: "NUOVO_READER richiesto da registry, ma il prompt vieta modifiche reader in questo task.",
       sourceKey: "@wheelGeom_override_v1",
-      checkedSources: ["src/pages/ModalGomme.tsx", "src/next/autisti/NextModalGomme.tsx"],
+      checkedSources: ["src/pages/ModalGomme.tsx"],
     };
   },
 };

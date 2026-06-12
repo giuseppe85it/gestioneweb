@@ -1,5 +1,13 @@
 # AGENTS.md - Regole Operative Codex
 
+## 0. Lettura iniziale obbligatoria
+- All'inizio di OGNI sessione, prima di qualsiasi azione, l'agente (Claude Code, Codex o subagent) DEVE leggere:
+  - `AGENTS.md` (questo file): regole operative complete.
+  - `CLAUDE.md` (root): awareness toolbox/MCP e skill configurate.
+  - le 3 config in `.claude/agents/` — `esploratore-firestore`, `guardiano-patch`, `revisore-audit` — per sapere quali subagent esistono e quando invocarli.
+- L'agente DEVE inoltre leggere i file di stato previsti dalla sez. 3 (`STATO_ATTUALE_PROGETTO.md` sempre; gli altri condizionali al tipo di task): per l'elenco completo e le condizioni vedi sez. 3.
+- Questa lettura e un prerequisito non negoziabile: serve a evitare che l'utente debba rispiegare a ogni sessione l'infrastruttura di agenti e regole.
+
 ## 1. Fonte primaria
 - `AGENTS.md` e la guida operativa primaria di Codex in questo repository.
 - I documenti di progetto restano fonte di verita per stato, dati, sicurezza e decisioni.
@@ -169,23 +177,13 @@ Eccezioni: se Firestore readonly non e' disponibile o il dato cade fuori boundar
 - Se l'aggiornamento richiederebbe più di 400 righe, 
   sintetizzare eliminando storia superata.
 
-## 17. Documentazione canonica per chat — `docs/copia questi nel progetto in chat/`
+## 17. Documentazione canonica per chat — SUPERATA
 
-La cartella `docs/copia questi nel progetto in chat/` (nome letterale, con spazi) e' la fonte canonica dei file MD da caricare come contesto nelle chat con Claude/GPT architetto (project knowledge).
+Regola SUPERATA dalla "REGOLA FILE DI DOCUMENTAZIONE" piu' in basso. Il percorso canonico unico della documentazione attiva e `docs/_live/` (piu' i file di root elencati in quella regola). La cartella `docs/copia questi nel progetto in chat/` NON e piu' dichiarata percorso canonico della documentazione. Vedi "REGOLA FILE DI DOCUMENTAZIONE".
 
-Regole:
-- Quando un MD viene promosso a "fonte canonica per la chat" (governance, registro vivo, audit aggiornato, SPEC attiva, decisione vincolante), va **spostato** in `docs/copia questi nel progetto in chat/` (non copiato). Preferire `git mv` per preservare la storia.
-- La cartella e' modificabile: aggiungere/rimuovere file richiede aggiornamento contestuale del file `MANIFEST.md` dentro la cartella, nello stesso commit.
-- `AGENTS.md`, `CLAUDE_CHAT_BEHAVIOR.md`, `METODO_AGENTI.md` restano in root (NON spostati), ma vanno caricati in chat insieme ai file della cartella.
-- L'indice della cartella e' il file `MANIFEST.md` (al suo interno) che elenca i file presenti, cosa contengono in una riga, e l'ordine consigliato di caricamento in chat (governance prima, registri dopo, audit aggiornati infine).
-- La cartella NON deve contenere doppioni: se un file viene spostato qui, l'originale altrove va cancellato o, se e' una copia handoff dichiarata, resta in posizione come storico (Categoria B della bonifica 2026-05-16).
+## 16. Cartella `docs/fonti-pronte/` — DEPRECATA
 
-## 16. Cartella `docs/fonti-pronte/`
-- `docs/fonti-pronte/` e la raccolta stabile delle fonti piu usate per riaprire il progetto in una nuova chat.
-- Deve contenere copie aggiornate dei documenti chiave: stato progetto, stato NEXT, registro clone, contesto Claude, regole operative, sicurezza, procedura madre->clone e i report/audit piu utili del momento.
-- Quando un task aggiorna uno dei file sorgente chiave gia specchiati in `docs/fonti-pronte/`, nello stesso task va aggiornata anche la copia corrispondente dentro `docs/fonti-pronte/`.
-- Se cambia l'elenco delle fonti pronte, va aggiornato anche `docs/fonti-pronte/00_INDICE_FONTI_PRONTE.md`.
-- Una patch documentale che tocca un file sorgente chiave ma lascia stale la sua copia in `docs/fonti-pronte/` non e completa.
+`docs/fonti-pronte/` e DEPRECATA dalla "REGOLA FILE DI DOCUMENTAZIONE" piu' in basso: non e piu' una raccolta canonica e non va creata, aggiornata o specchiata. La documentazione attiva vive solo in `docs/_live/` (piu' i file di root). Vedi "REGOLA FILE DI DOCUMENTAZIONE".
 
 ## REGOLA FILE DI DOCUMENTAZIONE
 

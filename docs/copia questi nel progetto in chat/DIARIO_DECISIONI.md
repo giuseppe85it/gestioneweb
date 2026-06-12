@@ -745,3 +745,23 @@ Verifica VISIVA con Claude in Chrome (primo uso operativo del nuovo strumento): 
 Lezione di metodo (registrata): per i bug a output visivo, i fix vanno su una causa MISURATA, non ipotizzata. PROMPT 59 e 62 hanno mancato il bersaglio perche' nessuno aveva guardato il PDF reale ne' misurato il punto vero (riquadro 4:3 fisso). La diagnosi e' arrivata solo dopo: dato fisico Firestore (61), inventario addImage con DPI reali (64), e verifica visiva Chrome. Regola: quando un task ha output visivo, usare Claude in Chrome per ispezionare il risultato reale prima di proporre fix, e misurare il punto esatto (addImage, dimensioni di piazzamento, ratio sorgente) invece di tarare parametri a tentativi.
 
 Build verde su tutti i prompt (tsc, eslint, npm run build). Backup pre-patch creati. Riferimento: PROMPT 58, 59, 61, 64, 65.
+
+## 12 06 2026 - Principio di design app autisti: massima semplicita' (vincolo perentorio su ogni UI autisti)
+
+DECISIONE DI PRODOTTO — PRINCIPIO DESIGN APP AUTISTI. Vincolo perentorio per ogni lavoro UI sull'app autisti, sia madre (`src/autisti/`, route `/autisti/*`) sia clone NEXT (`/next/autisti/*`).
+
+Utente target: autisti poco confidenti con la tecnologia ("boomer"). Criterio guida: massima semplicita', minimo numero di tap, nessuna complicazione introdotta in nome delle "best practice" se aggiunge frizione.
+
+La checklist a LOGICA INVERSA (default "tutto OK" gia' dichiarato; l'autista toglie la spunta solo se qualcosa non va) e' una SCELTA DELIBERATA, NON un bug: va preservata.
+
+Conseguenza per gli audit UX: il report di Claude in Chrome NON e' fonte di verita' sul design. Va sempre distinto cio' che e' un difetto reale (es. nome autista "undefined", scroll orizzontale su mobile, badge con input `type=number` che perde gli zeri iniziali) da cio' che e' una scelta deliberata di semplicita' (da preservare).
+
+Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsiasi suggerimento di audit.
+
+## 2026-06-12 — Cancellazione guscio driver NEXT autisti
+- Decisione: si tiene SOLO l'app autisti madre (src/autisti/, /autisti/*). Guscio driver clone NEXT (/next/autisti/*) cancellato (17 file UI finta, no-save).
+- Routing: /next/autisti(/*) e /next/autista redirigono a /autisti (madre).
+- Mantenuti: 8 moduli-dati clone-overlay in src/next/autisti/*.ts (ponte LETTURA dati madre per centro-controllo, manutenzioni, chat-IA, inbox).
+- Pulizia cosmetica parziale: rimosse voci registry in nextData.ts e stringa in toolGetWheelGeometryConfig.ts.
+- IN SOSPESO: NEXT_AUTISTI_APP_PATH (nextStructuralPaths.ts) ancora referenziato da NextHomePage.tsx e nextCloneNavigation.ts — c'è ancora un tile/navigazione verso l'area rimossa. Da trattare in task dedicato (capire se ridirezionare a /autisti o rimuovere il tile).
+- Build: verde. Lavoro successivo (bug + restyling UI) sulla madre src/autisti/.

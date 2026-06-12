@@ -1,7 +1,6 @@
 import {
   NEXT_ATTREZZATURE_CANTIERI_PATH,
   NEXT_AUTISTI_ADMIN_PATH,
-  NEXT_AUTISTI_APP_PATH,
   NEXT_AUTISTI_INBOX_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_PATH,
@@ -34,9 +33,7 @@ export type NextRouteModuleId =
   | NextAreaId
   | "euromecc"
   | "autisti-inbox"
-  | "autisti-admin"
-  | "autista-separato"
-  | "autista-legacy-redirect";
+  | "autisti-admin";
 
 export type NextRouteModuleStatus =
   | "ACTIVE"
@@ -210,7 +207,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "autisti",
     title: "AUTISTI",
     items: [
-      { id: "app-autisti", label: "App Autisti", path: NEXT_AUTISTI_APP_PATH },
       { id: "autisti-inbox", label: "Autisti Inbox", path: NEXT_AUTISTI_INBOX_PATH },
       { id: "autisti-admin", label: "Autisti Admin", path: NEXT_AUTISTI_ADMIN_PATH },
     ],
@@ -284,12 +280,6 @@ export const NEXT_NAV_ITEMS = [
     path: "/next/autisti-admin",
     label: "Autisti Admin",
     scope: "Centro rettifica dati reader-first",
-  },
-  {
-    id: "autista-separato",
-    path: "/next/autisti",
-    label: "App Autisti",
-    scope: "Esperienza autista clone-safe separata",
   },
 ] as const;
 
@@ -384,20 +374,6 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     label: "Cisterna",
     status: "ACTIVE_PARTIAL",
     note: "Route base clone-safe con archivio, report mensile e ripartizioni per targa; anche `Cisterna IA` e `Schede Test` sono ora navigabili, ma upload, analisi, save/update ed export restano bloccati.",
-  },
-  {
-    id: "autista-separato",
-    path: "/next/autisti",
-    label: "Area Autista",
-    status: "ACTIVE_PARTIAL",
-    note: "Terza tranche clone-safe completata sui tre moduli auditati: `AutistiGate`, `LoginAutista`, `SetupMezzo`, `ControlloMezzo`, `HomeAutista`, `CambioMezzoAutista`, `Rifornimento` clone-local, `Segnalazioni` con foto solo locali, `RichiestaAttrezzature` con foto solo locali e flusso `Gomme` raggiungibile dalla home clone, con sessione locale namespaced, route legacy riscritte su `/next/autisti/*` e scritture madre esplicitamente non sincronizzate.",
-  },
-  {
-    id: "autista-legacy-redirect",
-    path: "/next/autista",
-    label: "Redirect legacy area autista",
-    status: "TECHNICAL_REDIRECT",
-    note: "Redirect tecnico verso `/next/autisti` per non lasciare rotto il vecchio placeholder autista separato.",
   },
 ];
 
