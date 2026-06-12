@@ -765,3 +765,13 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - Pulizia cosmetica parziale: rimosse voci registry in nextData.ts e stringa in toolGetWheelGeometryConfig.ts.
 - IN SOSPESO: NEXT_AUTISTI_APP_PATH (nextStructuralPaths.ts) ancora referenziato da NextHomePage.tsx e nextCloneNavigation.ts â€” c'Ã¨ ancora un tile/navigazione verso l'area rimossa. Da trattare in task dedicato (capire se ridirezionare a /autisti o rimuovere il tile).
 - Build: verde. Lavoro successivo (bug + restyling UI) sulla madre src/autisti/.
+
+## 2026-06-12 — BUG 6 (doppia registrazione targa) — FASE 1 di 4
+- Causa radice: scritture su @autisti_sessione_attive erano read-modify-write con overwrite non atomico (race last-write-wins tra autisti) ? la revoca dell'altro autista poteva sparire, lasciando due sessioni sulla stessa targa.
+- Fase 1: creata primitiva transazionale updateSessioniAtomic in storageSync.ts (runTransaction + barriera + rilettura fresca dentro la transazione). Migrato il punto critico SetupMezzo.tsx alla primitiva; logica di revoca spostata dentro l'updater (gira su dato fresco, non più perdibile). Shape record invariata. window.confirm ed evento restano fuori dalla transazione; evento ora gated sul successo della scrittura.
+- Decisione business: targa già occupata ? conferma utente (come ora) + revoca reale dell'altro.
+- Verificato: guardiano-patch DIFF OK, build verde. Provato flusso singolo autista.
+- DA FARE (BUG 6 NON chiuso finché non completate):
+  - FASE 2: migrare alla primitiva gli altri 4 writer (CambioMezzoAutista ×2, HomeAutista logout+sgancio).
+  - FASE 3: invalidazione locale vittima (HomeAutista early-return :96 e AutistiGate :33 ? logout forzato quando sessione sparita ma device attivo).
+  - FASE 4 (BLOCCANTE per chiusura): AutistiAdmin — 6° writer della stessa collection, punto da cui Giuseppe modifica i dati. Da auditare (madre AutistiAdmin.tsx vs NEXT autistiInbox/*, visto che da admin si opera su NEXT), poi estendere la primitiva atomica. Senza questa fase la collisione autista?admin resta aperta.

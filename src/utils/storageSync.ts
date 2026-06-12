@@ -1,5 +1,5 @@
 import { db } from "../firebase";
-import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, runTransaction } from "firebase/firestore";
 import {
   assertCloneWriteAllowed,
   CloneWriteBlockedError,
@@ -8,11 +8,14 @@ import {
 import { readNextLegacyStorageOverride } from "../next/nextLegacyStorageOverlay";
 
 const MEZZI_KEY = "@mezzi_aziendali";
+const SESSIONI_KEY = "@autisti_sessione_attive";
 
 type SetItemSyncOptions = {
   allowRemovals?: boolean;
   removedIds?: string[];
 };
+
+type StorageArrayUpdater = (currentValue: unknown[]) => unknown[];
 
 function normalizeTargaKey(value: unknown): string {
   return String(value ?? "")
@@ -133,6 +136,26 @@ export async function setItemSync(
   } catch (err) {
     if (err instanceof CloneWriteBlockedError) return;
     console.error("Errore setItemSync:", err);
+  }
+}
+
+export async function updateSessioniAtomic(updaterFn: StorageArrayUpdater): Promise<boolean> {
+  try {
+    assertCloneWriteAllowed("storageSync.updateSessioniAtomic", { key: SESSIONI_KEY });
+
+    const ref = doc(db, "storage", SESSIONI_KEY);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const currentValue = snap.exists() ? snap.data().value : [];
+      const currentArray = Array.isArray(currentValue) ? currentValue : [];
+      const nextArray = updaterFn(currentArray);
+      tx.set(ref, { value: Array.isArray(nextArray) ? nextArray : [] });
+    });
+    return true;
+  } catch (err) {
+    if (err instanceof CloneWriteBlockedError) return false;
+    console.error("Errore updateSessioniAtomic:", err);
+    return false;
   }
 }
 

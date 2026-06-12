@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./SetupMezzo.css";
-import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync, updateSessioniAtomic } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
@@ -296,40 +296,6 @@ export default function SetupMezzo() {
       if (!ok) return;
     }
 
-    const nuove = prev
-      .filter((s) => s.badgeAutista !== autista.badge)
-      .map((s) => {
-        const motriceConflict =
-          !!motriceKey && fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey;
-        const rimorchioConflict =
-          !!rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey;
-        if (!motriceConflict && !rimorchioConflict) return s;
-
-        const scope = motriceConflict && rimorchioConflict
-          ? "TUTTO"
-          : motriceConflict
-          ? "MOTRICE"
-          : "RIMORCHIO";
-        const reason =
-          scope === "MOTRICE"
-            ? `Motrice assegnata a ${autista.badge}`
-            : scope === "RIMORCHIO"
-            ? `Rimorchio assegnato a ${autista.badge}`
-            : `Assetto assegnato a ${autista.badge}`;
-        return {
-          ...s,
-          targaMotrice: motriceConflict ? null : s?.targaMotrice ?? null,
-          targaRimorchio: rimorchioConflict ? null : s?.targaRimorchio ?? null,
-          revoked: {
-            ...(s?.revoked || {}),
-            by: "AUTO",
-            at: now,
-            scope,
-            reason,
-          },
-        };
-      });
-
     const prima = {
       targaMotrice:
         prevSession?.targaMotrice ??
@@ -380,10 +346,53 @@ export default function SetupMezzo() {
       condizioni: null,
       source: "setup_confirm",
     };
-    await appendEventoOperativo(eventoAssetto);
 
-    nuove.push(sessione);
-    await setItemSync(SESSIONI_KEY, nuove);
+    const sessioniUpdated = await updateSessioniAtomic((currentValue) => {
+      const current = currentValue as SessioneAttiva[];
+      const nuove = current
+        .filter((s) => s.badgeAutista !== autista.badge)
+        .map((s) => {
+          const motriceConflict =
+            !!motriceKey && fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey;
+          const rimorchioConflict =
+            !!rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey;
+          if (!motriceConflict && !rimorchioConflict) return s;
+
+          const scope = motriceConflict && rimorchioConflict
+            ? "TUTTO"
+            : motriceConflict
+            ? "MOTRICE"
+            : "RIMORCHIO";
+          const reason =
+            scope === "MOTRICE"
+              ? `Motrice assegnata a ${autista.badge}`
+              : scope === "RIMORCHIO"
+              ? `Rimorchio assegnato a ${autista.badge}`
+              : `Assetto assegnato a ${autista.badge}`;
+          return {
+            ...s,
+            targaMotrice: motriceConflict ? null : s?.targaMotrice ?? null,
+            targaRimorchio: rimorchioConflict ? null : s?.targaRimorchio ?? null,
+            revoked: {
+              ...(s?.revoked || {}),
+              by: "AUTO",
+              at: now,
+              scope,
+              reason,
+            },
+          };
+        });
+
+      nuove.push(sessione);
+      return nuove;
+    });
+
+    if (!sessioniUpdated) {
+      setErrore("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
+
+    await appendEventoOperativo(eventoAssetto);
 
     // locale per dispositivo
     saveMezzoLocal({
