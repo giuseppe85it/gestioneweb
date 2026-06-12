@@ -9,7 +9,6 @@ import {
   buildNextDossierPath,
   NEXT_ATTREZZATURE_CANTIERI_PATH,
   NEXT_AUTISTI_ADMIN_PATH,
-  NEXT_AUTISTI_APP_PATH,
   NEXT_AUTISTI_INBOX_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_IA_PATH,
@@ -94,17 +93,6 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
   if (normalizedPath === "/cisterna/schede-test") return NEXT_CISTERNA_SCHEDE_TEST_PATH;
   if (normalizedPath === "/autisti-inbox") return NEXT_AUTISTI_INBOX_PATH;
   if (normalizedPath === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
-  if (normalizedPath === "/autisti") return NEXT_AUTISTI_APP_PATH;
-  if (normalizedPath === "/autisti/login") return `${NEXT_AUTISTI_APP_PATH}/login`;
-  if (normalizedPath === "/autisti/home") return `${NEXT_AUTISTI_APP_PATH}/home`;
-  if (normalizedPath === "/autisti/setup-mezzo") return `${NEXT_AUTISTI_APP_PATH}/setup-mezzo`;
-  if (normalizedPath === "/autisti/cambio-mezzo") return `${NEXT_AUTISTI_APP_PATH}/cambio-mezzo`;
-  if (normalizedPath === "/autisti/controllo") return `${NEXT_AUTISTI_APP_PATH}/controllo`;
-  if (normalizedPath === "/autisti/rifornimento") return `${NEXT_AUTISTI_APP_PATH}/rifornimento`;
-  if (normalizedPath === "/autisti/segnalazioni") return `${NEXT_AUTISTI_APP_PATH}/segnalazioni`;
-  if (normalizedPath === "/autisti/richiesta-attrezzature") {
-    return `${NEXT_AUTISTI_APP_PATH}/richiesta-attrezzature`;
-  }
   if (normalizedPath === "/autisti-inbox/cambio-mezzo") {
     return `${NEXT_AUTISTI_INBOX_PATH}/cambio-mezzo`;
   }

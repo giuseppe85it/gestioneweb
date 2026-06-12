@@ -207,6 +207,7 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "autisti",
     title: "AUTISTI",
     items: [
+      { id: "app-autisti", label: "App Autisti", path: "/autisti" },
       { id: "autisti-inbox", label: "Autisti Inbox", path: NEXT_AUTISTI_INBOX_PATH },
       { id: "autisti-admin", label: "Autisti Admin", path: NEXT_AUTISTI_ADMIN_PATH },
     ],
