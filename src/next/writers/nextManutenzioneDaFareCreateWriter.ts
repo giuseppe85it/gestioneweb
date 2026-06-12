@@ -388,6 +388,7 @@ export async function createManutenzioneDaFareFromEvento(
 
 export async function createManutenzioneDaFareFromSegnalazione(
   record: unknown,
+  descrizioneOverride?: string,
 ): Promise<ManutenzioneDaFareCreateResult> {
   if (!isRecord(record)) {
     return { ok: false, error: "Segnalazione non valida." };
@@ -406,7 +407,9 @@ export async function createManutenzioneDaFareFromSegnalazione(
     normalizeTargaUp(record.targaRimorchio);
   const tipoProblema = normalizeText(record.tipoProblema) || "-";
   const descrizioneSegnalazione = normalizeText(record.descrizione) || "-";
-  const descrizione = `Segnalazione: ${tipoProblema} - ${descrizioneSegnalazione}`;
+  const descrizione =
+    normalizeText(descrizioneOverride) ||
+    `Segnalazione: ${tipoProblema} - ${descrizioneSegnalazione}`;
   const manutenzioneId = generateManutenzioneId();
   const manutenzione = buildManutenzioneDaFareRecord({
     id: manutenzioneId,

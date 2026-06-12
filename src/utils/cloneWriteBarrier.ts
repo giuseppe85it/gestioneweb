@@ -139,6 +139,7 @@ const MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS = [
   "/next/centro-controllo",
   "/next/autisti-admin",
   "/next/autisti-inbox",
+  "/next/manutenzioni",
 ] as const;
 const MANUTENZIONE_DAFARE_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@manutenzioni",
@@ -163,6 +164,15 @@ const GRUPPO_SEGNALAZIONI_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@segnalazioni_autisti_tmp",
 ]);
 const GRUPPO_SEGNALAZIONI_WRITE_SCOPE = "next_gruppo_segnalazioni_write_scope";
+const NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
+const NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@segnalazioni_autisti_tmp",
+  "@manutenzioni",
+]);
+const NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_PATH_PREFIXES = [
+  "autisti/segnalazioni/",
+] as const;
+const NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE = "next_segnalazione_delete_write_scope";
 // PROMPT 47/48 — scope dedicato per aggancio/sgancio legame manutenzione lato CC
 // (writer agganciaSegnalazioneAManutenzioneEsistente + sganciaLegameOrfano).
 // Path autorizzato: SOLO /next/centro-controllo (Archivio Storico interno). Le storage
@@ -280,6 +290,12 @@ function isAllowedChiusuraDaEventoWritePath(pathname: string): boolean {
 
 function isAllowedGruppoSegnalazioniWritePath(pathname: string): boolean {
   return GRUPPO_SEGNALAZIONI_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
+function isAllowedNextSegnalazioneDeleteWritePath(pathname: string): boolean {
+  return NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
@@ -495,6 +511,7 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE
     | typeof CHIUSURA_DA_EVENTO_WRITE_SCOPE
     | typeof GRUPPO_SEGNALAZIONI_WRITE_SCOPE
+    | typeof NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE
     | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE,
   action: () => Promise<T> | T,
@@ -585,6 +602,21 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return GRUPPO_SEGNALAZIONI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    isAllowedNextSegnalazioneDeleteWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE)
+  ) {
+    if (kind === "storageSync.setItemSync") {
+      return NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
+    if (kind === "storage.deleteObject") {
+      const path = readMetaPath(meta);
+      return NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
   }
 
   // PROMPT 47/48 — aggancio/sgancio legame manutenzione lato Centro Controllo.

@@ -23,6 +23,7 @@ import { findSatelliteChiusoDaEventoForRecord } from "./helpers/storiaRecord";
 import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { useSorgentiManutenzione } from "./helpers/useSorgenteManutenzione";
 import { chiudiSegnalazioneDaEvento } from "./writers/nextChiusuraEventoWriter";
+import { wheelGeom } from "../components/wheels";
 import { toDisplay } from "./helpers/dateUnica";
 import "./next-mappa-storico.css";
 
@@ -82,6 +83,45 @@ const DETAIL_FILTER_LABELS: Record<DetailFilterKey, string> = {
   rimorchio: "Rimorchio",
   compressore: "Compressore",
 };
+const GOMME_SCHEMA_BASE_IMAGE = new URL("../../docs/mockups/schema delle gomme_neutra.png", import.meta.url).href;
+
+type GommeVehicleSide = "DX" | "SX";
+type WheelGeomKey = keyof typeof wheelGeom;
+type GommeVehicleImageView = {
+  side: GommeVehicleSide | "fallback";
+  src: string;
+  label: string;
+  fallback: boolean;
+};
+type GommeVehicleImageResolution = {
+  src: string;
+  label: string;
+  reason: string;
+  views: GommeVehicleImageView[];
+  sourceCategory: string;
+  normalizedCategory: string;
+  wheelGeomKey: string;
+  side: GommeVehicleSide | null;
+  sideForImage: GommeVehicleSide | null;
+  fallback: boolean;
+};
+
+const GOMME_WHEEL_GEOM_LABELS: Record<WheelGeomKey, string> = {
+  biga: "biga",
+  motrice2assi: "motrice 2 assi",
+  motrice3assi: "motrice 3 assi",
+  motrice4assi: "motrice 4 assi",
+  pianale: "pianale",
+  vasca: "vasca",
+  centina: "centina",
+  trattore: "trattore cisterna",
+  semirimorchioFissi: "semirimorchio asse fisso",
+  semirimorchioSterzante: "semirimorchio asse sterzante",
+};
+
+function resolveGommeAssetPath(imageName: string): string {
+  return imageName.startsWith("/") ? imageName : `/gomme/${imageName}`;
+}
 
 function formatInterventoMeta(intervento: NextMappaStoricoIntervento): string {
   const chunks = [
@@ -351,6 +391,234 @@ function formatAsseLabel(value: string): string {
   }
 }
 
+function buildGommeAxisIds(
+  record: SelectedMaintenance | ManutenzioneLegacy | null | undefined,
+  normalizedAxes: string[],
+): string[] {
+  const axes = new Set(normalizedAxes);
+  for (const entry of record?.gommePerAsse ?? []) {
+    if (entry.asseId) axes.add(entry.asseId);
+  }
+  if (record?.gommeStraordinario?.asseId) {
+    axes.add(record.gommeStraordinario.asseId);
+  }
+  return Array.from(axes);
+}
+
+function formatGommeTipoLabel(record: SelectedMaintenance | ManutenzioneLegacy): string {
+  if (record.gommeInterventoTipo === "ordinario") return "ORDINARIO";
+  if (record.gommeInterventoTipo === "straordinario") return "STRAORDINARIO";
+  if (record.gommeStraordinario) return "STRAORDINARIO";
+  return "GOMME";
+}
+
+function formatGommeOriginLabel(
+  record: SelectedMaintenance | ManutenzioneLegacy,
+  sourceRecords: RawRecord[],
+): string {
+  if (record.chiusuraDi === "gomme_evento") {
+    return record.chiusuraRefId ? `Evento gomme ${record.chiusuraRefId}` : "Evento gomme";
+  }
+  const firstRef = record.origineRefs?.[0];
+  const refKey = firstRef?.refKey ?? record.origineRefKey ?? null;
+  const refId = firstRef?.refId ?? record.origineRefId ?? null;
+  if (refKey || refId) {
+    const compactKey = refKey ? refKey.replace(/^@/, "") : "origine";
+    return refId ? `${compactKey} ${refId}` : compactKey;
+  }
+  if (sourceRecords.length > 0) return "Origine collegata";
+  return "Inserimento manuale";
+}
+
+function formatGommeReporterLabel(
+  record: SelectedMaintenance | ManutenzioneLegacy,
+  sourceRecords: RawRecord[],
+): string {
+  const direct = record.segnalatoDa?.trim();
+  if (direct) return direct;
+  for (const source of sourceRecords) {
+    const author = sourceAuthorLabel(source);
+    if (author && author !== "Autista non indicato") return author;
+  }
+  return "non indicato";
+}
+
+function normalizeGommeResolverText(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeGommeResolverTarga(value: string | null | undefined): string {
+  return (value ?? "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function resolveGommeWheelGeomKey(categoria: string | null | undefined): WheelGeomKey | undefined {
+  const cat = normalizeGommeResolverText(categoria).toLowerCase();
+  if (!cat) return undefined;
+  if (cat.includes("motrice 4")) return "motrice4assi";
+  if (cat.includes("motrice 3")) return "motrice3assi";
+  if (cat.includes("motrice 2")) return "motrice2assi";
+  if (cat.includes("biga")) return "biga";
+  if (cat.includes("pianale")) return "pianale";
+  if (cat.includes("vasca")) return "vasca";
+  if (cat.includes("centina")) return "centina";
+  if (cat.includes("porta silo container")) return "semirimorchioSterzante";
+  if (cat.includes("semirimorchio") && cat.includes("sterz")) return "semirimorchioSterzante";
+  if (cat.includes("semirimorchio")) return "semirimorchioFissi";
+  if (cat.includes("trattore")) return "trattore";
+  return undefined;
+}
+
+function collectGommeVehicleCategoryCandidates(
+  record: SelectedMaintenance | ManutenzioneLegacy,
+  mezzoInfo: MezzoInfo | undefined,
+  sourceRecords: RawRecord[],
+): Array<{ value: string; source: string }> {
+  const recordRaw = record as RawRecord;
+  const recordTarga = normalizeGommeResolverTarga(record.targa);
+  const mezzoInfoTarga = normalizeGommeResolverTarga(mezzoInfo?.targa);
+  const directValues: Array<{ value: string | null | undefined; source: string }> = [
+    {
+      value: recordTarga && mezzoInfoTarga === recordTarga ? mezzoInfo?.categoria : null,
+      source: "categoria mezzo stessa targa",
+    },
+    { value: readSourceText(recordRaw, ["categoria", "categoriaMezzo", "tipoMezzo", "targetType"]), source: "record" },
+  ];
+  const sourceValues = sourceRecords.map((source) => {
+    const sourceTarga = normalizeGommeResolverTarga(
+      readSourceText(source, ["targetTarga", "targa", "targaMezzo", "targaCamion", "targaMotrice", "targaRimorchio"]),
+    );
+    return {
+      value: !sourceTarga || sourceTarga === recordTarga
+        ? readSourceText(source, ["categoria", "categoriaMezzo", "tipoMezzo", "targetType"])
+        : null,
+      source: sourceTarga ? `origine collegata ${sourceTarga}` : "origine collegata",
+    };
+  });
+  return [...directValues, ...sourceValues].flatMap((entry) => {
+    const normalized = entry.value?.trim();
+    return normalized ? [{ value: normalized, source: entry.source }] : [];
+  });
+}
+
+function collectGommeVehicleSideTexts(
+  record: SelectedMaintenance | ManutenzioneLegacy,
+  sourceRecords: RawRecord[],
+): string[] {
+  const recordRaw = record as RawRecord;
+  const directValues = [
+    record.descrizione,
+    record.sottotipo,
+    readSourceText(recordRaw, ["gommeIds", "asseLabel", "note", "dettaglio"]),
+  ];
+  const sourceValues = sourceRecords.flatMap((source) => [
+    sourceDescriptionLabel(source),
+    readSourceText(source, ["gommeIds", "asseLabel", "note", "dettaglio"]),
+  ]);
+  return [...directValues, ...sourceValues].map((value) => normalizeGommeResolverText(value)).filter(Boolean);
+}
+
+function resolveGommeVehicleSide(texts: string[]): GommeVehicleSide | null {
+  const joined = ` ${texts.join(" ")} `;
+  const hasSx = /(?:^|[^A-Z0-9])(?:LATO\s*)?SX(?:$|[^A-Z0-9])|SINISTR[AOE]/.test(joined);
+  const hasDx = /(?:^|[^A-Z0-9])(?:LATO\s*)?DX(?:$|[^A-Z0-9])|DESTR[AOE]/.test(joined);
+  if (hasSx === hasDx) return null;
+  return hasSx ? "SX" : "DX";
+}
+
+function resolveGommeWheelGeomCandidate(
+  candidates: Array<{ value: string; source: string }>,
+): { key: WheelGeomKey; source: string; value: string } | null {
+  for (const candidate of candidates) {
+    const key = resolveGommeWheelGeomKey(candidate.value);
+    if (key) return { key, source: candidate.source, value: candidate.value };
+  }
+  return null;
+}
+
+function resolveGommeVehicleImage(params: {
+  record: SelectedMaintenance | ManutenzioneLegacy;
+  mezzoInfo: MezzoInfo | undefined;
+  sourceRecords: RawRecord[];
+}): GommeVehicleImageResolution {
+  const fallback: GommeVehicleImageResolution = {
+    src: GOMME_SCHEMA_BASE_IMAGE,
+    label: "fallback generico",
+    reason: "Tipo mezzo o lato DX/SX non disponibili con certezza.",
+    views: [
+      {
+        side: "fallback",
+        src: GOMME_SCHEMA_BASE_IMAGE,
+        label: "Fallback generico",
+        fallback: true,
+      },
+    ],
+    sourceCategory: "non trovata",
+    normalizedCategory: "non disponibile",
+    wheelGeomKey: "non risolto",
+    side: null,
+    sideForImage: null,
+    fallback: true,
+  };
+  const categoryCandidates = collectGommeVehicleCategoryCandidates(params.record, params.mezzoInfo, params.sourceRecords);
+  const categoryMatch = resolveGommeWheelGeomCandidate(categoryCandidates);
+  const side = resolveGommeVehicleSide(collectGommeVehicleSideTexts(params.record, params.sourceRecords));
+  if (!categoryMatch) {
+    return {
+      ...fallback,
+      sourceCategory: categoryCandidates.map((candidate) => `${candidate.source}: ${candidate.value}`).join(" | ") || "non trovata",
+      reason: "Nessuna categoria strutturata del record risolve una geometria Gomme Autisti.",
+    };
+  }
+  const entry = wheelGeom[categoryMatch.key];
+  const categoryLabel = GOMME_WHEEL_GEOM_LABELS[categoryMatch.key];
+  const views: GommeVehicleImageView[] = [
+    {
+      side: "DX",
+      src: resolveGommeAssetPath(entry.imageDX),
+      label: `${categoryLabel} DX`,
+      fallback: false,
+    },
+    {
+      side: "SX",
+      src: resolveGommeAssetPath(entry.imageSX),
+      label: `${categoryLabel} SX`,
+      fallback: false,
+    },
+  ];
+  if (!side) {
+    return {
+      src: views[0].src,
+      label: categoryLabel,
+      views,
+      sourceCategory: `${categoryMatch.source}: ${categoryMatch.value}`,
+      normalizedCategory: normalizeGommeResolverText(categoryMatch.value),
+      wheelGeomKey: categoryMatch.key,
+      side: null,
+      sideForImage: "DX",
+      fallback: false,
+      reason: `Categoria ${categoryLabel} riconosciuta: mostrate viste DX e SX della stessa categoria.`,
+    };
+  }
+  return {
+    src: side === "DX" ? views[0].src : views[1].src,
+    label: categoryLabel,
+    reason: `Categoria ${categoryLabel} riconosciuta da ${categoryMatch.source}; mostrate viste DX e SX. Lato ${side} riconosciuto da testo/campi record.`,
+    views,
+    sourceCategory: `${categoryMatch.source}: ${categoryMatch.value}`,
+    normalizedCategory: normalizeGommeResolverText(categoryMatch.value),
+    wheelGeomKey: categoryMatch.key,
+    side,
+    sideForImage: side,
+    fallback: false,
+  };
+}
+
 function resolveDetailCategory(record: SelectedMaintenance | ManutenzioneLegacy): DetailCategory {
   if (isTyreMaintenanceRecord(record)) return "gomme";
   if (record.tipo === "compressore") return "compressore";
@@ -524,6 +792,29 @@ export default function NextMappaStoricoPage({
   const selectedAxesNormalized = useMemo(
     () => normalizeNextAssiCoinvolti(selectedRecord?.assiCoinvolti ?? []),
     [selectedRecord],
+  );
+  const selectedGommeAxes = useMemo(
+    () => buildGommeAxisIds(selectedRecord, selectedAxesNormalized),
+    [selectedAxesNormalized, selectedRecord],
+  );
+  const selectedGommeReporter = useMemo(
+    () => (selectedRecord ? formatGommeReporterLabel(selectedRecord, selectedSourceRecords) : "non indicato"),
+    [selectedRecord, selectedSourceRecords],
+  );
+  const selectedGommeOrigin = useMemo(
+    () => (selectedRecord ? formatGommeOriginLabel(selectedRecord, selectedSourceRecords) : "Inserimento manuale"),
+    [selectedRecord, selectedSourceRecords],
+  );
+  const selectedGommeVehicleImage = useMemo(
+    () =>
+      selectedRecord
+        ? resolveGommeVehicleImage({
+            record: selectedRecord,
+            mezzoInfo,
+            sourceRecords: selectedSourceRecords,
+          })
+        : null,
+    [mezzoInfo, selectedRecord, selectedSourceRecords],
   );
   const currentKmValue = kmAttuali ?? mezzoInfo?.kmAttuali ?? null;
   const filterCounts = useMemo<Record<DetailFilterKey, number>>(() => {
@@ -1145,35 +1436,104 @@ export default function NextMappaStoricoPage({
                         ) : null}
                       </div>
                       <div className="man2-detail-v2__gomme-box">
-                        {selectedAxesNormalized.length > 0 ? (
-                          <div className="man2-detail-v2__gomme-row">
-                            <span className="man2-detail-v2__gomme-label">Assi coinvolti</span>
-                            <div className="man2-detail-v2__gomme-tags">
-                              {selectedAxesNormalized.map((asse) => (
-                                <span key={asse} className="man2-detail-v2__gomme-tag">
-                                  {formatAsseLabel(asse)}
-                                </span>
+                        <div className="man2-detail-v2__gomme-hero">
+                          <div className="man2-detail-v2__gomme-visual">
+                            <div className="man2-detail-v2__gomme-visual-head">
+                              <span>Schema mezzo</span>
+                              <strong>{formatGommeTipoLabel(selectedRecord)}</strong>
+                            </div>
+                            <div className="man2-detail-v2__gomme-view-stack">
+                              {(selectedGommeVehicleImage?.views ?? [
+                                {
+                                  side: "fallback" as const,
+                                  src: GOMME_SCHEMA_BASE_IMAGE,
+                                  label: "Fallback generico",
+                                  fallback: true,
+                                },
+                              ]).map((view) => (
+                                <figure key={`${view.side}:${view.src}`} className="man2-detail-v2__gomme-view">
+                                  <figcaption>
+                                    {view.side === "DX" ? "Lato DX" : view.side === "SX" ? "Lato SX" : "Fallback generico"}
+                                  </figcaption>
+                                  <img
+                                    className="man2-detail-v2__gomme-schema"
+                                    src={view.src}
+                                    alt={`Immagine mezzo: ${view.label}`}
+                                  />
+                                </figure>
                               ))}
                             </div>
+                            <div className="man2-detail-v2__gomme-image-label">
+                              <strong>Immagine mezzo: {selectedGommeVehicleImage?.label ?? "fallback generico"}</strong>
+                              <span>{selectedGommeVehicleImage?.reason ?? "Resolver non applicabile al record selezionato."}</span>
+                            </div>
+                            <div className="man2-detail-v2__gomme-mask-note">
+                              <strong>Maschere singole non attive</strong>
+                              <span>Il record indica assi e dati intervento, non pneumatici DX interni/esterni.</span>
+                            </div>
                           </div>
-                        ) : null}
-                        {selectedRecord.gommeInterventoTipo ? (
-                          <div className="man2-detail-v2__gomme-row">
-                            <span className="man2-detail-v2__gomme-label">Tipo intervento</span>
-                            <span className="man2-detail-v2__gomme-value">
-                              {selectedRecord.gommeInterventoTipo}
-                            </span>
+
+                          <div className="man2-detail-v2__gomme-data">
+                            <div className="man2-detail-v2__gomme-data-head">
+                              <span>STORICO UFFICIALE</span>
+                              <strong>{formatGommeTipoLabel(selectedRecord)}</strong>
+                            </div>
+                            <div className="man2-detail-v2__gomme-card-grid">
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Assi coinvolti</span>
+                                <strong>
+                                  {selectedGommeAxes.length > 0
+                                    ? selectedGommeAxes.map(formatAsseLabel).join(", ")
+                                    : "non indicati"}
+                                </strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Data intervento</span>
+                                <strong>{formatMaintenanceDateDisplay(selectedRecord.dataEsecuzione ?? selectedRecord.data)}</strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Km mezzo</span>
+                                <strong>{selectedRecord.km != null ? `${formatNumberOptional(selectedRecord.km)} km` : "non indicati"}</strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Motivo</span>
+                                <strong>{selectedRecord.gommeStraordinario?.motivo ?? "non indicato"}</strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Quantita</span>
+                                <strong>
+                                  {selectedRecord.gommeStraordinario?.quantita != null
+                                    ? formatNumberOptional(selectedRecord.gommeStraordinario.quantita)
+                                    : "non indicata"}
+                                </strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Fornitore</span>
+                                <strong>{selectedRecord.fornitore?.trim() || "non indicato"}</strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Segnalato da</span>
+                                <strong>{selectedGommeReporter}</strong>
+                              </div>
+                              <div className="man2-detail-v2__gomme-data-card">
+                                <span>Origine</span>
+                                <strong>{selectedGommeOrigin}</strong>
+                              </div>
+                            </div>
                           </div>
-                        ) : null}
-                        {(selectedRecord.gommePerAsse ?? []).map((entry) => (
-                          <div key={`${entry.asseId}-${entry.dataCambio ?? "nodata"}`} className="man2-detail-v2__gomme-axis">
-                            <strong>{formatAsseLabel(entry.asseId)}</strong>
-                            <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "—"}</span>
-                            <span>
-                              Km cambio: {entry.kmCambio != null ? formatNumberOptional(entry.kmCambio) : "—"}
-                            </span>
-                          </div>
-                        ))}
+                        </div>
+
+                        <div className="man2-detail-v2__gomme-axis-list">
+                          {(selectedRecord.gommePerAsse ?? []).map((entry) => (
+                            <div key={`${entry.asseId}-${entry.dataCambio ?? "nodata"}`} className="man2-detail-v2__gomme-axis">
+                              <strong>{formatAsseLabel(entry.asseId)}</strong>
+                              <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "—"}</span>
+                              <span>
+                                Km cambio: {entry.kmCambio != null ? formatNumberOptional(entry.kmCambio) : "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </section>
                   ) : null}

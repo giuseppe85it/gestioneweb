@@ -28,6 +28,7 @@ gsutil/
 
 # Output Playwright / test
 test-results/
+.playwright-mcp/
 
 # Screenshot debug delle sessioni
 docs/_live/screenshots-*/

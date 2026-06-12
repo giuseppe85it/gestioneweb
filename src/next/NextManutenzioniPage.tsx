@@ -1,6 +1,6 @@
 ﻿import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRef } from "react";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
 import {
@@ -88,12 +88,15 @@ import {
   rimuoviDaGruppoManutenzioni,
 } from "./writers/gruppoManutenzioniWriter";
 import { agganciaSegnalazioniAManutenzioneEsistenteBatch } from "./writers/agganciaSegnalazioneAManutenzioneEsistenteWriter";
+import { createManutenzioneDaFareFromSegnalazione } from "./writers/nextManutenzioneDaFareCreateWriter";
+import { deleteSegnalazioneAutista } from "./writers/nextSegnalazioneDeleteWriter";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
 type TipoVoce = "mezzo" | "compressore" | "attrezzature";
+type PdfSubjectSelection = TipoVoce | "tutti";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dafare" | "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
@@ -162,6 +165,16 @@ type PdfModalLayout = "data" | "month" | "type";
 type PdfImageData = {
   dataUrl: string;
   format: "JPEG" | "PNG";
+  widthPx: number;
+  heightPx: number;
+  byteSize: number;
+};
+
+type PdfContainPlacement = {
+  drawX: number;
+  drawY: number;
+  drawW: number;
+  drawH: number;
 };
 
 type PdfOriginNotesById = Record<string, string>;
@@ -225,10 +238,29 @@ type AgganciaSegnalazioneModalState = {
   busy: boolean;
 };
 
+const PDF_SUBJECT_ORDER: TipoVoce[] = ["mezzo", "compressore", "attrezzature"];
+const PDF_SUBJECT_LABELS: Record<TipoVoce, { singular: string; plural: string }> = {
+  mezzo: { singular: "Mezzo", plural: "Mezzi" },
+  compressore: { singular: "Compressore", plural: "Compressori" },
+  attrezzature: { singular: "Attrezzatura", plural: "Attrezzature" },
+};
+
+type CreaManutenzioneSegnalazioneModalState = {
+  item: NextAutistiSegnalazioneSectionItem;
+  sourceRecord: Record<string, unknown>;
+  descrizione: string;
+  urgenza: Extract<NextManutenzioneUrgenza, "alta" | "media">;
+  busy: boolean;
+};
+
 const PDF_UNICODE_FONT_URL =
   "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxP.ttf";
 const PDF_UNICODE_FONT_FILE = "Roboto-Regular.ttf";
 const PDF_UNICODE_FONT_FAMILY = "RobotoUnicode";
+const PDF_IMAGE_MAX_LONG_SIDE_PX = 1200;
+const PDF_IMAGE_JPEG_QUALITY = 0.85;
+const PDF_IMAGE_COMPRESSION = "SLOW" as const;
+const PDF_HEADER_BLACK_RGB = [26, 26, 26] as const;
 
 let pdfUnicodeFontBase64Promise: Promise<string | null> | null = null;
 
@@ -666,6 +698,12 @@ function getPdfImageFormat(mimeType: string | null | undefined): "JPEG" | "PNG" 
   return mimeType?.toLowerCase().includes("png") ? "PNG" : "JPEG";
 }
 
+function estimateDataUrlByteSize(dataUrl: string): number {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 0x8000;
@@ -760,20 +798,113 @@ async function loadImageElement(source: string): Promise<HTMLImageElement | null
   });
 }
 
-function renderImageElementToDataUrl(image: HTMLImageElement, mimeType: string): string | null {
-  const width = image.naturalWidth || image.width || 0;
-  const height = image.naturalHeight || image.height || 0;
-  if (!width || !height) return null;
+function renderImageElementToPdfData(image: HTMLImageElement): PdfImageData | null {
+  const sourceWidth = image.naturalWidth || image.width || 0;
+  const sourceHeight = image.naturalHeight || image.height || 0;
+  if (!sourceWidth || !sourceHeight) return null;
 
+  const resizeRatio = Math.min(1, PDF_IMAGE_MAX_LONG_SIDE_PX / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * resizeRatio));
+  const height = Math.max(1, Math.round(sourceHeight * resizeRatio));
+
+  const canvas = renderImageToPdfCanvas(image, sourceWidth, sourceHeight, width, height);
+  if (!canvas) return null;
+
+  const dataUrl = canvas.toDataURL("image/jpeg", PDF_IMAGE_JPEG_QUALITY);
+  return {
+    dataUrl,
+    format: "JPEG",
+    widthPx: width,
+    heightPx: height,
+    byteSize: estimateDataUrlByteSize(dataUrl),
+  };
+}
+
+function calculatePdfContainPlacement(args: {
+  boxX: number;
+  boxY: number;
+  boxW: number;
+  boxH: number;
+  imgW: number;
+  imgH: number;
+}): PdfContainPlacement {
+  if (args.imgW <= 0 || args.imgH <= 0 || args.boxW <= 0 || args.boxH <= 0) {
+    return {
+      drawX: args.boxX,
+      drawY: args.boxY,
+      drawW: args.boxW,
+      drawH: args.boxH,
+    };
+  }
+
+  const scale = Math.min(args.boxW / args.imgW, args.boxH / args.imgH);
+  const drawW = args.imgW * scale;
+  const drawH = args.imgH * scale;
+
+  return {
+    drawX: args.boxX + (args.boxW - drawW) / 2,
+    drawY: args.boxY + (args.boxH - drawH) / 2,
+    drawW,
+    drawH,
+  };
+}
+
+function createPdfImageCanvas(width: number, height: number): HTMLCanvasElement | null {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return null;
 
   canvas.width = width;
   canvas.height = height;
-  context.drawImage(image, 0, 0, width, height);
-  const outputMimeType = mimeType.toLowerCase().includes("png") ? "image/png" : "image/jpeg";
-  return canvas.toDataURL(outputMimeType, 0.92);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+
+  return canvas;
+}
+
+function drawPdfImageToCanvas(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+): HTMLCanvasElement | null {
+  const canvas = createPdfImageCanvas(width, height);
+  if (!canvas) return null;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, width, height);
+  return canvas;
+}
+
+function renderImageToPdfCanvas(
+  image: HTMLImageElement,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+): HTMLCanvasElement | null {
+  let currentCanvas = drawPdfImageToCanvas(image, sourceWidth, sourceHeight);
+  if (!currentCanvas) return null;
+
+  let currentWidth = sourceWidth;
+  let currentHeight = sourceHeight;
+
+  while (currentWidth / 2 > targetWidth && currentHeight / 2 > targetHeight) {
+    const nextWidth = Math.max(targetWidth, Math.round(currentWidth / 2));
+    const nextHeight = Math.max(targetHeight, Math.round(currentHeight / 2));
+    const nextCanvas = drawPdfImageToCanvas(currentCanvas, nextWidth, nextHeight);
+    if (!nextCanvas) return null;
+    currentCanvas = nextCanvas;
+    currentWidth = nextWidth;
+    currentHeight = nextHeight;
+  }
+
+  if (currentWidth !== targetWidth || currentHeight !== targetHeight) {
+    return drawPdfImageToCanvas(currentCanvas, targetWidth, targetHeight);
+  }
+
+  return currentCanvas;
 }
 
 async function loadPdfImageData(url: string): Promise<PdfImageData | null> {
@@ -791,13 +922,8 @@ async function loadPdfImageData(url: string): Promise<PdfImageData | null> {
       const image = await loadImageElement(blobUrl);
       if (!image) return null;
 
-      const renderedDataUrl = renderImageElementToDataUrl(image, blob.type);
-      if (renderedDataUrl) {
-        return {
-          dataUrl: renderedDataUrl,
-          format: getPdfImageFormat(blob.type),
-        };
-      }
+      const renderedImageData = renderImageElementToPdfData(image);
+      if (renderedImageData) return renderedImageData;
 
       const fallbackDataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -809,6 +935,9 @@ async function loadPdfImageData(url: string): Promise<PdfImageData | null> {
       return {
         dataUrl: fallbackDataUrl,
         format: getPdfImageFormat(blob.type),
+        widthPx: image.naturalWidth || image.width || 0,
+        heightPx: image.naturalHeight || image.height || 0,
+        byteSize: estimateDataUrlByteSize(fallbackDataUrl),
       };
     } finally {
       URL.revokeObjectURL(blobUrl);
@@ -1236,8 +1365,7 @@ export default function NextManutenzioniPage() {
     useState<NextManutenzioniLegacyDatasetRecord | null>(null);
   const [aggancioManutenzioneBusy, setAggancioManutenzioneBusy] = useState(false);
   const [ricercaMezzo, setRicercaMezzo] = useState("");
-  const [pdfQuickSearch, setPdfQuickSearch] = useState("");
-  const [pdfSubjectType, setPdfSubjectType] = useState<TipoVoce>("mezzo");
+  const [pdfSubjectType, setPdfSubjectType] = useState<PdfSubjectSelection>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
   const [pdfIncludeOperative, setPdfIncludeOperative] = useState(true);
   const [pdfOriginNotesById, setPdfOriginNotesById] = useState<PdfOriginNotesById>({});
@@ -1260,6 +1388,8 @@ export default function NextManutenzioniPage() {
   const [gruppoSegnalazioneMenuId, setGruppoSegnalazioneMenuId] = useState<string | null>(null);
   const [agganciaSegnalazioneModal, setAgganciaSegnalazioneModal] =
     useState<AgganciaSegnalazioneModalState | null>(null);
+  const [creaManutenzioneSegnalazioneModal, setCreaManutenzioneSegnalazioneModal] =
+    useState<CreaManutenzioneSegnalazioneModalState | null>(null);
   const [selectedSegnalazioneIds, setSelectedSegnalazioneIds] = useState<string[]>([]);
   const [selectedGruppoSegnalazioneIds, setSelectedGruppoSegnalazioneIds] = useState<Record<string, string[]>>({});
   const [selectedManutenzioneLiberaIds, setSelectedManutenzioneLiberaIds] = useState<string[]>([]);
@@ -1779,7 +1909,7 @@ export default function NextManutenzioniPage() {
     const lastMonthThreshold = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30).getTime();
 
     return [...storico]
-      .filter((item) => item.tipo === pdfSubjectType)
+      .filter((item) => pdfSubjectType === "tutti" || item.tipo === pdfSubjectType)
       .filter((item) => {
         const itemTarga = normalizeText(item.targa);
         return !activeTarga || itemTarga === activeTarga;
@@ -1827,23 +1957,25 @@ export default function NextManutenzioniPage() {
     return byKey;
   }, [storico]);
   const pdfGroupedResults = useMemo(() => {
-    const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
+    const grouped = new Map<string, { subjectType: TipoVoce; targa: string; items: NextManutenzioniLegacyDatasetRecord[] }>();
     pdfFilteredItems.forEach((item) => {
-      const key = normalizeText(item.targa);
-      const current = grouped.get(key) ?? [];
-      current.push(item);
+      const targaKey = normalizeText(item.targa);
+      const key = pdfSubjectType === "tutti" ? `${item.tipo}:${targaKey}` : targaKey;
+      const current = grouped.get(key) ?? { subjectType: item.tipo, targa: targaKey, items: [] };
+      current.items.push(item);
       grouped.set(key, current);
     });
 
-    return [...grouped.entries()].map(([targaKey, items]) => {
+    return [...grouped.values()].map(({ subjectType, targa: targaKey, items }) => {
       const maintenanceItems = items.map(mapLegacyRecordToGommeReadModel);
       const categoria = mezzoPreview.find((entry) => entry.targa === targaKey)?.categoria ?? null;
-      const currentMetrics = latestMetricByTargaAndTipo.get(`${pdfSubjectType}:${targaKey}`) ?? {
+      const currentMetrics = latestMetricByTargaAndTipo.get(`${subjectType}:${targaKey}`) ?? {
         km: null,
         ore: null,
       };
 
       return {
+        subjectType,
         targa: targaKey,
         latest: items[0],
         items,
@@ -1852,26 +1984,31 @@ export default function NextManutenzioniPage() {
         currentKm: kmUltimoByTarga[targaKey] ?? null,
         currentOre: currentMetrics.ore,
         metricInfo: buildPdfMetricInfo({
-          subjectType: pdfSubjectType,
+          subjectType,
           latestItem: items[0],
           currentKm: kmUltimoByTarga[targaKey] ?? null,
           currentOre: currentMetrics.ore,
           categoria,
         }),
-        gommePerAsse: buildNextGommeStateByAsse({
-          categoria,
-          maintenanceItems,
-          kmAttuali: kmUltimoByTarga[targaKey] ?? null,
-        }),
-        gommeStraordinarie: buildNextGommeStraordinarieEvents({
-          categoria,
-          maintenanceItems,
-        }),
+        gommePerAsse:
+          subjectType === "mezzo"
+            ? buildNextGommeStateByAsse({
+                categoria,
+                maintenanceItems,
+                kmAttuali: kmUltimoByTarga[targaKey] ?? null,
+              })
+            : [],
+        gommeStraordinarie:
+          subjectType === "mezzo"
+            ? buildNextGommeStraordinarieEvents({
+                categoria,
+                maintenanceItems,
+              })
+            : [],
       };
     });
   }, [kmUltimoByTarga, latestMetricByTargaAndTipo, mezzoPreview, pdfFilteredItems, pdfSubjectType]);
   const ricercaRapida = normalizeFreeText(ricercaMezzo).toUpperCase();
-  const pdfRicercaRapida = normalizeFreeText(pdfQuickSearch).toUpperCase();
   const mezziSelezionabili = useMemo(() => {
     if (!ricercaRapida) return mezzi;
     return mezzi.filter((mezzo) => {
@@ -1891,7 +2028,7 @@ export default function NextManutenzioniPage() {
     });
   }, [mezzi, mezzoPreviewByTarga, ricercaRapida]);
   const pdfVisibleResults = useMemo(() => {
-    if (!ricercaRapida && !pdfRicercaRapida) return pdfGroupedResults;
+    if (!ricercaRapida) return pdfGroupedResults;
     return pdfGroupedResults.filter((result) => {
       const pageHaystack = [
         result.targa,
@@ -1902,23 +2039,35 @@ export default function NextManutenzioniPage() {
         .filter(Boolean)
         .join(" ")
         .toUpperCase();
-      const pdfHaystack = [result.targa, result.mezzo?.autistaNome]
-        .filter(Boolean)
-        .join(" ")
-        .toUpperCase();
       const matchesPageSearch = !ricercaRapida || pageHaystack.includes(ricercaRapida);
-      const matchesPdfSearch = !pdfRicercaRapida || pdfHaystack.includes(pdfRicercaRapida);
-      return matchesPageSearch && matchesPdfSearch;
+      return matchesPageSearch;
     });
-  }, [pdfGroupedResults, pdfRicercaRapida, ricercaRapida]);
+  }, [pdfGroupedResults, ricercaRapida]);
   const pdfVisibleItems = useMemo(() => {
-    const visibleTarghe = new Set(pdfVisibleResults.map((result) => normalizeText(result.targa)));
-    return pdfFilteredItems.filter((item) => visibleTarghe.has(normalizeText(item.targa)));
+    const visibleKeys = new Set(pdfVisibleResults.map((result) => `${result.subjectType}:${normalizeText(result.targa)}`));
+    return pdfFilteredItems.filter((item) => visibleKeys.has(`${item.tipo}:${normalizeText(item.targa)}`));
   }, [pdfFilteredItems, pdfVisibleResults]);
-  const pdfModalResult = useMemo(
-    () => pdfVisibleResults.find((result) => result.targa === modalOpenForTarga) ?? null,
-    [modalOpenForTarga, pdfVisibleResults],
+  const pdfVisibleSections = useMemo(
+    () =>
+      PDF_SUBJECT_ORDER.map((subjectType) => ({
+        subjectType,
+        title: PDF_SUBJECT_LABELS[subjectType].plural,
+        results: pdfVisibleResults.filter((result) => result.subjectType === subjectType),
+      })).filter((section) => section.results.length > 0),
+    [pdfVisibleResults],
   );
+  const pdfModalResult = useMemo(() => {
+    if (!modalOpenForTarga) return null;
+    const [subjectType, ...targaParts] = modalOpenForTarga.split(":");
+    if (targaParts.length > 0 && PDF_SUBJECT_ORDER.includes(subjectType as TipoVoce)) {
+      const targaKey = targaParts.join(":");
+      return (
+        pdfVisibleResults.find((result) => result.subjectType === subjectType && result.targa === targaKey) ??
+        null
+      );
+    }
+    return pdfVisibleResults.find((result) => result.targa === modalOpenForTarga) ?? null;
+  }, [modalOpenForTarga, pdfVisibleResults]);
   const pdfModalPeriodLabel = useMemo(
     () => (pdfModalResult ? buildPdfPeriodRangeLabel(pdfModalResult.items) : "DA VERIFICARE"),
     [pdfModalResult],
@@ -2138,6 +2287,7 @@ export default function NextManutenzioniPage() {
   }
 
   function renderPdfRows(args: {
+    subjectType: TipoVoce;
     items: NextManutenzioniLegacyDatasetRecord[];
     currentKm: number | null;
     currentOre: number | null;
@@ -2154,7 +2304,7 @@ export default function NextManutenzioniPage() {
 
     return args.items.map((item) => {
       const rowMetricInfo = buildPdfMetricInfo({
-        subjectType: pdfSubjectType,
+        subjectType: args.subjectType,
         latestItem: item,
         currentKm: args.currentKm,
         currentOre: args.currentOre,
@@ -2644,7 +2794,7 @@ export default function NextManutenzioniPage() {
     const bottomMargin = 14;
     const uniqueTarghe = Array.from(new Set(items.map((item) => normalizeText(item.targa)).filter(Boolean)));
     const orderedTarghe = [...uniqueTarghe].sort((left, right) => left.localeCompare(right, "it"));
-    const singleTarga = orderedTarghe.length === 1 ? orderedTarghe[0] : null;
+    const singleTarga = pdfSubjectType !== "tutti" && orderedTarghe.length === 1 ? orderedTarghe[0] : null;
     const periodLabel = buildPdfPeriodRangeLabel(items);
     const generatedLabel = formatPdfGenerationDate();
     const misuraColumnLabel = resolvePdfMetricColumnLabel(items);
@@ -2655,9 +2805,9 @@ export default function NextManutenzioniPage() {
     const fileName = buildPdfFileName(title);
     let y = topMargin;
 
-    const groupedItems = orderedTarghe.map((targaKey) => {
+    const buildPdfExportGroup = (subjectType: TipoVoce, targaKey: string) => {
       const groupedRecords = items
-        .filter((item) => normalizeText(item.targa) === targaKey)
+        .filter((item) => item.tipo === subjectType && normalizeText(item.targa) === targaKey)
         .sort((left, right) => {
           const leftOperative = pdfIncludeOperative && isPdfOperativeMaintenance(left);
           const rightOperative = pdfIncludeOperative && isPdfOperativeMaintenance(right);
@@ -2669,12 +2819,13 @@ export default function NextManutenzioniPage() {
         });
       const closedByExternalRecords = groupedRecords.filter(isPdfClosedByExternalEvent);
       const visibleRecords = groupedRecords.filter((item) => !isPdfClosedByExternalEvent(item));
-      const currentMetrics = latestMetricByTargaAndTipo.get(`${pdfSubjectType}:${targaKey}`) ?? {
+      const currentMetrics = latestMetricByTargaAndTipo.get(`${subjectType}:${targaKey}`) ?? {
         km: null,
         ore: null,
       };
 
       return {
+        subjectType,
         targa: targaKey,
         items: visibleRecords,
         closedByExternalItems: closedByExternalRecords,
@@ -2683,7 +2834,22 @@ export default function NextManutenzioniPage() {
         currentKm: kmUltimoByTarga[targaKey] ?? null,
         currentOre: currentMetrics.ore,
       };
-    });
+    };
+
+    const groupedItems =
+      pdfSubjectType === "tutti"
+        ? PDF_SUBJECT_ORDER.flatMap((subjectType) => {
+            const subjectTarghe = Array.from(
+              new Set(
+                items
+                  .filter((item) => item.tipo === subjectType)
+                  .map((item) => normalizeText(item.targa))
+                  .filter(Boolean),
+              ),
+            ).sort((left, right) => left.localeCompare(right, "it"));
+            return subjectTarghe.map((targaKey) => buildPdfExportGroup(subjectType, targaKey));
+          })
+        : orderedTarghe.map((targaKey) => buildPdfExportGroup(pdfSubjectType, targaKey));
 
     const photoDataByTarga = new Map(
       await Promise.all(
@@ -2723,6 +2889,45 @@ export default function NextManutenzioniPage() {
         doc.addPage();
         y = topMargin;
       }
+    };
+
+    const setPdfHeaderBlackFill = () => {
+      doc.setFillColor(...PDF_HEADER_BLACK_RGB);
+    };
+
+    const drawPdfContainedImage = (args: {
+      photoData: PdfImageData;
+      boxX: number;
+      boxY: number;
+      boxW: number;
+      boxH: number;
+      radius: number;
+      borderLineWidth: number;
+    }) => {
+      const placement = calculatePdfContainPlacement({
+        boxX: args.boxX,
+        boxY: args.boxY,
+        boxW: args.boxW,
+        boxH: args.boxH,
+        imgW: args.photoData.widthPx,
+        imgH: args.photoData.heightPx,
+      });
+
+      setPdfHeaderBlackFill();
+      doc.rect(args.boxX, args.boxY, args.boxW, args.boxH, "F");
+      doc.addImage(
+        args.photoData.dataUrl,
+        args.photoData.format,
+        placement.drawX,
+        placement.drawY,
+        placement.drawW,
+        placement.drawH,
+        undefined,
+        PDF_IMAGE_COMPRESSION,
+      );
+      doc.setDrawColor(201, 168, 106);
+      doc.setLineWidth(args.borderLineWidth);
+      doc.roundedRect(args.boxX, args.boxY, args.boxW, args.boxH, args.radius, args.radius);
     };
 
     const renderClosedByExternalTable = (
@@ -2791,14 +2996,68 @@ export default function NextManutenzioniPage() {
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 8;
     };
 
+    const pageContentHeight = pageHeight - topMargin - bottomMargin;
+    const estimateTextLineCount = (value: string, maxWidth: number) => {
+      setPdfFont("normal");
+      doc.setFontSize(8);
+      const lines = doc.splitTextToSize(toPdfText(value || "—", fontReady), maxWidth);
+      return Array.isArray(lines) ? Math.max(1, lines.length) : 1;
+    };
+    const estimateMainPdfRowHeight = (item: NextManutenzioniLegacyDatasetRecord) => {
+      const descriptionLines = estimateTextLineCount(buildPdfDescrizioneWithOrigin(item, pdfOriginNotes), 98);
+      return Math.max(8.4, descriptionLines * 3.4 + 5.2);
+    };
+    const estimateExternalPdfRowHeight = (item: NextManutenzioniLegacyDatasetRecord) => {
+      const description = `${buildPdfDescrizione(item)}\n${buildFraseStoria(
+        recordChiusoFromRaw(item as unknown as Record<string, unknown>),
+      )}`;
+      const descriptionLines = estimateTextLineCount(description, 122);
+      return Math.max(8.4, descriptionLines * 3.4 + 5.2);
+    };
+    const estimatePdfGroupTableHeight = (group: (typeof groupedItems)[number]) =>
+      9 + group.items.reduce((total, item) => total + estimateMainPdfRowHeight(item), 0);
+    const estimateClosedByExternalTableHeight = (closedItems: NextManutenzioniLegacyDatasetRecord[]) => {
+      if (closedItems.length === 0) return 0;
+      return 4 + 9 + closedItems.reduce((total, item) => total + estimateExternalPdfRowHeight(item), 0) + 8;
+    };
+    const estimatePdfGroupHeaderHeight = (group: (typeof groupedItems)[number]) =>
+      photoDataByTarga.get(group.targa) ? 24 : 18;
+    const estimatePdfGroupBlockHeight = (group: (typeof groupedItems)[number]) =>
+      estimatePdfGroupHeaderHeight(group) +
+      4 +
+      estimatePdfGroupTableHeight(group) +
+      10 +
+      estimateClosedByExternalTableHeight(group.closedByExternalItems);
+    const estimatePdfGroupAnchorHeight = (group: (typeof groupedItems)[number]) =>
+      estimatePdfGroupHeaderHeight(group) +
+      4 +
+      9 +
+      (group.items[0] ? estimateMainPdfRowHeight(group.items[0]) : 8.4);
+    const ensurePdfGroupStartsTogether = (group: (typeof groupedItems)[number]) => {
+      const blockHeight = estimatePdfGroupBlockHeight(group);
+      const neededHeight =
+        blockHeight <= pageContentHeight ? blockHeight : estimatePdfGroupAnchorHeight(group);
+      checkPage(neededHeight);
+    };
+    const ensurePdfSectionTitleWithFirstGroup = (group: (typeof groupedItems)[number]) => {
+      const sectionTitleHeight = 7;
+      const blockHeight = estimatePdfGroupBlockHeight(group);
+      const firstGroupHeight =
+        blockHeight <= pageContentHeight ? blockHeight : estimatePdfGroupAnchorHeight(group);
+      checkPage(sectionTitleHeight + firstGroupHeight);
+    };
+
     if (singleTarga) {
       const group = groupedItems[0];
+      if (group) {
+        ensurePdfGroupStartsTogether(group);
+      }
       const mezzoPdf = group?.mezzo ?? null;
       const photoData = photoDataByTarga.get(singleTarga) ?? null;
       const metricInfo =
         group?.latest
               ? buildPdfMetricInfo({
-                  subjectType: pdfSubjectType,
+                  subjectType: group.subjectType,
                   latestItem: group.latest,
                   currentKm: group.currentKm,
                   currentOre: group.currentOre,
@@ -2811,17 +3070,22 @@ export default function NextManutenzioniPage() {
       const heroHeight = photoData ? 50 : 44;
       const heroWidth = pageWidth - margin * 2;
       const heroRight = margin + heroWidth;
-      doc.setFillColor(26, 26, 26);
+      setPdfHeaderBlackFill();
       doc.roundedRect(margin, heroTop, heroWidth, heroHeight, 4, 4, "F");
       doc.setFillColor(201, 168, 106);
       doc.rect(margin, heroTop, 4, heroHeight, "F");
 
       let titleStartX = margin + 10;
       if (photoData) {
-        doc.setDrawColor(201, 168, 106);
-        doc.setLineWidth(0.7);
-        doc.roundedRect(margin + 8, heroTop + 8, 42, 31.5, 2, 2);
-        doc.addImage(photoData.dataUrl, photoData.format, margin + 8, heroTop + 8, 42, 31.5, undefined, "FAST");
+        drawPdfContainedImage({
+          photoData,
+          boxX: margin + 8,
+          boxY: heroTop + 8,
+          boxW: 42,
+          boxH: 31.5,
+          radius: 2,
+          borderLineWidth: 0.7,
+        });
         titleStartX = margin + 56;
       }
 
@@ -2861,7 +3125,7 @@ export default function NextManutenzioniPage() {
       );
       const stats = [
         {
-          label: metricInfo?.primaryLabel ?? (pdfSubjectType === "compressore" ? "Ore attuali" : "Km attuali"),
+          label: metricInfo?.primaryLabel ?? (group.subjectType === "compressore" ? "Ore attuali" : "Km attuali"),
           value: metricInfo?.primaryValue ?? "DA VERIFICARE",
         },
         {
@@ -2918,7 +3182,7 @@ export default function NextManutenzioniPage() {
         ]],
         body: (group?.items ?? []).map((item) => {
           const rowMetricInfo = buildPdfMetricInfo({
-            subjectType: pdfSubjectType,
+            subjectType: group.subjectType,
             latestItem: item,
             currentKm: group?.currentKm ?? null,
             currentOre: group?.currentOre ?? null,
@@ -2987,34 +3251,41 @@ export default function NextManutenzioniPage() {
       return;
     }
 
-    groupedItems.forEach((group) => {
+    const renderPdfGroup = (group: (typeof groupedItems)[number]) => {
+      ensurePdfGroupStartsTogether(group);
       const photoData = photoDataByTarga.get(group.targa) ?? null;
       const metricInfo =
         group.latest
           ? buildPdfMetricInfo({
-              subjectType: pdfSubjectType,
+              subjectType: group.subjectType,
               latestItem: group.latest,
               currentKm: group.currentKm,
               currentOre: group.currentOre,
               categoria: group.mezzo?.categoria ?? null,
             })
           : null;
+      const groupMisuraColumnLabel = resolvePdfMetricColumnLabel(group.items);
       const sectionHeight = photoData ? 24 : 18;
       checkPage(sectionHeight + 18);
       const sectionTop = y;
       const sectionWidth = pageWidth - margin * 2;
 
-      doc.setFillColor(26, 26, 26);
+      setPdfHeaderBlackFill();
       doc.roundedRect(margin, sectionTop, sectionWidth, sectionHeight, 3, 3, "F");
       doc.setFillColor(201, 168, 106);
       doc.rect(margin, sectionTop, 4, sectionHeight, "F");
 
       let currentX = margin + 8;
       if (photoData) {
-        doc.setDrawColor(201, 168, 106);
-        doc.setLineWidth(0.4);
-        doc.roundedRect(currentX, sectionTop + 4.5, 20, 15, 1.5, 1.5);
-        doc.addImage(photoData.dataUrl, photoData.format, currentX, sectionTop + 4.5, 20, 15, undefined, "FAST");
+        drawPdfContainedImage({
+          photoData,
+          boxX: currentX,
+          boxY: sectionTop + 4.5,
+          boxW: 20,
+          boxH: 15,
+          radius: 1.5,
+          borderLineWidth: 0.4,
+        });
         currentX += 24;
       }
 
@@ -3022,13 +3293,18 @@ export default function NextManutenzioniPage() {
       const columnWidth = availableWidth / 4;
       const sectionFields = [
         { label: "Targa", value: group.targa },
-        { label: "Mezzo", value: group.mezzo?.marcaModello ?? group.mezzo?.label ?? "DA VERIFICARE" },
+        {
+          label: pdfSubjectType === "tutti" ? PDF_SUBJECT_LABELS[group.subjectType].singular : "Mezzo",
+          value: group.mezzo?.marcaModello ?? group.mezzo?.label ?? "DA VERIFICARE",
+        },
         { label: "Autista", value: group.mezzo?.autistaNome || "DA VERIFICARE" },
         {
-          label: metricInfo?.primaryLabel ?? (pdfSubjectType === "compressore" ? "Ore attuali" : "Km attuali"),
+          label: metricInfo?.primaryLabel ?? (group.subjectType === "compressore" ? "Ore attuali" : "Km attuali"),
           value:
-            pdfSubjectType === "compressore"
+            group.subjectType === "compressore"
               ? metricInfo?.primaryValue ?? "DA VERIFICARE"
+              : group.subjectType === "attrezzature" && pdfSubjectType === "tutti"
+                ? metricInfo?.primaryValue ?? "DA VERIFICARE"
               : group.currentKm !== null
                 ? formatNumberIt(group.currentKm)
                 : "DA VERIFICARE",
@@ -3055,7 +3331,7 @@ export default function NextManutenzioniPage() {
         head: [[
           toPdfText("Data", fontReady),
           toPdfText("Stato", fontReady),
-          toPdfText(misuraColumnLabel, fontReady),
+          toPdfText(groupMisuraColumnLabel, fontReady),
           toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
           toPdfText("Tipo", fontReady),
           toPdfText("Descrizione", fontReady),
@@ -3063,7 +3339,7 @@ export default function NextManutenzioniPage() {
         ]],
         body: group.items.map((item) => {
           const rowMetricInfo = buildPdfMetricInfo({
-            subjectType: pdfSubjectType,
+            subjectType: group.subjectType,
             latestItem: item,
             currentKm: group.currentKm,
             currentOre: group.currentOre,
@@ -3122,7 +3398,25 @@ export default function NextManutenzioniPage() {
 
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 10;
       renderClosedByExternalTable(group.closedByExternalItems, pdfOriginNotes);
-    });
+    };
+
+    if (pdfSubjectType === "tutti") {
+      PDF_SUBJECT_ORDER.forEach((subjectType) => {
+        const sectionGroups = groupedItems.filter((group) => group.subjectType === subjectType);
+        if (sectionGroups.length === 0) return;
+
+        ensurePdfSectionTitleWithFirstGroup(sectionGroups[0]);
+        setPdfFont("bold");
+        doc.setFontSize(14);
+        doc.setTextColor(26, 26, 26);
+        doc.text(toPdfText(PDF_SUBJECT_LABELS[subjectType].plural, fontReady), margin, y);
+        y += 7;
+
+        sectionGroups.forEach(renderPdfGroup);
+      });
+    } else {
+      groupedItems.forEach(renderPdfGroup);
+    }
 
     decoratePages("Quadro manutenzioni");
     await openManutenzioniPdfPreview(
@@ -3197,6 +3491,42 @@ export default function NextManutenzioniPage() {
 
   function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {
     return resolveSegnalazioneAutoreReale(item) || "Autista";
+  }
+
+  function buildSegnalazioneManutenzioneDescrizione(item: NextAutistiSegnalazioneSectionItem): string {
+    const tipoProblema = normalizeFreeText(item.tipo || "-") || "-";
+    const descrizioneSegnalazione = normalizeFreeText(item.descrizione || "-") || "-";
+    return `Segnalazione: ${tipoProblema} - ${descrizioneSegnalazione}`;
+  }
+
+  function buildSegnalazioneWriterRecord(
+    item: NextAutistiSegnalazioneSectionItem,
+    sourceRecord: Record<string, unknown> | null,
+    urgenza: Extract<NextManutenzioneUrgenza, "alta" | "media">,
+  ): Record<string, unknown> {
+    return {
+      ...(sourceRecord ?? {}),
+      id: item.id,
+      targa: item.targa ?? sourceRecord?.targa ?? null,
+      targaCamion: item.targaCamion ?? sourceRecord?.targaCamion ?? null,
+      targaRimorchio: item.targaRimorchio ?? sourceRecord?.targaRimorchio ?? null,
+      tipoProblema: item.tipo,
+      descrizione: item.descrizione,
+      autistaNome: item.autistaNome ?? sourceRecord?.autistaNome ?? null,
+      badgeAutista: item.badgeAutista ?? sourceRecord?.badgeAutista ?? null,
+      flagVerifica: urgenza === "alta",
+    };
+  }
+
+  function clearSegnalazioneSelectionEverywhere(id: string) {
+    setSelectedSegnalazioneIds((current) => current.filter((entry) => entry !== id));
+    setSelectedGruppoSegnalazioneIds((current) => {
+      const next: Record<string, string[]> = {};
+      Object.entries(current).forEach(([key, ids]) => {
+        next[key] = ids.filter((entry) => entry !== id);
+      });
+      return next;
+    });
   }
 
   function buildSegnalatoDaGruppo(items: NextAutistiSegnalazioneSectionItem[]): string {
@@ -3621,6 +3951,106 @@ export default function NextManutenzioniPage() {
     }
   }
 
+  async function handleOpenCreaManutenzioneSegnalazione(item: NextAutistiSegnalazioneSectionItem) {
+    const fallbackRecord = buildSegnalazioneWriterRecord(item, null, "media");
+    let sourceRecord = fallbackRecord;
+    try {
+      const origineRecord = await getNextManutenzioneOrigineRecord("@segnalazioni_autisti_tmp", item.id);
+      if (origineRecord?.data) {
+        const rawUrgenza = origineRecord.data.flagVerifica === true ? "alta" : "media";
+        sourceRecord = buildSegnalazioneWriterRecord(item, origineRecord.data, rawUrgenza);
+      }
+    } catch (loadError) {
+      console.warn("Record segnalazione origine non disponibile, uso riga normalizzata:", loadError);
+    }
+    const urgenza = sourceRecord.flagVerifica === true ? "alta" : "media";
+    setCreaManutenzioneSegnalazioneModal({
+      item,
+      sourceRecord: buildSegnalazioneWriterRecord(item, sourceRecord, urgenza),
+      descrizione: buildSegnalazioneManutenzioneDescrizione(item),
+      urgenza,
+      busy: false,
+    });
+    setError(null);
+    setNotice(null);
+  }
+
+  async function handleSubmitCreaManutenzioneSegnalazione(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const modal = creaManutenzioneSegnalazioneModal;
+    if (!modal || modal.busy) return;
+    const descrizioneOverride = normalizeFreeText(modal.descrizione);
+    if (!descrizioneOverride) {
+      setError("Descrizione manutenzione obbligatoria.");
+      return;
+    }
+    setCreaManutenzioneSegnalazioneModal({ ...modal, busy: true });
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const sourceRecord = buildSegnalazioneWriterRecord(
+        modal.item,
+        modal.sourceRecord,
+        modal.urgenza,
+      );
+      const result = await createManutenzioneDaFareFromSegnalazione(
+        sourceRecord,
+        descrizioneOverride,
+      );
+      if (!result.ok) {
+        throw new Error(result.error || "Creazione manutenzione non riuscita.");
+      }
+      await refreshData();
+      clearSegnalazioneSelectionEverywhere(modal.item.id);
+      setCreaManutenzioneSegnalazioneModal(null);
+      if (result.manutenzioneId) {
+        setSelectedDetailRecordId(result.manutenzioneId);
+      }
+      setNotice("Manutenzione Da fare creata dalla segnalazione.");
+    } catch (createError) {
+      console.error("Errore creazione manutenzione da segnalazione:", createError);
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "Creazione manutenzione non riuscita.",
+      );
+      setCreaManutenzioneSegnalazioneModal({ ...modal, busy: false });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteSegnalazione(item: NextAutistiSegnalazioneSectionItem) {
+    const confirmed = window.confirm(
+      "Eliminare definitivamente questa segnalazione?\n\n"
+        + "La segnalazione e le sue foto verranno cancellate in modo irreversibile anche dalla madre.\n"
+        + "Se e' collegata a una manutenzione, verra' rimosso solo il riferimento di origine dalla manutenzione.",
+    );
+    if (!confirmed) return;
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const result = await deleteSegnalazioneAutista({ segnalazioneId: item.id });
+      if (!result.ok) {
+        throw new Error(result.error || "Eliminazione segnalazione non riuscita.");
+      }
+      await refreshData();
+      clearSegnalazioneSelectionEverywhere(item.id);
+      setNotice("Segnalazione eliminata.");
+    } catch (deleteError) {
+      console.error("Errore eliminazione segnalazione:", deleteError);
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Eliminazione segnalazione non riuscita.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function renderSegnalazioneRow(args: {
     item: NextAutistiSegnalazioneSectionItem;
     checked: boolean;
@@ -3683,6 +4113,20 @@ export default function NextManutenzioniPage() {
               type="button"
               className="man2-row-menu__item"
               role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleOpenCreaManutenzioneSegnalazione(item);
+              }}
+            >
+              Crea manutenzione
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
               disabled={!targetGroup || saving}
               onClick={(event) => {
                 event.preventDefault();
@@ -3723,6 +4167,21 @@ export default function NextManutenzioniPage() {
             >
               Aggancia a manutenzione esistente
             </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              style={{ color: "#b91c1c" }}
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleDeleteSegnalazione(item);
+              }}
+            >
+              Elimina
+            </button>
           </span>
         ) : null}
       </span>
@@ -3761,6 +4220,20 @@ export default function NextManutenzioniPage() {
                 event.preventDefault();
                 event.stopPropagation();
                 setSegnalazioneMenuId(null);
+                void handleOpenCreaManutenzioneSegnalazione(item);
+              }}
+            >
+              Crea manutenzione
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
                 void handleRimuoviDaGruppo(groupKey, item.id);
               }}
             >
@@ -3779,6 +4252,21 @@ export default function NextManutenzioniPage() {
               }}
             >
               Aggancia a manutenzione esistente
+            </button>
+            <button
+              type="button"
+              className="man2-row-menu__item"
+              role="menuitem"
+              style={{ color: "#b91c1c" }}
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSegnalazioneMenuId(null);
+                void handleDeleteSegnalazione(item);
+              }}
+            >
+              Elimina
             </button>
           </span>
         ) : null}
@@ -4773,6 +5261,205 @@ export default function NextManutenzioniPage() {
     );
   }
   function renderPdfPanel() {
+    const renderPdfResultRow = (result: (typeof pdfVisibleResults)[number]) => {
+      const previewItems = result.items.slice(0, 3);
+      const metricColumnLabel = resolvePdfMetricColumnLabel(result.items);
+      const deltaColumnLabel = result.metricInfo?.deltaLabel ?? "Δ km";
+
+      return (
+        <article key={`${result.subjectType}:${result.targa}`} className="man2-pdf-row">
+          <div className="man2-pdf-row__media">
+            {result.mezzo?.fotoUrl ? (
+              <img src={result.mezzo.fotoUrl} alt={`Mezzo ${result.targa}`} className="man2-pdf-thumb" />
+            ) : (
+              <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">{result.targa}</div>
+            )}
+          </div>
+          <div className="man2-pdf-row__content">
+            <div className="man2-pdf-row__meta">
+              <div>
+                <span className="man2-pdf-row__label">Targa</span>
+                <button
+                  type="button"
+                  className="man2-pdf-targa-btn"
+                  aria-label={`Apri dossier mezzo ${result.targa}`}
+                  onClick={() => navigate(buildNextDossierPath(result.targa))}
+                >
+                  {result.targa}
+                </button>
+              </div>
+              <div>
+                <span className="man2-pdf-row__label">Mezzo / modello</span>
+                <strong>{result.mezzo?.marcaModello ?? result.mezzo?.label ?? "DA VERIFICARE"}</strong>
+              </div>
+              <div>
+                <span className="man2-pdf-row__label">Autista</span>
+                <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
+              </div>
+              {result.metricInfo ? (
+                <div>
+                  <span className="man2-pdf-row__label">{result.metricInfo.primaryLabel}</span>
+                  <strong>{result.metricInfo.primaryValue}</strong>
+                </div>
+              ) : null}
+              {result.metricInfo?.secondaryLabel ? (
+                <div>
+                  <span className="man2-pdf-row__label">{result.metricInfo.secondaryLabel}</span>
+                  <strong>{result.metricInfo.secondaryValue}</strong>
+                </div>
+              ) : null}
+              {result.metricInfo?.deltaLabel ? (
+                <div>
+                  <span className="man2-pdf-row__label">{result.metricInfo.deltaLabel}</span>
+                  <strong>{result.metricInfo.deltaValue}</strong>
+                </div>
+              ) : null}
+              <div>
+                <span className="man2-pdf-row__label">Data</span>
+                <strong>{toDisplay(result.latest.data) || "DA VERIFICARE"}</strong>
+              </div>
+              <div>
+                <span className="man2-pdf-row__label">Tipo</span>
+                <strong>{result.latest.tipo}</strong>
+              </div>
+            </div>
+
+            <section className="man2-pdf-list" aria-label={`Ultime manutenzioni ${result.targa}`}>
+              <div className="man2-pdf-list__head">
+                <div className="man2-pdf-list__title">Ultime 3 manutenzioni</div>
+                {result.total > 3 ? (
+                  <button
+                  type="button"
+                  className="man2-pdf-list__button"
+                  onClick={() => {
+                      setModalOpenForTarga(`${result.subjectType}:${result.targa}`);
+                      setPdfModalLayout("data");
+                    }}
+                >
+                    Vedi tutte ({result.total}) →
+                  </button>
+                ) : null}
+              </div>
+
+              {previewItems.length > 0 ? (
+                <div className="man2-pdf-list__table-wrap">
+                  <table className="man2-pdf-list__table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Stato</th>
+                        <th>{metricColumnLabel}</th>
+                        <th>{deltaColumnLabel}</th>
+                        <th>Tipo</th>
+                        <th>Descrizione</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {renderPdfRows({
+                        subjectType: result.subjectType,
+                        items: previewItems,
+                        currentKm: result.currentKm,
+                        currentOre: result.currentOre,
+                        categoria: result.mezzo?.categoria ?? null,
+                        showType: true,
+                        showSupplier: false,
+                        showActions: true,
+                        variant: "list",
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="man2-pdf-list__empty">Nessuna manutenzione nel periodo selezionato.</div>
+              )}
+            </section>
+
+            <div className="man2-pdf-row__actions">
+              <button
+                type="button"
+                className="man2-btn"
+                title="Esporta il PDF della targa selezionata con la foto reale del mezzo, se disponibile."
+                aria-label={`Esporta PDF ${result.targa}`}
+                onClick={() =>
+                  void exportPdfForItems(
+                    pdfFilteredItems.filter(
+                      (item) => item.tipo === result.subjectType && item.targa === result.targa,
+                    ),
+                    `PDF ${result.subjectType} - ${result.targa}`,
+                  )
+                }
+              >
+                PDF
+              </button>
+              <button
+                type="button"
+                className="man2-btn man2-btn--secondary"
+                onClick={() => openDetailForRecord(result.latest)}
+              >
+                Apri dettaglio
+              </button>
+            </div>
+            {result.subjectType === "mezzo" && (result.gommePerAsse.length > 0 || result.gommeStraordinarie.length > 0) ? (
+              <div className="man2-gomme-pdf-state">
+                {result.gommePerAsse.length > 0 ? (
+                  <div className="man2-gomme-pdf-block">
+                    <div className="man2-gomme-pdf-state__title">Stato gomme ordinario per asse</div>
+                    <div className="man2-gomme-pdf-state__grid">
+                      {result.gommePerAsse.map((entry) => (
+                        <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
+                          <strong>{entry.asseLabel}</strong>
+                          <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "DA VERIFICARE"}</span>
+                          {entry.isMotorizzato ? (
+                            <>
+                              <span>
+                                Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
+                              </span>
+                              <span>
+                                Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
+                              </span>
+                              {entry.kmPercorsi !== null ? (
+                                <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span>Per questa categoria fa fede soprattutto la data cambio.</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {result.gommeStraordinarie.length > 0 ? (
+                  <div className="man2-gomme-pdf-block man2-gomme-pdf-block--straordinario">
+                    <div className="man2-gomme-pdf-state__title">Eventi gomme straordinari</div>
+                    <div className="man2-gomme-pdf-events">
+                      {result.gommeStraordinarie.map((entry) => (
+                        <div
+                          key={`${result.targa}:${entry.sourceMaintenanceId}`}
+                          className="man2-gomme-pdf-event"
+                        >
+                          <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
+                          <span>Data: {toDisplay(entry.dataLabel) || "DA VERIFICARE"}</span>
+                          <span>Asse: {entry.asseLabel || "Non specificato"}</span>
+                          <span>
+                            Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
+                          </span>
+                          {entry.fornitore ? <span>Officina: {entry.fornitore}</span> : null}
+                          {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </article>
+      );
+    };
+
     return (
       <section className="man2-screen">
         <div className="man2-pdf-shell">
@@ -4805,13 +5492,14 @@ export default function NextManutenzioniPage() {
                 <label className="man2-field__label">Filtro soggetto</label>
                 <select
                   value={pdfSubjectType}
-                  onChange={(event) => setPdfSubjectType(event.target.value as TipoVoce)}
-                  title="Scegli se leggere il quadro per mezzo, compressore o attrezzature."
+                  onChange={(event) => setPdfSubjectType(event.target.value as PdfSubjectSelection)}
+                  title="Scegli se leggere il quadro per mezzo, compressore, attrezzature o tutti i soggetti."
                   aria-label="Filtro soggetto quadro manutenzioni"
                 >
                   <option value="mezzo">Mezzo</option>
                   <option value="compressore">Compressore</option>
                   <option value="attrezzature">Attrezzature</option>
+                  <option value="tutti">Tutti</option>
                 </select>
               </div>
             </div>
@@ -4853,222 +5541,22 @@ export default function NextManutenzioniPage() {
                 </label>
               </div>
             </div>
-            <div className="man2-pdf-step">
-              <span className="man2-pdf-step__index">Step 3</span>
-              <div className="man2-form-title">Ricerca rapida</div>
-              <div className="man2-field">
-                <label className="man2-field__label">Filtra per targa o autista</label>
-                <input
-                  type="text"
-                  value={pdfQuickSearch}
-                  onChange={(event) => setPdfQuickSearch(event.target.value)}
-                  placeholder="Es. AB123CD o Mario Rossi"
-                  title="Filtra i risultati visibili per targa o autista."
-                  aria-label="Ricerca rapida quadro manutenzioni"
-                />
-              </div>
-            </div>
           </div>
         </div>
 
         <div className="man2-section-title">Risultati esportabili</div>
         <div className="man2-pdf-results">
           {pdfVisibleResults.length > 0 ? (
-            pdfVisibleResults.map((result) => {
-              const previewItems = result.items.slice(0, 3);
-              const metricColumnLabel = resolvePdfMetricColumnLabel(result.items);
-              const deltaColumnLabel = result.metricInfo?.deltaLabel ?? "Δ km";
-
-              return (
-                <article key={`${pdfSubjectType}:${result.targa}`} className="man2-pdf-row">
-                  <div className="man2-pdf-row__media">
-                    {result.mezzo?.fotoUrl ? (
-                      <img src={result.mezzo.fotoUrl} alt={`Mezzo ${result.targa}`} className="man2-pdf-thumb" />
-                    ) : (
-                      <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">{result.targa}</div>
-                    )}
-                  </div>
-                  <div className="man2-pdf-row__content">
-                    <div className="man2-pdf-row__meta">
-                      <div>
-                        <span className="man2-pdf-row__label">Targa</span>
-                        <button
-                          type="button"
-                          className="man2-pdf-targa-btn"
-                          aria-label={`Apri dossier mezzo ${result.targa}`}
-                          onClick={() => navigate(buildNextDossierPath(result.targa))}
-                        >
-                          {result.targa}
-                        </button>
-                      </div>
-                      <div>
-                        <span className="man2-pdf-row__label">Mezzo / modello</span>
-                        <strong>{result.mezzo?.marcaModello ?? result.mezzo?.label ?? "DA VERIFICARE"}</strong>
-                      </div>
-                      <div>
-                        <span className="man2-pdf-row__label">Autista</span>
-                        <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
-                      </div>
-                      {result.metricInfo ? (
-                        <div>
-                          <span className="man2-pdf-row__label">{result.metricInfo.primaryLabel}</span>
-                          <strong>{result.metricInfo.primaryValue}</strong>
-                        </div>
-                      ) : null}
-                      {result.metricInfo?.secondaryLabel ? (
-                        <div>
-                          <span className="man2-pdf-row__label">{result.metricInfo.secondaryLabel}</span>
-                          <strong>{result.metricInfo.secondaryValue}</strong>
-                        </div>
-                      ) : null}
-                      {result.metricInfo?.deltaLabel ? (
-                        <div>
-                          <span className="man2-pdf-row__label">{result.metricInfo.deltaLabel}</span>
-                          <strong>{result.metricInfo.deltaValue}</strong>
-                        </div>
-                      ) : null}
-                      <div>
-                        <span className="man2-pdf-row__label">Data</span>
-                        <strong>{toDisplay(result.latest.data) || "DA VERIFICARE"}</strong>
-                      </div>
-                      <div>
-                        <span className="man2-pdf-row__label">Tipo</span>
-                        <strong>{result.latest.tipo}</strong>
-                      </div>
-                    </div>
-
-                    <section className="man2-pdf-list" aria-label={`Ultime manutenzioni ${result.targa}`}>
-                      <div className="man2-pdf-list__head">
-                        <div className="man2-pdf-list__title">Ultime 3 manutenzioni</div>
-                        {result.total > 3 ? (
-                          <button
-                            type="button"
-                            className="man2-pdf-list__button"
-                            onClick={() => {
-                              setModalOpenForTarga(result.targa);
-                              setPdfModalLayout("data");
-                            }}
-                          >
-                            Vedi tutte ({result.total}) →
-                          </button>
-                        ) : null}
-                      </div>
-
-                      {previewItems.length > 0 ? (
-                        <div className="man2-pdf-list__table-wrap">
-                          <table className="man2-pdf-list__table">
-                            <thead>
-                              <tr>
-                                <th>Data</th>
-                                <th>Stato</th>
-                                <th>{metricColumnLabel}</th>
-                                <th>{deltaColumnLabel}</th>
-                                <th>Tipo</th>
-                                <th>Descrizione</th>
-                                <th>Azioni</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {renderPdfRows({
-                                items: previewItems,
-                                currentKm: result.currentKm,
-                                currentOre: result.currentOre,
-                                categoria: result.mezzo?.categoria ?? null,
-                                showType: true,
-                                showSupplier: false,
-                                showActions: true,
-                                variant: "list",
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="man2-pdf-list__empty">Nessuna manutenzione nel periodo selezionato.</div>
-                      )}
-                    </section>
-
-                    <div className="man2-pdf-row__actions">
-                      <button
-                        type="button"
-                        className="man2-btn"
-                        title="Esporta il PDF della targa selezionata con la foto reale del mezzo, se disponibile."
-                        aria-label={`Esporta PDF ${result.targa}`}
-                        onClick={() =>
-                          void exportPdfForItems(
-                            pdfFilteredItems.filter((item) => item.targa === result.targa),
-                            `PDF ${pdfSubjectType} - ${result.targa}`,
-                          )
-                        }
-                      >
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        className="man2-btn man2-btn--secondary"
-                        onClick={() => openDetailForRecord(result.latest)}
-                      >
-                        Apri dettaglio
-                      </button>
-                    </div>
-                    {pdfSubjectType === "mezzo" && (result.gommePerAsse.length > 0 || result.gommeStraordinarie.length > 0) ? (
-                      <div className="man2-gomme-pdf-state">
-                        {result.gommePerAsse.length > 0 ? (
-                          <div className="man2-gomme-pdf-block">
-                            <div className="man2-gomme-pdf-state__title">Stato gomme ordinario per asse</div>
-                            <div className="man2-gomme-pdf-state__grid">
-                              {result.gommePerAsse.map((entry) => (
-                                <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
-                                  <strong>{entry.asseLabel}</strong>
-                                  <span>Data cambio: {toDisplay(entry.dataCambio) || entry.dataCambio || "DA VERIFICARE"}</span>
-                                  {entry.isMotorizzato ? (
-                                    <>
-                                      <span>
-                                        Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
-                                      </span>
-                                      <span>
-                                        Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
-                                      </span>
-                                      {entry.kmPercorsi !== null ? (
-                                        <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
-                                      ) : null}
-                                    </>
-                                  ) : (
-                                    <span>Per questa categoria fa fede soprattutto la data cambio.</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {result.gommeStraordinarie.length > 0 ? (
-                          <div className="man2-gomme-pdf-block man2-gomme-pdf-block--straordinario">
-                            <div className="man2-gomme-pdf-state__title">Eventi gomme straordinari</div>
-                            <div className="man2-gomme-pdf-events">
-                              {result.gommeStraordinarie.map((entry) => (
-                                <div
-                                  key={`${result.targa}:${entry.sourceMaintenanceId}`}
-                                  className="man2-gomme-pdf-event"
-                                >
-                                  <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
-                                  <span>Data: {toDisplay(entry.dataLabel) || "DA VERIFICARE"}</span>
-                                  <span>Asse: {entry.asseLabel || "Non specificato"}</span>
-                                  <span>
-                                    Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
-                                  </span>
-                                  {entry.fornitore ? <span>Officina: {entry.fornitore}</span> : null}
-                                  {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })
+            pdfSubjectType === "tutti" ? (
+              pdfVisibleSections.map((section) => (
+                <Fragment key={section.subjectType}>
+                  <div className="man2-section-title">{section.title}</div>
+                  {section.results.map(renderPdfResultRow)}
+                </Fragment>
+              ))
+            ) : (
+              pdfVisibleResults.map(renderPdfResultRow)
+            )
           ) : (
             <div className="man-empty">Nessun risultato disponibile con i filtri attuali.</div>
           )}
@@ -5167,6 +5655,7 @@ export default function NextManutenzioniPage() {
                       </thead>
                       <tbody>
                         {renderPdfRows({
+                          subjectType: pdfModalResult.subjectType,
                           items: pdfModalResult.items,
                           currentKm: pdfModalResult.currentKm,
                           currentOre: pdfModalResult.currentOre,
@@ -5200,6 +5689,7 @@ export default function NextManutenzioniPage() {
                             </thead>
                             <tbody>
                               {renderPdfRows({
+                                subjectType: pdfModalResult.subjectType,
                                 items: group.items,
                                 currentKm: pdfModalResult.currentKm,
                                 currentOre: pdfModalResult.currentOre,
@@ -5228,6 +5718,7 @@ export default function NextManutenzioniPage() {
                           <table className="man2-pdf-modal__table">
                             <tbody>
                               {renderPdfRows({
+                                subjectType: pdfModalResult.subjectType,
                                 items: group.items,
                                 currentKm: pdfModalResult.currentKm,
                                 currentOre: pdfModalResult.currentOre,
@@ -5466,6 +5957,91 @@ export default function NextManutenzioniPage() {
       </div>
     );
   }
+
+  function renderCreaManutenzioneSegnalazioneModal() {
+    const modal = creaManutenzioneSegnalazioneModal;
+    if (!modal) return null;
+    const close = () => {
+      if (!modal.busy) setCreaManutenzioneSegnalazioneModal(null);
+    };
+    return (
+      <div
+        className="man2-pdf-modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Crea manutenzione da segnalazione"
+      >
+        <form className="man2-pdf-modal man2-pdf-modal--confirm" onSubmit={handleSubmitCreaManutenzioneSegnalazione}>
+          <div className="man2-pdf-modal__head">
+            <div>
+              <h3>Crea manutenzione da segnalazione</h3>
+              <p>{modal.item.id}</p>
+            </div>
+            <button
+              type="button"
+              className="man2-pdf-modal__close"
+              aria-label="Chiudi"
+              onClick={close}
+              disabled={modal.busy}
+            >
+              x
+            </button>
+          </div>
+          <div className="man2-pdf-modal__content">
+            <div className="man2-field-row">
+              <div className="man2-field">
+                <label className="man2-field__label">Targa</label>
+                <input value={modal.item.targa ?? ""} readOnly />
+              </div>
+              <div className="man2-field">
+                <label className="man2-field__label">Urgenza</label>
+                <select
+                  value={modal.urgenza}
+                  onChange={(event) =>
+                    setCreaManutenzioneSegnalazioneModal((current) =>
+                      current
+                        ? {
+                            ...current,
+                            urgenza: event.target.value as Extract<NextManutenzioneUrgenza, "alta" | "media">,
+                          }
+                        : current,
+                    )
+                  }
+                  disabled={modal.busy}
+                >
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                </select>
+              </div>
+            </div>
+            <div className="man2-field">
+              <label className="man2-field__label">Descrizione</label>
+              <textarea
+                value={modal.descrizione}
+                rows={5}
+                required
+                disabled={modal.busy}
+                onChange={(event) =>
+                  setCreaManutenzioneSegnalazioneModal((current) =>
+                    current ? { ...current, descrizione: event.target.value } : current,
+                  )
+                }
+              />
+            </div>
+            <div className="man2-form-actions">
+              <button type="button" className="man2-btn" onClick={close} disabled={modal.busy}>
+                Annulla
+              </button>
+              <button type="submit" className="man2-btn-full" disabled={modal.busy || !modal.descrizione.trim()}>
+                {modal.busy ? "Salvataggio..." : "Crea manutenzione"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   function renderActiveSurface() {
     if (loading) {
       return <div className="man-empty">Caricamento manutenzioni in corso...</div>;
@@ -5726,6 +6302,7 @@ export default function NextManutenzioniPage() {
           onConfirm={(id) => void handleConfirmAgganciaSegnalazione(id)}
         />
       ) : null}
+      {renderCreaManutenzioneSegnalazioneModal()}
       {renderCompletionModal()}
       <PdfPreviewModal
         open={pdfPreviewOpen}

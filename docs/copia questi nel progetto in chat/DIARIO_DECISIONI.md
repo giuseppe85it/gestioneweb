@@ -702,3 +702,46 @@ Decisione/scoperta: Claude Code puo auto-verificare l'output PDF generando il fi
 **Euromecc: punti sospesi.**
 
 Restano aperti su Euromecc, come capitoli separati: (1) etichette sovrapposte sulla mappa generale (codici sili vicini 2A/2B, 6A/6B che si accavallano) — tocca il disegno della mappa, non l'impaginazione, da fare come intervento dedicato; (2) push su Vercel del lavoro PDF (tutto committato in locale, non ancora online).
+
+## 2026-06-11 - Azioni segnalazioni nel tab Da fare: crea manutenzione con form editabile + elimina (PROMPT 55)
+
+Decisione: le segnalazioni autisti aperte visibili in `/next/manutenzioni` tab "Da fare" (sezione "Segnalazioni aperte") hanno ora due azioni dirette sulla riga:
+- "Crea manutenzione": form modale con targa read-only, descrizione PRE-COMPILATA `Segnalazione: tipoProblema - descrizione` ed EDITABILE prima del salvataggio, urgenza pre-selezionata (alta se flagVerifica). Salva via `createManutenzioneDaFareFromSegnalazione` esteso con parametro opzionale `descrizioneOverride` (retro-compatibile: call-site esistenti invariati, verificato via rg).
+- "Elimina": hard-delete della segnalazione con conferma esplicita. Nuovo writer `src/next/writers/nextSegnalazioneDeleteWriter.ts`.
+
+Decisione A (auto-sgancio bidirezionale): il delete di una segnalazione collegata a manutenzioni rimuove SOLO gli origineRef/origineRefs che puntano alla segnalazione eliminata, senza mai cancellare o alterare la manutenzione. Completa la simmetria con D1a (che copriva solo il verso manutenzione -> segnalazione).
+
+Scelte operative:
+- hard-delete fisico, non soft-hide;
+- foto cancellate da Firebase Storage, irreversibile anche per la madre; delete tollerante a file gia' assenti;
+- nuovo scope barrier `next_segnalazione_delete_write_scope`: path solo `/next/manutenzioni`, storage key solo `@segnalazioni_autisti_tmp` + `@manutenzioni`, delete Storage limitato al prefisso `autisti/segnalazioni/`;
+- scope `MANUTENZIONE_DAFARE_CREATE` esteso con path `/next/manutenzioni`;
+- i bottoni morti di `/next/autisti-admin` (guard sempre-true) restano fuori perimetro, decisione rimandata.
+
+Correzione di metodo (errore audit PROMPT 54): la mappa superfici aveva mancato `NextManutenzioniPage` perche' il grep cercava solo la chiave storage letterale e non i reader di dominio. Regola permanente: quando si mappano le superfici di una collection, rg esaustivo anche sui reader (`readNextAutistiReadOnlySnapshot` e simili), non solo sulle chiavi `@*`. Il runtime osservato da Giuseppe prevale sul report di audit.
+
+Verifiche: tsc clean, eslint clean, `npm run build` OK, vitest 7/7 (delete writer + gomme suite), test runtime unico di fine feature eseguito da Giuseppe (crea con descrizione modificata, refresh, elimina, foto Storage, non-regressione frase storia). Backup `C:\tmp\backup_codice_prompt55_20260611_183518`.
+
+Riferimento: PROMPT 55 + chiarimento PROMPT 55-BIS.
+
+## 2026-06-11 - Quadro manutenzioni PDF: opzione Tutti, rimozione step 3, keep-together, fix foto (PROMPT 58-65)
+
+Ciclo di modifiche al wizard "Quadro manutenzioni PDF" in /next/manutenzioni (file unico src/next/NextManutenzioniPage.tsx).
+
+PROMPT 58 - Step 1 "Soggetto": aggiunta quarta opzione "Tutti" (mezzo + compressore + attrezzature insieme), default invariato "Mezzo". Type separato PdfSubjectSelection = TipoVoce | "tutti" per non contaminare TipoVoce dei record. Nel PDF, con "Tutti", record presentati in SEZIONI SEPARATE per tipo (ordine Mezzi, Compressori, Attrezzature), ciascuna con metrica propria (km/ore), stato gomme solo dentro sezione Mezzi. Step 3 "Ricerca rapida" ELIMINATO: il filtro in alto della pagina copre gia' targa E autista (deciso da Giuseppe contro l'ipotesi audit "necessario in alcuni casi"). Rimosso stato pdfQuickSearch e ogni uso.
+
+PROMPT 59 - Keep-together: ogni blocco mezzo (header + tabella interventi) sta intero su una pagina, mai targa separata dalla descrizione; intestazioni di sezione mai orfane a fondo pagina.
+
+PROMPT 59/62 - Tentativi falliti sul fix foto: agivano su cause IPOTIZZATE non misurate (flag FAST jsPDF, poi downscale single-step). Nessun miglioramento visivo a runtime. Lezione: vedi sotto.
+
+PROMPT 61 (esploratore-firestore) - Dato fisico: la foto mezzo in @mezzi_aziendali campo fotoUrl e' l'ORIGINALE a piena risoluzione (30/32 record, 900x1600..4000x2252, zero preview base64). Smentita l'ipotesi "preview compressa": la sorgente e' nitida.
+
+PROMPT 64 - CAUSA ROOT dimostrata: la miniatura mezzo viene piazzata con addImage in un riquadro 4:3 FISSO (20x15mm header, 42x31.5mm hero) ma il loader la consegna a ratio preservato, quindi le foto verticali venivano SCHIACCIATE. Non era cap, non DPI (reali 857-1524), non downscale.
+
+PROMPT 65 - FIX: rendering CONTAIN deciso da Giuseppe (foto intera, mai deformata, mai tagliata, scalata per stare nel box mantenendo le proporzioni) + fondo riquadro nero (PDF_HEADER_BLACK_RGB 26,26,26) per fondere le bande con l'header. Helper calculatePdfContainPlacement applicato a entrambi i riquadri. Cap 1200 e JPEG 0.85 invariati.
+
+Verifica VISIVA con Claude in Chrome (primo uso operativo del nuovo strumento): foto verticali rese intere e proporzionate, bande fuse col nero, nessuna deformazione, coerente verticali/landscape. Nitidezza residua "morbida" accettata da Giuseppe (softness fisiologico di una miniatura). Bordo oro del riquadro non toccato (preesistente, fuori perimetro).
+
+Lezione di metodo (registrata): per i bug a output visivo, i fix vanno su una causa MISURATA, non ipotizzata. PROMPT 59 e 62 hanno mancato il bersaglio perche' nessuno aveva guardato il PDF reale ne' misurato il punto vero (riquadro 4:3 fisso). La diagnosi e' arrivata solo dopo: dato fisico Firestore (61), inventario addImage con DPI reali (64), e verifica visiva Chrome. Regola: quando un task ha output visivo, usare Claude in Chrome per ispezionare il risultato reale prima di proporre fix, e misurare il punto esatto (addImage, dimensioni di piazzamento, ratio sorgente) invece di tarare parametri a tentativi.
+
+Build verde su tutti i prompt (tsc, eslint, npm run build). Backup pre-patch creati. Riferimento: PROMPT 58, 59, 61, 64, 65.
