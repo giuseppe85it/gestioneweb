@@ -17,14 +17,6 @@ import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
 import NextCisternaPage from "./next/NextCisternaPage";
 import NextCisternaIAPage from "./next/NextCisternaIAPage";
 import NextCisternaSchedeTestPage from "./next/NextCisternaSchedeTestPage";
-import NextAutistiInboxCambioMezzoPage from "./next/NextAutistiInboxCambioMezzoPage";
-import NextAutistiInboxLogAccessiPage from "./next/NextAutistiInboxLogAccessiPage";
-import NextAutistiInboxGommePage from "./next/NextAutistiInboxGommePage";
-import NextAutistiInboxControlliPage from "./next/NextAutistiInboxControlliPage";
-import NextAutistiInboxSegnalazioniPage from "./next/NextAutistiInboxSegnalazioniPage";
-import NextAutistiInboxRichiestaAttrezzaturePage from "./next/NextAutistiInboxRichiestaAttrezzaturePage";
-import NextAutistiInboxHomePage from "./next/NextAutistiInboxHomePage";
-import NextAutistiAdminPage from "./next/NextAutistiAdminPage";
 import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
 import NextMagazzinoPage from "./next/NextMagazzinoPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
@@ -503,62 +495,8 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route
-          path="autisti-inbox"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxHomePage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/cambio-mezzo"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxCambioMezzoPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/log-accessi"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxLogAccessiPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/gomme"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxGommePage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/controlli"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxControlliPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/segnalazioni"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxSegnalazioniPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="autisti-inbox/richiesta-attrezzature"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiInboxRichiestaAttrezzaturePage />
-            </NextRoleGuard>
-          }
-        />
+        <Route path="autisti-inbox" element={<Navigate replace to="/autisti-inbox" />} />
+        <Route path="autisti-inbox/*" element={<Navigate replace to="/autisti-inbox" />} />
         <Route
           path="ia/libretto"
           element={
@@ -583,14 +521,7 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route
-          path="autisti-admin"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextAutistiAdminPage />
-            </NextRoleGuard>
-          }
-        />
+        <Route path="autisti-admin" element={<Navigate replace to="/autisti-admin" />} />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 

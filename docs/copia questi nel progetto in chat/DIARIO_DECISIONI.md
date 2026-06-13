@@ -795,3 +795,10 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - STATO BUG 6: CHIUSO. Tutti e 6 i writer di @autisti_sessione_attive (5 driver: SetupMezzo, CambioMezzo ×2, HomeAutista logout+sgancio; + 1 admin) sono atomici via updateSessioniAtomic. Aggiunta invalidazione locale vittima (Fase 3). Non più "BLOCCANTE".
 - Caveat noto (tutte le fasi): runTransaction richiede connessione (nessuna persistenza offline configurata) ? in rete assente l'azione sessioni si interrompe con avviso invece di completare localmente; elimina le sessioni fantasma. Verifica visiva Centro Controllo consigliata (dati admin invariati).
 - DA FARE separato (non BUG 6): redirect guscio AutistiAdmin NEXT ? madre (come fatto per driver); poi eventuale cleanup write-side no-op. Sistema permessi per-badge (feature futura).
+
+## 2026-06-12 — Redirect guscio AutistiAdmin/Inbox NEXT ? madre
+- Le rotte guscio NEXT /next/autisti-admin, /next/autisti-inbox (+ /next/autisti-inbox/*) ora redirigono alle pagine madre vere /autisti-admin e /autisti-inbox.
+- Motivo: il guscio admin/inbox NEXT ha scritture NO-OP (non persiste, alert "clone sola lettura"). La pagina vera che salva è la madre. Redirect elimina la trappola "lavoro sul guscio finto".
+- Rimossi 8 import orfani in App.tsx (NextAutistiInboxHome/CambioMezzo/LogAccessi/Gomme/Controlli/Segnalazioni/RichiestaAttrezzature + NextAutistiAdminPage), referenziati solo lì.
+- NON cancellati i file componente né i moduli-dati clone-overlay: hanno LETTURE VERE condivise da centro-controllo/manutenzioni/inbox. Cleanup write-side no-op resta lavoro opzionale futuro, non urgente.
+- Build verde. Discorso guscio autisti CHIUSO (driver + admin/inbox entrambi ? madre).
