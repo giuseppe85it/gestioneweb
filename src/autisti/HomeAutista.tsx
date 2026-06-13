@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
-import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync, updateSessioniAtomic } from "../utils/storageSync";
 import GommeAutistaModal from "./GommeAutistaModal";
 import {
   clearLastHandledRevokedAt,
@@ -222,6 +222,14 @@ export default function HomeAutista() {
     const a = getAutistaLocal();
     if (!a?.badge) return;
 
+    const sessioneAggiornata = await updateSessioniAtomic((sessioni) => {
+      return sessioni.filter((s: any) => s?.badgeAutista !== a.badge);
+    });
+    if (!sessioneAggiornata) {
+      window.alert("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
+
     try {
       const now = Date.now();
       await appendEventoOperativo({
@@ -237,12 +245,6 @@ export default function HomeAutista() {
     } catch (err) {
       console.warn("Logout autista: impossibile scrivere evento", err);
     }
-
-    // opzionale: pulizia sessione attiva lato Firestore (non usata per gating)
-    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-    const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-    const aggiornate = sessioni.filter((s: any) => s?.badgeAutista !== a.badge);
-    await setItemSync(SESSIONI_KEY, aggiornate);
 
     // pulizia locale (questa è quella che conta)
     clearLastHandledRevokedAt(a.badge);
@@ -284,13 +286,16 @@ export default function HomeAutista() {
         : sgancioLuogoPreset;
 
     try {
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const aggiornate = sessioni.map((s: any) => {
-        if (s?.badgeAutista !== a.badge) return s;
-        return { ...s, targaMotrice: null };
+      const sessioneAggiornata = await updateSessioniAtomic((sessioni) => {
+        return sessioni.map((s: any) => {
+          if (s?.badgeAutista !== a.badge) return s;
+          return { ...s, targaMotrice: null };
+        });
       });
-      await setItemSync(SESSIONI_KEY, aggiornate);
+      if (!sessioneAggiornata) {
+        setSgancioErrore("Impossibile aggiornare la sessione. Riprova.");
+        return;
+      }
 
       await appendEventoOperativo({
         id: `CAMBIO_ASSETTO-${a.badge}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,

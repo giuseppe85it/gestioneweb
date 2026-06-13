@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./CambioMezzoAutista.css"; 
-import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync, updateSessioniAtomic } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
@@ -175,6 +175,19 @@ export default function CambioMezzoAutista() {
         targaRimorchio: null,
       };
 
+      // aggiorna sessioni attive: rimorchio -> null
+      const sessioneAggiornata = await updateSessioniAtomic((sessioni) => {
+        return sessioni.map((s) => {
+          const sessioneCorrente = s as Partial<SessioneAttiva>;
+          if (sessioneCorrente.badgeAutista !== cur.badgeAutista) return s;
+          return { ...sessioneCorrente, targaRimorchio: null };
+        });
+      });
+      if (!sessioneAggiornata) {
+        setErrore("Impossibile aggiornare la sessione. Riprova.");
+        return;
+      }
+
       await appendEventoOperativo({
         id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
         tipo: "CAMBIO_ASSETTO",
@@ -201,15 +214,6 @@ export default function CambioMezzoAutista() {
         source: "CambioMezzoAutista",
       });
 
-      // aggiorna sessioni attive: rimorchio -> null
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const aggiornate = sessioni.map((s) => {
-        if (s.badgeAutista !== cur.badgeAutista) return s;
-        return { ...s, targaRimorchio: null };
-      });
-      await setItemSync(SESSIONI_KEY, aggiornate);
-
       // aggiorna locale: mantieni motrice, azzera rimorchio
       saveMezzoLocal({
         targaCamion: cur.targaMotrice,
@@ -227,13 +231,17 @@ export default function CambioMezzoAutista() {
     // =======================
     if (modalita === "motrice" && cur.targaMotrice) {
       // aggiorna sessioni attive: motrice -> null (rimorchio resta se c'è)
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const aggiornate = sessioni.map((s) => {
-        if (s.badgeAutista !== cur.badgeAutista) return s;
-        return { ...s, targaMotrice: null };
+      const sessioneAggiornata = await updateSessioniAtomic((sessioni) => {
+        return sessioni.map((s) => {
+          const sessioneCorrente = s as Partial<SessioneAttiva>;
+          if (sessioneCorrente.badgeAutista !== cur.badgeAutista) return s;
+          return { ...sessioneCorrente, targaMotrice: null };
+        });
       });
-      await setItemSync(SESSIONI_KEY, aggiornate);
+      if (!sessioneAggiornata) {
+        setErrore("Impossibile aggiornare la sessione. Riprova.");
+        return;
+      }
 
       // aggiorna locale: azzera motrice, mantieni rimorchio
       saveMezzoLocal({

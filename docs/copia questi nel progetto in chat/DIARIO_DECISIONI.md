@@ -775,3 +775,9 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
   - FASE 2: migrare alla primitiva gli altri 4 writer (CambioMezzoAutista ×2, HomeAutista logout+sgancio).
   - FASE 3: invalidazione locale vittima (HomeAutista early-return :96 e AutistiGate :33 ? logout forzato quando sessione sparita ma device attivo).
   - FASE 4 (BLOCCANTE per chiusura): AutistiAdmin — 6° writer della stessa collection, punto da cui Giuseppe modifica i dati. Da auditare (madre AutistiAdmin.tsx vs NEXT autistiInbox/*, visto che da admin si opera su NEXT), poi estendere la primitiva atomica. Senza questa fase la collisione autista?admin resta aperta.
+
+## 2026-06-12 — BUG 6 — FASE 2 di 4
+- Migrati alla primitiva updateSessioniAtomic gli altri 4 writer sessioni driver: CambioMezzoAutista (cambio rimorchio, cambio motrice), HomeAutista (logout, sgancio motrice). Tutte le scritture su @autisti_sessione_attive nel perimetro driver sono ora atomiche. Zero scritture dirette residue.
+- Shape invariata; updater puri; eventi/stato locale/navigate fuori dalla transazione e gated sul successo. Guardiano-patch DIFF OK, build verde.
+- COMPORTAMENTO NOTO (cambio visibile): se la scrittura sessione fallisce (es. rete assente), logout/cambio/sgancio ora si INTERROMPONO con messaggio invece di completare solo localmente. Questo elimina le sessioni fantasma (obiettivo BUG 6) ma in rete debole l'autista può dover riprovare l'azione. Accettato come coerente con BUG 6. Eventuale retry automatico = ritocco futuro separato.
+- RESTANO: FASE 3 (invalidazione locale vittima: HomeAutista early-return :96 + AutistiGate :33 ? logout forzato se sessione sparita ma device attivo). FASE 4 BLOCCANTE (AutistiAdmin / valle).
