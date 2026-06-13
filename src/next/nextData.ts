@@ -1,6 +1,5 @@
 import {
   NEXT_ATTREZZATURE_CANTIERI_PATH,
-  NEXT_AUTISTI_ADMIN_PATH,
   NEXT_AUTISTI_INBOX_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_PATH,
@@ -208,8 +207,8 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     title: "AUTISTI",
     items: [
       { id: "app-autisti", label: "App Autisti", path: "/autisti" },
-      { id: "autisti-inbox", label: "Autisti Inbox", path: NEXT_AUTISTI_INBOX_PATH },
-      { id: "autisti-admin", label: "Autisti Admin", path: NEXT_AUTISTI_ADMIN_PATH },
+      { id: "autisti-inbox", label: "Autisti Inbox", path: "/next/autisti-inbox" },
+      { id: "autisti-admin", label: "Autisti Admin", path: "/next/autisti-admin" },
     ],
   },
   {

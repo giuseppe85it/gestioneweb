@@ -25,6 +25,7 @@ import {
 import { buildTargheList } from "../utils/targhe";
 import TargaPicker from "../components/TargaPicker";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -154,6 +155,7 @@ function normalizeMezzi(raw: any): any[] {
 
 export default function AutistiAdmin() {
   const navigate = useNavigate();
+  const hideInternalNav = isCloneRuntime();
 
   const [tab, setTab] = useState<TabKey>("rifornimenti");
   const [day, setDay] = useState<Date>(() => new Date());
@@ -2119,21 +2121,25 @@ export default function AutistiAdmin() {
       <div className="autisti-admin-wrap">
         <div className="autisti-admin-head">
           <div className="autisti-admin-head-left">
-            <button
-              type="button"
-              className="autisti-admin-logo"
-              onClick={() => navigate("/")}
-              title="Home"
-            >
-              <img src="/logo.png" alt="Logo" />
-            </button>
-            <button
-              type="button"
-              className="autisti-admin-back"
-              onClick={() => navigate("/autisti-inbox")}
-            >
-              Torna a Autisti Inbox
-            </button>
+            {!hideInternalNav && (
+              <>
+                <button
+                  type="button"
+                  className="autisti-admin-logo"
+                  onClick={() => navigate("/")}
+                  title="Home"
+                >
+                  <img src="/logo.png" alt="Logo" />
+                </button>
+                <button
+                  type="button"
+                  className="autisti-admin-back"
+                  onClick={() => navigate("/autisti-inbox")}
+                >
+                  Torna a Autisti Inbox
+                </button>
+              </>
+            )}
           </div>
 
           <h1>Centro rettifica dati (admin)</h1>

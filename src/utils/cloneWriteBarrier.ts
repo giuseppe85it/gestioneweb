@@ -148,6 +148,21 @@ const MANUTENZIONE_DAFARE_CREATE_ALLOWED_STORAGE_KEYS = new Set<string>([
 ]);
 const MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE =
   "centro_controllo_manutenzione_dafare_create_write";
+const AUTISTI_ADMIN_INBOX_ALLOWED_WRITE_PATHS = [
+  "/next/autisti-admin",
+  "/next/autisti-inbox",
+] as const;
+const AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@lavori",
+  "@storico_eventi_operativi",
+  "@segnalazioni_autisti_tmp",
+  "@richieste_attrezzature_autisti_tmp",
+  "@controlli_mezzo_autisti",
+  "@cambi_gomme_autisti_tmp",
+  "@gomme_eventi",
+  "@rifornimenti_autisti_tmp",
+  "@manutenzioni",
+]);
 const CHIUSURA_DA_EVENTO_ALLOWED_WRITE_PATHS = [
   "/next/manutenzioni",
   "/next/autisti-inbox",
@@ -278,6 +293,12 @@ function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
 
 function isAllowedManutenzioneDaFareCreateWritePath(pathname: string): boolean {
   return MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
+function isAllowedAutistiAdminInboxWritePath(pathname: string): boolean {
+  return AUTISTI_ADMIN_INBOX_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
@@ -586,6 +607,15 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return MANUTENZIONE_DAFARE_CREATE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (isAllowedAutistiAdminInboxWritePath(pathname)) {
+    if (kind === "storageSync.setItemSync") {
+      return AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
+    if (kind === "storageSync.updateSessioniAtomic") {
+      return readMetaKey(meta) === "@autisti_sessione_attive";
+    }
   }
 
   if (

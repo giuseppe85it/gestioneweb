@@ -8,8 +8,6 @@ import {
   buildNextDettaglioOrdinePath,
   buildNextDossierPath,
   NEXT_ATTREZZATURE_CANTIERI_PATH,
-  NEXT_AUTISTI_ADMIN_PATH,
-  NEXT_AUTISTI_INBOX_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_IA_PATH,
   NEXT_CISTERNA_PATH,
@@ -91,26 +89,6 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
   if (normalizedPath === "/cisterna") return NEXT_CISTERNA_PATH;
   if (normalizedPath === "/cisterna/ia") return NEXT_CISTERNA_IA_PATH;
   if (normalizedPath === "/cisterna/schede-test") return NEXT_CISTERNA_SCHEDE_TEST_PATH;
-  if (normalizedPath === "/autisti-inbox") return NEXT_AUTISTI_INBOX_PATH;
-  if (normalizedPath === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
-  if (normalizedPath === "/autisti-inbox/cambio-mezzo") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/cambio-mezzo`;
-  }
-  if (normalizedPath === "/autisti-inbox/controlli") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/controlli`;
-  }
-  if (normalizedPath === "/autisti-inbox/segnalazioni") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/segnalazioni`;
-  }
-  if (normalizedPath === "/autisti-inbox/log-accessi") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/log-accessi`;
-  }
-  if (normalizedPath === "/autisti-inbox/gomme") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/gomme`;
-  }
-  if (normalizedPath === "/autisti-inbox/richiesta-attrezzature") {
-    return `${NEXT_AUTISTI_INBOX_PATH}/richiesta-attrezzature`;
-  }
   if (normalizedPath === "/colleghi") return "/next/colleghi";
   if (normalizedPath === "/fornitori") return "/next/fornitori";
   if (normalizedPath === "/capo/mezzi") return "/next/capo/mezzi";

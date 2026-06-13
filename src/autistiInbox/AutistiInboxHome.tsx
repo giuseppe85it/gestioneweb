@@ -10,6 +10,7 @@ import SessioniAttiveCard from "./components/SessioniAttiveCard";
 import AutistiEventoModal from "../components/AutistiEventoModal";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import { getItemSync } from "../utils/storageSync";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 
 type ModalKind =
   | null
@@ -72,6 +73,7 @@ export default function AutistiInboxHome({
   const buildCambioMezzoPath =
     cloneConfig?.buildCambioMezzoPath ??
     ((value: Date) => `/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(value)}`);
+  const hideInternalNav = isCloneRuntime();
  
   const [menuOpen, setMenuOpen] = useState(false);
 const menuRef = useRef<HTMLDivElement | null>(null);
@@ -428,11 +430,11 @@ useEffect(() => {
         {/* HEADER */}
         <div className="autisti-header">
           <div className="autisti-header-left">
-            <img src="/logo.png" alt="Logo" onClick={() => navigate(homePath)} />
+            {!hideInternalNav && <img src="/logo.png" alt="Logo" onClick={() => navigate(homePath)} />}
           <div className="autisti-title-row">
   <h1>Autisti Inbox (admin)</h1>
 
-  {adminPath ? (
+  {adminPath && !hideInternalNav ? (
   <div className="autisti-menu-wrap" ref={menuRef}>
     <button
       type="button"

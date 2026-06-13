@@ -117,6 +117,25 @@ import RichiestaAttrezzatureAll from "./autistiInbox/RichiestaAttrezzatureAll";
 import AutistiGommeAll from "./autistiInbox/AutistiGommeAll";
 import AutistiLogAccessiAll from "./autistiInbox/AutistiLogAccessiAll";
 
+function formatAutistiInboxDay(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const nextAutistiInboxCloneConfig = {
+  homePath: "/next/autisti-inbox",
+  adminPath: "/next/autisti-admin",
+  segnalazioniPath: "/next/autisti-inbox/segnalazioni",
+  controlliPath: "/next/autisti-inbox/controlli",
+  richiestaAttrezzaturePath: "/next/autisti-inbox/richiesta-attrezzature",
+  logAccessiPath: "/next/autisti-inbox/log-accessi",
+  gommePath: "/next/autisti-inbox/gomme",
+  buildCambioMezzoPath: (day: Date) =>
+    `/next/autisti-inbox/cambio-mezzo?day=${formatAutistiInboxDay(day)}`,
+};
+
 function NextAnagraficheAliasRedirect({
   to,
   legacyFallback,
@@ -495,8 +514,19 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route path="autisti-inbox" element={<Navigate replace to="/autisti-inbox" />} />
-        <Route path="autisti-inbox/*" element={<Navigate replace to="/autisti-inbox" />} />
+        <Route
+          path="autisti-inbox"
+          element={<AutistiInboxHome cloneConfig={nextAutistiInboxCloneConfig} />}
+        />
+        <Route path="autisti-inbox/cambio-mezzo" element={<CambioMezzoInbox />} />
+        <Route path="autisti-inbox/controlli" element={<AutistiControlliAll />} />
+        <Route path="autisti-inbox/segnalazioni" element={<AutistiSegnalazioniAll />} />
+        <Route path="autisti-inbox/log-accessi" element={<AutistiLogAccessiAll />} />
+        <Route
+          path="autisti-inbox/richiesta-attrezzature"
+          element={<RichiestaAttrezzatureAll />}
+        />
+        <Route path="autisti-inbox/gomme" element={<AutistiGommeAll />} />
         <Route
           path="ia/libretto"
           element={
@@ -521,7 +551,7 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route path="autisti-admin" element={<Navigate replace to="/autisti-admin" />} />
+        <Route path="autisti-admin" element={<AutistiAdmin />} />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 

@@ -41,6 +41,17 @@ const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
 const KEY_GOMME_EVENTI = "@gomme_eventi";
 const KEY_MANUTENZIONI = "@manutenzioni";
 
+function isAutistiAdminInboxWritePath() {
+  if (typeof window === "undefined") return false;
+  const pathname = window.location.pathname;
+  return (
+    pathname === "/next/autisti-admin" ||
+    pathname.startsWith("/next/autisti-admin/") ||
+    pathname === "/next/autisti-inbox" ||
+    pathname.startsWith("/next/autisti-inbox/")
+  );
+}
+
 export default function AutistiEventoModal({
   event,
   onClose,
@@ -67,7 +78,7 @@ export default function AutistiEventoModal({
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
   const targhe = useTarghe();
-  const effectiveCloneSafe = cloneSafe || isCloneRuntime();
+  const effectiveCloneSafe = cloneSafe || (isCloneRuntime() && !isAutistiAdminInboxWritePath());
 
   useEffect(() => {
     let active = true;
