@@ -456,7 +456,6 @@ export default function Segnalazioni() {
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             multiple
             onChange={handleAddFoto}
             style={{ display: "none" }}

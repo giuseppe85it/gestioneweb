@@ -209,7 +209,6 @@ export default function RichiestaAttrezzature() {
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handleFoto}
               style={{ display: "none" }}
             />
