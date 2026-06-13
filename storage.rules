@@ -32,6 +32,9 @@ service firebase.storage {
     match /attrezzature/{allPaths=**} {
       allow read, write: if request.auth != null;
     }
+    match /autisti/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }
