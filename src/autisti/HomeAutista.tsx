@@ -87,13 +87,23 @@ export default function HomeAutista() {
       if (!a?.badge) return;
       const m = getMezzoLocal();
 
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const sessioniRaw = await getItemSync(SESSIONI_KEY);
+      if (!Array.isArray(sessioniRaw)) return;
+      const sessioni = sessioniRaw;
       const badgeKey = String(a.badge).trim();
       const sessioneLive = sessioni.find(
         (s: any) => String(s?.badgeAutista ?? s?.badge ?? "").trim() === badgeKey
       );
-      if (!sessioneLive) return;
+      if (!sessioneLive) {
+        if (!m) return;
+
+        clearLastHandledRevokedAt(badgeKey);
+        removeMezzoLocal();
+        setMezzo(null);
+        window.alert("Sessione non piu attiva. Reimposta l'accesso autista.");
+        navigate("/autisti/setup-mezzo", { replace: true });
+        return;
+      }
 
       const revokedAt =
         typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;

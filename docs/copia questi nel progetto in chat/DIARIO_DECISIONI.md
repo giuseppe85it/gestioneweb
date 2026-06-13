@@ -781,3 +781,9 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - Shape invariata; updater puri; eventi/stato locale/navigate fuori dalla transazione e gated sul successo. Guardiano-patch DIFF OK, build verde.
 - COMPORTAMENTO NOTO (cambio visibile): se la scrittura sessione fallisce (es. rete assente), logout/cambio/sgancio ora si INTERROMPONO con messaggio invece di completare solo localmente. Questo elimina le sessioni fantasma (obiettivo BUG 6) ma in rete debole l'autista può dover riprovare l'azione. Accettato come coerente con BUG 6. Eventuale retry automatico = ritocco futuro separato.
 - RESTANO: FASE 3 (invalidazione locale vittima: HomeAutista early-return :96 + AutistiGate :33 ? logout forzato se sessione sparita ma device attivo). FASE 4 BLOCCANTE (AutistiAdmin / valle).
+
+## 2026-06-12 — BUG 6 — FASE 3 di 4 (LATO DRIVER COMPLETO)
+- Invalidazione locale vittima: l'early-return su sessione assente (HomeAutista polling + AutistiGate) ora forza il logout SOLO se la sessione propria è realmente assente da un array letto correttamente E il device è attivo localmente. Anti-falso-positivo verificato: getItemSync su errore/rete ? null ? guard !Array.isArray ? return senza logout (un blip di rete NON slogga).
+- Ritocco atterraggio: il logout forzato rimuove SOLO il mezzo locale e MANTIENE il badge autista. La vittima atterra su /autisti/setup-mezzo già identificata e sceglie subito un'altra targa, senza rifare login. Allineato al comportamento della revoca esplicita "TUTTO".
+- Nessuna scrittura Firebase nuova; shape intatta; nessun rischio loop.
+- STATO BUG 6: lato DRIVER completo (Fasi 1-2-3). RESTA FASE 4 BLOCCANTE: AutistiAdmin / valle. BUG 6 NON chiuso finché Fase 4 non completata.

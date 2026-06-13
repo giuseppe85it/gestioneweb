@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  clearLastHandledRevokedAt,
   getAutistaLocal,
   getLastHandledRevokedAt,
   getMezzoLocal,
@@ -28,9 +29,23 @@ export default function AutistiGate() {
       const mezzo: any = mezzoArg ?? (await Promise.resolve((getMezzoLocal as any)()));
       if (cancelled) return false;
 
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const sessioneLive = sessioni.find((s: any) => s?.badgeAutista === autista.badge);
+      const sessioniRaw = await getItemSync(SESSIONI_KEY);
+      if (!Array.isArray(sessioniRaw)) return false;
+      const sessioni = sessioniRaw;
+      const badgeKey = String(autista.badge).trim();
+      const sessioneLive = sessioni.find(
+        (s: any) => String(s?.badgeAutista ?? s?.badge ?? "").trim() === badgeKey
+      );
+      if (!sessioneLive) {
+        if (!mezzo) return false;
+
+        clearLastHandledRevokedAt(badgeKey);
+        removeMezzoLocal();
+        window.alert("Sessione non piu attiva. Reimposta l'accesso autista.");
+        navigate("/autisti/setup-mezzo", { replace: true });
+        return true;
+      }
+
       const revokedAt =
         typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;
       if (revokedAt) {
