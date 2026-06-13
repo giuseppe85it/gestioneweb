@@ -787,3 +787,11 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - Ritocco atterraggio: il logout forzato rimuove SOLO il mezzo locale e MANTIENE il badge autista. La vittima atterra su /autisti/setup-mezzo già identificata e sceglie subito un'altra targa, senza rifare login. Allineato al comportamento della revoca esplicita "TUTTO".
 - Nessuna scrittura Firebase nuova; shape intatta; nessun rischio loop.
 - STATO BUG 6: lato DRIVER completo (Fasi 1-2-3). RESTA FASE 4 BLOCCANTE: AutistiAdmin / valle. BUG 6 NON chiuso finché Fase 4 non completata.
+
+## 2026-06-12 — BUG 6 — FASE 4 di 4 — CHIUSO
+- Migrati alla primitiva updateSessioniAtomic i 4 writer sessioni dell'admin madre (src/autistiInbox/AutistiAdmin.tsx): forceLibero, saveForceCambio, deleteSessione, saveEditSession. Tutte atomiche.
+- Shape invariata inclusi campi admin-specifici: revoked.by="ADMIN", adminEdit{edited,editedAt,editedBy,note}, adminEdit.patch, alias targaCamion. Match W4 invariato (per targaRimorchio). Side-effect fuori dalla transazione e gated su esito; avviso "riprova" coerente col driver.
+- Scoperta dell'audit: l'AutistiAdmin del NEXT è un guscio a SCRITTURA NO-OP (non persiste; alert "clone sola lettura"). Il writer admin VERO è nella madre. Quindi Fase 4 fatta sulla madre; nel NEXT non c'era nulla di corruttivo da fixare.
+- STATO BUG 6: CHIUSO. Tutti e 6 i writer di @autisti_sessione_attive (5 driver: SetupMezzo, CambioMezzo ×2, HomeAutista logout+sgancio; + 1 admin) sono atomici via updateSessioniAtomic. Aggiunta invalidazione locale vittima (Fase 3). Non più "BLOCCANTE".
+- Caveat noto (tutte le fasi): runTransaction richiede connessione (nessuna persistenza offline configurata) ? in rete assente l'azione sessioni si interrompe con avviso invece di completare localmente; elimina le sessioni fantasma. Verifica visiva Centro Controllo consigliata (dati admin invariati).
+- DA FARE separato (non BUG 6): redirect guscio AutistiAdmin NEXT ? madre (come fatto per driver); poi eventuale cleanup write-side no-op. Sistema permessi per-badge (feature futura).

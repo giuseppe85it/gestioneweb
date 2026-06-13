@@ -11,7 +11,7 @@ import {
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
-import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync, updateSessioniAtomic } from "../utils/storageSync";
 import { generateControlloPDFBlob, generateSegnalazionePDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
@@ -987,12 +987,9 @@ export default function AutistiAdmin() {
     scope: "MOTRICE" | "RIMORCHIO" | "TUTTO",
     reason: string
   ) {
-    const sess = (await getItemSync(KEY_SESSIONI)) || [];
-    if (!Array.isArray(sess)) return;
-
     const note = reason.trim() || "forza libero";
     const now = Date.now();
-    const updated = sess.map((s) => {
+    const sessioniAggiornate = await updateSessioniAtomic((sessioni) => sessioni.map((s: any) => {
       if (s?.badgeAutista !== badgeAutista) return s;
       const next = { ...s };
       if (scope === "MOTRICE" || scope === "TUTTO") {
@@ -1018,9 +1015,11 @@ export default function AutistiAdmin() {
           note,
         },
       };
-    });
-
-    await setItemSync(KEY_SESSIONI, updated);
+    }));
+    if (!sessioniAggiornate) {
+      window.alert("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
 
     const live = await loadRimorchiStatus();
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
@@ -1069,13 +1068,10 @@ export default function AutistiAdmin() {
       return;
     }
 
-    const sess = (await getItemSync(KEY_SESSIONI)) || [];
-    if (!Array.isArray(sess)) return;
-
     const now = Date.now();
     const note =
       forceCambioScope === "MOTRICE" ? "forza cambio motrice" : "forza cambio rimorchio";
-    const updated = sess.map((s) => {
+    const sessioniAggiornate = await updateSessioniAtomic((sessioni) => sessioni.map((s: any) => {
       if (s?.badgeAutista !== forceCambioBadge) return s;
       const next = { ...s };
       if (forceCambioScope === "MOTRICE") {
@@ -1096,9 +1092,11 @@ export default function AutistiAdmin() {
           note,
         },
       };
-    });
-
-    await setItemSync(KEY_SESSIONI, updated);
+    }));
+    if (!sessioniAggiornate) {
+      window.alert("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
 
     const live = await loadRimorchiStatus();
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
@@ -1110,11 +1108,13 @@ export default function AutistiAdmin() {
   }
 
   async function deleteSessione(badgeAutista: string) {
-    const sess = (await getItemSync(KEY_SESSIONI)) || [];
-    if (!Array.isArray(sess)) return;
-
-    const updated = sess.filter((s) => s?.badgeAutista !== badgeAutista);
-    await setItemSync(KEY_SESSIONI, updated);
+    const sessioniAggiornate = await updateSessioniAtomic((sessioni) =>
+      sessioni.filter((s: any) => s?.badgeAutista !== badgeAutista)
+    );
+    if (!sessioniAggiornate) {
+      window.alert("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
 
     const live = await loadRimorchiStatus();
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
@@ -1135,10 +1135,8 @@ export default function AutistiAdmin() {
   async function saveEditSession() {
     if (!editTargetTarga) return;
 
-    const sess = (await getItemSync(KEY_SESSIONI)) || [];
-    if (!Array.isArray(sess)) return;
-
-    const updated = sess.map((s) => {
+    const now = Date.now();
+    const sessioniAggiornate = await updateSessioniAtomic((sessioni) => sessioni.map((s: any) => {
       if (s?.targaRimorchio !== editTargetTarga) return s;
 
       return {
@@ -1149,7 +1147,7 @@ export default function AutistiAdmin() {
         targaRimorchio: editRimorchio.trim() || null,
         adminEdit: {
           edited: true,
-          editedAt: Date.now(),
+          editedAt: now,
           editedBy: "admin",
           note: "Modifica sessione attiva da Centro rettifica",
           patch: {
@@ -1159,9 +1157,11 @@ export default function AutistiAdmin() {
           },
         },
       };
-    });
-
-    await setItemSync(KEY_SESSIONI, updated);
+    }));
+    if (!sessioniAggiornate) {
+      window.alert("Impossibile aggiornare la sessione. Riprova.");
+      return;
+    }
 
     const live = await loadRimorchiStatus();
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
