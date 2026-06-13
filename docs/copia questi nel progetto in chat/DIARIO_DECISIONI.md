@@ -813,3 +813,10 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - Verificato: guardiano-patch DIFF OK (struttura, deroga circoscritta, chiavi esatte incl. @manutenzioni, madre fuori /next invariata, effectiveCloneSafe path-only); esploratore-firestore + test utente ? scritture arrivano reali e ben formate.
 - REGOLA DI METODO (nuova, permanente): d'ora in poi ogni guardiano-patch su patch che toccano navigazione/route/UI deve verificare ANCHE i flussi di navigazione (l'utente resta nel contesto giusto? pulsanti/link che portano fuori? cornice/sidebar coerente in ogni passaggio?). Aggiunta dopo che un problema di flusso era sfuggito perché non richiesto esplicitamente al guardiano.
 - IN SOSPESO (non blocca): Centro Controllo
+
+## 2026-06-13 — BUG 7: selezione ruota cambio gomme straordinario (regressione CSS)
+- Sintomo: nel cambio gomme straordinario (app autista) il click sulla ruota non selezionava, su tutti i mezzi, anche in modalità Straordinario. Funzionava in passato ? regressione.
+- Causa reale (codice attuale): una regola CSS globale .mg-wheel-hit { pointer-events: none } spegneva l'area cliccabile delle ruote; inoltre il CSS locale stilava .mg-svg mentre l'SVG reale usa .mg-truck-svg. Il click "passava attraverso" le ruote. NON era la logica di selezione (handleToggleWheel corretto) né la categoria.
+- Fix: in src/pages/ModalGomme.css, aggiunto styling per .mg-truck-svg e resa specifica la regola .mg-svg-wrapper .mg-wheel-hit con pointer-events: all ? click ruote riattivato nel modal gomme. Regola globale non rimossa (potrebbe servire altrove), solo sovrascritta localmente.
+- Solo CSS: nessuna modifica a logica selezione, shape, scritture, categoria. Comportamento "ordinario" invariato.
+- Build verde. Test runtime da confermare in produzione dopo push.

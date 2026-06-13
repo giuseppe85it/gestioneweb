@@ -103,7 +103,8 @@
   cursor: grab;
 }
 
-.mg-svg {
+.mg-svg,
+.mg-truck-svg {
   width: 100%;
   height: auto;
   display: block;
@@ -144,7 +145,7 @@
   filter: drop-shadow(0 0 10px rgba(47, 133, 90, 0.75));
 }
 
-.mg-wheel-hit {
+.mg-svg-wrapper .mg-wheel-hit {
   cursor: pointer;
   pointer-events: all;
 }
