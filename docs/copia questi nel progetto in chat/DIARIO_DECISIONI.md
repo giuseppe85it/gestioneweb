@@ -827,3 +827,12 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - LIMITE NOTO: il dossier MADRE (src/pages/DossierMezzo.tsx) legge solo @manutenzioni, NON @gomme_eventi ? per quella vista vecchia le gomme importate non compaiono. Irrilevante finch� si usa il dossier NEXT. Da affrontare solo se servisse il dossier madre.
 - QUALIT�-DATO DA TENERE D'OCCHIO (non BUG 14): in @gomme_eventi esiste un doppione con id identico sulla targa TI239279 (stesso record scritto 2 volte). Il dossier lo collassa in lettura (dedupeExternalTyreItems), quindi non si vede doppio, ma il doppione � fisicamente nei dati ? indica una possibile duplicazione in scrittura dell'import. Da indagare separatamente se si vuole pulire.
 - Decisione uniformare i 3 import (presa in chat): NON pi� necessaria per il dossier NEXT (tutti e tre scrivono @gomme_eventi, che il NEXT legge). Resterebbe utile solo per il dossier madre � non prioritario.
+
+## 2026-06-13 — Fix duplicazione import gomme (update-in-place per id)
+- Causa: i due import gomme vivi (AutistiAdmin importGommeRecord, AutistiEventoModal importGommeRecord) appendevano incondizionatamente in @gomme_eventi anche per id già esistente → doppioni (visti su TI239279 e TI239045, dedup audit PROMPT 52). Read-modify-write non atomico come enabler.
+- Decisione business: UPDATE-IN-PLACE. Al re-import, se l'id esiste già nell'array @gomme_eventi → sostituisce il record con la versione nuova (le modifiche admin entrano); altrimenti append. Mai due record con stesso id.
+- Fix: aggiunta logica match per campo id (ufficiale.id) in entrambi gli import; shape del record invariata (idEvento è solo variabile di confronto, non persistita). Guscio orfano NextAutistiAdminNative NON toccato.
+- Verifica: build verde, guardiano-patch DIFF OK (match id corretto su entrambi, append preservato per id nuovo, shape invariata, perimetro = 2 file).
+- ⚠️ NON TESTATO A RUNTIME al momento del commit (nessun import gomme disponibile per la prova). DA VERIFICARE al primo import gomme reale: importare due volte la stessa segnalazione (e import→modifica→re-import) → in @gomme_eventi deve restare UN solo record per id, aggiornato. Se al primo import vero qualcosa non torna, guardare qui.
+- NOTA: resta una terza importGommeRecord nel guscio NEXT orfano (con sua logica IfMissing) — irrilevante (orfano, sarà rimosso nella pulizia guscio).
+- IN SOSPESO collegato: la pulizia dato @gomme_eventi (dedup 11→8) va fatta DOPO questo fix (così il dato pulito non si ri-sporca), con backup.

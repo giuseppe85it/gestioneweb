@@ -1632,7 +1632,13 @@ export default function AutistiAdmin() {
     const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
     const list = Array.isArray(raw) ? raw : [];
     const { letta, stato, ...ufficiale } = record;
-    await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
+    const idEvento = String(ufficiale.id ?? record.id ?? "").trim();
+    const exists =
+      !!idEvento && list.some((r: any) => String(r?.id ?? "") === idEvento);
+    const next = exists
+      ? list.map((r: any) => (String(r?.id ?? "") === idEvento ? ufficiale : r))
+      : [...list, ufficiale];
+    await setItemSync(KEY_GOMME_EVENTI, next);
     await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
   }
 
