@@ -47,6 +47,7 @@ const AUTISTI_MODULI = [
   { id: "gomme", label: "Gomme", defaultOn: true },
   { id: "richiesta-attrezzature", label: "Richiesta attrezzature", defaultOn: true },
   { id: "cambio-mezzo", label: "Cambio mezzo", defaultOn: true },
+  { id: "orari-note", label: "Orari", defaultOn: false },
 ] as const;
 
 type AutistiModuloId = (typeof AUTISTI_MODULI)[number]["id"];
@@ -2514,6 +2515,15 @@ export default function AutistiAdmin() {
             >
               Permessi moduli autisti
             </button>
+            {hideInternalNav && (
+              <button
+                className="tab"
+                onClick={() => navigate("/next/autisti-admin/orari-cartellino")}
+                type="button"
+              >
+                Cartellino orari
+              </button>
+            )}
           </div>
 
           <div className="autisti-admin-datebar">

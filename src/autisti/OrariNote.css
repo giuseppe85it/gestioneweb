@@ -1,0 +1,563 @@
+/* Registratore Orari e Note — stile app autista (vista mese + vista giorno). */
+
+.orari-container {
+  padding-bottom: 32px;
+}
+
+.orari-loading {
+  text-align: center;
+  color: #666;
+}
+
+/* ---- Testata mese + navigazione ---- */
+.orari-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 12px;
+}
+
+.orari-month-label {
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.orari-chiuso-tag {
+  color: #c62828;
+  font-weight: 700;
+}
+
+.orari-nav {
+  width: 44px;
+  height: 44px;
+  font-size: 1.5rem;
+  line-height: 1;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* ---- Lista giorni ---- */
+.orari-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* RITOCCO v0.5: riga stato mese + lista a card (solo giorni segnati). */
+.orari-stato-mese {
+  font-size: 0.95rem;
+  color: #444;
+  margin-bottom: 10px;
+}
+
+.orari-empty-list {
+  text-align: center;
+  color: #999;
+  padding: 16px 0;
+}
+
+.orari-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.orari-card.weekend {
+  background: #f3eee3;
+}
+
+.orari-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.orari-card-date {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.orari-card-data {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.orari-card-dow {
+  color: #777;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.orari-card-tot strong {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.orari-card-assenza {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1565c0;
+}
+
+.orari-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 0.82rem;
+  color: #555;
+}
+
+.orari-card-notte {
+  background: #1a237e;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 600;
+}
+
+/* RITOCCO v0.6: tabella compatta riepilogo (Data/Giorno sticky, scroll laterale). */
+.orari-tab-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.orari-tab {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.orari-tab th,
+.orari-tab td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+.orari-tab thead th {
+  background: #e6dcc8;
+  font-weight: 700;
+}
+
+.orari-tab-row {
+  cursor: pointer;
+}
+
+.orari-tab-row.weekend td {
+  background: #f3eee3;
+}
+
+/* Colonne Data + Giorno bloccate a sinistra durante lo scroll orizzontale. */
+.orari-tab-sticky {
+  position: sticky;
+  background: #fff;
+  z-index: 1;
+}
+
+.orari-tab-sticky1 {
+  left: 0;
+  min-width: 50px;
+  font-weight: 600;
+}
+
+.orari-tab-sticky2 {
+  left: 50px;
+  min-width: 44px;
+  color: #777;
+  border-right: 1px solid #e0e0e0;
+}
+
+.orari-tab thead .orari-tab-sticky {
+  background: #e6dcc8;
+  z-index: 2;
+}
+
+.orari-tab-row.weekend .orari-tab-sticky {
+  background: #f3eee3;
+}
+
+.orari-tab-tot {
+  font-weight: 700;
+}
+
+.orari-tab-assenza {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.orari-tab-monte {
+  font-weight: 700;
+  text-align: right;
+}
+
+.orari-tab-monte.pos {
+  color: #2e7d32;
+}
+
+.orari-tab-monte.neg {
+  color: #c62828;
+}
+
+.orari-tab-monte.zero {
+  color: #666;
+  font-weight: 600;
+}
+
+.orari-tab-x {
+  text-align: center;
+}
+
+.orari-tab-note {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.orari-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.orari-row-main {
+  display: grid;
+  grid-template-columns: 78px 40px 1fr 1fr 64px 40px;
+  align-items: center;
+  gap: 4px;
+}
+
+.orari-row-note {
+  font-size: 0.8rem;
+  color: #555;
+  padding: 2px 2px 0;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.orari-row-note-icon {
+  opacity: 0.8;
+}
+
+.orari-row.weekend {
+  background: #f3eee3;
+}
+
+.orari-row.filled {
+  border-color: #b9c7a8;
+}
+
+.orari-cell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.orari-cell-data {
+  font-weight: 600;
+}
+
+.orari-cell-dow {
+  color: #777;
+}
+
+.orari-cell-tot {
+  font-weight: 700;
+  text-align: right;
+}
+
+.orari-cell-assenza {
+  grid-column: 3 / 7;
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.orari-cell-vuoto {
+  grid-column: 3 / 7;
+  color: #bbb;
+  text-align: center;
+}
+
+.orari-cell-note {
+  text-align: center;
+}
+
+/* ---- Footer conteggi ---- */
+.orari-footer {
+  border-top: 2px solid #ccc;
+  padding-top: 10px;
+  margin-bottom: 16px;
+}
+
+.orari-footer-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 4px;
+  font-size: 0.95rem;
+}
+
+.orari-footer-row:nth-child(odd) {
+  background: #faf7f0;
+}
+
+/* §5 v0.7: Monte ore + (verde) / − (rosso), non compensati. */
+.orari-footer-row.positive strong {
+  color: #2e7d32;
+}
+
+.orari-footer-row.negative strong {
+  color: #c62828;
+}
+
+/* ---- Vista giorno ---- */
+.orari-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.orari-day-date {
+  flex: 1;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 8px;
+  cursor: pointer;
+}
+
+.orari-tipo-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.orari-tipo-toggle button {
+  flex: 1 1 30%;
+  padding: 8px 4px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.orari-tipo-toggle button.active.green {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.orari-field-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.orari-field {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 4px;
+}
+
+.orari-field span {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.orari-field input[type="time"] {
+  padding: 10px;
+  font-size: 1.1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.orari-totale-line {
+  font-size: 1.05rem;
+  margin-bottom: 12px;
+}
+
+/* RITOCCO 1: flag grandi ai lati del Totale (Notte | Totale | No pausa). */
+.orari-work-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.orari-flag-big {
+  flex: 1 1 0;
+  min-height: 64px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.orari-flag-big.active.green {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.orari-flag-big:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.orari-totale-box {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.orari-totale-label {
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.orari-totale-val {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.orari-pausa-hint {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.orari-flags {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.orari-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+}
+
+.orari-note-btn {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px dashed #999;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* RITOCCO 2: nota salvata mostrata nel giorno, cliccabile per modificarla. */
+.orari-note-shown {
+  border: 1px solid #cfd8dc;
+  background: #f7f9fa;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+}
+
+/* ---- Banner cartellino chiuso ---- */
+.orari-chiuso-banner {
+  background: #fdecea;
+  color: #c62828;
+  border: 1px solid #f5c6c2;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ---- Modale (note / chiusura) ---- */
+.orari-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.orari-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.orari-modal h3 {
+  margin-top: 0;
+}
+
+.orari-modal textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.orari-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.orari-missing ul {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 20px;
+}
+
+.orari-missing-hint {
+  color: #777;
+  font-style: italic;
+}

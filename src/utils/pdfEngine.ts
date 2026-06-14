@@ -3810,3 +3810,185 @@ export async function generateArchivioStoricoPDFBlob(
 
   return doc.output("blob") as Blob;
 }
+
+// =============================================================================
+// Cartellino orari (Registro orari) - SPEC v0.8 sez. 7.
+// Un PDF = un autista (badge) per un mese. Header: banda aziendale + titolo su riga
+// propria. Colonne: Data|Giorno|Inizio|Fine|Totale|Monte ore|No pausa|Notte|Note.
+// Colonna "No pausa": "X" SOLO quando la pausa NON è stata fatta (noPausa=true, cioè
+// r.pausa === "No"); vuota se la pausa è stata fatta. Footer Monte ore: due righe NON
+// compensate (+ verde / − rosso). renderOrariCartellinoPage = una pagina (singolo + massivo).
+// =============================================================================
+
+const ORARI_MONTE_RGB: Record<string, [number, number, number]> = {
+  pos: [46, 125, 50],
+  neg: [198, 40, 40],
+  zero: [102, 102, 102],
+};
+
+export type OrariCartellinoPdfRow = {
+  dataDisplay: string;
+  giorno: string;
+  inizio: string;
+  fine: string;
+  totale: string;
+  monteOre: string;
+  monteOreColor: string; // "pos" | "neg" | "zero"
+  pausa: string;
+  notte: boolean;
+  note: string;
+  isAssenza: boolean;
+  tipoLabel: string;
+};
+
+export type OrariCartellinoPdfInput = {
+  nomeAutista: string;
+  badge: string;
+  meseLabel: string;
+  year: number;
+  month1: number;
+  stato?: string;
+  rows: OrariCartellinoPdfRow[];
+  footerRows: { label: string; value: string; variant?: "positive" | "negative" }[];
+};
+
+// "X" solo se la pausa NON è stata fatta (noPausa=true → pausaLabel "No").
+function noPausaCell(r: OrariCartellinoPdfRow): string {
+  return r.pausa === "No" ? "X" : "";
+}
+
+async function renderOrariCartellinoPage(
+  doc: jsPDF,
+  input: OrariCartellinoPdfInput
+): Promise<void> {
+  const statoSuffix = input.stato ? ` [${input.stato}]` : "";
+  const title = `Cartellino orari - ${safeStr(input.nomeAutista) || "-"} (${safeStr(input.badge)}) - ${safeStr(input.meseLabel)} ${input.year}${statoSuffix}`;
+
+  const afterHeader = await drawHeader(doc, " ");
+  doc.setTextColor(...COLORS.textBlack);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(title, 14, afterHeader + 3);
+  const currentY = afterHeader + 10;
+
+  const head = [["Data", "Giorno", "Inizio", "Fine", "Totale", "Monte ore", "No pausa", "Notte", "Note"]];
+  const monteCell = (r: OrariCartellinoPdfRow) => ({
+    content: safeStr(r.monteOre),
+    styles: {
+      halign: "right" as const,
+      fontStyle: "bold" as const,
+      textColor: ORARI_MONTE_RGB[r.monteOreColor] ?? ORARI_MONTE_RGB.zero,
+    },
+  });
+  const body: any[] = (input.rows || []).map((r) =>
+    r.isAssenza
+      ? [
+          safeStr(r.dataDisplay),
+          safeStr(r.giorno),
+          { content: safeStr(r.tipoLabel), colSpan: 3, styles: { halign: "center", textColor: [21, 101, 192] } },
+          monteCell(r),
+          noPausaCell(r),
+          r.notte ? "Sì" : "—",
+          safeStr(r.note),
+        ]
+      : [
+          safeStr(r.dataDisplay),
+          safeStr(r.giorno),
+          safeStr(r.inizio),
+          safeStr(r.fine),
+          safeStr(r.totale),
+          monteCell(r),
+          noPausaCell(r),
+          r.notte ? "Sì" : "—",
+          safeStr(r.note),
+        ]
+  );
+
+  if (body.length === 0) {
+    body.push([{ content: "Nessun giorno registrato nel mese", colSpan: 9, styles: { halign: "center" } }]);
+  }
+
+  autoTable(doc, {
+    startY: currentY,
+    margin: { left: 14, right: 14 },
+    head,
+    body,
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2.2, overflow: "linebreak" },
+    headStyles: { fillColor: COLORS.tableHeaderBg, textColor: COLORS.tableHeaderText, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: COLORS.rowAlt },
+    columnStyles: {
+      0: { cellWidth: 22 },
+      1: { cellWidth: 14 },
+      2: { cellWidth: 16, halign: "center" },
+      3: { cellWidth: 16, halign: "center" },
+      4: { cellWidth: 18, halign: "right" },
+      5: { cellWidth: 18, halign: "right" },
+      6: { cellWidth: 16, halign: "center" },
+      7: { cellWidth: 14, halign: "center" },
+      8: { cellWidth: "auto" },
+    },
+  });
+
+  const lastY =
+    (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? currentY;
+  let summaryY = lastY + 10;
+
+  doc.setTextColor(...COLORS.textBlack);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Riepilogo mese", 14, summaryY);
+  summaryY += 7;
+
+  doc.setFontSize(10);
+  const colX = [14, 110];
+  const lineH = 6;
+  (input.footerRows || []).forEach((row, idx) => {
+    const col = idx % 2;
+    const rowN = Math.floor(idx / 2);
+    const x = colX[col];
+    const y = summaryY + rowN * lineH;
+    const valueRGB =
+      row.variant === "positive"
+        ? ORARI_MONTE_RGB.pos
+        : row.variant === "negative"
+        ? ORARI_MONTE_RGB.neg
+        : COLORS.textBlack;
+    doc.setTextColor(...COLORS.textBlack);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${safeStr(row.label)}:`, x, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...valueRGB);
+    doc.text(safeStr(row.value), x + 40, y);
+    doc.setTextColor(...COLORS.textBlack);
+  });
+}
+
+export async function generateOrariCartellinoPDFBlob(
+  input: OrariCartellinoPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const doc = new jsPDF();
+  await renderOrariCartellinoPage(doc, input);
+  addStandardFooter(doc);
+  const datePart = `${String(input.month1).padStart(2, "0")}-${input.year}`;
+  const fileName = `${sanitizeFileName(`cartellino_${safeStr(input.badge) || "autista"}_${datePart}`)}.pdf`;
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
+// PDF massivo (SPEC v0.8 sez. 2.2 + 7): un PDF unico, UNA PAGINA per autista con orari.
+export async function generateOrariCartellinoMassivoPDFBlob(
+  inputs: OrariCartellinoPdfInput[]
+): Promise<{ blob: Blob; fileName: string }> {
+  if (!inputs || inputs.length === 0) {
+    throw new Error("Nessun autista con orari registrati nel mese selezionato.");
+  }
+  const doc = new jsPDF();
+  for (let i = 0; i < inputs.length; i++) {
+    if (i > 0) doc.addPage();
+    await renderOrariCartellinoPage(doc, inputs[i]);
+  }
+  addStandardFooter(doc);
+  const first = inputs[0];
+  const datePart = `${String(first.month1).padStart(2, "0")}-${first.year}`;
+  const fileName = `${sanitizeFileName(`cartellini_${datePart}`)}.pdf`;
+  return { blob: doc.output("blob") as Blob, fileName };
+}

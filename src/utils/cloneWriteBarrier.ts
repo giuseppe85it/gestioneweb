@@ -163,6 +163,8 @@ const AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@rifornimenti_autisti_tmp",
   "@manutenzioni",
   "@permessi_autisti",
+  "@orari_autisti",
+  "@orari_autisti_chiusure",
 ]);
 const CHIUSURA_DA_EVENTO_ALLOWED_WRITE_PATHS = [
   "/next/manutenzioni",

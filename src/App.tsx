@@ -21,6 +21,7 @@ import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
 import NextMagazzinoPage from "./next/NextMagazzinoPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
 import NextManutenzioniPage from "./next/NextManutenzioniPage";
+import NextOrariCartellinoPage from "./next/NextOrariCartellinoPage";
 import NextAcquistiPage from "./next/NextAcquistiPage";
 import NextMaterialiDaOrdinarePage from "./next/NextMaterialiDaOrdinarePage";
 import NextOrdiniInAttesaPage from "./next/NextOrdiniInAttesaPage";
@@ -105,6 +106,7 @@ import Segnalazioni from "./autisti/Segnalazioni";
 import CambioMezzoAutista from "./autisti/CambioMezzoAutista";
 import AutistiGate from "./autisti/AutistiGate";
 import RichiestaAttrezzature from "./autisti/RichiestaAttrezzature";
+import OrariNote from "./autisti/OrariNote";
 
 
 /* ==================== AUTISTI INBOX (ADMIN) ==================== */
@@ -552,6 +554,7 @@ function App() {
           }
         />
         <Route path="autisti-admin" element={<AutistiAdmin />} />
+        <Route path="autisti-admin/orari-cartellino" element={<NextOrariCartellinoPage />} />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 
@@ -626,6 +629,7 @@ function App() {
         <Route path="/autisti/controllo" element={<ControlloMezzo />} />
         <Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
         <Route path="/autisti/richiesta-attrezzature" element={<RichiestaAttrezzature />} />
+        <Route path="/autisti/orari-note" element={<OrariNote />} />
 
         {/* ==================== AUTISTI INBOX (ADMIN) ==================== */}
         <Route path="/autisti-inbox" element={<AutistiInboxHome />} />

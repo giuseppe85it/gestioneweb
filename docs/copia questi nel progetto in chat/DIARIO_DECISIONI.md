@@ -857,3 +857,37 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - Nota manutenzione: l'elenco moduli è duplicato in HomeAutista.tsx e AutistiAdmin.tsx con commento di sincronizzazione. Un modulo nuovo va aggiunto in ENTRAMBI per comparire nel tabellone e nascere spento.
 - Stato: provato in locale e sul telefono (pull-to-refresh aggiorna quasi in tempo reale), committato e pushato. CHIUSO.
 - Prossimi lavori correlati (in chat dedicate): switch "doppia home" per badge (vecchia/nuova grafica, accesa per badge come i permessi); restyling grafico Home autista v2 (solo UI, logica invariata; prima mockup con Claude Design, poi applicazione). Per il restyling vale lo stesso principio di rilascio graduale: due grafiche convivono finché non si attiva a tutti.
+
+---
+
+## 2026-06-14 — Modulo "Registro orari" (cartellino mensile autista): COMPLETO
+
+**Cosa è.** Nuovo modulo NEXT per il cartellino orari mensile degli autisti. L'autista registra giorno per giorno orari + note + flag; l'amministrazione legge un cartellino professionale (app + PDF) con monte ore, notti, assenze. Fonte di verità di prodotto: `docs/product/SPEC_ORARI_NOTE_NEXT.md` (versione finale 0.7).
+
+**Collection (nuove).**
+- `@orari_autisti` — lista record giorno: { badge, data "YYYY-MM-DD", tipo (lavoro/ferie/malattia/infortunio/festivita), inizio|null, fine|null, notte:bool, noPausa:bool, note, createdAt, updatedAt }. Il Totale NON è salvato: calcolato in lettura.
+- `@orari_autisti_chiusure` — stato chiusura mensile: { [badge]: { [meseAnno "YYYY-MM"]: { chiuso, chiusoAt, riapertoAt } } }. Voce assente = mese aperto.
+
+**Flusso autista (giorno-first).** Bottone app "Registro orari" (label permessi/tabellone: "Orari"). Ingresso diretto sulla vista GIORNO di oggi; header a frecce ‹ data › (giorno settimana esteso); click sulla data → vista RIEPILOGO. Riepilogo = TABELLA COMPATTA tipo Excel, solo i giorni segnati, colonne Data/Giorno bloccate a sinistra e resto in scroll laterale; colonne Data·Giorno·Inizio·Fine·Totale·Monte ore·Notte·No pausa·Note. Click su una riga → apre il giorno.
+
+**Calcolo.** Totale netto = Fine−Inizio, con pausa fissa −1h se NO PAUSA spento (lordo se acceso), turno oltre mezzanotte +24h. Colonna "No pausa" = X SOLO quando NO PAUSA è flaggato (pausa non fatta). Flag NOTTE = +1 al contatore notti, non tocca le ore.
+
+**Monte ore contrattuale (base 9h).** Monte ore giorno = netto − 9:00 (assenze = 0 neutro; lavoro senza orari = "—", escluso). Per mese DUE totali SEPARATI e NON compensati: "Monte ore +" (somma positivi, verde, segno +) e "Monte ore −" (somma negativi, rosso, segno −). Decisione: il modulo mostra + e − distinti, NON compensa; l'interpretazione finale resta all'amministrazione.
+
+**Footer.** Totale/Giorni/Media sempre visibili; Notti/assenze solo se >0; Monte ore +/− sempre visibili. Stessa resa in app, gestionale, PDF.
+
+**Lato gestionale (admin).** Pagina sotto /next/autisti-admin. Read-write PIENO: l'admin modifica qualunque giorno (orari/flag/tipo/note) in UPDATE-IN-PLACE per badge+data (no doppioni), anche a mese CHIUSO senza riaprire (la chiusura blocca solo l'autista). RIAPRI = restituisce all'autista la possibilità di editare. Export PDF singolo + PDF MASSIVO (una pagina per autista con dati nel mese, stato Chiuso/Aperto in intestazione).
+
+**Chiusura.** Tasto CHIUDI lato autista visibile solo dal 1° del mese successivo; alert non bloccante coi feriali mancanti (sabato/domenica mai tra i mancanti).
+
+**Permessi.** moduleId `orari-note`, `defaultOn: false` → nasce SPENTO per tutti, si accende per badge dal tabellone admin. Registrato nei due array AUTISTI_MODULI (HomeAutista.tsx + AutistiAdmin.tsx, identici).
+
+**Barriera (allargamento consapevole).** Chiavi `@orari_autisti` e `@orari_autisti_chiusure` in whitelist `AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS`, sotto la deroga path-only esistente di /next/autisti-admin. Il dominio orari passa da read-only+riapri a READ-WRITE PIENO lato gestionale: allargamento deliberato, circoscritto a quel path e a quelle due chiavi, nessuna nuova eccezione di path.
+
+**File principali.** src/autisti/OrariNote.tsx(+css), src/next/NextOrariCartellinoPage.tsx(+css), src/utils/orariCalc.ts, src/next/domain/nextOrariCartellinoDomain.ts, src/next/writers/nextOrariRecordWriter.ts, src/next/writers/nextOrariChiusuraWriter.ts, builder in src/utils/pdfEngine.ts; tocchi additivi in App.tsx, HomeAutista.tsx, AutistiAdmin.tsx(+css), cloneWriteBarrier.ts.
+
+---
+
+## 2026-06-14 — Regola di metodo: "build DIMOSTRATA, non dichiarata"
+
+Dopo un falso allarme (errore runtime che era solo cache di Vite, codice corretto), si adotta come regola permanente: ogni volta che un prompt agli agenti dichiara "build verde", il report DEVE incollare l'output reale di `npm run build` (la riga "✓ built in Xs" o gli errori), non limitarsi a scrivere "verde". Una build si dimostra con l'output, non si dichiara. Vale per Codex e Claude Code.

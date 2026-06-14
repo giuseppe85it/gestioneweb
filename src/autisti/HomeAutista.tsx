@@ -30,6 +30,7 @@ const AUTISTI_MODULI = [
   { id: "gomme", label: "Gomme", defaultOn: true },
   { id: "richiesta-attrezzature", label: "Richiesta attrezzature", defaultOn: true },
   { id: "cambio-mezzo", label: "Cambio mezzo", defaultOn: true },
+  { id: "orari-note", label: "Orari", defaultOn: false },
 ] as const;
 
 type AutistiModuloId = (typeof AUTISTI_MODULI)[number]["id"];
@@ -511,6 +512,12 @@ export default function HomeAutista() {
         {isModuloVisible("cambio-mezzo") && (
           <button onClick={() => navigate("/autisti/cambio-mezzo")}>
             Cambio mezzo
+          </button>
+        )}
+
+        {isModuloVisible("orari-note") && (
+          <button onClick={() => navigate("/autisti/orari-note")}>
+            Registro orari
           </button>
         )}
       </div>

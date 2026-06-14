@@ -1,0 +1,378 @@
+/* Cartellino orari autista — vista gestionale NEXT (sotto /next/autisti-admin). */
+
+.next-orari-page {
+  padding: 16px 20px 40px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.next-orari-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.next-orari-head h2 {
+  margin: 0;
+}
+
+.next-orari-back {
+  border: 1px solid #c9bfa6;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.next-orari-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #faf7f0;
+  border: 1px solid #e6dcc8;
+  border-radius: 10px;
+}
+
+.next-orari-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.next-orari-field select {
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  min-width: 160px;
+  font-size: 0.95rem;
+}
+
+.next-orari-year {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-orari-year button {
+  width: 34px;
+  height: 34px;
+  font-size: 1.2rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.next-orari-year span {
+  min-width: 48px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.next-orari-stato {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.next-orari-stato.aperto {
+  background: #e6f4ea;
+  color: #2e7d32;
+}
+
+.next-orari-stato.chiuso {
+  background: #fdecea;
+  color: #c62828;
+}
+
+.next-orari-riapri {
+  border: 1px solid #c62828;
+  color: #c62828;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.next-orari-riapri:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.next-orari-pdf {
+  border: 1px solid #785a32;
+  color: #785a32;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.next-orari-pdf:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.next-orari-msg {
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.next-orari-error {
+  background: #fdecea;
+  color: #c62828;
+  border: 1px solid #f5c6c2;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.next-orari-loading {
+  color: #777;
+  padding: 12px 0;
+}
+
+.next-orari-caption {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.next-orari-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.next-orari-table th,
+.next-orari-table td {
+  border: 1px solid #e0d9c8;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.next-orari-table thead th {
+  background: #e6dcc8;
+  font-weight: 700;
+}
+
+.next-orari-table tbody tr:nth-child(even) {
+  background: #faf7f0;
+}
+
+.next-orari-table tr.assenza {
+  background: #eef4fb;
+}
+
+.next-orari-assenza-cell {
+  color: #1565c0;
+  font-weight: 600;
+  text-align: center;
+}
+
+.next-orari-tot {
+  font-weight: 700;
+  text-align: right;
+}
+
+.next-orari-note-cell {
+  max-width: 280px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.next-orari-empty {
+  text-align: center;
+  color: #999;
+  padding: 18px 0;
+}
+
+.next-orari-footer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  border-top: 2px solid #c9bfa6;
+  padding-top: 12px;
+}
+
+.next-orari-footer > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #faf7f0;
+  border-radius: 6px;
+}
+
+/* §5 v0.7: Monte ore + (verde) / − (rosso), non compensati. */
+.next-orari-footer > div.monte-positive strong {
+  color: #2e7d32;
+}
+
+.next-orari-footer > div.monte-negative strong {
+  color: #c62828;
+}
+
+/* Colonna Monte ore (SPEC §4bis): + verde, − rosso, 0 neutro. */
+.next-orari-monte {
+  font-weight: 700;
+  text-align: right;
+}
+
+.next-orari-monte.pos {
+  color: #2e7d32;
+}
+
+.next-orari-monte.neg {
+  color: #c62828;
+}
+
+.next-orari-monte.zero {
+  color: #666;
+  font-weight: 600;
+}
+
+/* ---- Modifica admin di un giorno ---- */
+.next-orari-edit-btn {
+  border: 1px solid #2e7d32;
+  color: #2e7d32;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.next-orari-edit-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.next-orari-rowclick {
+  cursor: pointer;
+}
+
+.next-orari-rowclick:hover {
+  background: #eef4fb !important;
+}
+
+.next-orari-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.next-orari-edit-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow: auto;
+}
+
+.next-orari-edit-modal h3 {
+  margin-top: 0;
+}
+
+.next-orari-edit-hint {
+  background: #fff4e5;
+  border: 1px solid #f0c987;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.next-orari-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.next-orari-edit-field select,
+.next-orari-edit-field textarea {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.next-orari-edit-field textarea {
+  min-height: 80px;
+}
+
+.next-orari-edit-tipi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.next-orari-edit-tipi button {
+  flex: 1 1 30%;
+  padding: 8px 4px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.next-orari-edit-tipi button.active {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.next-orari-edit-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.next-orari-edit-row label {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.next-orari-edit-row input[type="time"] {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.next-orari-edit-tot {
+  margin-bottom: 10px;
+}
+
+.next-orari-edit-flags {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+
+.next-orari-edit-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}

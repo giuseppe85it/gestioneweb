@@ -761,6 +761,12 @@
   gap: 10px;
 }
 
+/* Modale permessi allargato: il tabellone (grid minWidth 900) deve entrare senza
+   scroll orizzontale, oltre il max-width 760 di .admin-edit-modal. */
+.permessi-modal{
+  max-width: min(97vw, 1040px);
+}
+
 .permessi-modal .aix-head{
   align-items: center;
 }
