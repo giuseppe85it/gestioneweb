@@ -760,3 +760,59 @@
   justify-content: flex-end;
   gap: 10px;
 }
+
+.permessi-modal .aix-head{
+  align-items: center;
+}
+
+.permessi-modal .admin-edit-scroll{
+  max-height: 68vh;
+}
+
+.permessi-table-wrap{
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.permessi-grid{
+  gap: 8px;
+}
+
+.permessi-head-row{
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 8px 10px;
+  border: 1px solid rgba(180,167,144,0.45);
+  border-radius: 12px;
+  background: #f8f4e8;
+  box-shadow: 0 8px 14px rgba(82,70,50,0.12);
+}
+
+.permessi-module-head{
+  min-width: 0;
+}
+
+.permessi-module-title{
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  color: #201f1b;
+}
+
+.permessi-column-actions{
+  justify-content: flex-start;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.permessi-column-action{
+  min-height: 24px;
+  padding: 4px 7px;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.045em;
+  box-shadow: none;
+}

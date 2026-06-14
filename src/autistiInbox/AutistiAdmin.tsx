@@ -3846,19 +3846,12 @@ export default function AutistiAdmin() {
         {permessiOpen && (
           <div className="aix-backdrop" onMouseDown={() => setPermessiOpen(false)}>
             <div
-              className="aix-modal admin-edit-modal"
+              className="aix-modal admin-edit-modal permessi-modal"
               style={{ maxWidth: 1100 }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="aix-head">
                 <h3>Permessi moduli autisti</h3>
-                <button
-                  className="aix-close"
-                  type="button"
-                  onClick={() => setPermessiOpen(false)}
-                >
-                  CHIUDI
-                </button>
               </div>
 
               <div className="aix-body admin-edit-body">
@@ -3866,46 +3859,29 @@ export default function AutistiAdmin() {
                   {colleghiConBadge.length === 0 ? (
                     <div className="empty">Nessun badge disponibile.</div>
                   ) : (
-                    <div style={{ overflowX: "auto" }}>
-                      <div className="canon-list" style={{ minWidth: 900 }}>
+                    <div className="permessi-table-wrap">
+                      <div className="canon-list permessi-grid" style={{ minWidth: 900 }}>
                         <div
-                          className="canon-row canon-row-head"
+                          className="canon-row canon-row-head permessi-head-row"
                           style={{
                             gridTemplateColumns: `minmax(190px, 1.2fr) repeat(${AUTISTI_MODULI.length}, minmax(132px, 1fr))`,
                           }}
                         >
                           <div>Autista</div>
                           {AUTISTI_MODULI.map((modulo) => (
-                            <div key={`head_${modulo.id}`}>
-                              <div>{modulo.label}</div>
-                              <div
-                                className="row-actions"
-                                style={{
-                                  justifyContent: "flex-start",
-                                  gap: 6,
-                                  marginTop: 8,
-                                }}
-                              >
+                            <div className="permessi-module-head" key={`head_${modulo.id}`}>
+                              <div className="permessi-module-title">{modulo.label}</div>
+                              <div className="row-actions permessi-column-actions">
                                 <button
-                                  className="edit"
+                                  className="edit permessi-column-action"
                                   type="button"
-                                  style={{
-                                    minHeight: 28,
-                                    padding: "5px 8px",
-                                    fontSize: 11,
-                                  }}
                                   onClick={() => setModuloForAllBadges(modulo.id, true)}
                                 >
                                   Attiva
                                 </button>
                                 <button
-                                  className="edit danger"
+                                  className="edit danger permessi-column-action"
                                   type="button"
-                                  style={{
-                                    minHeight: 28,
-                                    padding: "5px 8px",
-                                    fontSize: 11,
-                                  }}
                                   onClick={() => setModuloForAllBadges(modulo.id, false)}
                                 >
                                   Disattiva

@@ -766,67 +766,67 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - IN SOSPESO: NEXT_AUTISTI_APP_PATH (nextStructuralPaths.ts) ancora referenziato da NextHomePage.tsx e nextCloneNavigation.ts ‚Äî c'√® ancora un tile/navigazione verso l'area rimossa. Da trattare in task dedicato (capire se ridirezionare a /autisti o rimuovere il tile).
 - Build: verde. Lavoro successivo (bug + restyling UI) sulla madre src/autisti/.
 
-## 2026-06-12 ó BUG 6 (doppia registrazione targa) ó FASE 1 di 4
+## 2026-06-12 ÔøΩ BUG 6 (doppia registrazione targa) ÔøΩ FASE 1 di 4
 - Causa radice: scritture su @autisti_sessione_attive erano read-modify-write con overwrite non atomico (race last-write-wins tra autisti) ? la revoca dell'altro autista poteva sparire, lasciando due sessioni sulla stessa targa.
-- Fase 1: creata primitiva transazionale updateSessioniAtomic in storageSync.ts (runTransaction + barriera + rilettura fresca dentro la transazione). Migrato il punto critico SetupMezzo.tsx alla primitiva; logica di revoca spostata dentro l'updater (gira su dato fresco, non pi˘ perdibile). Shape record invariata. window.confirm ed evento restano fuori dalla transazione; evento ora gated sul successo della scrittura.
-- Decisione business: targa gi‡ occupata ? conferma utente (come ora) + revoca reale dell'altro.
+- Fase 1: creata primitiva transazionale updateSessioniAtomic in storageSync.ts (runTransaction + barriera + rilettura fresca dentro la transazione). Migrato il punto critico SetupMezzo.tsx alla primitiva; logica di revoca spostata dentro l'updater (gira su dato fresco, non piÔøΩ perdibile). Shape record invariata. window.confirm ed evento restano fuori dalla transazione; evento ora gated sul successo della scrittura.
+- Decisione business: targa giÔøΩ occupata ? conferma utente (come ora) + revoca reale dell'altro.
 - Verificato: guardiano-patch DIFF OK, build verde. Provato flusso singolo autista.
-- DA FARE (BUG 6 NON chiuso finchÈ non completate):
-  - FASE 2: migrare alla primitiva gli altri 4 writer (CambioMezzoAutista ◊2, HomeAutista logout+sgancio).
+- DA FARE (BUG 6 NON chiuso finchÔøΩ non completate):
+  - FASE 2: migrare alla primitiva gli altri 4 writer (CambioMezzoAutista ÔøΩ2, HomeAutista logout+sgancio).
   - FASE 3: invalidazione locale vittima (HomeAutista early-return :96 e AutistiGate :33 ? logout forzato quando sessione sparita ma device attivo).
-  - FASE 4 (BLOCCANTE per chiusura): AutistiAdmin ó 6∞ writer della stessa collection, punto da cui Giuseppe modifica i dati. Da auditare (madre AutistiAdmin.tsx vs NEXT autistiInbox/*, visto che da admin si opera su NEXT), poi estendere la primitiva atomica. Senza questa fase la collisione autista?admin resta aperta.
+  - FASE 4 (BLOCCANTE per chiusura): AutistiAdmin ÔøΩ 6ÔøΩ writer della stessa collection, punto da cui Giuseppe modifica i dati. Da auditare (madre AutistiAdmin.tsx vs NEXT autistiInbox/*, visto che da admin si opera su NEXT), poi estendere la primitiva atomica. Senza questa fase la collisione autista?admin resta aperta.
 
-## 2026-06-12 ó BUG 6 ó FASE 2 di 4
+## 2026-06-12 ÔøΩ BUG 6 ÔøΩ FASE 2 di 4
 - Migrati alla primitiva updateSessioniAtomic gli altri 4 writer sessioni driver: CambioMezzoAutista (cambio rimorchio, cambio motrice), HomeAutista (logout, sgancio motrice). Tutte le scritture su @autisti_sessione_attive nel perimetro driver sono ora atomiche. Zero scritture dirette residue.
 - Shape invariata; updater puri; eventi/stato locale/navigate fuori dalla transazione e gated sul successo. Guardiano-patch DIFF OK, build verde.
-- COMPORTAMENTO NOTO (cambio visibile): se la scrittura sessione fallisce (es. rete assente), logout/cambio/sgancio ora si INTERROMPONO con messaggio invece di completare solo localmente. Questo elimina le sessioni fantasma (obiettivo BUG 6) ma in rete debole l'autista puÚ dover riprovare l'azione. Accettato come coerente con BUG 6. Eventuale retry automatico = ritocco futuro separato.
+- COMPORTAMENTO NOTO (cambio visibile): se la scrittura sessione fallisce (es. rete assente), logout/cambio/sgancio ora si INTERROMPONO con messaggio invece di completare solo localmente. Questo elimina le sessioni fantasma (obiettivo BUG 6) ma in rete debole l'autista puÔøΩ dover riprovare l'azione. Accettato come coerente con BUG 6. Eventuale retry automatico = ritocco futuro separato.
 - RESTANO: FASE 3 (invalidazione locale vittima: HomeAutista early-return :96 + AutistiGate :33 ? logout forzato se sessione sparita ma device attivo). FASE 4 BLOCCANTE (AutistiAdmin / valle).
 
-## 2026-06-12 ó BUG 6 ó FASE 3 di 4 (LATO DRIVER COMPLETO)
-- Invalidazione locale vittima: l'early-return su sessione assente (HomeAutista polling + AutistiGate) ora forza il logout SOLO se la sessione propria Ë realmente assente da un array letto correttamente E il device Ë attivo localmente. Anti-falso-positivo verificato: getItemSync su errore/rete ? null ? guard !Array.isArray ? return senza logout (un blip di rete NON slogga).
-- Ritocco atterraggio: il logout forzato rimuove SOLO il mezzo locale e MANTIENE il badge autista. La vittima atterra su /autisti/setup-mezzo gi‡ identificata e sceglie subito un'altra targa, senza rifare login. Allineato al comportamento della revoca esplicita "TUTTO".
+## 2026-06-12 ÔøΩ BUG 6 ÔøΩ FASE 3 di 4 (LATO DRIVER COMPLETO)
+- Invalidazione locale vittima: l'early-return su sessione assente (HomeAutista polling + AutistiGate) ora forza il logout SOLO se la sessione propria ÔøΩ realmente assente da un array letto correttamente E il device ÔøΩ attivo localmente. Anti-falso-positivo verificato: getItemSync su errore/rete ? null ? guard !Array.isArray ? return senza logout (un blip di rete NON slogga).
+- Ritocco atterraggio: il logout forzato rimuove SOLO il mezzo locale e MANTIENE il badge autista. La vittima atterra su /autisti/setup-mezzo giÔøΩ identificata e sceglie subito un'altra targa, senza rifare login. Allineato al comportamento della revoca esplicita "TUTTO".
 - Nessuna scrittura Firebase nuova; shape intatta; nessun rischio loop.
-- STATO BUG 6: lato DRIVER completo (Fasi 1-2-3). RESTA FASE 4 BLOCCANTE: AutistiAdmin / valle. BUG 6 NON chiuso finchÈ Fase 4 non completata.
+- STATO BUG 6: lato DRIVER completo (Fasi 1-2-3). RESTA FASE 4 BLOCCANTE: AutistiAdmin / valle. BUG 6 NON chiuso finchÔøΩ Fase 4 non completata.
 
-## 2026-06-12 ó BUG 6 ó FASE 4 di 4 ó CHIUSO
+## 2026-06-12 ÔøΩ BUG 6 ÔøΩ FASE 4 di 4 ÔøΩ CHIUSO
 - Migrati alla primitiva updateSessioniAtomic i 4 writer sessioni dell'admin madre (src/autistiInbox/AutistiAdmin.tsx): forceLibero, saveForceCambio, deleteSessione, saveEditSession. Tutte atomiche.
 - Shape invariata inclusi campi admin-specifici: revoked.by="ADMIN", adminEdit{edited,editedAt,editedBy,note}, adminEdit.patch, alias targaCamion. Match W4 invariato (per targaRimorchio). Side-effect fuori dalla transazione e gated su esito; avviso "riprova" coerente col driver.
-- Scoperta dell'audit: l'AutistiAdmin del NEXT Ë un guscio a SCRITTURA NO-OP (non persiste; alert "clone sola lettura"). Il writer admin VERO Ë nella madre. Quindi Fase 4 fatta sulla madre; nel NEXT non c'era nulla di corruttivo da fixare.
-- STATO BUG 6: CHIUSO. Tutti e 6 i writer di @autisti_sessione_attive (5 driver: SetupMezzo, CambioMezzo ◊2, HomeAutista logout+sgancio; + 1 admin) sono atomici via updateSessioniAtomic. Aggiunta invalidazione locale vittima (Fase 3). Non pi˘ "BLOCCANTE".
+- Scoperta dell'audit: l'AutistiAdmin del NEXT ÔøΩ un guscio a SCRITTURA NO-OP (non persiste; alert "clone sola lettura"). Il writer admin VERO ÔøΩ nella madre. Quindi Fase 4 fatta sulla madre; nel NEXT non c'era nulla di corruttivo da fixare.
+- STATO BUG 6: CHIUSO. Tutti e 6 i writer di @autisti_sessione_attive (5 driver: SetupMezzo, CambioMezzo ÔøΩ2, HomeAutista logout+sgancio; + 1 admin) sono atomici via updateSessioniAtomic. Aggiunta invalidazione locale vittima (Fase 3). Non piÔøΩ "BLOCCANTE".
 - Caveat noto (tutte le fasi): runTransaction richiede connessione (nessuna persistenza offline configurata) ? in rete assente l'azione sessioni si interrompe con avviso invece di completare localmente; elimina le sessioni fantasma. Verifica visiva Centro Controllo consigliata (dati admin invariati).
 - DA FARE separato (non BUG 6): redirect guscio AutistiAdmin NEXT ? madre (come fatto per driver); poi eventuale cleanup write-side no-op. Sistema permessi per-badge (feature futura).
 
-## 2026-06-12 ó Redirect guscio AutistiAdmin/Inbox NEXT ? madre
+## 2026-06-12 ÔøΩ Redirect guscio AutistiAdmin/Inbox NEXT ? madre
 - Le rotte guscio NEXT /next/autisti-admin, /next/autisti-inbox (+ /next/autisti-inbox/*) ora redirigono alle pagine madre vere /autisti-admin e /autisti-inbox.
-- Motivo: il guscio admin/inbox NEXT ha scritture NO-OP (non persiste, alert "clone sola lettura"). La pagina vera che salva Ë la madre. Redirect elimina la trappola "lavoro sul guscio finto".
-- Rimossi 8 import orfani in App.tsx (NextAutistiInboxHome/CambioMezzo/LogAccessi/Gomme/Controlli/Segnalazioni/RichiestaAttrezzature + NextAutistiAdminPage), referenziati solo lÏ.
-- NON cancellati i file componente nÈ i moduli-dati clone-overlay: hanno LETTURE VERE condivise da centro-controllo/manutenzioni/inbox. Cleanup write-side no-op resta lavoro opzionale futuro, non urgente.
+- Motivo: il guscio admin/inbox NEXT ha scritture NO-OP (non persiste, alert "clone sola lettura"). La pagina vera che salva ÔøΩ la madre. Redirect elimina la trappola "lavoro sul guscio finto".
+- Rimossi 8 import orfani in App.tsx (NextAutistiInboxHome/CambioMezzo/LogAccessi/Gomme/Controlli/Segnalazioni/RichiestaAttrezzature + NextAutistiAdminPage), referenziati solo lÔøΩ.
+- NON cancellati i file componente nÔøΩ i moduli-dati clone-overlay: hanno LETTURE VERE condivise da centro-controllo/manutenzioni/inbox. Cleanup write-side no-op resta lavoro opzionale futuro, non urgente.
 - Build verde. Discorso guscio autisti CHIUSO (driver + admin/inbox entrambi ? madre).
 
-## 2026-06-13 ó A2: Autisti Inbox/Admin dentro la shell NEXT (con scritture vere)
+## 2026-06-13 ÔøΩ A2: Autisti Inbox/Admin dentro la shell NEXT (con scritture vere)
 - Obiettivo: inbox e admin autisti vivono ora DENTRO il NEXT (sidebar sempre presente), come gli altri moduli, e SCRIVONO i dati veri. Decisione presa dopo aver scartato A1 (riusare guscio NEXT da 4126 righe, doppia manutenzione) a favore del riuso della UI madre montata nella shell.
-- Routing: /next/autisti-inbox (+ 6 subpath) e /next/autisti-admin montati come route sotto NextShell (App.tsx). Voci sidebar (nextData.ts) ? /next/autisti-inbox e /next/autisti-admin. Rimosse le rewrite inbox/admin dal rewriter (nextCloneNavigation.ts) cosÏ le pagine restano in /next.
+- Routing: /next/autisti-inbox (+ 6 subpath) e /next/autisti-admin montati come route sotto NextShell (App.tsx). Voci sidebar (nextData.ts) ? /next/autisti-inbox e /next/autisti-admin. Rimosse le rewrite inbox/admin dal rewriter (nextCloneNavigation.ts) cosÔøΩ le pagine restano in /next.
 - SCRITTURE: l'inbox scrive davvero (creazione manutenzione via AutistiEventoModal: @lavori, @manutenzioni, @segnalazioni_autisti_tmp, @controlli_mezzo_autisti, @cambi_gomme_autisti_tmp, @gomme_eventi). L'admin scrive 8 chiavi + @autisti_sessione_attive.
-- DECISIONE/DEBITO ó DEROGA BARRIERA PATH-ONLY: aggiunta in cloneWriteBarrier.ts una deroga path-only per /next/autisti-admin e /next/autisti-inbox che consente le scritture sopra (setItemSync sulle chiavi whitelist + updateSessioniAtomic su @autisti_sessione_attive). » path-only (nessun scope-token, non tocca i writer madre). NOTA: va in direzione opposta allo smantellamento progressivo della barriera ó Ë un allargamento consapevole, documentato, circoscritto ai due path. Da rivalutare se/quando si rivede la barriera.
+- DECISIONE/DEBITO ÔøΩ DEROGA BARRIERA PATH-ONLY: aggiunta in cloneWriteBarrier.ts una deroga path-only per /next/autisti-admin e /next/autisti-inbox che consente le scritture sopra (setItemSync sulle chiavi whitelist + updateSessioniAtomic su @autisti_sessione_attive). ÔøΩ path-only (nessun scope-token, non tocca i writer madre). NOTA: va in direzione opposta allo smantellamento progressivo della barriera ÔøΩ ÔøΩ un allargamento consapevole, documentato, circoscritto ai due path. Da rivalutare se/quando si rivede la barriera.
 - DEROGA "madre intoccabile" AUTORIZZATA: modificati src/autistiInbox/AutistiAdmin.tsx e AutistiInboxHome.tsx per NASCONDERE (solo in runtime /next, via isCloneRuntime) i controlli di navigazione interni (ingranaggio home, back, menu admin) che altrimenti portavano l'utente fuori dalla shell. Fuori da /next (madre vera) i controlli restano invariati. Inoltre AutistiEventoModal.tsx: guardia effectiveCloneSafe resa bypassabile solo su /next/autisti-inbox e /next/autisti-admin.
 - CSS: next-shell.css, sfondo sidebar reso opaco + z-index + isolation (la pagina madre full-viewport la "bucava"). Voce attiva resa leggibile.
 - Verificato: guardiano-patch DIFF OK (struttura, deroga circoscritta, chiavi esatte incl. @manutenzioni, madre fuori /next invariata, effectiveCloneSafe path-only); esploratore-firestore + test utente ? scritture arrivano reali e ben formate.
-- REGOLA DI METODO (nuova, permanente): d'ora in poi ogni guardiano-patch su patch che toccano navigazione/route/UI deve verificare ANCHE i flussi di navigazione (l'utente resta nel contesto giusto? pulsanti/link che portano fuori? cornice/sidebar coerente in ogni passaggio?). Aggiunta dopo che un problema di flusso era sfuggito perchÈ non richiesto esplicitamente al guardiano.
+- REGOLA DI METODO (nuova, permanente): d'ora in poi ogni guardiano-patch su patch che toccano navigazione/route/UI deve verificare ANCHE i flussi di navigazione (l'utente resta nel contesto giusto? pulsanti/link che portano fuori? cornice/sidebar coerente in ogni passaggio?). Aggiunta dopo che un problema di flusso era sfuggito perchÔøΩ non richiesto esplicitamente al guardiano.
 - IN SOSPESO (non blocca): Centro Controllo
 
-## 2026-06-13 ó BUG 7: selezione ruota cambio gomme straordinario (regressione CSS)
-- Sintomo: nel cambio gomme straordinario (app autista) il click sulla ruota non selezionava, su tutti i mezzi, anche in modalit‡ Straordinario. Funzionava in passato ? regressione.
-- Causa reale (codice attuale): una regola CSS globale .mg-wheel-hit { pointer-events: none } spegneva l'area cliccabile delle ruote; inoltre il CSS locale stilava .mg-svg mentre l'SVG reale usa .mg-truck-svg. Il click "passava attraverso" le ruote. NON era la logica di selezione (handleToggleWheel corretto) nÈ la categoria.
+## 2026-06-13 ÔøΩ BUG 7: selezione ruota cambio gomme straordinario (regressione CSS)
+- Sintomo: nel cambio gomme straordinario (app autista) il click sulla ruota non selezionava, su tutti i mezzi, anche in modalitÔøΩ Straordinario. Funzionava in passato ? regressione.
+- Causa reale (codice attuale): una regola CSS globale .mg-wheel-hit { pointer-events: none } spegneva l'area cliccabile delle ruote; inoltre il CSS locale stilava .mg-svg mentre l'SVG reale usa .mg-truck-svg. Il click "passava attraverso" le ruote. NON era la logica di selezione (handleToggleWheel corretto) nÔøΩ la categoria.
 - Fix: in src/pages/ModalGomme.css, aggiunto styling per .mg-truck-svg e resa specifica la regola .mg-svg-wrapper .mg-wheel-hit con pointer-events: all ? click ruote riattivato nel modal gomme. Regola globale non rimossa (potrebbe servire altrove), solo sovrascritta localmente.
 - Solo CSS: nessuna modifica a logica selezione, shape, scritture, categoria. Comportamento "ordinario" invariato.
 - Build verde. Test runtime da confermare in produzione dopo push.
 
-## 2026-06-13 ó BUG 14: segnalazione gomme ? dossier NEXT ó CHIUSO (verificato sui dati reali)
-- Verifica esploratore-firestore (read-only, nessun record creato): i record gomme importati da admin finiscono in @gomme_eventi conservando targetTarga + contesto; il dossier NEXT (nextManutenzioniGommeDomain, readNextMezzoManutenzioniGommeSnapshot) li seleziona per SOLA targa, senza gate su stato/ufficiale. Numeri coincidono a parit‡ di filtro sulle targhe campione (TI239045 3/3, TI239279 2/2, TI81027 1/1). Anello import admin ? @gomme_eventi ? dossier NEXT integro.
+## 2026-06-13 ÔøΩ BUG 14: segnalazione gomme ? dossier NEXT ÔøΩ CHIUSO (verificato sui dati reali)
+- Verifica esploratore-firestore (read-only, nessun record creato): i record gomme importati da admin finiscono in @gomme_eventi conservando targetTarga + contesto; il dossier NEXT (nextManutenzioniGommeDomain, readNextMezzoManutenzioniGommeSnapshot) li seleziona per SOLA targa, senza gate su stato/ufficiale. Numeri coincidono a paritÔøΩ di filtro sulle targhe campione (TI239045 3/3, TI239279 2/2, TI81027 1/1). Anello import admin ? @gomme_eventi ? dossier NEXT integro.
 - Causa della chiusura: il lavoro sull'import gomme (AutistiEventoModal/AutistiAdmin scrivono @gomme_eventi) + A2 (scritture admin/inbox riattivate) hanno reso effettiva la propagazione. BUG 14 risolto senza nuovo intervento dedicato.
-- LIMITE NOTO: il dossier MADRE (src/pages/DossierMezzo.tsx) legge solo @manutenzioni, NON @gomme_eventi ? per quella vista vecchia le gomme importate non compaiono. Irrilevante finchÈ si usa il dossier NEXT. Da affrontare solo se servisse il dossier madre.
-- QUALIT¿-DATO DA TENERE D'OCCHIO (non BUG 14): in @gomme_eventi esiste un doppione con id identico sulla targa TI239279 (stesso record scritto 2 volte). Il dossier lo collassa in lettura (dedupeExternalTyreItems), quindi non si vede doppio, ma il doppione Ë fisicamente nei dati ? indica una possibile duplicazione in scrittura dell'import. Da indagare separatamente se si vuole pulire.
-- Decisione uniformare i 3 import (presa in chat): NON pi˘ necessaria per il dossier NEXT (tutti e tre scrivono @gomme_eventi, che il NEXT legge). Resterebbe utile solo per il dossier madre ó non prioritario.
+- LIMITE NOTO: il dossier MADRE (src/pages/DossierMezzo.tsx) legge solo @manutenzioni, NON @gomme_eventi ? per quella vista vecchia le gomme importate non compaiono. Irrilevante finchÔøΩ si usa il dossier NEXT. Da affrontare solo se servisse il dossier madre.
+- QUALITÔøΩ-DATO DA TENERE D'OCCHIO (non BUG 14): in @gomme_eventi esiste un doppione con id identico sulla targa TI239279 (stesso record scritto 2 volte). Il dossier lo collassa in lettura (dedupeExternalTyreItems), quindi non si vede doppio, ma il doppione ÔøΩ fisicamente nei dati ? indica una possibile duplicazione in scrittura dell'import. Da indagare separatamente se si vuole pulire.
+- Decisione uniformare i 3 import (presa in chat): NON piÔøΩ necessaria per il dossier NEXT (tutti e tre scrivono @gomme_eventi, che il NEXT legge). Resterebbe utile solo per il dossier madre ÔøΩ non prioritario.
 
 ## 2026-06-13 ‚Äî Fix duplicazione import gomme (update-in-place per id)
 - Causa: i due import gomme vivi (AutistiAdmin importGommeRecord, AutistiEventoModal importGommeRecord) appendevano incondizionatamente in @gomme_eventi anche per id gi√† esistente ‚Üí doppioni (visti su TI239279 e TI239045, dedup audit PROMPT 52). Read-modify-write non atomico come enabler.
@@ -837,10 +837,23 @@ Ogni prompt o lavoro sull'UI autisti deve includere questo vincolo, sopra qualsi
 - NOTA: resta una terza importGommeRecord nel guscio NEXT orfano (con sua logica IfMissing) ‚Äî irrilevante (orfano, sar√† rimosso nella pulizia guscio).
 - IN SOSPESO collegato: la pulizia dato @gomme_eventi (dedup 11‚Üí8) va fatta DOPO questo fix (cos√¨ il dato pulito non si ri-sporca), con backup.
 
-## 2026-06-13 ó Pulizia: rimozione guscio orfano admin/inbox NEXT + dedup dato @gomme_eventi
+## 2026-06-13 ÔøΩ Pulizia: rimozione guscio orfano admin/inbox NEXT + dedup dato @gomme_eventi
 - DATO (produzione, non codice): dedup storage/@gomme_eventi da 11 a 8 record (rimosse copie duplicate per id su TI239279 e TI239045, tenute le versioni editate). Backup salvato in C:/tmp/backup_gomme_eventi/. Verificato da esploratore-firestore: zero id duplicati, insieme id invariato, nessun evento perso. Il fix import update-in-place (commit f17c9f03) previene il riformarsi dei doppioni.
 - CODICE: rimossi 18 file orfani del guscio admin/inbox NEXT (orfani dopo A2, che monta la madre): 8 Page wrapper (NextAutistiAdminPage + 7 NextAutistiInbox*Page), 8 Native (NextAutistiAdminNative + *AllNative + NextCambioMezzoInboxNative + NextAutistiInboxHomeNative), nextAutistiAdminBridges.ts, 1 test (NextAutistiAdminNative.gommeImport.test.tsx).
-- MANTENUTI (letture vere condivise, NON toccati): nextAutistiStorageSync.ts, nextAutistiDomain.ts, nextAutistiHomeEvents.ts e i moduli clone-overlay ó consumer vivi: centro-controllo, chat-IA, manutenzioni.
+- MANTENUTI (letture vere condivise, NON toccati): nextAutistiStorageSync.ts, nextAutistiDomain.ts, nextAutistiHomeEvents.ts e i moduli clone-overlay ÔøΩ consumer vivi: centro-controllo, chat-IA, manutenzioni.
 - Verifica: build verde (zero referenze rotte), guardiano-patch DIFF OK, route admin/inbox ancora servite dalla madre nella shell (App.tsx invariato), prova utente ok (inbox/admin funzionano, centro-controllo/chat-IA invariati).
 - CODA (follow-up, non urgente): 2 file ancora orfani in src/next/autistiInbox/components/ (NextRifornimentiCard.tsx, NextSessioniAttiveCard.tsx), lasciati per prudenza, rimovibili in un passo dedicato.
-- Pulizia path /next/autisti-* (audit PROMPT 52 parte 2): nessuna azione necessaria, i riferimenti erano gi‡ corretti (puntano a route vive che montano la madre).
+- Pulizia path /next/autisti-* (audit PROMPT 52 parte 2): nessuna azione necessaria, i riferimenti erano giÔøΩ corretti (puntano a route vive che montano la madre).
+
+## 2026-06-14 ‚Äî Sistema permessi per-autista: LIVE
+- Obiettivo: rilascio graduale di moduli dell'app autista a tester selezionati, per singolo autista (chiave = badge).
+- Regola di default decisa: i moduli esistenti alla data di oggi (rifornimento, segnalazioni, gomme, richiesta-attrezzature, cambio-mezzo) nascono ATTIVI per tutti; ogni modulo aggiunto da oggi in poi nasce DISATTIVATO per tutti e va acceso a mano per badge.
+- Dato: documento singolo storage/@permessi_autisti, forma { permessi: { [badge]: { [moduleId]: boolean } } }. Voce assente -> default del modulo. Documento assente -> i 5 moduli di oggi restano visibili (comportamento invariato). La vecchia forma { moduliInProva, permessi[] } √® stata abbandonata; il parser cade sul default se la trova.
+- Gate: agisce solo lato HomeAutista (nasconde i bottoni). Nessun guard di route: URL diretto accettato (scelta consapevole, contesto tester). Login non gating-ato.
+- Lettura runtime: la home legge i permessi all'apertura. L'autista vede l'aggiornamento con pull-to-refresh o uscendo/rientrando nella home; non serve rifare login. Nessun listener live (scelta: robustezza su telefoni con rete debole).
+- Admin: pannello in src/autistiInbox/AutistiAdmin.tsx (montato su /next/autisti-admin), dentro un modale aperto da bottone. Tabellone: righe = colleghi con badge, colonne = moduli, celle Attivo(verde)/Disattivato(rosso) cliccabili, comando in cima a ogni colonna per attivare/disattivare l'intera colonna. Salvataggio via storageSync.setItemSync.
+- Barriera: chiave @permessi_autisti aggiunta alla whitelist AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS in cloneWriteBarrier.ts (rientra nella deroga path-only gi√† esistente su /next/autisti-admin).
+- File coinvolti: src/autisti/HomeAutista.tsx, src/autistiInbox/AutistiAdmin.tsx, src/utils/cloneWriteBarrier.ts, docs/product/SPEC_PERMESSI_AUTISTI_NEXT.md.
+- Nota manutenzione: l'elenco moduli √® duplicato in HomeAutista.tsx e AutistiAdmin.tsx con commento di sincronizzazione. Un modulo nuovo va aggiunto in ENTRAMBI per comparire nel tabellone e nascere spento.
+- Stato: provato in locale e sul telefono (pull-to-refresh aggiorna quasi in tempo reale), committato e pushato. CHIUSO.
+- Prossimi lavori correlati (in chat dedicate): switch "doppia home" per badge (vecchia/nuova grafica, accesa per badge come i permessi); restyling grafico Home autista v2 (solo UI, logica invariata; prima mockup con Claude Design, poi applicazione). Per il restyling vale lo stesso principio di rilascio graduale: due grafiche convivono finch√© non si attiva a tutti.
