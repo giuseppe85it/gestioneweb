@@ -38,6 +38,22 @@ const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
 const KEY_GOMME_EVENTI = "@gomme_eventi";
+const KEY_PERMESSI_AUTISTI = "@permessi_autisti";
+
+// DEVE restare identico alla copia in src/autisti/HomeAutista.tsx.
+const AUTISTI_MODULI = [
+  { id: "rifornimento", label: "Rifornimento", defaultOn: true },
+  { id: "segnalazioni", label: "Segnalazioni", defaultOn: true },
+  { id: "gomme", label: "Gomme", defaultOn: true },
+  { id: "richiesta-attrezzature", label: "Richiesta attrezzature", defaultOn: true },
+  { id: "cambio-mezzo", label: "Cambio mezzo", defaultOn: true },
+] as const;
+
+type AutistiModuloId = (typeof AUTISTI_MODULI)[number]["id"];
+
+type PermessiAutistiValue = {
+  permessi: Record<string, Partial<Record<AutistiModuloId, boolean>>>;
+};
 
 type LavoroTipo = "magazzino" | "targa";
 type LavoroUrgenza = "bassa" | "media" | "alta";
@@ -63,6 +79,49 @@ type TabKey =
   | "gomme"
   | "attrezzature"
   | "storico_cambio";
+
+function isAutistiModuloId(value: unknown): value is AutistiModuloId {
+  return AUTISTI_MODULI.some((modulo) => modulo.id === value);
+}
+
+function getModuloDefaultOn(moduloId: AutistiModuloId) {
+  return AUTISTI_MODULI.find((modulo) => modulo.id === moduloId)?.defaultOn === true;
+}
+
+function normalizePermessiAutisti(raw: unknown): PermessiAutistiValue {
+  if (!raw || typeof raw !== "object") {
+    return { permessi: {} };
+  }
+
+  const source = raw as {
+    permessi?: unknown;
+  };
+  const permessi: Record<string, Partial<Record<AutistiModuloId, boolean>>> = {};
+
+  if (
+    source.permessi &&
+    typeof source.permessi === "object" &&
+    !Array.isArray(source.permessi)
+  ) {
+    Object.entries(source.permessi as Record<string, unknown>).forEach(
+      ([badge, moduliMap]) => {
+        const badgeKey = String(badge).trim();
+        if (!badgeKey) return;
+        if (!moduliMap || typeof moduliMap !== "object" || Array.isArray(moduliMap)) return;
+
+        Object.entries(moduliMap as Record<string, unknown>).forEach(
+          ([moduloId, enabled]) => {
+            if (!isAutistiModuloId(moduloId) || typeof enabled !== "boolean") return;
+            if (!permessi[badgeKey]) permessi[badgeKey] = {};
+            permessi[badgeKey][moduloId] = enabled;
+          }
+        );
+      }
+    );
+  }
+
+  return { permessi };
+}
 
 function isSameDay(ts: number, day: Date) {
   const d = new Date(ts);
@@ -261,6 +320,12 @@ export default function AutistiAdmin() {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("evento-autisti-admin.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento autisti");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [permessiPerBadge, setPermessiPerBadge] = useState<
+    Record<string, Partial<Record<AutistiModuloId, boolean>>>
+  >({});
+  const [permessiSaving, setPermessiSaving] = useState(false);
+  const [permessiStatus, setPermessiStatus] = useState<string | null>(null);
+  const [permessiOpen, setPermessiOpen] = useState(false);
 
   const formatFileDate = () => {
     const now = new Date();
@@ -430,6 +495,22 @@ export default function AutistiAdmin() {
       alive = false;
     };
   }, [day]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadPermessiAutisti() {
+      const raw = await getItemSync(KEY_PERMESSI_AUTISTI);
+      if (!alive) return;
+      const parsed = normalizePermessiAutisti(raw);
+      setPermessiPerBadge(parsed.permessi);
+    }
+
+    loadPermessiAutisti();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     let list: HomeEvent[] = [];
@@ -630,7 +711,85 @@ export default function AutistiAdmin() {
     });
     return Array.from(unique.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [colleghiRaw]);
+  const colleghiConBadge = useMemo(() => {
+    const unique = new Map<string, { id: string; nome: string; badge: string }>();
+    colleghiOptions.forEach((collega) => {
+      const badge = String(collega.badge ?? "").trim();
+      if (!badge) return;
+      unique.set(badge, { ...collega, badge });
+    });
+    return Array.from(unique.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colleghiOptions]);
   const isAdminCreateRifornimento = adminEditCreateMode && adminEditKind === "rifornimento";
+
+  function getBadgeModuloEnabled(badge: string, moduloId: AutistiModuloId) {
+    const badgeKey = String(badge).trim();
+    const explicitValue = badgeKey ? permessiPerBadge[badgeKey]?.[moduloId] : undefined;
+    return typeof explicitValue === "boolean" ? explicitValue : getModuloDefaultOn(moduloId);
+  }
+
+  function toggleBadgePermesso(badge: string, moduloId: AutistiModuloId) {
+    const badgeKey = String(badge).trim();
+    if (!badgeKey) return;
+    setPermessiStatus(null);
+    setPermessiPerBadge((prev) => {
+      const current = prev[badgeKey] || {};
+      const explicitValue = current[moduloId];
+      const enabled =
+        typeof explicitValue === "boolean" ? explicitValue : getModuloDefaultOn(moduloId);
+      return {
+        ...prev,
+        [badgeKey]: {
+          ...current,
+          [moduloId]: !enabled,
+        },
+      };
+    });
+  }
+
+  function setModuloForAllBadges(moduloId: AutistiModuloId, enabled: boolean) {
+    setPermessiStatus(null);
+    setPermessiPerBadge((prev) => {
+      const next = { ...prev };
+      colleghiConBadge.forEach((collega) => {
+        const badgeKey = String(collega.badge).trim();
+        if (!badgeKey) return;
+        next[badgeKey] = {
+          ...(next[badgeKey] || {}),
+          [moduloId]: enabled,
+        };
+      });
+      return next;
+    });
+  }
+
+  async function savePermessiAutisti() {
+    if (permessiSaving) return;
+    setPermessiSaving(true);
+    setPermessiStatus(null);
+    try {
+      const permessi: Record<string, Partial<Record<AutistiModuloId, boolean>>> = {};
+
+      Object.entries(permessiPerBadge).forEach(([badge, moduliMap]) => {
+        const badgeKey = String(badge).trim();
+        if (!badgeKey) return;
+        const badgePermessi: Partial<Record<AutistiModuloId, boolean>> = {};
+        AUTISTI_MODULI.forEach((modulo) => {
+          const enabled = moduliMap?.[modulo.id];
+          if (typeof enabled === "boolean") {
+            badgePermessi[modulo.id] = enabled;
+          }
+        });
+        if (Object.keys(badgePermessi).length > 0) permessi[badgeKey] = badgePermessi;
+      });
+
+      await setItemSync(KEY_PERMESSI_AUTISTI, { permessi });
+      setPermessiPerBadge(permessi);
+      setPermessiStatus("Permessi salvati.");
+    } finally {
+      setPermessiSaving(false);
+    }
+  }
 
   function getCategoria(targa?: string | null) {
     const key = String(targa ?? "").trim().toUpperCase();
@@ -2348,6 +2507,13 @@ export default function AutistiAdmin() {
             >
               Richieste attrezzature
             </button>
+            <button
+              className="tab"
+              onClick={() => setPermessiOpen(true)}
+              type="button"
+            >
+              Permessi moduli autisti
+            </button>
           </div>
 
           <div className="autisti-admin-datebar">
@@ -3671,6 +3837,149 @@ export default function AutistiAdmin() {
                   </button>
                   <button className="edit" type="button" onClick={saveForceCambio}>
                     CONFERMA
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {permessiOpen && (
+          <div className="aix-backdrop" onMouseDown={() => setPermessiOpen(false)}>
+            <div
+              className="aix-modal admin-edit-modal"
+              style={{ maxWidth: 1100 }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="aix-head">
+                <h3>Permessi moduli autisti</h3>
+                <button
+                  className="aix-close"
+                  type="button"
+                  onClick={() => setPermessiOpen(false)}
+                >
+                  CHIUDI
+                </button>
+              </div>
+
+              <div className="aix-body admin-edit-body">
+                <div className="admin-edit-scroll">
+                  {colleghiConBadge.length === 0 ? (
+                    <div className="empty">Nessun badge disponibile.</div>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <div className="canon-list" style={{ minWidth: 900 }}>
+                        <div
+                          className="canon-row canon-row-head"
+                          style={{
+                            gridTemplateColumns: `minmax(190px, 1.2fr) repeat(${AUTISTI_MODULI.length}, minmax(132px, 1fr))`,
+                          }}
+                        >
+                          <div>Autista</div>
+                          {AUTISTI_MODULI.map((modulo) => (
+                            <div key={`head_${modulo.id}`}>
+                              <div>{modulo.label}</div>
+                              <div
+                                className="row-actions"
+                                style={{
+                                  justifyContent: "flex-start",
+                                  gap: 6,
+                                  marginTop: 8,
+                                }}
+                              >
+                                <button
+                                  className="edit"
+                                  type="button"
+                                  style={{
+                                    minHeight: 28,
+                                    padding: "5px 8px",
+                                    fontSize: 11,
+                                  }}
+                                  onClick={() => setModuloForAllBadges(modulo.id, true)}
+                                >
+                                  Attiva
+                                </button>
+                                <button
+                                  className="edit danger"
+                                  type="button"
+                                  style={{
+                                    minHeight: 28,
+                                    padding: "5px 8px",
+                                    fontSize: 11,
+                                  }}
+                                  onClick={() => setModuloForAllBadges(modulo.id, false)}
+                                >
+                                  Disattiva
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {colleghiConBadge.map((collega) => (
+                          <div
+                            className="canon-row"
+                            key={`permessi_${collega.badge}`}
+                            style={{
+                              gridTemplateColumns: `minmax(190px, 1.2fr) repeat(${AUTISTI_MODULI.length}, minmax(132px, 1fr))`,
+                            }}
+                          >
+                            <div className="canon-cell">
+                              <div>{collega.nome}</div>
+                              <div className="muted">badge {collega.badge}</div>
+                            </div>
+
+                            {AUTISTI_MODULI.map((modulo) => {
+                              const enabled = getBadgeModuloEnabled(collega.badge, modulo.id);
+
+                              return (
+                                <div
+                                  className="canon-cell"
+                                  key={`${collega.badge}_${modulo.id}`}
+                                >
+                                  <button
+                                    type="button"
+                                    className={enabled ? "edit" : "edit danger"}
+                                    style={{
+                                      minWidth: 118,
+                                      minHeight: 34,
+                                      padding: "6px 10px",
+                                    }}
+                                    aria-label={`${
+                                      enabled ? "Disabilita" : "Abilita"
+                                    } ${modulo.label} per badge ${collega.badge}`}
+                                    onClick={() => toggleBadgePermesso(collega.badge, modulo.id)}
+                                  >
+                                    <span className={`pill ${enabled ? "pill-ok" : "pill-danger"}`}>
+                                      {enabled ? "Attivo" : "Disattivato"}
+                                    </span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="admin-edit-actions">
+                  {permessiStatus ? <span className="loading">{permessiStatus}</span> : null}
+                  <button
+                    className="edit"
+                    type="button"
+                    onClick={() => setPermessiOpen(false)}
+                    disabled={permessiSaving}
+                  >
+                    CHIUDI
+                  </button>
+                  <button
+                    className="edit"
+                    type="button"
+                    onClick={savePermessiAutisti}
+                    disabled={permessiSaving}
+                  >
+                    {permessiSaving ? "Salvataggio..." : "SALVA"}
                   </button>
                 </div>
               </div>

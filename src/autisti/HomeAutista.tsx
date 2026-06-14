@@ -21,6 +21,26 @@ import {
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+const KEY_PERMESSI_AUTISTI = "@permessi_autisti";
+
+// DEVE restare identico alla copia in src/autistiInbox/AutistiAdmin.tsx.
+const AUTISTI_MODULI = [
+  { id: "rifornimento", label: "Rifornimento", defaultOn: true },
+  { id: "segnalazioni", label: "Segnalazioni", defaultOn: true },
+  { id: "gomme", label: "Gomme", defaultOn: true },
+  { id: "richiesta-attrezzature", label: "Richiesta attrezzature", defaultOn: true },
+  { id: "cambio-mezzo", label: "Cambio mezzo", defaultOn: true },
+] as const;
+
+type AutistiModuloId = (typeof AUTISTI_MODULI)[number]["id"];
+
+type PermessiAutisti = {
+  permessi: Record<string, Partial<Record<AutistiModuloId, boolean>>>;
+};
+
+const DEFAULT_PERMESSI_AUTISTI: PermessiAutisti = {
+  permessi: {},
+};
 
 type EventoOperativo = {
   id: string;
@@ -60,6 +80,47 @@ async function appendEventoOperativo(evt: EventoOperativo) {
   await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
 }
 
+function isAutistiModuloId(value: unknown): value is AutistiModuloId {
+  return AUTISTI_MODULI.some((modulo) => modulo.id === value);
+}
+
+function getModuloDefaultOn(moduloId: AutistiModuloId) {
+  return AUTISTI_MODULI.find((modulo) => modulo.id === moduloId)?.defaultOn === true;
+}
+
+function normalizePermessiAutisti(raw: unknown): PermessiAutisti {
+  if (!raw || typeof raw !== "object") return DEFAULT_PERMESSI_AUTISTI;
+
+  const source = raw as {
+    permessi?: unknown;
+  };
+  const permessi: Record<string, Partial<Record<AutistiModuloId, boolean>>> = {};
+
+  if (
+    source.permessi &&
+    typeof source.permessi === "object" &&
+    !Array.isArray(source.permessi)
+  ) {
+    Object.entries(source.permessi as Record<string, unknown>).forEach(
+      ([badge, moduliMap]) => {
+        const badgeKey = String(badge).trim();
+        if (!badgeKey) return;
+        if (!moduliMap || typeof moduliMap !== "object" || Array.isArray(moduliMap)) return;
+
+        Object.entries(moduliMap as Record<string, unknown>).forEach(
+          ([moduloId, enabled]) => {
+            if (!isAutistiModuloId(moduloId) || typeof enabled !== "boolean") return;
+            if (!permessi[badgeKey]) permessi[badgeKey] = {};
+            permessi[badgeKey][moduloId] = enabled;
+          }
+        );
+      }
+    );
+  }
+
+  return { permessi };
+}
+
 export default function HomeAutista() {
   const navigate = useNavigate();
 
@@ -73,6 +134,15 @@ export default function HomeAutista() {
   const [sgancioLuogoAltro, setSgancioLuogoAltro] = useState("");
   const [sgancioErrore, setSgancioErrore] = useState<string | null>(null);
   const [sgancioLoading, setSgancioLoading] = useState(false);
+  const [permessiAutisti, setPermessiAutisti] = useState<PermessiAutisti>(
+    DEFAULT_PERMESSI_AUTISTI
+  );
+
+  const isModuloVisible = (moduloId: AutistiModuloId) => {
+    const badgeKey = String(autista?.badge ?? "").trim();
+    const explicitValue = badgeKey ? permessiAutisti.permessi[badgeKey]?.[moduloId] : undefined;
+    return typeof explicitValue === "boolean" ? explicitValue : getModuloDefaultOn(moduloId);
+  };
 
   // ======================================================
   // REVOCHE + COERENZA LIVE/LOCALE
@@ -202,6 +272,21 @@ export default function HomeAutista() {
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [navigate]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadPermessiAutisti() {
+      const raw = await getItemSync(KEY_PERMESSI_AUTISTI);
+      if (!alive) return;
+      setPermessiAutisti(normalizePermessiAutisti(raw));
+    }
+
+    loadPermessiAutisti();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // ======================================================
   // LOAD SESSIONE (SOLO LOCALE)
@@ -387,21 +472,29 @@ export default function HomeAutista() {
 
       {/* AZIONI */}
       <div className="autisti-actions">
-        <button onClick={() => navigate("/autisti/rifornimento")}>
-          Rifornimento
-        </button>
+        {isModuloVisible("rifornimento") && (
+          <button onClick={() => navigate("/autisti/rifornimento")}>
+            Rifornimento
+          </button>
+        )}
 
-        <button onClick={() => navigate("/autisti/segnalazioni")}>
-          Segnalazioni
-        </button>
+        {isModuloVisible("segnalazioni") && (
+          <button onClick={() => navigate("/autisti/segnalazioni")}>
+            Segnalazioni
+          </button>
+        )}
 
-        <button onClick={() => setGommeOpen(true)}>
-          Gomme
-        </button>
+        {isModuloVisible("gomme") && (
+          <button onClick={() => setGommeOpen(true)}>
+            Gomme
+          </button>
+        )}
 
-        <button onClick={() => navigate("/autisti/richiesta-attrezzature")}>
-          Richiesta attrezzature
-        </button>
+        {isModuloVisible("richiesta-attrezzature") && (
+          <button onClick={() => navigate("/autisti/richiesta-attrezzature")}>
+            Richiesta attrezzature
+          </button>
+        )}
 
         {!mezzo.targaRimorchio && (
           <button onClick={() => navigate("/autisti/setup-mezzo?mode=rimorchio")}>
@@ -415,9 +508,11 @@ export default function HomeAutista() {
           </button>
         )}
 
-        <button onClick={() => navigate("/autisti/cambio-mezzo")}>
-          Cambio mezzo
-        </button>
+        {isModuloVisible("cambio-mezzo") && (
+          <button onClick={() => navigate("/autisti/cambio-mezzo")}>
+            Cambio mezzo
+          </button>
+        )}
       </div>
 
       {sgancioOpen && (

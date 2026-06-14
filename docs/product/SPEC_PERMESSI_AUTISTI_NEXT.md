@@ -1,50 +1,124 @@
-# SPEC — Sistema permessi per-autista (gating moduli)
+# SPEC - Sistema permessi per-autista (gating moduli)
 
 ## Scopo
-Rilascio graduale di moduli nuovi a tester selezionati. Un modulo "in prova" è visibile solo ai badge abilitati; i moduli "normali" restano visibili a tutti. Default di un modulo in prova: spento (nessun badge lo vede finché non abilitato).
+Gestire la visibilita dei bottoni modulo nella Home Autista per singolo badge.
+I 5 moduli esistenti nascono attivi per tutti; ogni modulo futuro nasce disattivato
+per tutti finche l'admin non lo attiva esplicitamente per badge.
 
 ## Decisioni (Giuseppe, non reinterpretare)
-- Permessi per singolo autista, chiave = badge.
-- Dati in documento separato storage/@permessi_autisti, NON dentro @colleghi.
-- Gate solo lato HomeAutista (nasconde i bottoni). Nessun guard di route: URL diretto accettato.
-- Solo i moduli marcati "in prova" sono nascosti; gli altri restano visibili a tutti.
-- Accendere/spegnere un modulo in prova si fa dal pannello admin, senza cambi di codice.
+- Permessi per singolo autista, chiave = badge trattato sempre come stringa.
+- Dati in documento separato `storage/@permessi_autisti`, NON dentro `@colleghi`.
+- Gate solo lato `HomeAutista` (nasconde i bottoni). Nessun guard di route: URL diretto accettato.
+- Le forzature admin per badge+modulo vincono sul default del modulo.
+- Non esiste piu il concetto di `moduliInProva`.
 
-## Dato — storage/@permessi_autisti
-Documento singolo Firestore nella collection "storage", chiave @permessi_autisti, wrapper { value: ... } (stesso pattern di @colleghi).
-Forma di value:
-    moduliInProva: string[]                 elenco id moduli attualmente gated
-    permessi: oggetto badge -> string[]     per ogni badge, id moduli in prova abilitati
-Esempio di value:
-    moduliInProva = ["cambio-mezzo"]
-    permessi = { "530": ["cambio-mezzo"] }
-Id moduli stabili (corrispondono ai bottoni esistenti in HomeAutista):
-    rifornimento, segnalazioni, gomme, richiesta-attrezzature, cambio-mezzo
-I moduli futuri aggiungono un nuovo id qui e un bottone gated in HomeAutista.
+## Dato - storage/@permessi_autisti
+Documento singolo Firestore nella collection `storage`, chiave `@permessi_autisti`,
+wrapper `{ value: ... }` (stesso pattern di `@colleghi`).
 
-## Regola di visibilità (HomeAutista)
-Per ogni bottone-modulo con id M e badge corrente B:
-    visibile(M) = (M NON è in moduliInProva)  OPPURE  (permessi[B] include M)
-Quindi: modulo non in prova = sempre visibile; modulo in prova = visibile solo se B è abilitato.
+Forma di `value`:
+```ts
+{
+  permessi: {
+    [badge: string]: {
+      [moduleId: string]: boolean
+    }
+  }
+}
+```
+
+Significato:
+- `permessi[badge][moduleId] = true` forza il modulo attivo per quel badge.
+- `permessi[badge][moduleId] = false` forza il modulo disattivato per quel badge.
+- Se manca la voce per `(badge, moduleId)`, si usa il default del modulo.
+
+La vecchia forma `{ moduliInProva, permessi: string[] }` e trattata come assente/non
+valida dal lettore: non rompe il runtime e ricade sui default.
+
+## Elenco moduli e default
+I moduli stabili corrispondono ai bottoni esistenti in `HomeAutista`.
+
+```ts
+[
+  { id: "rifornimento", label: "Rifornimento", defaultOn: true },
+  { id: "segnalazioni", label: "Segnalazioni", defaultOn: true },
+  { id: "gomme", label: "Gomme", defaultOn: true },
+  { id: "richiesta-attrezzature", label: "Richiesta attrezzature", defaultOn: true },
+  { id: "cambio-mezzo", label: "Cambio mezzo", defaultOn: true },
+]
+```
+
+Regola permanente: qualunque modulo futuro non incluso tra i moduli `defaultOn: true`
+deve nascere disattivato per tutti (`defaultOn: false`) e va acceso a mano per badge.
+
+## Regola di visibilita (HomeAutista)
+Per ogni bottone-modulo con id `M` e badge corrente `B`:
+
+```ts
+visibile(M, B) =
+  permessi[String(B)] ha una voce booleana per M
+    ? permessi[String(B)][M]
+    : defaultOn(M)
+```
+
+Documento assente, badge assente o modulo assente -> default del modulo. Per i 5 moduli
+di oggi il default e `true`, quindi restano visibili come prima.
 
 ## Lettura runtime autista
-HomeAutista legge storage/@permessi_autisti una volta al mount (getItemSync), ricava moduliInProva e permessi[badgeCorrente]. Il badge corrente è già in locale dopo il login. Documento assente o vuoto -> moduliInProva = [] -> tutti i moduli visibili (comportamento attuale invariato).
+`HomeAutista` legge `storage/@permessi_autisti` una volta al mount (`getItemSync`) e
+normalizza solo la forma nuova `{ permessi: { badge: { modulo: boolean } } }`.
+Record vecchi o malformati vengono ignorati senza errore.
 
 ## Pannello admin (src/autistiInbox/AutistiAdmin.tsx, montato su /next/autisti-admin)
-Nuova sezione "Permessi moduli autisti":
-- per ogni modulo uno switch "in prova" (scrive moduliInProva)
-- griglia badge (da @colleghi, solo colleghi con badge) per i moduli in prova, con checkbox (scrive permessi[badge])
-- pulsante Salva -> scrive storage/@permessi_autisti via storageSync.setItemSync
-- stile coerente con il resto di AutistiAdmin, nessuna libreria nuova
+Il bottone "Permessi moduli autisti" apre un modale con tabellone:
+- righe = colleghi con badge da `@colleghi`;
+- colonne = moduli dell'elenco sopra;
+- ogni cella mostra lo stato calcolato: `Attivo` verde oppure `Disattivato` rosso;
+- click sulla cella inverte lo stato e scrive una forzatura esplicita per quel badge+modulo;
+- in cima a ogni colonna ci sono i comandi `Attiva` e `Disattiva` per impostare tutta la colonna;
+- pulsante Salva -> scrive `storage/@permessi_autisti` via `storageSync.setItemSync`
+  nella forma `{ permessi }`.
+
+Non ci sono piu switch "in prova" ne diciture "OK per tutti".
+
+## Esempi
+Documento assente:
+```ts
+undefined
+```
+Risultato: i 5 moduli esistenti sono visibili per tutti.
+
+Disattivare `gomme` per badge `530`:
+```ts
+{
+  permessi: {
+    "530": {
+      "gomme": false
+    }
+  }
+}
+```
+
+Attivare un modulo futuro `nuovo-modulo` per badge `530`:
+```ts
+{
+  permessi: {
+    "530": {
+      "nuovo-modulo": true
+    }
+  }
+}
+```
 
 ## Barriera (src/utils/cloneWriteBarrier.ts)
-Aggiungere la chiave @permessi_autisti alla whitelist AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS (deroga path-only già esistente per /next/autisti-admin). Nessun nuovo meccanismo, solo una chiave in più.
+La chiave `@permessi_autisti` resta nella whitelist `AUTISTI_ADMIN_INBOX_ALLOWED_STORAGE_KEYS`
+(deroga path-only gia esistente per `/next/autisti-admin`). Nessun nuovo meccanismo.
 
-## Fuori perimetro (NON toccare in implementazione)
-@colleghi e Colleghi.tsx; writer/domain NEXT anagrafiche; LoginAutista (il gate non agisce al login); route /autisti/*; pdfEngine; storage rules (è un doc Firestore, non un file Storage).
+## Fuori perimetro
+`@colleghi` e `Colleghi.tsx`; writer/domain NEXT anagrafiche; `LoginAutista`; route
+`/autisti/*`; `pdfEngine`; storage rules.
 
-## Default e retrocompatibilità
-Documento assente -> tutti i moduli visibili come oggi. Accendere il sistema NON nasconde nulla finché non si marca un modulo "in prova".
-
-## Verifica attesa (in fase implementativa, non ora)
-npm run build verde; con moduliInProva vuoto HomeAutista identica a oggi; marcando un modulo in prova e abilitando un badge, quel modulo appare solo a quel badge.
+## Verifica attesa
+`npm run build` verde. Con documento assente o vecchia forma salvata, `HomeAutista`
+mostra ancora i 5 moduli correnti. Salvando dal pannello admin, Firestore riceve
+`value = { permessi: { [badge]: { [moduleId]: boolean } } }`.
