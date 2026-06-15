@@ -2,7 +2,7 @@
 
 .next-orari-page {
   padding: 16px 20px 40px;
-  max-width: 1000px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 
@@ -375,4 +375,58 @@
   display: flex;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* ---- Eliminazione admin: modalità selezione + dialog conferma ---- */
+.next-orari-elimina {
+  border: 1px solid #c62828;
+  color: #c62828;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.next-orari-delete-confirm {
+  border: 1px solid #c62828;
+  background: #c62828;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.next-orari-delete-confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.next-orari-sel {
+  width: 34px;
+  text-align: center;
+}
+
+.next-orari-selrow {
+  cursor: pointer;
+}
+
+.next-orari-selrow.selected td {
+  background: #fdecea !important;
+}
+
+.next-orari-delete-warn {
+  color: #c62828;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+.next-orari-delete-dates {
+  background: #faf7f0;
+  border: 1px solid #e6dcc8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 700;
+  word-break: break-word;
 }

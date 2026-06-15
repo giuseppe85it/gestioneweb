@@ -11,11 +11,13 @@ import {
 } from "./domain/nextOrariCartellinoDomain";
 import { riapriCartellino } from "./writers/nextOrariChiusuraWriter";
 import { salvaGiornoAdmin } from "./writers/nextOrariRecordWriter";
+import { eliminaGiorniAdmin } from "./writers/nextOrariDeleteWriter";
 import {
   buildFooterRows,
   buildGiorniMese,
   calcTotaleNettoMinuti,
   formatDataDisplay,
+  formatDataGGMM,
   formatMinutesToHHMM,
   formatMonteOre,
   meseLabelLong,
@@ -111,6 +113,13 @@ export default function NextOrariCartellinoPage() {
   const [editBusy, setEditBusy] = useState(false);
   const [editMsg, setEditMsg] = useState<string | null>(null);
 
+  // Eliminazione admin di giorni selezionati (DISTRUTTIVA — solo lo spuntato, doppia conferma).
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+
   // Carica l'elenco colleghi (badge) una volta.
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +164,15 @@ export default function NextOrariCartellinoPage() {
       cancelled = true;
     };
   }, [badge, year, month1, reloadTick]);
+
+  // Sicurezza eliminazione: al cambio di autista/mese/anno si ESCE dalla modalità
+  // selezione e si azzerano le spunte, così non si può mai confermare un'eliminazione
+  // con date spuntate su un altro autista/mese.
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedDates(new Set());
+    setDeleteDialogOpen(false);
+  }, [badge, year, month1]);
 
   const colleguNome = useMemo(
     () => colleghi.find((c) => c.badge === badge)?.nome ?? badge,
@@ -351,6 +369,43 @@ export default function NextOrariCartellinoPage() {
     }
   }
 
+  // ---- Eliminazione admin: modalità selezione + conferma obbligatoria ----
+  function enterSelectMode() {
+    setSelectMode(true);
+    setSelectedDates(new Set());
+    setDeleteMsg(null);
+  }
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedDates(new Set());
+    setDeleteDialogOpen(false);
+    setDeleteMsg(null);
+  }
+  function toggleSelDate(data: string) {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(data)) next.delete(data);
+      else next.add(data);
+      return next;
+    });
+  }
+  // Esegue il delete SOLO dopo la conferma esplicita del dialog.
+  async function confirmDelete() {
+    if (!badge || deleteBusy || selectedDates.size === 0) return;
+    setDeleteBusy(true);
+    setDeleteMsg(null);
+    const res = await eliminaGiorniAdmin({ badge, date: Array.from(selectedDates) });
+    setDeleteBusy(false);
+    if (res.ok) {
+      setDeleteDialogOpen(false);
+      setSelectMode(false);
+      setSelectedDates(new Set());
+      setReloadTick((t) => t + 1); // ricarica: footer/monte ore si ricalcolano da soli
+    } else {
+      setDeleteMsg(res.error ?? "Errore eliminazione.");
+    }
+  }
+
   const agg = snapshot?.aggregati;
 
   return (
@@ -422,7 +477,7 @@ export default function NextOrariCartellinoPage() {
         <button type="button" className="next-orari-pdf" onClick={handleMassivoPDF} disabled={pdfBusy}>
           {pdfBusy ? "Generazione…" : "PDF massivo"}
         </button>
-        {snapshot && (
+        {snapshot && !selectMode && (
           <button
             type="button"
             className="next-orari-edit-btn"
@@ -431,6 +486,26 @@ export default function NextOrariCartellinoPage() {
           >
             Modifica giorno
           </button>
+        )}
+        {snapshot && !selectMode && snapshot.rows.length > 0 && (
+          <button type="button" className="next-orari-elimina" onClick={enterSelectMode}>
+            Elimina
+          </button>
+        )}
+        {selectMode && (
+          <>
+            <button
+              type="button"
+              className="next-orari-delete-confirm"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={selectedDates.size === 0}
+            >
+              Elimina selezionati ({selectedDates.size})
+            </button>
+            <button type="button" className="next-orari-back" onClick={exitSelectMode}>
+              Annulla
+            </button>
+          </>
         )}
         {riapriMsg && <span className="next-orari-msg">{riapriMsg}</span>}
         {pdfShareHint && <span className="next-orari-msg">{pdfShareHint}</span>}
@@ -448,6 +523,7 @@ export default function NextOrariCartellinoPage() {
           <table className="next-orari-table">
             <thead>
               <tr>
+                {selectMode && <th className="next-orari-sel" aria-label="Seleziona" />}
                 <th>Data</th>
                 <th>Giorno</th>
                 <th>Inizio</th>
@@ -462,7 +538,7 @@ export default function NextOrariCartellinoPage() {
             <tbody>
               {snapshot.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="next-orari-empty">
+                  <td colSpan={selectMode ? 10 : 9} className="next-orari-empty">
                     Nessun giorno registrato per questo mese.
                   </td>
                 </tr>
@@ -472,10 +548,20 @@ export default function NextOrariCartellinoPage() {
                   return (
                     <tr
                       key={r.data}
-                      className={`next-orari-rowclick${r.isAssenza ? " assenza" : ""}`}
-                      onClick={() => openEdit(r.data)}
-                      title="Modifica questo giorno"
+                      className={`${selectMode ? "next-orari-selrow" : "next-orari-rowclick"}${r.isAssenza ? " assenza" : ""}${selectMode && selectedDates.has(r.data) ? " selected" : ""}`}
+                      onClick={selectMode ? () => toggleSelDate(r.data) : () => openEdit(r.data)}
+                      title={selectMode ? "Seleziona per eliminare" : "Modifica questo giorno"}
                     >
+                      {selectMode && (
+                        <td className="next-orari-sel" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedDates.has(r.data)}
+                            onChange={() => toggleSelDate(r.data)}
+                            aria-label={`Seleziona ${r.dataDisplay}`}
+                          />
+                        </td>
+                      )}
                       <td>{r.dataDisplay}</td>
                       <td>{r.giorno}</td>
                       {r.isAssenza ? (
@@ -617,6 +703,48 @@ export default function NextOrariCartellinoPage() {
                 {editBusy ? "Salvataggio…" : "Salva"}
               </button>
               <button type="button" className="next-orari-back" onClick={closeEdit}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteDialogOpen && (
+        <div
+          className="next-orari-edit-backdrop"
+          onClick={() => {
+            if (!deleteBusy) setDeleteDialogOpen(false);
+          }}
+        >
+          <div className="next-orari-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Elimina giorni — {colleguNome}</h3>
+            <p className="next-orari-delete-warn">
+              Stai per eliminare DEFINITIVAMENTE {selectedDates.size} giorno/i:
+            </p>
+            <p className="next-orari-delete-dates">
+              {Array.from(selectedDates)
+                .sort()
+                .map((d) => formatDataGGMM(d))
+                .join(", ")}
+            </p>
+            <p className="next-orari-delete-warn">L'operazione NON è reversibile.</p>
+            {deleteMsg && <p className="next-orari-msg">{deleteMsg}</p>}
+            <div className="next-orari-edit-actions">
+              <button
+                type="button"
+                className="next-orari-delete-confirm"
+                onClick={confirmDelete}
+                disabled={deleteBusy}
+              >
+                {deleteBusy ? "Eliminazione…" : "Conferma elimina"}
+              </button>
+              <button
+                type="button"
+                className="next-orari-back"
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={deleteBusy}
+              >
                 Annulla
               </button>
             </div>
