@@ -26,6 +26,12 @@ import { buildTargheList } from "../utils/targhe";
 import TargaPicker from "../components/TargaPicker";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import { isCloneRuntime } from "../utils/cloneWriteBarrier";
+import ModuleTile from "./components/ModuleTile";
+import ModuleWindow from "./components/ModuleWindow";
+import CollapsibleGroup from "./components/CollapsibleGroup";
+import ActionMenu, { type ActionItem } from "./components/ActionMenu";
+import SchemaRow, { SchemaHead } from "./components/SchemaRow";
+import NextOrariCartellinoPage from "../next/NextOrariCartellinoPage";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -218,6 +224,8 @@ export default function AutistiAdmin() {
   const hideInternalNav = isCloneRuntime();
 
   const [tab, setTab] = useState<TabKey>("rifornimenti");
+  const [moduleOpen, setModuleOpen] = useState(false);
+  const [cartellinoOpen, setCartellinoOpen] = useState(false);
   const [day, setDay] = useState<Date>(() => new Date());
   const datePickerRef = useRef<HTMLInputElement | null>(null);
 
@@ -2282,9 +2290,843 @@ export default function AutistiAdmin() {
     }
   }
 
+  // ===== NUOVO LAYOUT (solo runtime /next): home a tessere + finestre modulo =====
+  // Solo presentazione: riusa gli stessi dati (sessioniLive/filtered/*Filtered/cambioCanonico)
+  // e gli stessi handler del layout classico. Nessuna nuova logica/scrittura.
+  const MOD_META: Record<string, { title: string; icon: string }> = {
+    rifornimenti: { title: "Rifornimenti", icon: "⛽" },
+    segnalazioni: { title: "Segnalazioni", icon: "📣" },
+    controlli: { title: "Controllo mezzo", icon: "🛠️" },
+    gomme: { title: "Gomme", icon: "🛞" },
+    attrezzature: { title: "Richieste attrezzature", icon: "🧰" },
+    storico_cambio: { title: "Cambio mezzo (storico canonico)", icon: "🔁" },
+  };
+
+  const datebarEl = () => (
+    <div className="autisti-admin-datebar aa-window-datebar">
+      <button
+        type="button"
+        className="nav"
+        onClick={() => setDay((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1))}
+        title="Giorno precedente"
+      >
+        {"<"}
+      </button>
+      <div className="autisti-admin-date-picker">
+        <button
+          type="button"
+          className="label autisti-admin-date-label"
+          onClick={openDatePicker}
+          aria-label="Seleziona data"
+        >
+          {formatDayLabel(day)}
+        </button>
+        <input
+          ref={datePickerRef}
+          className="autisti-admin-date-input"
+          type="date"
+          value={formatDateInputValue(day)}
+          onChange={(e) => handleDatePickerChange(e.target.value)}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      </div>
+      <button
+        type="button"
+        className="nav"
+        onClick={() => setDay((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1))}
+        title="Giorno successivo"
+      >
+        {">"}
+      </button>
+    </div>
+  );
+
+  const searchIcon = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4-4" />
+    </svg>
+  );
+
+  const renderModuleToolbar = () => {
+    if (tab === "segnalazioni") {
+      return (
+        <div className="aa-toolbar">
+          <div className="aa-search">
+            {searchIcon}
+            <input
+              value={segnaFilterTarga}
+              onChange={(e) => setSegnaFilterTarga(e.target.value)}
+              placeholder="Cerca targa..."
+            />
+          </div>
+          <select
+            className="aa-sel"
+            value={segnaFilterAmbito}
+            onChange={(e) =>
+              setSegnaFilterAmbito(e.target.value as "tutti" | "motrice" | "rimorchio")
+            }
+          >
+            <option value="tutti">Tutti gli ambiti</option>
+            <option value="motrice">Motrice</option>
+            <option value="rimorchio">Rimorchio</option>
+          </select>
+          <label className="aa-chk">
+            <input
+              type="checkbox"
+              checked={segnaOnlyNuove}
+              onChange={(e) => setSegnaOnlyNuove(e.target.checked)}
+            />
+            Solo nuove
+          </label>
+        </div>
+      );
+    }
+    if (tab === "controlli") {
+      return (
+        <div className="aa-toolbar">
+          <div className="aa-search">
+            {searchIcon}
+            <input
+              value={ctrlFilterTarga}
+              onChange={(e) => setCtrlFilterTarga(e.target.value)}
+              placeholder="Cerca targa..."
+            />
+          </div>
+          <select
+            className="aa-sel"
+            value={ctrlFilterTarget}
+            onChange={(e) =>
+              setCtrlFilterTarget(
+                e.target.value as "tutti" | "motrice" | "rimorchio" | "entrambi"
+              )
+            }
+          >
+            <option value="tutti">Tutti i target</option>
+            <option value="motrice">Motrice</option>
+            <option value="rimorchio">Rimorchio</option>
+            <option value="entrambi">Entrambi</option>
+          </select>
+          <label className="aa-chk">
+            <input
+              type="checkbox"
+              checked={ctrlOnlyKo}
+              onChange={(e) => setCtrlOnlyKo(e.target.checked)}
+            />
+            Solo KO
+          </label>
+        </div>
+      );
+    }
+    if (tab === "gomme") {
+      return (
+        <div className="aa-toolbar">
+          <div className="aa-search">
+            {searchIcon}
+            <input
+              value={gommeFilterTarga}
+              onChange={(e) => setGommeFilterTarga(e.target.value)}
+              placeholder="Cerca targa..."
+            />
+          </div>
+          <label className="aa-chk">
+            <input
+              type="checkbox"
+              checked={gommeOnlyNuove}
+              onChange={(e) => setGommeOnlyNuove(e.target.checked)}
+            />
+            Solo nuovi
+          </label>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const renderSessionRow = (s: any) => {
+    const acts: ActionItem[] = s.badgeAutista
+      ? [
+          { label: "Forza cambio motrice", onClick: () => openForceCambio("MOTRICE", s) },
+          { label: "Forza cambio rimorchio", onClick: () => openForceCambio("RIMORCHIO", s) },
+          {
+            label: "Forza libero motrice",
+            danger: true,
+            disabled: !s.targaMotrice,
+            separatorBefore: true,
+            onClick: () => {
+              if (!s.badgeAutista) return;
+              const ok = window.confirm(`Forzare LIBERO MOTRICE per badge ${s.badgeAutista}?`);
+              if (!ok) return;
+              const reason = window.prompt("Motivo revoca", "forza libero") || "forza libero";
+              forceLibero(s.badgeAutista, "MOTRICE", reason);
+            },
+          },
+          {
+            label: "Forza libero rimorchio",
+            danger: true,
+            disabled: !s.targaRimorchio,
+            onClick: () => {
+              if (!s.badgeAutista) return;
+              const ok = window.confirm(`Forzare LIBERO RIMORCHIO per badge ${s.badgeAutista}?`);
+              if (!ok) return;
+              const reason = window.prompt("Motivo revoca", "forza libero") || "forza libero";
+              forceLibero(s.badgeAutista, "RIMORCHIO", reason);
+            },
+          },
+          {
+            label: "Forza libero tutto",
+            danger: true,
+            disabled: !s.targaMotrice && !s.targaRimorchio,
+            onClick: () => {
+              if (!s.badgeAutista) return;
+              const ok = window.confirm(`Forzare LIBERO TUTTO per badge ${s.badgeAutista}?`);
+              if (!ok) return;
+              const reason = window.prompt("Motivo revoca", "forza libero") || "forza libero";
+              forceLibero(s.badgeAutista, "TUTTO", reason);
+            },
+          },
+          {
+            label: "Elimina sessione",
+            danger: true,
+            separatorBefore: true,
+            hidden: !!(s.targaMotrice || s.targaRimorchio),
+            onClick: () => {
+              if (!s.badgeAutista) return;
+              const ok = window.confirm(`Eliminare la sessione per badge ${s.badgeAutista}?`);
+              if (!ok) return;
+              deleteSessione(s.badgeAutista);
+            },
+          },
+        ]
+      : [];
+    const catM = getCategoria(s.targaMotrice);
+    const catR = getCategoria(s.targaRimorchio);
+    const cats = [catM, catR].filter(Boolean).join(" · ");
+    return (
+      <div
+        className={`aa-srow${s.conflict ? " aa-srow--danger" : ""}`}
+        key={`live_${s.key}`}
+      >
+        <div className="aa-srow-time">{s.ts ? formatHHMM(s.ts) : formatHHMM(nowTs)}</div>
+        <div className="aa-srow-stato">
+          <span className={`pill ${getLivePillClass(s.stato, s.alert)}`}>{s.stato}</span>
+          {s.conflict ? <span className="pill conflict">CONFLITTO</span> : null}
+        </div>
+        <div className="aa-srow-autista">
+          <div className="aa-srow-name">{s.autista ?? "-"}</div>
+          <div className="aa-srow-badge">badge {s.badgeAutista ?? "-"}</div>
+        </div>
+        <div className="aa-srow-mezzi">
+          <div className="aa-tg-line">
+            <span className="aa-tg">{s.targaMotrice ?? "—"}</span>
+            {s.targaRimorchio ? (
+              <>
+                <span className="aa-tg-sep">+</span>
+                <span className={`aa-tg${!s.targaMotrice ? " aa-tg-danger" : ""}`}>
+                  {s.targaRimorchio}
+                </span>
+              </>
+            ) : null}
+          </div>
+          {cats ? <div className="aa-tg-cat">{cats}</div> : null}
+          {s.conflictText ? <div className="aa-conflict-note">{s.conflictText}</div> : null}
+        </div>
+        <div className="aa-srow-actions">
+          {s.badgeAutista ? (
+            <button
+              type="button"
+              className="edit aa-crow-primary"
+              disabled={!s.targaRimorchio}
+              title={!s.targaRimorchio ? "Disponibile con rimorchio agganciato" : undefined}
+              onClick={() => openEditSession(s.targaRimorchio as string)}
+            >
+              Modifica
+            </button>
+          ) : null}
+          <ActionMenu items={acts} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderSessioniCompact = () => {
+    if (loading) return null;
+    if (sessioniLive.length === 0)
+      return <div className="empty">Nessun rimorchio agganciato al momento.</div>;
+    const groups = [
+      {
+        key: "conflitti",
+        title: "Conflitti",
+        tone: "danger" as const,
+        rows: sessioniLive.filter((s: any) => s.conflict),
+      },
+      {
+        key: "rimorchio",
+        title: "Solo rimorchio",
+        tone: "neutral" as const,
+        rows: sessioniLive.filter((s: any) => !s.conflict && !s.targaMotrice && s.targaRimorchio),
+      },
+      {
+        key: "accoppiati",
+        title: "Accoppiati",
+        tone: "neutral" as const,
+        rows: sessioniLive.filter((s: any) => !s.conflict && s.targaMotrice && s.targaRimorchio),
+      },
+      {
+        key: "motrice",
+        title: "Solo motrice",
+        tone: "neutral" as const,
+        rows: sessioniLive.filter((s: any) => !s.conflict && s.targaMotrice && !s.targaRimorchio),
+      },
+      {
+        key: "altri",
+        title: "Senza mezzo",
+        tone: "neutral" as const,
+        rows: sessioniLive.filter((s: any) => !s.conflict && !s.targaMotrice && !s.targaRimorchio),
+      },
+    ];
+    return (
+      <>
+        <div className="aa-srow-head">
+          <div>Ora</div>
+          <div>Stato</div>
+          <div>Autista</div>
+          <div>Mezzi</div>
+          <div className="aa-srow-head-act">Azioni</div>
+        </div>
+        {groups
+          .filter((g) => g.rows.length > 0)
+          .map((g) => (
+            <CollapsibleGroup key={g.key} title={g.title} count={g.rows.length} tone={g.tone} defaultOpen>
+              {g.rows.map((s: any) => renderSessionRow(s))}
+            </CollapsibleGroup>
+          ))}
+      </>
+    );
+  };
+
+  const renderSegnalazioniCompact = () => {
+    if (segnalazioniFiltered.length === 0)
+      return <div className="empty">Nessuna segnalazione trovata.</div>;
+    const tpl = "140px minmax(150px,1.4fr) 110px minmax(120px,1fr) 100px 80px";
+    const nuove = segnalazioniFiltered.filter((x: any) => x.isNuova);
+    const lette = segnalazioniFiltered.filter((x: any) => !x.isNuova);
+    const rowOf = (item: any) => {
+      const r = item.record || {};
+      const ts = item.ts ?? 0;
+      const targaMain = r.targa ?? r.targaCamion ?? r.targaMotrice ?? "-";
+      const targaRimorchio = r.targaRimorchio ?? null;
+      const ambito = String(r.ambito ?? r.target ?? "").toUpperCase() || "-";
+      const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+      const badge = r.badgeAutista ?? "-";
+      const fotoList = getFotoList(r);
+      const hasLinked = hasLinkedLavoro(r);
+      const acts: ActionItem[] = [
+        { label: "Anteprima PDF", onClick: () => { void openSegnalazionePdfPreview(r, fotoList); } },
+        { label: "Crea lavoro", disabled: hasLinked, onClick: () => createLavoroFromSegnalazione(r) },
+        { label: "Elimina", danger: true, separatorBefore: true, onClick: () => deleteSegnalazione(r) },
+      ];
+      return (
+        <SchemaRow
+          key={item.key}
+          template={tpl}
+          cells={[
+            formatDateTime(ts),
+            <>
+              <span className="aa-td-strong">{autista}</span>
+              <span className="aa-td-sub">badge {badge}</span>
+            </>,
+            <span className="aa-ambito">{ambito}</span>,
+            <>
+              <span className="aa-td-strong">{String(targaMain)}</span>
+              {targaRimorchio ? <span className="aa-td-sub">Rim: {String(targaRimorchio)}</span> : null}
+            </>,
+            item.isNuova ? (
+              <span className="pill pill-danger">NUOVA</span>
+            ) : (
+              <span className="aa-td-sub">letta</span>
+            ),
+            fotoList.length > 0 ? (
+              <span className="row-photos aa-thumbs">
+                {fotoList.slice(0, 2).map((src: string, idx: number) => (
+                  <button
+                    type="button"
+                    className="row-photo-thumb"
+                    key={`${item.key}_${idx}`}
+                    onClick={() => setLightboxSrc(src)}
+                  >
+                    <img src={src} alt="Foto segnalazione" />
+                  </button>
+                ))}
+              </span>
+            ) : (
+              <span className="aa-td-sub">—</span>
+            ),
+          ]}
+          primaryLabel="Modifica"
+          onPrimary={() => openAdminEdit("segnalazione", r, r.id)}
+          actions={acts}
+        />
+      );
+    };
+    return (
+      <>
+        <SchemaHead template={tpl} labels={["Data/ora", "Autista", "Ambito", "Targa", "Stato", "Foto"]} />
+        {nuove.length > 0 && (
+          <CollapsibleGroup title="Nuove" count={nuove.length} tone="danger" defaultOpen>
+            {nuove.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+        {lette.length > 0 && (
+          <CollapsibleGroup title="Lette" count={lette.length} defaultOpen>
+            {lette.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+      </>
+    );
+  };
+
+  const renderControlliCompact = () => {
+    if (controlliFiltered.length === 0)
+      return <div className="empty">Nessun controllo trovato.</div>;
+    const tpl = "140px minmax(150px,1.3fr) 100px minmax(120px,1fr) 80px minmax(120px,1.5fr)";
+    const ko = controlliFiltered.filter((x: any) => x.isKO);
+    const ok = controlliFiltered.filter((x: any) => !x.isKO);
+    const rowOf = (item: any) => {
+      const r = item.record || {};
+      const ts = item.ts ?? 0;
+      const target = String(r.target ?? "").toUpperCase() || "-";
+      const targaCamion = r.targaCamion ?? r.targaMotrice ?? "-";
+      const targaRimorchio = r.targaRimorchio ?? "-";
+      const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+      const badge = r.badgeAutista ?? "-";
+      const koText = item.koList?.length ? item.koList.join(", ") : "";
+      const hasLinked = hasLinkedLavoro(r);
+      const acts: ActionItem[] = [
+        { label: "Anteprima PDF", onClick: () => { void openControlloPdfPreview(r); } },
+        { label: "Crea lavoro", disabled: hasLinked, onClick: () => createLavoroFromControllo(r) },
+      ];
+      const mezzoParts: string[] = [];
+      if (target !== "RIMORCHIO") mezzoParts.push(`M: ${String(targaCamion)}`);
+      if (target !== "MOTRICE") mezzoParts.push(`R: ${String(targaRimorchio)}`);
+      return (
+        <SchemaRow
+          key={item.key}
+          template={tpl}
+          tone={item.isKO ? "danger" : "ok"}
+          cells={[
+            formatDateTime(ts),
+            <>
+              <span className="aa-td-strong">{autista}</span>
+              <span className="aa-td-sub">badge {badge}</span>
+            </>,
+            target,
+            mezzoParts.join(" · "),
+            <span className={`pill ${item.isKO ? "pill-danger" : "pill-ok"}`}>
+              {item.isKO ? "KO" : "OK"}
+            </span>,
+            item.isKO && koText ? koText : <span className="aa-td-sub">—</span>,
+          ]}
+          primaryLabel="Modifica"
+          onPrimary={() => openAdminEdit("controllo", r, r.id)}
+          actions={acts}
+        />
+      );
+    };
+    return (
+      <>
+        <SchemaHead template={tpl} labels={["Data/ora", "Autista", "Target", "Mezzo", "Esito", "Dettaglio KO"]} />
+        {ko.length > 0 && (
+          <CollapsibleGroup title="Esiti KO" count={ko.length} tone="danger" defaultOpen>
+            {ko.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+        {ok.length > 0 && (
+          <CollapsibleGroup title="Esiti OK" count={ok.length} defaultOpen>
+            {ok.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+      </>
+    );
+  };
+
+  const renderGommeCompact = () => {
+    if (gommeFiltered.length === 0)
+      return <div className="empty">Nessun evento gomme trovato.</div>;
+    const tpl = "140px minmax(150px,1.3fr) 100px 120px 120px 90px 90px";
+    const nuovi = gommeFiltered.filter((x: any) => x.isNuova);
+    const gestiti = gommeFiltered.filter((x: any) => !x.isNuova);
+    const rowOf = (item: any) => {
+      const r = item.record || {};
+      const ts = item.ts ?? 0;
+      const targa = r.targetTarga ?? r.targa ?? "-";
+      const target = String(r.targetType ?? "").toUpperCase() || "-";
+      const autista = r.autista?.nome ?? r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+      const badge = r.autista?.badge ?? r.badgeAutista ?? "-";
+      const tipo = String(r.tipo ?? "-").toUpperCase();
+      const km = r.km ?? "-";
+      const acts: ActionItem[] = [
+        { label: "Letto", onClick: () => updateGommeRecord(String(r?.id ?? ""), { letta: true }) },
+        {
+          label: "Preso in carico",
+          onClick: () => updateGommeRecord(String(r?.id ?? ""), { stato: "presa_in_carico" }),
+        },
+        { label: "Importa", onClick: () => void importGommeRecord(r) },
+      ];
+      return (
+        <SchemaRow
+          key={item.key}
+          template={tpl}
+          cells={[
+            formatDateTime(ts),
+            <>
+              <span className="aa-td-strong">{autista}</span>
+              <span className="aa-td-sub">badge {badge}</span>
+            </>,
+            target,
+            <span className="aa-td-strong">{String(targa)}</span>,
+            tipo,
+            String(km),
+            item.isNuova ? <span className="pill pill-danger">NUOVO</span> : <span className="aa-td-sub">—</span>,
+          ]}
+          primaryLabel="Modifica"
+          onPrimary={() => openAdminEdit("gomme", r, r.id)}
+          actions={acts}
+        />
+      );
+    };
+    return (
+      <>
+        <SchemaHead template={tpl} labels={["Data/ora", "Autista", "Target", "Targa", "Tipo", "KM", "Stato"]} />
+        {nuovi.length > 0 && (
+          <CollapsibleGroup title="Nuovi" count={nuovi.length} tone="danger" defaultOpen>
+            {nuovi.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+        {gestiti.length > 0 && (
+          <CollapsibleGroup title="Gestiti" count={gestiti.length} defaultOpen>
+            {gestiti.map(rowOf)}
+          </CollapsibleGroup>
+        )}
+      </>
+    );
+  };
+
+  const renderRifornimentiCompact = () => {
+    const rows = filtered.filter((e: any) => e.tipo === "rifornimento");
+    if (rows.length === 0) return <div className="empty">Nessun elemento per questa data.</div>;
+    const tpl = "84px minmax(150px,1.3fr) 120px 120px 1fr 90px 110px 100px";
+    return (
+      <>
+        <SchemaHead
+          template={tpl}
+          labels={["Ora", "Autista", "Targa", "Rimorchio", "Tipo", "Litri", "Importo", "KM"]}
+        />
+        {rows.map((e: any) => {
+          const p = e.payload || {};
+          const targaCamion = p?.targaCamion ?? p?.targaMotrice ?? null;
+          const targaRimorchio = p?.targaRimorchio ?? null;
+          const rowTs = getRecordTs(p) || e.timestamp;
+          return (
+            <SchemaRow
+              key={e.id}
+              template={tpl}
+              cells={[
+                formatHHMM(rowTs),
+                <span className="aa-td-strong">{e.autista ?? "-"}</span>,
+                targaCamion ? String(targaCamion) : "—",
+                targaRimorchio ? String(targaRimorchio) : "—",
+                p.tipo ? String(p.tipo) : "—",
+                p.litri != null && p.litri !== "" ? `${p.litri} L` : "—",
+                p.importo != null && p.importo !== "" ? `€ ${p.importo}` : "—",
+                p.km != null && p.km !== "" ? String(p.km) : "—",
+              ]}
+              primaryLabel="Modifica"
+              onPrimary={() => openAdminEdit("rifornimento", p, e.id)}
+            />
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderAttrezzatureCompact = () => {
+    const rows = filtered.filter((e: any) => e.tipo === "richiesta_attrezzature");
+    if (rows.length === 0) return <div className="empty">Nessun elemento per questa data.</div>;
+    const tpl = "84px minmax(150px,1fr) minmax(200px,2.2fr) 90px";
+    return (
+      <>
+        <SchemaHead template={tpl} labels={["Ora", "Autista", "Richiesta", "Foto"]} />
+        {rows.map((e: any) => {
+          const p = e.payload || {};
+          const fotoList = getFotoList(p);
+          const rowTs = getRecordTs(p) || e.timestamp;
+          const testo = p.testo ?? p.descrizione ?? "—";
+          const acts: ActionItem[] = [
+            {
+              label: "Elimina",
+              danger: true,
+              onClick: () => deleteAttrezzature({ ...p, id: p?.id ?? e.id }),
+            },
+          ];
+          return (
+            <SchemaRow
+              key={e.id}
+              template={tpl}
+              cells={[
+                formatHHMM(rowTs),
+                <span className="aa-td-strong">{e.autista ?? "-"}</span>,
+                String(testo),
+                fotoList.length > 0 ? (
+                  <span className="row-photos aa-thumbs">
+                    {fotoList.slice(0, 2).map((src: string, idx: number) => (
+                      <button
+                        type="button"
+                        className="row-photo-thumb"
+                        key={`att_${e.id ?? "x"}_${idx}`}
+                        onClick={() => setLightboxSrc(src)}
+                      >
+                        <img src={src} alt="Foto richiesta" />
+                      </button>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="aa-td-sub">—</span>
+                ),
+              ]}
+              primaryLabel="Modifica"
+              onPrimary={() => openAdminEdit("attrezzature", p, e.id)}
+              actions={acts}
+            />
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderStoricoCompact = () => {
+    if (cambioCanonico.length === 0)
+      return <div className="empty">Nessun evento per questa data.</div>;
+    const tpl =
+      "112px 78px 90px minmax(140px,1.3fr) minmax(110px,1fr) minmax(130px,1.2fr) minmax(130px,1.2fr)";
+    return (
+      <>
+        <SchemaHead
+          template={tpl}
+          labels={["Data", "Ora", "Badge", "Nome autista", "Luogo", "Motrice", "Rimorchio"]}
+        />
+        {cambioCanonico.map((evt: any) => {
+          const ts = evt?._ts ?? toTs(evt?.timestamp) ?? 0;
+          const dt = formatDateTime(ts);
+          const sp = dt.indexOf(" ");
+          const dataStr = sp > 0 ? dt.slice(0, sp) : dt;
+          const oraStr = sp > 0 ? dt.slice(sp + 1) : "";
+          const { prima, dopo } = getCambioCanonSnapshot(evt);
+          const motriceLine = buildCambioLine("MOTRICE", prima.motrice, dopo.motrice);
+          const rimorchioLine = buildCambioLine("RIMORCHIO", prima.rimorchio, dopo.rimorchio);
+          const { badge, nome } = getCambioBadgeNome(evt);
+          const luogo = toStrOrNull(evt?.luogo) ?? "-";
+          return (
+            <SchemaRow
+              key={evt?.id ?? `${ts}-${evt?._index ?? 0}`}
+              template={tpl}
+              cells={[
+                dataStr,
+                oraStr,
+                badge,
+                <span className="aa-td-strong">{nome}</span>,
+                luogo,
+                motriceLine ? String(motriceLine) : "—",
+                rimorchioLine ? String(rimorchioLine) : "—",
+              ]}
+              primaryLabel="Modifica"
+              onPrimary={() => openCanonEdit(evt)}
+              onRowClick={() => openCanonEdit(evt)}
+            />
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderModuleList = () => {
+    switch (tab) {
+      case "segnalazioni":
+        return renderSegnalazioniCompact();
+      case "controlli":
+        return renderControlliCompact();
+      case "gomme":
+        return renderGommeCompact();
+      case "rifornimenti":
+        return renderRifornimentiCompact();
+      case "attrezzature":
+        return renderAttrezzatureCompact();
+      case "storico_cambio":
+        return renderStoricoCompact();
+      default:
+        return null;
+    }
+  };
+
+  const renderNextHome = () => {
+    const rifoCount = events.filter((e: any) => e.tipo === "rifornimento").length;
+    const attrCount = events.filter((e: any) => e.tipo === "richiesta_attrezzature").length;
+    const segNuove = segnalazioniFiltered.filter((x: any) => x.isNuova).length;
+    const ctrlKo = controlliFiltered.filter((x: any) => x.isKO).length;
+    const gommeNuovi = gommeFiltered.filter((x: any) => x.isNuova).length;
+    const meta = MOD_META[tab];
+    const dateBound =
+      tab === "rifornimenti" || tab === "attrezzature" || tab === "storico_cambio";
+    return (
+      <>
+        <div className="autisti-admin-head aa-next-head">
+          <span className="aa-next-logo">
+            <img src="/logo.png" alt="Logo" />
+          </span>
+          <h1>Centro rettifica dati (admin)</h1>
+        </div>
+
+        <div className="autisti-admin-card">
+          <div className="autisti-admin-card-head">
+            <h2>Moduli</h2>
+          </div>
+          <div className="aa-module-grid">
+            <ModuleTile
+              icon={"⛽"}
+              label="Rifornimenti"
+              countLabel={`${rifoCount} oggi`}
+              onClick={() => {
+                setTab("rifornimenti");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"📣"}
+              label="Segnalazioni"
+              countLabel={segNuove > 0 ? `${segNuove} nuove` : `${segnalazioniFiltered.length}`}
+              urgent={segNuove > 0}
+              onClick={() => {
+                setTab("segnalazioni");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"🛠️"}
+              label="Controllo mezzo"
+              countLabel={ctrlKo > 0 ? `${ctrlKo} KO` : `${controlliFiltered.length}`}
+              urgent={ctrlKo > 0}
+              onClick={() => {
+                setTab("controlli");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"🛞"}
+              label="Gomme"
+              countLabel={gommeNuovi > 0 ? `${gommeNuovi} nuovi` : `${gommeFiltered.length}`}
+              urgent={gommeNuovi > 0}
+              onClick={() => {
+                setTab("gomme");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"🧰"}
+              label="Richieste attrezzature"
+              countLabel={`${attrCount}`}
+              onClick={() => {
+                setTab("attrezzature");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"🔁"}
+              label="Cambio mezzo (storico)"
+              countLabel={`${cambioCanonico.length}`}
+              onClick={() => {
+                setTab("storico_cambio");
+                setModuleOpen(true);
+              }}
+            />
+            <ModuleTile
+              icon={"🔐"}
+              label="Permessi moduli autisti"
+              countLabel={`${colleghiConBadge.length} autisti`}
+              onClick={() => setPermessiOpen(true)}
+            />
+            <ModuleTile
+              icon={"🕒"}
+              label="Cartellino orari"
+              onClick={() => setCartellinoOpen(true)}
+            />
+          </div>
+        </div>
+
+        <div className="autisti-admin-card">
+          <div className="autisti-admin-card-head">
+            <h2>Sessioni attive (LIVE)</h2>
+            {loading && <span className="loading">Caricamento...</span>}
+          </div>
+          {renderSessioniCompact()}
+        </div>
+
+        <ModuleWindow
+          open={moduleOpen && !!meta}
+          title={meta?.title ?? ""}
+          icon={meta?.icon}
+          onClose={() => setModuleOpen(false)}
+          datebar={dateBound ? datebarEl() : undefined}
+          toolbar={renderModuleToolbar()}
+          footer={
+            tab === "rifornimenti" ? (
+              <button
+                type="button"
+                className="edit aa-crow-primary"
+                onClick={openCreateRifornimento}
+              >
+                + Nuovo rifornimento
+              </button>
+            ) : undefined
+          }
+        >
+          {renderModuleList()}
+        </ModuleWindow>
+
+        {cartellinoOpen ? (
+          <div
+            className="aix-backdrop aa-module-backdrop"
+            onMouseDown={() => setCartellinoOpen(false)}
+          >
+            <div
+              className="aix-modal aa-module-window aa-cartellino-window"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="aix-close aa-cartellino-close"
+                onClick={() => setCartellinoOpen(false)}
+                aria-label="Chiudi"
+              >
+                ×
+              </button>
+              <div className="aa-module-window-body aa-cartellino-body">
+                <NextOrariCartellinoPage />
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  };
+
   return (
     <div className="autisti-admin-page">
-      <div className="autisti-admin-wrap">
+      <div className={`autisti-admin-wrap${hideInternalNav ? " aa-next" : ""}`}>
+        {hideInternalNav ? (
+          renderNextHome()
+        ) : (
+        <>
         <div className="autisti-admin-head">
           <div className="autisti-admin-head-left">
             {!hideInternalNav && (
@@ -3160,6 +4002,8 @@ export default function AutistiAdmin() {
             </div>
           )}
         </div>
+        </>
+        )}
 
         {/* MODALE EDIT EVENTI */}
         {adminEditOpen && adminEditKind && (
@@ -3857,7 +4701,7 @@ export default function AutistiAdmin() {
           <div className="aix-backdrop" onMouseDown={() => setPermessiOpen(false)}>
             <div
               className="aix-modal admin-edit-modal permessi-modal"
-              style={{ maxWidth: 1100 }}
+              style={{ maxWidth: 1500 }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="aix-head">

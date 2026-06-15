@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Autisti Admin — Variante A · home pulita + moduli</title>
+<style>
+  :root{
+    --bg1:#ece4d4; --bg2:#cfc6b2; --bg3:#b3ab9a;
+    --ink:#2b2923; --ink2:#3a352b; --muted:#7a715e; --faint:#a59a82;
+    --surface:#fbf8f1; --surface-2:#f4eedf; --line:#ddd2b9; --line2:#cabfa3;
+    --ok:#2e7d32; --ok-bg:#dbe7d3; --warn:#a9791a; --warn-bg:#efe2c5;
+    --danger:#c62828; --danger-bg:#f3d1cc;
+    --accent:#8a6d3b; --shadow:0 10px 28px rgba(60,48,24,.14);
+    --radius:16px; --radius-sm:11px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);
+    background:radial-gradient(1200px 600px at 80% -10%, #f5efe1 0%, var(--bg1) 40%, var(--bg2) 80%, var(--bg3) 100%);
+    min-height:100vh;padding:18px clamp(10px,2.5vw,30px) 60px}
+  .wrap{max-width:1200px;margin:0 auto}
+
+  /* HEADER */
+  .top{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  .logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#6d5526,#a98442);color:#fff;font-weight:900;font-size:17px;box-shadow:var(--shadow)}
+  .top h1{font-size:20px;margin:0;font-weight:900}
+  .top .sub{font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
+  .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn-back{border:1px solid var(--line);background:var(--surface);color:var(--ink2);font-weight:800;font-size:13px;padding:8px 14px;border-radius:10px;cursor:pointer}
+  .btn-back:hover{background:#fff}
+  .dens{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+  .dens button{border:none;background:none;font-weight:800;font-size:12px;padding:8px 12px;cursor:pointer;color:var(--muted)}
+  .dens button.on{background:var(--accent);color:#fff}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:16px}
+  .card-h{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+  .card-h h2{font-size:14px;margin:0;font-weight:900;text-transform:uppercase;letter-spacing:.6px}
+  .live-dot{width:9px;height:9px;border-radius:50%;background:#e53935;box-shadow:0 0 0 4px rgba(229,57,53,.16);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,57,53,.35)}70%{box-shadow:0 0 0 8px rgba(229,57,53,0)}100%{box-shadow:0 0 0 0 rgba(229,57,53,0)}}
+  .count-chip{font-size:12px;font-weight:800;background:var(--surface-2);border:1px solid var(--line);padding:3px 10px;border-radius:999px;color:var(--muted)}
+  .card-h .right{margin-left:auto;display:flex;gap:7px;align-items:center}
+  .link{font-size:12px;font-weight:800;color:var(--accent);cursor:pointer;background:none;border:none}
+
+  /* PILLS */
+  .pill{font-size:10.5px;font-weight:900;letter-spacing:.3px;padding:3px 9px;border-radius:999px;white-space:nowrap;border:1px solid transparent;display:inline-flex;align-items:center;gap:4px}
+  .pill-ok{background:var(--ok-bg);color:var(--ok);border-color:#bcd3b0}
+  .pill-warn{background:var(--warn-bg);color:var(--warn);border-color:#e3cf9a}
+  .pill-danger{background:var(--danger-bg);color:var(--danger);border-color:#e7b3ad}
+  .pill-neutral{background:#e9e0cb;color:var(--ink2);border-color:var(--line)}
+
+  /* TOOLBAR */
+  .toolbar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);padding:8px 2px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+  .search{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 10px;flex:1;min-width:160px}
+  .search input{border:none;outline:none;font:inherit;font-weight:700;flex:1;color:var(--ink);background:none}
+  .search svg{width:15px;height:15px;color:var(--faint)}
+  select.sel{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;font:inherit;font-weight:700;color:var(--ink2);font-size:12.5px}
+  .chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:var(--ink2)}
+  .res-count{font-size:12px;font-weight:800;color:var(--muted);margin-left:auto;white-space:nowrap}
+
+  /* GROUP */
+  .grp{margin-bottom:10px}
+  .grp-h{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;padding:7px 10px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line)}
+  .grp-h:hover{background:#f0e8d6}
+  .grp-h .caret{transition:transform .15s;font-size:12px;color:var(--muted)}
+  .grp.closed .caret{transform:rotate(-90deg)}
+  .grp-h .gt{font-weight:900;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
+  .grp-h .gc{font-size:11px;font-weight:800;color:var(--muted);background:#fff;border:1px solid var(--line);padding:1px 8px;border-radius:999px}
+  .grp.urgent .grp-h{background:var(--danger-bg);border-color:#e7b3ad}
+  .grp.urgent .gt{color:var(--danger)}
+  .grp-body{padding-top:6px}
+  .grp.closed .grp-body{display:none}
+
+  /* ROWS */
+  .listhead{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800;padding:4px 12px}
+  .drow{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-bottom:6px;align-items:center;position:relative}
+  .drow:hover{border-color:var(--line2);background:#fffdf8}
+  .drow .time{font-weight:900;font-size:12.5px;color:var(--muted)}
+  .drow .name{font-weight:900;font-size:13.5px}
+  .drow .badge{font-size:11.5px;color:var(--muted);font-weight:700}
+  .drow .mezzi{font-weight:800;font-size:12.5px}
+  .drow .mezzi .m2{color:var(--muted);font-weight:700}
+  .sub-line{font-size:11.5px;color:var(--muted);font-weight:700;margin-top:2px}
+  .sgrid{display:grid;grid-template-columns:50px 120px minmax(140px,1fr) minmax(150px,1.2fr) auto;gap:12px}
+  .ggrid{display:grid;grid-template-columns:50px minmax(150px,1fr) minmax(200px,1.7fr) auto;gap:12px}
+  .kgrid{display:grid;grid-template-columns:50px minmax(140px,1fr) minmax(150px,1.4fr) auto;gap:12px}
+
+  /* ACTIONS */
+  .acts{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink2);font-weight:800;font-size:11.5px;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
+  .kebab{width:32px;height:30px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-weight:900;font-size:16px;color:var(--ink2);line-height:1}
+  .kebab:hover{border-color:var(--accent);background:var(--surface-2)}
+  .menu-wrap{position:relative}
+  .menu{display:none;position:fixed;min-width:210px;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 16px 40px rgba(0,0,0,.22);padding:6px;z-index:120}
+  .menu-wrap.open .menu{display:block}
+  .menu button{display:flex;width:100%;align-items:center;gap:8px;border:none;background:none;font:inherit;font-weight:800;font-size:12.5px;color:var(--ink2);padding:8px 10px;border-radius:8px;cursor:pointer;text-align:left}
+  .menu button:hover{background:var(--surface-2)}
+  .menu button.danger{color:var(--danger)}
+  .menu .div{height:1px;background:var(--line);margin:5px 4px}
+  .showmore{display:block;width:100%;text-align:center;border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);font-weight:800;font-size:12.5px;padding:9px;border-radius:9px;cursor:pointer;margin-top:4px}
+  .showmore:hover{background:#f0e8d6}
+
+  /* MODULES GRID (home) */
+  .modules{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px}
+  .mod-tile{text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;box-shadow:0 3px 10px rgba(60,48,24,.06)}
+  .mod-tile:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow);transition:.12s}
+  .mod-top{display:flex;align-items:center;gap:10px}
+  .mod-ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-size:20px;background:var(--surface-2);border:1px solid var(--line)}
+  .mod-name{font-weight:900;font-size:14px}
+  .mod-foot{display:flex;align-items:center;gap:8px}
+  .mod-foot .open{margin-left:auto;font-size:12px;font-weight:800;color:var(--accent)}
+
+  /* DATE BAR */
+  .datebar{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 0 10px}
+  .datebar button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:17px;font-weight:900;cursor:pointer;color:var(--ink2)}
+  .day{font-weight:900;font-size:14px;min-width:200px;text-align:center}
+  .thumb-c{font-size:11px;color:var(--muted);font-weight:800}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:7px 10px;border-bottom:2px solid var(--line);position:sticky;top:0;background:var(--surface)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);font-weight:700}
+  tbody tr:hover{background:var(--surface-2)}
+  .arrow{color:var(--accent);font-weight:900}
+  .mono-pos{color:var(--ok);font-weight:900}.mono-neg{color:var(--danger);font-weight:900}.mono-zero{color:var(--muted);font-weight:900}
+  tfoot td{font-weight:900;background:var(--surface-2);border-top:2px solid var(--line)}
+  .permtab th{text-align:center;vertical-align:top}.permtab th.who-h{text-align:left}
+  .permtab td{text-align:center}.permtab td.who{text-align:left}
+  .perm-modhead{display:flex;flex-direction:column;gap:5px;align-items:center}
+  .perm-modhead .mini{display:flex;gap:4px}
+  .mini-btn{font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:6px;border:1px solid var(--line);cursor:pointer;background:#fff}
+  .mini-btn.on{color:var(--ok)}.mini-btn.off{color:var(--danger)}
+  .toggle{cursor:pointer;border:none;background:none;padding:0}
+
+  .panel{display:none}
+  .panel.active{display:block}
+  .hint{font-size:11.5px;color:var(--muted);font-weight:700;margin:0 0 10px;font-style:italic}
+
+  /* DENSITY */
+  body.compact .drow{padding:5px 12px;margin-bottom:3px}
+  body.compact .sub-line{display:none}
+  body.compact .grp-body{padding-top:3px}
+
+  /* MODULE MODAL (finestra dedicata) */
+  .mback{position:fixed;inset:0;background:rgba(43,41,35,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:70}
+  .mback.open{display:flex;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .mwin{background:var(--surface);border-radius:18px;box-shadow:0 40px 90px rgba(0,0,0,.4);width:min(1120px,97vw);height:min(90vh,900px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line)}
+  .mwin-h{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--surface-2);flex:0 0 auto}
+  .mwin-h .mic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:18px;background:#fff;border:1px solid var(--line)}
+  .mwin-h h3{margin:0;font-size:17px;font-weight:900}
+  .mwin-h .x{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:9px;width:34px;height:34px;font-size:20px;cursor:pointer;color:var(--muted)}
+  .mwin-b{padding:14px 18px 18px;overflow:auto;flex:1}
+
+  /* DETAIL MODALS (sopra la finestra modulo) */
+  .backdrop{position:fixed;inset:0;background:rgba(43,41,35,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:90}
+  .backdrop.open{display:flex}
+  .modal{background:var(--surface);border-radius:18px;box-shadow:0 30px 70px rgba(0,0,0,.35);width:min(560px,100%);overflow:hidden;border:1px solid var(--line)}
+  .modal-h{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+  .modal-h h3{margin:0;font-size:16px;font-weight:900}
+  .modal-h .x{margin-left:auto;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted)}
+  .modal-b{padding:18px;max-height:70vh;overflow:auto}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .field input,.field select,.field textarea{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 11px;font:inherit;font-weight:700;color:var(--ink)}
+  .modal-f{display:flex;gap:10px;justify-content:flex-end;padding:13px 18px;border-top:1px solid var(--line);background:var(--surface-2)}
+  .sec-t{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px}
+  .sec-t:first-child{margin-top:0}
+  .note{font-size:12px;color:var(--muted);text-align:center;margin-top:22px;font-weight:700}
+  @media(max-width:860px){.sgrid,.ggrid,.kgrid{grid-template-columns:1fr 1fr;gap:8px}.acts{grid-column:1/-1;justify-content:flex-start}.listhead{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="top">
+    <div class="logo">GW</div>
+    <div><h1>Centro rettifica dati (admin)</h1><div class="sub">Variante A · home pulita, ogni modulo si apre in una finestra dedicata</div></div>
+    <div class="top-actions">
+      <div class="dens"><button id="dC" class="on" onclick="setDens('comoda')">Comoda</button><button id="dK" onclick="setDens('compatta')">Compatta</button></div>
+      <button class="btn-back">← Torna a Autisti Inbox</button>
+    </div>
+  </div>
+
+  <!-- SESSIONI LIVE (resta in home) -->
+  <div class="card">
+    <div class="card-h">
+      <span class="live-dot"></span><h2>Sessioni attive</h2><span class="count-chip">10 in corso</span>
+      <div class="right"><button class="link" onclick="allGroups('#sessGroups',false)">Espandi tutti</button><button class="link" onclick="allGroups('#sessGroups',true)">Comprimi tutti</button></div>
+    </div>
+    <div class="toolbar">
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca autista, badge o targa…"></div>
+      <select class="sel"><option>Ordina: ora ↓</option><option>Autista</option><option>Stato</option></select>
+      <span class="res-count">10 sessioni</span>
+    </div>
+    <div class="listhead sgrid"><div>Ora</div><div>Stato</div><div>Autista</div><div>Mezzi</div><div style="text-align:right">Azioni</div></div>
+    <div id="sessGroups"></div>
+  </div>
+
+  <!-- MODULI (tessere → finestra dedicata) -->
+  <div class="card">
+    <div class="card-h"><h2>Moduli</h2><span class="count-chip">apri uno alla volta</span></div>
+    <div class="modules" id="modules"></div>
+  </div>
+
+  <div class="note">Mockup statico · dati inventati · nessuna connessione reale · Variante A</div>
+</div>
+
+<!-- FINESTRA MODULO -->
+<div class="mback" id="moduleBack" onclick="if(event.target===this)closeModule()">
+  <div class="mwin">
+    <div class="mwin-h"><div class="mic" id="modIc">📣</div><h3 id="modTitle">Segnalazioni</h3><button class="x" onclick="closeModule()">×</button></div>
+    <div class="mwin-b">
+      <div class="datebar" id="datebar"><button>‹</button><div class="day">Lunedì 15 giugno 2026</div><button>›</button></div>
+
+      <!-- SEGNALAZIONI -->
+      <section class="panel" id="segnalazioni">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca targa o autista…"></div>
+          <select class="sel"><option>Ambito: tutti</option><option>Motrice</option><option>Rimorchio</option></select>
+          <select class="sel"><option>Ordina: ora ↓</option><option>Autista</option></select>
+          <label class="chk"><input type="checkbox" checked> Solo nuove</label>
+          <span class="res-count">12 segnalazioni</span>
+        </div>
+        <div class="listhead ggrid"><div>Ora</div><div>Autista</div><div>Descrizione</div><div style="text-align:right">Azioni</div></div>
+        <div id="segGroups"></div>
+      </section>
+
+      <!-- CONTROLLO -->
+      <section class="panel" id="controllo">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca targa…"></div>
+          <select class="sel"><option>Target: tutti</option><option>Motrice</option><option>Rimorchio</option><option>Entrambi</option></select>
+          <label class="chk"><input type="checkbox"> Solo KO</label>
+          <span class="res-count">14 controlli</span>
+        </div>
+        <div class="listhead kgrid"><div>Ora</div><div>Autista</div><div>Mezzo / esito</div><div style="text-align:right">Azioni</div></div>
+        <div id="ctrlGroups"></div>
+      </section>
+
+      <!-- GOMME -->
+      <section class="panel" id="gomme">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca targa…"></div>
+          <label class="chk"><input type="checkbox" checked> Solo nuovi</label>
+          <span class="res-count">5 segnalazioni gomme</span>
+        </div>
+        <div class="listhead kgrid"><div>Ora</div><div>Autista</div><div>Targa / tipo / km</div><div style="text-align:right">Azioni</div></div>
+        <div id="gommeGroups"></div>
+      </section>
+
+      <!-- RIFORNIMENTI -->
+      <section class="panel" id="rifornimenti">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca targa o autista…"></div>
+          <select class="sel"><option>Ordina: ora ↓</option><option>Litri</option><option>Importo</option></select>
+          <span class="res-count">9 rifornimenti</span>
+          <button class="btn primary" style="margin-left:8px">+ Nuovo rifornimento</button>
+        </div>
+        <div class="listhead kgrid"><div>Ora</div><div>Autista</div><div>Dettaglio</div><div style="text-align:right">Azioni</div></div>
+        <div id="rifoBody"></div>
+      </section>
+
+      <!-- CAMBIO MEZZO -->
+      <section class="panel" id="cambio">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca badge o targa…"></div>
+          <span class="res-count">storico canonico</span>
+        </div>
+        <table><thead><tr><th>Data / ora</th><th>Badge / Nome</th><th>Luogo</th><th>Motrice</th><th>Rimorchio</th><th style="text-align:right">Azioni</th></tr></thead><tbody id="cambioBody"></tbody></table>
+        <button class="showmore">Mostra altri</button>
+      </section>
+
+      <!-- ATTREZZATURE -->
+      <section class="panel" id="attrezzature">
+        <div class="toolbar">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca autista…"></div>
+          <span class="res-count">6 richieste</span>
+        </div>
+        <div class="listhead ggrid"><div>Ora</div><div>Autista</div><div>Richiesta</div><div style="text-align:right">Azioni</div></div>
+        <div id="attrBody"></div>
+      </section>
+
+      <!-- PERMESSI -->
+      <section class="panel" id="permessi">
+        <p class="hint">Clic sulle celle per attivare/disattivare; i bottoni in intestazione agiscono su tutta la colonna.</p>
+        <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Cerca autista…"></div><span class="res-count">8 autisti</span></div>
+        <div style="overflow-x:auto">
+        <table class="permtab">
+          <thead><tr>
+            <th class="who-h">Autista</th>
+            <th><div class="perm-modhead">Rifornimento<div class="mini"><button class="mini-btn on" onclick="setCol(0,true)">Attiva</button><button class="mini-btn off" onclick="setCol(0,false)">Disattiva</button></div></div></th>
+            <th><div class="perm-modhead">Segnalazioni<div class="mini"><button class="mini-btn on" onclick="setCol(1,true)">Attiva</button><button class="mini-btn off" onclick="setCol(1,false)">Disattiva</button></div></div></th>
+            <th><div class="perm-modhead">Gomme<div class="mini"><button class="mini-btn on" onclick="setCol(2,true)">Attiva</button><button class="mini-btn off" onclick="setCol(2,false)">Disattiva</button></div></div></th>
+            <th><div class="perm-modhead">Richiesta attrezzature<div class="mini"><button class="mini-btn on" onclick="setCol(3,true)">Attiva</button><button class="mini-btn off" onclick="setCol(3,false)">Disattiva</button></div></div></th>
+            <th><div class="perm-modhead">Cambio mezzo<div class="mini"><button class="mini-btn on" onclick="setCol(4,true)">Attiva</button><button class="mini-btn off" onclick="setCol(4,false)">Disattiva</button></div></div></th>
+            <th><div class="perm-modhead">Orari<div class="mini"><button class="mini-btn on" onclick="setCol(5,true)">Attiva</button><button class="mini-btn off" onclick="setCol(5,false)">Disattiva</button></div></div></th>
+          </tr></thead>
+          <tbody id="permbody"></tbody>
+        </table>
+        </div>
+      </section>
+
+      <!-- CARTELLINO -->
+      <section class="panel" id="cartellino">
+        <div class="toolbar">
+          <div class="field"><select class="sel"><option>Rossi Mario · 1042</option><option>Bianchi Luca · 0817</option></select></div>
+          <select class="sel"><option>Giugno</option><option>Maggio</option></select>
+          <span class="pill pill-ok">APERTO</span>
+          <span class="res-count"></span>
+          <button class="btn" onclick="openPdf()">Anteprima PDF</button>
+          <button class="btn">PDF massivo</button>
+          <button class="btn primary" onclick="openEdit('Modifica giorno')">Modifica giorno</button>
+        </div>
+        <table>
+          <thead><tr><th>Data</th><th>Giorno</th><th>Inizio</th><th>Fine</th><th>Totale</th><th>Monte ore</th><th>No pausa</th><th>Notte</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td>15/06</td><td>Lun</td><td>06:00</td><td>15:30</td><td>9:00</td><td class="mono-zero">0:00</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>14/06</td><td>Dom</td><td colspan="3" style="text-align:center;color:var(--muted)">Riposo</td><td class="mono-zero">0:00</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>13/06</td><td>Sab</td><td>06:10</td><td>14:10</td><td>8:00</td><td class="mono-neg">-1:00</td><td>—</td><td>—</td><td>Rientro anticipato</td></tr>
+            <tr><td>12/06</td><td>Ven</td><td>05:30</td><td>16:00</td><td>10:00</td><td class="mono-pos">+1:00</td><td>X</td><td>—</td><td>—</td></tr>
+            <tr><td>11/06</td><td>Gio</td><td colspan="3" style="text-align:center;color:var(--warn);font-weight:900">FERIE</td><td class="mono-zero">0:00</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>10/06</td><td>Mer</td><td>22:00</td><td>06:00</td><td>8:00</td><td class="mono-neg">-1:00</td><td>—</td><td>Sì</td><td>Tratta notturna</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="4">Totale ore lavorate</td><td>35:00</td><td class="mono-neg" colspan="4">Monte ore mese: -2:00 · Ferie: 1g · Notti: 1</td></tr></tfoot>
+        </table>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- MODALI DETTAGLIO -->
+<div class="backdrop" id="bdEdit" onclick="if(event.target===this)closeDetail()">
+  <div class="modal">
+    <div class="modal-h"><h3 id="editTitle">Modifica</h3><button class="x" onclick="closeDetail()">×</button></div>
+    <div class="modal-b">
+      <div class="sec-t">Autista</div>
+      <div class="grid2"><div class="field"><label>Autista</label><input value="Rossi Mario" readonly></div><div class="field"><label>Badge</label><input value="1042" readonly></div></div>
+      <div class="sec-t">Mezzo</div>
+      <div class="grid2"><div class="field"><label>Targa motrice</label><input value="FT 432 KP"></div><div class="field"><label>Targa rimorchio</label><input value="AB 901 CD"></div></div>
+      <div class="sec-t">Dati</div>
+      <div class="grid2"><div class="field"><label>Ambito</label><select><option>—</option><option selected>Motrice</option><option>Rimorchio</option><option>Entrambi</option></select></div><div class="field"><label>Data e ora</label><input type="datetime-local" value="2026-06-15T08:32"></div></div>
+      <div class="field" style="margin-top:12px"><label>Descrizione / note</label><textarea rows="3">Specchio retrovisore destro lesionato.</textarea></div>
+      <div class="sec-t">Stato</div>
+      <div class="grid2"><label class="chk"><input type="checkbox" checked> Letta</label><label class="chk"><input type="checkbox"> Flag verifica</label></div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeDetail()">ANNULLA</button><button class="btn primary" onclick="closeDetail()">SALVA</button></div>
+  </div>
+</div>
+
+<div class="backdrop" id="bdForza" onclick="if(event.target===this)closeDetail()">
+  <div class="modal" style="width:min(440px,100%)">
+    <div class="modal-h"><h3 id="forzaTitle">Forza cambio motrice</h3><button class="x" onclick="closeDetail()">×</button></div>
+    <div class="modal-b">
+      <div class="grid2"><div class="field"><label>Badge</label><input value="1042" disabled></div><div class="field"><label>Autista</label><input value="Rossi Mario" disabled></div></div>
+      <div class="field" style="margin-top:12px"><label>Targa attuale</label><input id="forzaCur" value="FT 432 KP" disabled></div>
+      <div class="field" style="margin-top:12px"><label>Nuova targa</label><input placeholder="Seleziona targa…"></div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeDetail()">ANNULLA</button><button class="btn primary" onclick="closeDetail()">CONFERMA</button></div>
+  </div>
+</div>
+
+<div class="backdrop" id="bdPdf" onclick="if(event.target===this)closeDetail()">
+  <div class="modal" style="width:min(620px,100%)">
+    <div class="modal-h"><h3>Anteprima PDF</h3><button class="x" onclick="closeDetail()">×</button></div>
+    <div class="modal-b" style="background:#e9e0cb">
+      <div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:24px;min-height:320px;box-shadow:var(--shadow)">
+        <div style="font-weight:900;font-size:18px;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:14px">Rapporto segnalazione</div>
+        <p style="font-weight:700">Autista: Rossi Mario — Badge 1042</p>
+        <p style="font-weight:700">Targa: FT 432 KP · Ambito: Motrice · 15/06/2026 08:32</p>
+        <p style="margin-top:16px;line-height:1.5">Specchio retrovisore destro lesionato, vibra a velocità autostradale.</p>
+      </div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeDetail()">CHIUDI</button><button class="btn primary" onclick="closeDetail()">Scarica PDF</button></div>
+  </div>
+</div>
+
+<script>
+  /* ---------- moduli ---------- */
+  const MODULI=[
+    {key:'rifornimenti',ic:'⛽',name:'Rifornimenti',badge:'<span class="pill pill-neutral">9 oggi</span>'},
+    {key:'segnalazioni',ic:'📣',name:'Segnalazioni',badge:'<span class="pill pill-danger">5 nuove</span>'},
+    {key:'controllo',ic:'🛠',name:'Controllo mezzo',badge:'<span class="pill pill-danger">3 KO</span>'},
+    {key:'gomme',ic:'🛞',name:'Gomme',badge:'<span class="pill pill-warn">2 nuovi</span>'},
+    {key:'cambio',ic:'🔁',name:'Cambio mezzo',badge:'<span class="pill pill-neutral">storico</span>'},
+    {key:'attrezzature',ic:'🧰',name:'Richieste attrezzature',badge:'<span class="pill pill-neutral">6</span>'},
+    {key:'permessi',ic:'🔐',name:'Permessi moduli autisti',badge:'<span class="pill pill-neutral">8 autisti</span>'},
+    {key:'cartellino',ic:'🕒',name:'Cartellino orari',badge:'<span class="pill pill-neutral">mensile</span>'},
+  ];
+  function buildModules(){
+    document.getElementById('modules').innerHTML=MODULI.map(m=>
+      '<button class="mod-tile" onclick="openModule(\''+m.key+'\')"><div class="mod-top"><div class="mod-ic">'+m.ic+'</div><div class="mod-name">'+m.name+'</div></div>'
+      +'<div class="mod-foot">'+m.badge+'<span class="open">Apri →</span></div></button>'
+    ).join('');
+  }
+  function openModule(key){
+    const m=MODULI.find(x=>x.key===key);
+    document.getElementById('modTitle').textContent=m.name;
+    document.getElementById('modIc').textContent=m.ic;
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById(key).classList.add('active');
+    document.getElementById('datebar').style.display=(key==='permessi'||key==='cartellino')?'none':'flex';
+    document.getElementById('moduleBack').classList.add('open');
+  }
+  function closeModule(){closeMenus();document.getElementById('moduleBack').classList.remove('open')}
+
+  /* ---------- modali dettaglio ---------- */
+  function openEdit(t){document.getElementById('editTitle').textContent=t;document.getElementById('bdEdit').classList.add('open')}
+  function openForza(k){document.getElementById('forzaTitle').textContent='Forza cambio '+k;document.getElementById('forzaCur').value=(k==='motrice'?'FT 432 KP':'AB 901 CD');document.getElementById('bdForza').classList.add('open')}
+  function openPdf(){document.getElementById('bdPdf').classList.add('open')}
+  function closeDetail(){document.querySelectorAll('.backdrop').forEach(b=>b.classList.remove('open'))}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenus();if(document.querySelector('.backdrop.open'))closeDetail();else closeModule();}});
+
+  function setDens(m){const c=m==='compatta';document.body.classList.toggle('compact',c);document.getElementById('dK').classList.toggle('on',c);document.getElementById('dC').classList.toggle('on',!c)}
+  function toggleGroup(h){h.parentElement.classList.toggle('closed')}
+  function allGroups(sel,close){document.querySelectorAll(sel+' .grp').forEach(g=>g.classList.toggle('closed',close))}
+
+  /* ---------- menu kebab (posizione fixed per non essere tagliato) ---------- */
+  function closeMenus(){document.querySelectorAll('.menu-wrap.open').forEach(x=>x.classList.remove('open'))}
+  function toggleMenu(btn,e){
+    e.stopPropagation();
+    const w=btn.closest('.menu-wrap'); const menu=w.querySelector('.menu'); const open=w.classList.contains('open');
+    closeMenus();
+    if(!open){
+      w.classList.add('open');
+      const r=btn.getBoundingClientRect();
+      menu.style.top=(r.bottom+4)+'px';
+      menu.style.left='auto';
+      menu.style.right=(window.innerWidth-r.right)+'px';
+    }
+  }
+  document.addEventListener('click',closeMenus);
+  window.addEventListener('scroll',closeMenus,true);
+  function menuHtml(items){
+    let h='<div class="menu-wrap"><button class="kebab" title="Altre azioni" onclick="toggleMenu(this,event)">⋯</button><div class="menu">';
+    items.forEach(it=>{ if(it==='-'){h+='<div class="div"></div>'} else {h+='<button class="'+(it.d?'danger':'')+'" onclick="closeMenus();'+(it.fn||'')+'">'+it.l+'</button>'} });
+    return h+'</div></div>';
+  }
+  function actCell(primary,items){return '<div class="acts">'+primary+menuHtml(items)+'</div>'}
+
+  /* ---------- SESSIONI (10) ---------- */
+  const sessioni=[
+    {st:'conflitto',ora:'06:30',n:'Esposito Anna',b:'1190',m:'EV 305 QN',cat:'rimorchio',conf:'Rimorchio agganciato anche ad altro badge'},
+    {st:'conflitto',ora:'05:58',n:'Greco Sara',b:'1276',m:'FT 432 KP',cat:'motrice',conf:'Motrice risulta in due sessioni'},
+    {st:'accoppiato',ora:'08:40',n:'Rossi Mario',b:'1042',m:'FT 432 KP',m2:'AB 901 CD'},
+    {st:'accoppiato',ora:'08:05',n:'Ferrari Gino',b:'1008',m:'KK 771 BV',m2:'RM 540 TT'},
+    {st:'accoppiato',ora:'07:30',n:'Conti Luigi',b:'0921',m:'JD 118 PL',m2:'QA 332 WS'},
+    {st:'accoppiato',ora:'07:12',n:'Marini Eva',b:'1330',m:'TR 905 NN',m2:'BC 200 DE'},
+    {st:'accoppiato',ora:'06:45',n:'Galli Remo',b:'1101',m:'PO 654 UI',m2:'LK 909 MN'},
+    {st:'motrice',ora:'07:55',n:'Bianchi Luca',b:'0817',m:'GH 220 LM'},
+    {st:'motrice',ora:'06:20',n:'Russo Dino',b:'0777',m:'WE 443 RT'},
+    {st:'rimorchio',ora:'05:40',n:'Moretti Ida',b:'1450',m:'ZZ 112 AB'},
+  ];
+  const SGROUPS=[{key:'conflitto',label:'Conflitti',urgent:true},{key:'accoppiato',label:'Accoppiati'},{key:'motrice',label:'Solo motrice'},{key:'rimorchio',label:'Solo rimorchio'}];
+  function pillFor(st){if(st==='conflitto')return '<span class="pill pill-danger">conflitto</span>';if(st==='accoppiato')return '<span class="pill pill-ok">accoppiato</span>';if(st==='motrice')return '<span class="pill pill-warn">solo motrice</span>';return '<span class="pill pill-warn">solo rimorchio</span>'}
+  function sessRow(s){
+    const mezzi=s.m2?(s.m+' <span class="m2">+ '+s.m2+'</span>'):(s.m+' <span class="m2">('+(s.cat||'')+')</span>');
+    const modDis=(s.st!=='accoppiato');
+    const primary='<button class="btn primary" '+(modDis?'disabled title="Disponibile su sessioni accoppiate"':'onclick="openEdit(\'Modifica sessione LIVE\')"')+'>Modifica</button>';
+    const items=[{l:'Forza cambio motrice',fn:"openForza('motrice')"},{l:'Forza cambio rimorchio',fn:"openForza('rimorchio')"},'-',{l:'Forza libero motrice',d:true},{l:'Forza libero rimorchio',d:true},{l:'Forza libero tutto',d:true},'-',{l:'Elimina sessione',d:true}];
+    const conf=s.conf?'<div class="sub-line" style="color:var(--danger)">⚠ '+s.conf+'</div>':'';
+    return '<div class="drow sgrid"><div class="time">'+s.ora+'</div><div>'+pillFor(s.st)+'</div><div><div class="name">'+s.n+'</div><div class="badge">badge '+s.b+'</div></div><div><div class="mezzi">'+mezzi+'</div>'+conf+'</div>'+actCell(primary,items)+'</div>';
+  }
+  function buildSessioni(){
+    let html='';
+    SGROUPS.forEach(g=>{const rows=sessioni.filter(s=>s.st===g.key);if(!rows.length)return;
+      html+='<div class="grp'+(g.urgent?' urgent':'')+'"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">'+(g.urgent?'⚠ ':'')+g.label+'</span><span class="gc">'+rows.length+'</span></div><div class="grp-body">'+rows.map(sessRow).join('')+'</div></div>';});
+    document.getElementById('sessGroups').innerHTML=html;
+  }
+
+  /* ---------- SEGNALAZIONI (12) ---------- */
+  const segn=[
+    {nuova:1,ora:'08:32',n:'Rossi Mario',b:'1042',amb:'MOTRICE',t:'FT 432 KP',d:'Specchio retrovisore destro lesionato.'},
+    {nuova:1,ora:'07:55',n:'Bianchi Luca',b:'0817',amb:'MOTRICE',t:'GH 220 LM',d:'Spia pressione gomme accesa.'},
+    {nuova:1,ora:'07:10',n:'Conti Luigi',b:'0921',amb:'RIMORCHIO',t:'QA 332 WS',d:'Sponda idraulica lenta a salire.'},
+    {nuova:1,ora:'06:48',n:'Marini Eva',b:'1330',amb:'ENTRAMBI',t:'TR 905 NN',d:'Rumore sospetto ai freni.'},
+    {nuova:1,ora:'06:20',n:'Galli Remo',b:'1101',amb:'MOTRICE',t:'PO 654 UI',d:'Tergicristallo lato guida non torna.'},
+    {nuova:0,ora:'14/06 18:10',n:'Esposito Anna',b:'1190',amb:'ENTRAMBI',t:'DZ 778 RT',d:'Cinghia telone strappata.'},
+    {nuova:0,ora:'14/06 16:02',n:'Ferrari Gino',b:'1008',amb:'MOTRICE',t:'KK 771 BV',d:'Climatizzatore non raffredda.'},
+    {nuova:0,ora:'14/06 12:30',n:'Russo Dino',b:'0777',amb:'MOTRICE',t:'WE 443 RT',d:'Seggiolino conducente allentato.'},
+    {nuova:0,ora:'13/06 19:45',n:'Moretti Ida',b:'1450',amb:'RIMORCHIO',t:'ZZ 112 AB',d:'Luce targa posteriore fulminata.'},
+    {nuova:0,ora:'13/06 09:15',n:'Greco Sara',b:'1276',amb:'MOTRICE',t:'FT 432 KP',d:'Avvisatore acustico debole.'},
+    {nuova:0,ora:'12/06 17:00',n:'Rossi Mario',b:'1042',amb:'MOTRICE',t:'FT 432 KP',d:'Tappetino lato passeggero mancante.'},
+    {nuova:0,ora:'12/06 08:20',n:'Conti Luigi',b:'0921',amb:'ENTRAMBI',t:'JD 118 PL',d:'Catarifrangenti laterali da sostituire.'},
+  ];
+  function segRow(it){
+    const primary='<button class="btn primary" onclick="openEdit(\'Modifica segnalazione\')">Modifica</button>';
+    const items=[{l:'Anteprima PDF',fn:'openPdf()'},{l:'Crea lavoro'},'-',{l:'Elimina',d:true}];
+    const nb=it.nuova?' <span class="pill pill-danger">NUOVA</span>':'';
+    return '<div class="drow ggrid"><div class="time">'+it.ora+'</div><div><div class="name">'+it.n+'</div><div class="badge">BADGE '+it.b+' · '+it.amb+'</div></div><div><div class="mezzi">'+it.t+nb+'</div><div class="sub-line">'+it.d+'</div></div>'+actCell(primary,items)+'</div>';
+  }
+  function buildSegn(){
+    const nuove=segn.filter(s=>s.nuova),lette=segn.filter(s=>!s.nuova);
+    let html='<div class="grp urgent"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">⚠ Nuove</span><span class="gc">'+nuove.length+'</span></div><div class="grp-body">'+nuove.map(segRow).join('')+'</div></div>';
+    html+='<div class="grp"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">Lette</span><span class="gc">'+lette.length+'</span></div><div class="grp-body">'+lette.slice(0,5).map(segRow).join('')+'<button class="showmore">Mostra altre '+(lette.length-5)+'</button></div></div>';
+    document.getElementById('segGroups').innerHTML=html;
+  }
+
+  /* ---------- CONTROLLO (8) ---------- */
+  const ctrl=[
+    {ko:1,ora:'06:35',n:'Esposito Anna',b:'1190',tg:'MOTRICE',mz:'DZ 778 RT',kt:'livello olio, perdite'},
+    {ko:1,ora:'06:10',n:'Rossi Mario',b:'1042',tg:'RIMORCHIO',mz:'AB 901 CD',kt:'luci posteriori'},
+    {ko:1,ora:'05:50',n:'Galli Remo',b:'1101',tg:'MOTRICE',mz:'PO 654 UI',kt:'freni'},
+    {ko:0,ora:'06:02',n:'Bianchi Luca',b:'0817',tg:'MOTRICE',mz:'GH 220 LM'},
+    {ko:0,ora:'06:00',n:'Ferrari Gino',b:'1008',tg:'ENTRAMBI',mz:'KK 771 BV'},
+    {ko:0,ora:'05:58',n:'Conti Luigi',b:'0921',tg:'MOTRICE',mz:'JD 118 PL'},
+    {ko:0,ora:'05:45',n:'Marini Eva',b:'1330',tg:'MOTRICE',mz:'TR 905 NN'},
+    {ko:0,ora:'05:30',n:'Russo Dino',b:'0777',tg:'MOTRICE',mz:'WE 443 RT'},
+  ];
+  function ctrlRow(it){
+    const primary='<button class="btn primary" onclick="openEdit(\'Modifica controllo mezzo\')">Modifica</button>';
+    const items=[{l:'Anteprima PDF',fn:'openPdf()'},{l:'Crea lavoro'}];
+    const pill=it.ko?'<span class="pill pill-danger">KO</span>':'<span class="pill pill-ok">OK</span>';
+    const kt=it.ko?'<div class="sub-line" style="color:var(--danger)">KO: '+it.kt+'</div>':'';
+    return '<div class="drow kgrid"><div class="time">'+it.ora+'</div><div><div class="name">'+it.n+'</div><div class="badge">BADGE '+it.b+'</div></div><div><div class="mezzi">'+it.tg+' · '+it.mz+' '+pill+'</div>'+kt+'</div>'+actCell(primary,items)+'</div>';
+  }
+  function buildCtrl(){
+    const ko=ctrl.filter(c=>c.ko),ok=ctrl.filter(c=>!c.ko);
+    let html='<div class="grp urgent"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">⚠ Esiti KO</span><span class="gc">'+ko.length+'</span></div><div class="grp-body">'+ko.map(ctrlRow).join('')+'</div></div>';
+    html+='<div class="grp"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">Esiti OK</span><span class="gc">'+ok.length+'</span></div><div class="grp-body">'+ok.map(ctrlRow).join('')+'</div></div>';
+    document.getElementById('ctrlGroups').innerHTML=html;
+  }
+
+  /* ---------- GOMME (5) ---------- */
+  const gomme=[
+    {nuovo:1,ora:'08:00',n:'Bianchi Luca',b:'0817',t:'GH 220 LM',tipo:'USURA',km:'142.310'},
+    {nuovo:1,ora:'07:20',n:'Galli Remo',b:'1101',t:'PO 654 UI',tipo:'FORATURA',km:'88.900'},
+    {nuovo:0,ora:'14/06',n:'Rossi Mario',b:'1042',t:'FT 432 KP',tipo:'ROTAZIONE',km:'184.230'},
+    {nuovo:0,ora:'13/06',n:'Conti Luigi',b:'0921',t:'JD 118 PL',tipo:'USURA',km:'201.040'},
+    {nuovo:0,ora:'12/06',n:'Marini Eva',b:'1330',t:'TR 905 NN',tipo:'PRESSIONE',km:'77.500'},
+  ];
+  function gommaRow(it){
+    const primary='<button class="btn primary" onclick="openEdit(\'Modifica gomme\')">Modifica</button>';
+    const items=[{l:'Letto'},{l:'Preso in carico'},{l:'Importa'}];
+    const nb=it.nuovo?' <span class="pill pill-danger">NUOVO</span>':'';
+    return '<div class="drow kgrid"><div class="time">'+it.ora+'</div><div><div class="name">'+it.n+'</div><div class="badge">BADGE '+it.b+'</div></div><div><div class="mezzi">'+it.t+nb+'</div><div class="sub-line">Tipo: '+it.tipo+' · KM: '+it.km+'</div></div>'+actCell(primary,items)+'</div>';
+  }
+  function buildGomme(){
+    const nv=gomme.filter(g=>g.nuovo),ge=gomme.filter(g=>!g.nuovo);
+    document.getElementById('gommeGroups').innerHTML='<div class="grp urgent"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">⚠ Nuovi</span><span class="gc">'+nv.length+'</span></div><div class="grp-body">'+nv.map(gommaRow).join('')+'</div></div><div class="grp"><div class="grp-h" onclick="toggleGroup(this)"><span class="caret">▾</span><span class="gt">Gestiti</span><span class="gc">'+ge.length+'</span></div><div class="grp-body">'+ge.map(gommaRow).join('')+'</div></div>';
+  }
+
+  /* ---------- RIFORNIMENTI (9) ---------- */
+  const rifo=[
+    ['08:12','Rossi Mario','FT 432 KP','AB 901 CD','Diesel','420 L','€ 612,40','184.230'],
+    ['07:40','Esposito Anna','DZ 778 RT','','AdBlue','38 L','€ 41,80','97.540'],
+    ['07:05','Ferrari Gino','KK 771 BV','RM 540 TT','Diesel','510 L','€ 743,60','233.110'],
+    ['06:50','Conti Luigi','JD 118 PL','QA 332 WS','Diesel','480 L','€ 700,80','201.050'],
+    ['06:30','Bianchi Luca','GH 220 LM','','Diesel','390 L','€ 568,80','142.320'],
+    ['06:10','Galli Remo','PO 654 UI','LK 909 MN','Diesel','445 L','€ 649,40','88.910'],
+    ['05:55','Marini Eva','TR 905 NN','BC 200 DE','AdBlue','42 L','€ 46,20','77.510'],
+    ['05:40','Russo Dino','WE 443 RT','','Diesel','300 L','€ 437,00','55.300'],
+    ['05:20','Greco Sara','FT 432 KP','','Diesel','410 L','€ 597,00','184.000'],
+  ];
+  function buildRifo(){
+    document.getElementById('rifoBody').innerHTML=rifo.map(r=>{
+      const primary='<button class="btn primary" onclick="openEdit(\'Modifica rifornimento\')">Modifica</button>';
+      const rim=r[3]?(' · Rim: '+r[3]):'';
+      return '<div class="drow kgrid"><div class="time">'+r[0]+'</div><div><div class="name">'+r[1]+'</div><div class="badge">'+r[2]+rim+'</div></div><div><div class="mezzi">'+r[4]+' · '+r[5]+' · '+r[6]+'</div><div class="sub-line">km '+r[7]+'</div></div><div class="acts">'+primary+'</div></div>';
+    }).join('');
+  }
+
+  /* ---------- CAMBIO ---------- */
+  const cambi=[
+    ['15/06 06:10','BADGE 1042 | Rossi Mario','Deposito Nord','EE 110 AA <span class="arrow">→</span> FT 432 KP','AB 901 CD'],
+    ['15/06 05:48','BADGE 1190 | Esposito Anna','Piazzale Est','DZ 778 RT','QQ 002 ZZ <span class="arrow">→</span> EV 305 QN'],
+    ['14/06 22:05','BADGE 0817 | Bianchi Luca','Deposito Nord','GH 220 LM','—'],
+    ['14/06 19:30','BADGE 1008 | Ferrari Gino','Officina','KK 771 BV','RM 540 TT'],
+    ['14/06 06:00','BADGE 0921 | Conti Luigi','Deposito Sud','JD 118 PL','QA 332 WS'],
+  ];
+  function buildCambio(){document.getElementById('cambioBody').innerHTML=cambi.map(c=>'<tr><td>'+c[0]+'</td><td>'+c[1]+'</td><td>'+c[2]+'</td><td>'+c[3]+'</td><td>'+c[4]+'</td><td style="text-align:right"><button class="btn" onclick="openEdit(\'Modifica evento\')">Modifica</button></td></tr>').join('')}
+
+  /* ---------- ATTREZZATURE (6) ---------- */
+  const attr=[
+    ['09:05','Rossi Mario','Richiesta nuova cinghia di ancoraggio (sfilacciata).'],
+    ['14/06 16:20','Esposito Anna','Manca il triangolo di emergenza, da reintegrare.'],
+    ['14/06 11:00','Galli Remo','Estintore scaduto da sostituire.'],
+    ['13/06 18:40','Conti Luigi','Servono cunei fermaruota aggiuntivi.'],
+    ['13/06 08:10','Marini Eva','Giubbotto alta visibilità taglia L.'],
+    ['12/06 15:30','Russo Dino','Kit pronto soccorso incompleto.'],
+  ];
+  function buildAttr(){
+    document.getElementById('attrBody').innerHTML=attr.map(a=>{
+      const primary='<button class="btn primary" onclick="openEdit(\'Modifica richiesta attrezzatura\')">Modifica</button>';
+      const items=[{l:'Elimina',d:true}];
+      return '<div class="drow ggrid"><div class="time">'+a[0]+'</div><div><div class="name">'+a[1]+'</div><div class="badge thumb-c">🖼 1 foto</div></div><div><div class="sub-line" style="color:var(--ink2);font-size:13px">'+a[2]+'</div></div>'+actCell(primary,items)+'</div>';
+    }).join('');
+  }
+
+  /* ---------- PERMESSI (8) ---------- */
+  const autisti=[['Rossi Mario','1042'],['Bianchi Luca','0817'],['Esposito Anna','1190'],['Verdi Paolo','0934'],['Ferrari Gino','1008'],['Conti Luigi','0921'],['Marini Eva','1330'],['Galli Remo','1101']];
+  const defaults=[true,true,true,true,true,false];
+  function cellHtml(on){return '<button class="toggle" onclick="togglePerm(this)"><span class="pill '+(on?'pill-ok':'pill-danger')+'">'+(on?'Attivo':'Disattivato')+'</span></button>'}
+  function buildPerm(){const tb=document.getElementById('permbody');tb.innerHTML='';autisti.forEach(a=>{let tds='<td class="who"><div style="font-weight:900">'+a[0]+'</div><div class="badge">badge '+a[1]+'</div></td>';defaults.forEach((d,ci)=>{tds+='<td data-col="'+ci+'">'+cellHtml(d)+'</td>'});const tr=document.createElement('tr');tr.innerHTML=tds;tb.appendChild(tr);})}
+  function togglePerm(btn){const sp=btn.querySelector('.pill');const on=sp.classList.contains('pill-ok');sp.classList.toggle('pill-ok',!on);sp.classList.toggle('pill-danger',on);sp.textContent=on?'Disattivato':'Attivo'}
+  function setCol(ci,on){document.querySelectorAll('#permbody td[data-col="'+ci+'"] .pill').forEach(sp=>{sp.classList.toggle('pill-ok',on);sp.classList.toggle('pill-danger',!on);sp.textContent=on?'Attivo':'Disattivato'})}
+
+  /* build */
+  buildModules();buildSessioni();buildSegn();buildCtrl();buildGomme();buildRifo();buildCambio();buildAttr();buildPerm();
+</script>
+</body>
+</html>

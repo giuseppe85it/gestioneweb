@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Autisti Admin — Variante B (Moderna dashboard)</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f8fafc; --line:#e6e8ee;
+    --ink:#1e293b; --ink2:#334155; --muted:#64748b; --faint:#94a3b8;
+    --accent:#4f46e5; --accent-soft:#eef2ff; --accent-ink:#4338ca;
+    --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7;
+    --danger:#dc2626; --danger-bg:#fee2e2;
+    --shadow:0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius:14px; --radius-sm:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);
+    background:var(--bg);min-height:100vh}
+  .shell{display:flex;min-height:100vh}
+
+  /* SIDEBAR */
+  .side{width:248px;background:#0f172a;color:#cbd5e1;padding:20px 14px;flex:0 0 auto;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px;border-bottom:1px solid #1e293b;margin-bottom:14px}
+  .brand .mk{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+  .brand b{color:#fff;font-size:15px}
+  .brand span{display:block;font-size:11px;color:var(--faint)}
+  .nav-i{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;font-size:13.5px;
+    font-weight:600;color:#cbd5e1;cursor:pointer;margin-bottom:3px}
+  .nav-i:hover{background:#1e293b;color:#fff}
+  .nav-i.active{background:var(--accent);color:#fff}
+  .nav-i svg{width:18px;height:18px;flex:0 0 auto}
+  .nav-sep{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin:16px 12px 8px}
+
+  /* MAIN */
+  .main{flex:1;min-width:0;padding:22px clamp(14px,2.5vw,30px) 50px}
+  .pagehead{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+  .pagehead h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .pagehead .crumb{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}
+  .pagehead .right{margin-left:auto;display:flex;gap:10px}
+  .iconbtn{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--surface);
+    display:grid;place-items:center;cursor:pointer;color:var(--ink2)}
+  .iconbtn:hover{background:var(--surface-2)}
+
+  /* KPI STRIP */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
+  .kpi .k{font-size:12px;color:var(--muted);font-weight:600}
+  .kpi .v{font-size:25px;font-weight:800;margin-top:4px;letter-spacing:-.5px}
+  .kpi .v small{font-size:13px;font-weight:700;color:var(--muted)}
+  .kpi.acc{border-left:3px solid var(--accent)}
+  .kpi.dng{border-left:3px solid var(--danger)}
+  .kpi.okk{border-left:3px solid var(--ok)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:18px;margin-bottom:18px}
+  .card-h{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+  .card-h h2{margin:0;font-size:15px;font-weight:800}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:var(--danger);
+    background:var(--danger-bg);padding:3px 9px;border-radius:999px}
+  .live i{width:7px;height:7px;border-radius:50%;background:var(--danger);animation:p 1.5s infinite}
+  @keyframes p{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+  .seeall{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--accent);cursor:pointer}
+
+  .pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .pill-ok{background:var(--ok-bg);color:var(--ok)}
+  .pill-warn{background:var(--warn-bg);color:var(--warn)}
+  .pill-danger{background:var(--danger-bg);color:var(--danger)}
+  .pill-neutral{background:#eef1f6;color:var(--ink2)}
+  .pill-acc{background:var(--accent-soft);color:var(--accent-ink)}
+
+  /* session table-ish rows */
+  .srow{display:grid;grid-template-columns:130px 1fr auto auto;gap:14px;align-items:center;padding:12px;
+    border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:9px;background:var(--surface-2)}
+  .srow:last-child{margin-bottom:0}
+  .srow .name{font-weight:700;font-size:14px}
+  .srow .badge{font-size:12px;color:var(--muted);font-weight:600}
+  .targhe{display:flex;gap:7px;flex-wrap:wrap}
+  .tg{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-weight:700;font-size:12.5px;text-align:center}
+  .tg small{display:block;font-size:9px;color:var(--faint);letter-spacing:.6px;font-weight:700}
+  .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink2);font-weight:700;font-size:12px;
+    padding:7px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .btn:hover{background:var(--surface-2);border-color:#cbd2dd}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-ink)}
+  .btn.danger{color:var(--danger);border-color:#f3c4c4}
+  .btn.danger:hover{background:var(--danger-bg)}
+  .btn svg{width:14px;height:14px}
+
+  /* TABS as segmented */
+  .tabbar{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);
+    padding:5px;border-radius:12px;margin-bottom:16px}
+  .tab{border:none;background:none;color:var(--muted);font-weight:700;font-size:13px;padding:9px 14px;
+    border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:var(--surface);color:var(--accent-ink);box-shadow:var(--shadow)}
+  .tab .n{font-size:11px;font-weight:800;background:var(--accent-soft);color:var(--accent-ink);padding:1px 7px;border-radius:999px}
+
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .datenav{display:flex;align-items:center;gap:8px}
+  .datenav button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:15px;color:var(--ink2)}
+  .datenav .day{font-weight:700;font-size:13.5px;padding:0 6px}
+  .search{flex:1;min-width:180px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);
+    border-radius:10px;padding:8px 12px}
+  .search input{border:none;outline:none;font:inherit;font-weight:600;flex:1;color:var(--ink)}
+  .search svg{width:16px;height:16px;color:var(--faint)}
+  select.sel{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 11px;font:inherit;font-weight:600;color:var(--ink2)}
+  .chk{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink2)}
+
+  /* data row */
+  .drow{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px;
+    border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:10px;background:var(--surface)}
+  .drow:hover{border-color:#cbd2dd}
+  .thumb{width:52px;height:52px;border-radius:9px;background:#eef1f6;display:grid;place-items:center;color:var(--faint);font-size:10px;font-weight:700}
+  .drow .l1{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}
+  .drow .l2{font-size:12px;color:var(--muted);font-weight:600;margin-top:3px}
+  .drow .desc{font-size:13px;color:var(--ink2);margin-top:6px;line-height:1.4}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line)}
+  td{padding:12px;border-bottom:1px solid var(--line);font-weight:600;color:var(--ink2)}
+  tbody tr:hover{background:var(--surface-2)}
+
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .col-h{font-weight:800;font-size:13px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+
+  .panel{display:none}
+  .panel.active{display:block;animation:f .22s ease}
+  @keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(2px);display:none;
+    align-items:center;justify-content:center;padding:20px;z-index:50}
+  .backdrop.open{display:flex}
+  .modal{background:var(--surface);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(560px,100%);overflow:hidden}
+  .modal-h{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--line)}
+  .modal-h h3{margin:0;font-size:16px;font-weight:800}
+  .modal-h .x{margin-left:auto;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-b{padding:20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11.5px;font-weight:700;color:var(--muted)}
+  .field input,.field textarea{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-weight:600;color:var(--ink)}
+  .modal-f{display:flex;gap:10px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--line)}
+  .note{font-size:12px;color:var(--faint);text-align:center;margin-top:24px;font-weight:600}
+
+  @media(max-width:980px){.side{display:none}.kpis{grid-template-columns:repeat(2,1fr)}.twocol{grid-template-columns:1fr}.srow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="brand">
+      <div class="mk">GW</div>
+      <div><b>GestioneWeb</b><span>Pannello admin</span></div>
+    </div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg> Dashboard</div>
+    <div class="nav-i active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M2 21v-1a6 6 0 0 1 12 0v1M16 11l2 2 4-4"/></svg> Autisti</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="15" height="11" rx="2"/><path d="M16 9h4l3 3v5h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg> Mezzi</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Documenti</div>
+    <div class="nav-sep">Strumenti</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L16.5 3h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z"/></svg> Permessi moduli</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Cartellino orari</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="pagehead">
+      <div>
+        <h1>Centro rettifica dati</h1>
+        <div class="crumb">Autisti · Admin · Variante B — moderna dashboard</div>
+      </div>
+      <div class="right">
+        <button class="iconbtn"><svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <button class="iconbtn"><svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M12 7v5l3 2"/></svg></button>
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpis">
+      <div class="kpi acc"><div class="k">Sessioni attive</div><div class="v">3</div></div>
+      <div class="kpi dng"><div class="k">Segnalazioni nuove</div><div class="v">4</div></div>
+      <div class="kpi dng"><div class="k">Controlli KO</div><div class="v">2</div></div>
+      <div class="kpi okk"><div class="k">Controlli OK oggi</div><div class="v">18</div></div>
+    </div>
+
+    <!-- SESSIONI LIVE -->
+    <div class="card">
+      <div class="card-h">
+        <h2>Sessioni attive</h2>
+        <span class="live"><i></i> LIVE</span>
+        <span class="seeall">Aggiorna</span>
+      </div>
+      <div class="srow">
+        <span class="pill pill-ok">Accoppiato</span>
+        <div><div class="name">Rossi Mario</div><div class="badge">Badge A-1042</div></div>
+        <div class="targhe"><div class="tg">FT 432 KP<small>MOTRICE</small></div><div class="tg">AB 901 CD<small>RIMORCHIO</small></div></div>
+        <div class="acts">
+          <button class="btn" onclick="openModal()">Modifica</button>
+          <button class="btn">Forza cambio</button>
+          <button class="btn">Forza libero</button>
+          <button class="btn danger">Elimina</button>
+        </div>
+      </div>
+      <div class="srow">
+        <span class="pill pill-warn">Solo motrice</span>
+        <div><div class="name">Bianchi Luca</div><div class="badge">Badge A-0817</div></div>
+        <div class="targhe"><div class="tg">GH 220 LM<small>MOTRICE</small></div></div>
+        <div class="acts">
+          <button class="btn" onclick="openModal()">Modifica</button>
+          <button class="btn">Forza cambio</button>
+          <button class="btn">Forza libero</button>
+          <button class="btn danger">Elimina</button>
+        </div>
+      </div>
+      <div class="srow">
+        <span class="pill pill-ok">Accoppiato</span>
+        <div><div class="name">Esposito Anna</div><div class="badge">Badge A-1190</div></div>
+        <div class="targhe"><div class="tg">DZ 778 RT<small>MOTRICE</small></div><div class="tg">EV 305 QN<small>RIMORCHIO</small></div></div>
+        <div class="acts">
+          <button class="btn" onclick="openModal()">Modifica</button>
+          <button class="btn">Forza cambio</button>
+          <button class="btn">Forza libero</button>
+          <button class="btn danger">Elimina</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABS + CONTENT -->
+    <div class="card">
+      <div class="tabbar">
+        <button class="tab active" data-tab="segnalazioni" onclick="go(this)">Segnalazioni <span class="n">4</span></button>
+        <button class="tab" data-tab="controllo" onclick="go(this)">Controllo mezzo <span class="n">2</span></button>
+        <button class="tab" data-tab="rifornimenti" onclick="go(this)">Rifornimenti</button>
+        <button class="tab" data-tab="gomme" onclick="go(this)">Gomme</button>
+        <button class="tab" data-tab="cambio" onclick="go(this)">Cambio mezzo</button>
+        <button class="tab" data-tab="attrezzature" onclick="go(this)">Attrezzature</button>
+      </div>
+
+      <div class="toolbar">
+        <div class="datenav"><button>‹</button><span class="day">Lun 15 giu 2026</span><button>›</button></div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <input placeholder="Cerca per targa o autista…">
+        </div>
+        <select class="sel"><option>Tutti gli ambiti</option><option>Motrice</option><option>Rimorchio</option></select>
+        <label class="chk"><input type="checkbox" checked> Solo nuove</label>
+      </div>
+
+      <!-- SEGNALAZIONI -->
+      <section class="panel active" id="segnalazioni">
+        <div class="drow">
+          <div class="thumb">FOTO</div>
+          <div>
+            <div class="l1">Rossi Mario <span class="pill pill-neutral">FT 432 KP</span> <span class="pill pill-danger">Nuova</span></div>
+            <div class="l2">Badge A-1042 · oggi 08:32</div>
+            <div class="desc">Specchio retrovisore destro lesionato, vibra a velocità autostradale.</div>
+          </div>
+          <div class="acts">
+            <button class="btn primary" onclick="openModal()">Modifica</button>
+            <button class="btn">PDF</button>
+            <button class="btn">Crea lavoro</button>
+            <button class="btn danger">Elimina</button>
+          </div>
+        </div>
+        <div class="drow">
+          <div class="thumb">FOTO</div>
+          <div>
+            <div class="l1">Bianchi Luca <span class="pill pill-neutral">GH 220 LM</span> <span class="pill pill-danger">Nuova</span></div>
+            <div class="l2">Badge A-0817 · oggi 07:55</div>
+            <div class="desc">Spia pressione gomme accesa in fase di avviamento.</div>
+          </div>
+          <div class="acts">
+            <button class="btn primary" onclick="openModal()">Modifica</button>
+            <button class="btn">PDF</button>
+            <button class="btn">Crea lavoro</button>
+            <button class="btn danger">Elimina</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTROLLO -->
+      <section class="panel" id="controllo">
+        <div class="twocol">
+          <div>
+            <div class="col-h"><span class="pill pill-danger">KO · 2</span> Da verificare</div>
+            <div class="drow" style="grid-template-columns:1fr auto">
+              <div><div class="l1">Esposito Anna</div><div class="l2">DZ 778 RT · Motrice · Livello olio</div></div>
+              <div class="acts"><button class="btn primary" onclick="openModal()">Modifica</button><button class="btn">Crea lavoro</button></div>
+            </div>
+            <div class="drow" style="grid-template-columns:1fr auto">
+              <div><div class="l1">Rossi Mario</div><div class="l2">AB 901 CD · Rimorchio · Luci posteriori</div></div>
+              <div class="acts"><button class="btn primary" onclick="openModal()">Modifica</button><button class="btn">Crea lavoro</button></div>
+            </div>
+          </div>
+          <div>
+            <div class="col-h"><span class="pill pill-ok">OK · 18</span> Conformi</div>
+            <div class="drow" style="grid-template-columns:1fr auto">
+              <div><div class="l1">Bianchi Luca</div><div class="l2">GH 220 LM · Motrice · Tutto regolare</div></div>
+              <div class="acts"><button class="btn">PDF</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIFORNIMENTI -->
+      <section class="panel" id="rifornimenti">
+        <table>
+          <thead><tr><th>Autista</th><th>Targa</th><th>Tipo</th><th>Litri</th><th>Km</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Rossi Mario</td><td>FT 432 KP</td><td>Diesel</td><td>420 L</td><td>184.230</td><td><button class="btn" onclick="openModal()">Modifica</button></td></tr>
+            <tr><td>Esposito Anna</td><td>DZ 778 RT</td><td>AdBlue</td><td>38 L</td><td>97.540</td><td><button class="btn" onclick="openModal()">Modifica</button></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- GOMME -->
+      <section class="panel" id="gomme">
+        <div class="drow" style="grid-template-columns:1fr auto">
+          <div><div class="l1">Bianchi Luca <span class="pill pill-neutral">GH 220 LM</span></div><div class="l2">Asse anteriore SX · battistrada 3 mm <span class="pill pill-warn">Usura</span></div></div>
+          <div class="acts"><button class="btn primary" onclick="openModal()">Modifica</button><button class="btn">Crea lavoro</button></div>
+        </div>
+      </section>
+
+      <!-- CAMBIO MEZZO -->
+      <section class="panel" id="cambio">
+        <table>
+          <thead><tr><th>Data / ora</th><th>Badge / Nome</th><th>Luogo</th><th>Motrice</th><th>Rimorchio</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>15/06 06:10</td><td>A-1042 · Rossi M.</td><td>Deposito Nord</td><td>FT 432 KP</td><td>AB 901 CD</td><td><button class="btn">Dettaglio</button></td></tr>
+            <tr><td>15/06 05:48</td><td>A-1190 · Esposito A.</td><td>Piazzale Est</td><td>DZ 778 RT</td><td>EV 305 QN</td><td><button class="btn">Dettaglio</button></td></tr>
+            <tr><td>14/06 22:05</td><td>A-0817 · Bianchi L.</td><td>Deposito Nord</td><td>GH 220 LM</td><td>—</td><td><button class="btn">Dettaglio</button></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ATTREZZATURE -->
+      <section class="panel" id="attrezzature">
+        <div class="drow">
+          <div class="thumb">FOTO</div>
+          <div><div class="l1">Rossi Mario</div><div class="desc">Richiesta nuova cinghia di ancoraggio (la attuale è sfilacciata).</div></div>
+          <div class="acts"><button class="btn primary" onclick="openModal()">Modifica</button><button class="btn danger">Elimina</button></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="note">Mockup statico · dati inventati · nessuna connessione reale · Variante B</div>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div class="backdrop" id="bd" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-h"><h3>Modifica segnalazione</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b">
+      <div class="grid2">
+        <div class="field"><label>Autista</label><input value="Rossi Mario"></div>
+        <div class="field"><label>Badge</label><input value="A-1042"></div>
+        <div class="field"><label>Targa</label><input value="FT 432 KP"></div>
+        <div class="field"><label>Ambito</label><input value="Motrice"></div>
+      </div>
+      <div class="field" style="margin-top:14px"><label>Descrizione</label>
+        <textarea rows="3">Specchio retrovisore destro lesionato, vibra a velocità autostradale.</textarea>
+      </div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeModal()">Annulla</button><button class="btn primary" onclick="closeModal()">Salva</button></div>
+  </div>
+</div>
+
+<script>
+  function go(el){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById(el.dataset.tab).classList.add('active');
+  }
+  function openModal(){document.getElementById('bd').classList.add('open')}
+  function closeModal(){document.getElementById('bd').classList.remove('open')}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+</script>
+</body>
+</html>
