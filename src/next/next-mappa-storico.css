@@ -4585,6 +4585,59 @@
   box-shadow: inset 0 0 0 1px rgba(24, 32, 42, 0.08);
 }
 
+.man2-detail-v2__gomme-technical-svg {
+  display: block;
+  width: 100%;
+  height: clamp(170px, 18vw, 240px);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(24, 32, 42, 0.08);
+}
+
+.man2-detail-v2__gomme-technical-wheel {
+  fill: rgba(100, 116, 139, 0.28);
+  stroke: #64748b;
+  stroke-width: 1.5;
+}
+
+.man2-detail-v2__gomme-technical-wheel.is-selected {
+  fill: #dc2626;
+  stroke: #7f1d1d;
+  stroke-width: 2;
+}
+
+.man2-detail-v2__gomme-technical-wheel-ring {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-width: 3;
+}
+
+.man2-detail-v2__gomme-technical-precision,
+.man2-detail-v2__gomme-technical-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fff;
+  color: #57534e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.man2-detail-v2__gomme-technical-precision strong,
+.man2-detail-v2__gomme-technical-unavailable strong {
+  color: #1c1917;
+}
+
+.man2-detail-v2__gomme-technical-precision--non_rappresentabile,
+.man2-detail-v2__gomme-technical-unavailable {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .man2-detail-v2__gomme-image-label {
   display: flex;
   flex-direction: column;

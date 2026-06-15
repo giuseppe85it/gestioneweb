@@ -338,3 +338,44 @@ Target desktop primario. Su schermi < 900px:
 - File target: `src/next/NextMappaStoricoPage.tsx`, `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`
 - Regole documentali: `AGENTS.md` sezione "REGOLA FILE DI DOCUMENTAZIONE"
 - Spec correlate: `SPEC_QUADRO_MANUTENZIONI_PDF_NEXT.md` (tab sorella già implementata, utile come riferimento per stile bottoni e palette)
+
+---
+
+## 11. Estensione eventi gomme ufficiali read-only - 2026-06-15
+
+Implementata nel solo dettaglio embedded di `/next/manutenzioni`, sulla base
+dell'audit `AUDIT_GOMME_UI_READONLY_SICUREZZA_2026-06-15.md`.
+
+Contratto:
+
+- lo snapshot espone `eventiGommeUfficiali`;
+- sono ammessi soltanto record `@gomme_eventi` con `targetTarga` esatta,
+  `vehicleMatchReliability === "forte"` e origine ufficiale;
+- l'evento viene consultato soltanto se la manutenzione selezionata contiene
+  `chiusuraDi === "gomme_evento"` e `chiusuraRefId` uguale all'ID evento;
+- TMP, match plausibili ed eventi non collegati non influenzano lo schema.
+
+Visualizzazione:
+
+- la lista sinistra continua a contenere esclusivamente manutenzioni;
+- non esiste una riga o un pannello autonomo `Evento gomme autista`;
+- l'evidenziazione vive nello `Schema mezzo` del riquadro
+  `Dettagli intervento gomme`;
+- un evento ufficiale esplicitamente collegato ha precedenza;
+- in assenza dell'evento collegato sono usati `assiCoinvolti`,
+  `gommePerAsse` e `gommeStraordinario` della manutenzione;
+- il resolver puro distingue `ruote_esatte_v2`, `asse_completo`, `asse_lato`
+  e `non_rappresentabile`;
+- sono supportati più assi nella stessa manutenzione;
+- per i record legacy non puntuali la UI dichiara il limite e non inventa
+  gomma interna o esterna;
+- categoria sconosciuta: nessun fallback presentato come mezzo reale.
+
+Sicurezza:
+
+- nessun writer, timestamp, routing, PDF, Dossier, app autisti o barrier modificato;
+- nessuna associazione automatica per targa, data, testo o prossimità temporale;
+- test resolver, legame esplicito e fallback manutenzione: 13/13;
+- `npm run build`: OK;
+- verifica visuale desktop e mobile completata sul caso `TI239045`: due viste
+  DX/SX, quattro ruote posteriori evidenziate e nessun overflow orizzontale.

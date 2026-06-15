@@ -157,6 +157,7 @@ export type NextGommeReadOnlyItem = {
   id: string;
   mezzoTarga: string;
   targa: string;
+  targetTarga?: string | null;
   data: string | null;
   dataLabel: string | null;
   timestamp: number | null;
@@ -183,6 +184,11 @@ export type NextGommeReadOnlyItem = {
   statoEvento: string | null;
   interventoTipo: string | null;
   rotazioneText: string | null;
+  categoria?: string | null;
+  targetType?: string | null;
+  asseId?: string | null;
+  gommeIds?: string[];
+  selezioneGommeV2?: unknown;
   quality: NextManutenzioneQuality;
   flags: string[];
 };
@@ -1346,6 +1352,13 @@ function resolveExternalTyreEvent(
     resolveExternalTyreEventLabel(record);
   const sourceOrigin: NextGommeSourceOrigin =
     dataset === GOMME_EVENTI_KEY ? "evento_ufficiale" : "evento_autista_tmp";
+  const targetTarga = normalizeNextMezzoTarga(record.targetTarga) || null;
+  const gommeIds = Array.isArray(record.gommeIds)
+    ? record.gommeIds
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   const flags: string[] = [];
 
   if (match.reliability === "plausibile") {
@@ -1366,6 +1379,7 @@ function resolveExternalTyreEvent(
     id: buildExternalEventId(dataset, record, index, mezzoTarga),
     mezzoTarga,
     targa: mezzoTarga,
+    targetTarga,
     data: dataLabel,
     dataLabel,
     timestamp,
@@ -1400,6 +1414,11 @@ function resolveExternalTyreEvent(
     statoEvento: normalizeMeaningfulText(record.stato),
     interventoTipo,
     rotazioneText,
+    categoria: normalizeMeaningfulText(record.categoria),
+    targetType: normalizeMeaningfulText(record.targetType),
+    asseId: normalizeMeaningfulText(record.asseId),
+    gommeIds,
+    selezioneGommeV2: record.selezioneGommeV2,
     quality: match.reliability === "forte" ? "source_direct" : "derived_acceptable",
     flags: dedupeFlags(flags),
   };

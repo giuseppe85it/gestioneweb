@@ -4,7 +4,11 @@ import { getItemSync, setItemSync } from "../../utils/storageSync";
 import { uploadBytes } from "../../utils/storageWriteOps";
 import { readNextMezzoByTarga } from "../nextAnagraficheFlottaDomain";
 import { readNextMezzoRifornimentiSnapshot } from "./nextRifornimentiDomain";
-import { readNextMezzoManutenzioniGommeSnapshot } from "./nextManutenzioniGommeDomain";
+import {
+  readNextMezzoManutenzioniGommeSnapshot,
+  type NextGommeReadOnlyItem,
+} from "./nextManutenzioniGommeDomain";
+import { selectNextOfficialGommeEvents } from "./nextGommeSelectionReadOnly";
 import {
   getNextMezzoHotspotAreaById,
   getNextMezzoHotspotAreas,
@@ -80,6 +84,7 @@ export type NextMappaStoricoSnapshot = {
     }
   >;
   interventi: NextMappaStoricoIntervento[];
+  eventiGommeUfficiali: NextGommeReadOnlyItem[];
   limitations: string[];
 };
 
@@ -565,6 +570,10 @@ export async function readNextMappaStoricoSnapshot(
     .filter((item): item is NextMappaStoricoIntervento => Boolean(item));
 
   const interventi = sortInterventi([...manutenzioni, ...eventiGommeEsterni]);
+  const eventiGommeUfficiali = selectNextOfficialGommeEvents(
+    manutenzioniGomme.gommeItems,
+    normalizedTarga,
+  );
   const foto = photoRaw
     .map(sanitizePhotoRecord)
     .filter((item): item is NextMappaStoricoPhotoRecord => item !== null)
@@ -622,6 +631,7 @@ export async function readNextMappaStoricoSnapshot(
     totaleInterventi: interventi.length,
     viste,
     interventi,
+    eventiGommeUfficiali,
     limitations: [
       "La mappa storico legge i dati business reali dalle manutenzioni, dalla convergenza gomme e dal domain rifornimenti gia verificato.",
       "Le foto per vista e gli hotspot sono metadati visuali separati: non alterano `@manutenzioni`, `@inventario` o `@materialiconsegnati`.",
