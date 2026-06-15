@@ -243,7 +243,7 @@ function detectKind(input: PdfInput): "lavori" | "mezzo" | "table" {
 }
 
 // --------------------------------------------------------
-// ?? IA PDF – Modalità disponibili
+// ?? IA PDF - ModalitÃ  disponibili
 // --------------------------------------------------------
 
 type PdfKind = "lavori" | "mezzo" | "table";
@@ -267,7 +267,7 @@ function buildRawSummary(kind: PdfKind, input: any): string {
       const note = l.note || "";
 
       const head = `${i + 1}. (${urg}) ${date}`;
-      const info = [targa, mag].filter(Boolean).join(" – ");
+      const info = [targa, mag].filter(Boolean).join(" - ");
 
       return [head, info, desc, note].filter(Boolean).join("\n");
     });
@@ -334,14 +334,14 @@ function buildRawSummary(kind: PdfKind, input: any): string {
 }
 
 /**
- * ?? IA FULL MODE — integrazione ufficiale
+ * ?? IA FULL MODE - integrazione ufficiale
  * Usa la IA centrale (Cloud Functions aiCore, task "pdf_ia") per ottenere contenuto migliorato
  */
 async function enhancePDFTextFull(kind: string, rawData: any) {
   try {
     // Usa la IA centrale tramite Firebase Functions (aiCore)
     // kind: "lavori" | "mezzo" | "table"
-    // rawData: stringa già pronta con il contenuto riassunto
+    // rawData: stringa giÃ  pronta con il contenuto riassunto
     const iaResult: any = await generaPDFconIA(kind, { raw: rawData });
 
     if (!iaResult) {
@@ -430,7 +430,7 @@ async function generateLavoriPdf(
   const titoloBase =
     input.title ??
     (input.groupLabel
-      ? `Lavori in Attesa – ${input.groupLabel}`
+      ? `Lavori in Attesa - ${input.groupLabel}`
       : "Lavori in Attesa");
 
   const kind: PdfKind = "lavori";
@@ -572,7 +572,7 @@ async function generateTablePdf(
     })
   );
   let supplierLabel = "Fornitore prezzi di riferimento:";
-  let supplierValue = "—";
+  let supplierValue = "-";
 
   if (isInternalOrderSummary) {
     const supplierRowIndex = bodyRows.findIndex((cells) =>
@@ -2992,7 +2992,7 @@ const buildRifornimentiMensiliPayload = (input: RifornimentiMensiliPdfInput) => 
   const rows = list.map((item) => [
     safeStr(item?.data) || "-",
     fmtTarga(item?.targa) || "-",
-    safeStr(item?.autistaNome) || "—",
+    safeStr(item?.autistaNome) || "-",
     formatPdfNumber(item?.litri, 2),
     formatPdfNumber(item?.km, 0),
     formatPdfNumber(item?.costo, 2),
@@ -3001,7 +3001,7 @@ const buildRifornimentiMensiliPayload = (input: RifornimentiMensiliPdfInput) => 
   ]);
 
   if (rows.length === 0) {
-    rows.push(["-", "-", "—", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
+    rows.push(["-", "-", "-", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
   }
 
   rows.push(["", "", "", "", "", "", "", ""]);
@@ -3065,7 +3065,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
       mediaFlotta.sogliaSotto !== null && mediaFlotta.sogliaSopra !== null
         ? `Range tipico: ${mediaFlotta.sogliaSotto
             .toFixed(2)
-            .replace(".", ",")} – ${mediaFlotta.sogliaSopra
+            .replace(".", ",")} - ${mediaFlotta.sogliaSopra
             .toFixed(2)
             .replace(".", ",")} km/L`
         : "";
@@ -3105,7 +3105,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
       safeStr(item?.distributore) ||
       safeStr(item?.source) ||
       "-";
-    const mediaLabel = safeStr(item?.mediaKmLLabel) || "—";
+    const mediaLabel = safeStr(item?.mediaKmLLabel) || "-";
     const litriText = formatPdfNumber(item?.litri, 2);
     const kmText = formatPdfNumber(item?.km, 0);
     const litriCell =
@@ -3115,7 +3115,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     return [
       safeStr(item?.data) || "-",
       fmtTarga(item?.targa) || "-",
-      safeStr(item?.autistaNome) || "—",
+      safeStr(item?.autistaNome) || "-",
       litriCell,
       kmCell,
       fonte,
@@ -3124,7 +3124,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
   });
 
   if (body.length === 0) {
-    body.push(["—", "—", "—", "—", "—", "—", "Nessun rifornimento nel periodo selezionato"]);
+    body.push(["-", "-", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
   }
 
   const anomalaFlags = items.map((item) => Boolean(item?.isAnomala));
@@ -3188,7 +3188,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
     doc.setTextColor(80, 80, 80);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti · ${anomalie.litriRows} litri sospetti`;
+    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti - ${anomalie.litriRows} litri sospetti`;
     doc.text(anomalieText, 14, summaryY);
   }
 
@@ -3227,7 +3227,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
 
     for (const entry of dettaglio) {
       const wrappedBullets: string[][] = entry.messages.map((m) =>
-        doc.splitTextToSize(`• ${m}`, usableWidth - BULLET_INDENT) as string[],
+        doc.splitTextToSize(`- ${m}`, usableWidth - BULLET_INDENT) as string[],
       );
       const bulletsLineCount = wrappedBullets.reduce(
         (sum, lines) => sum + lines.length,
@@ -3297,9 +3297,9 @@ const buildManutenzioniProgrammatePayload = (input: ManutenzioniProgrammatePdfIn
     return [
       fmtTarga(item?.targa) || "-",
       dataFine,
-      safeStr(item?.kmMax) || "—",
-      safeStr(item?.contratto) || "—",
-      safeStr(item?.revisione) || "—",
+      safeStr(item?.kmMax) || "-",
+      safeStr(item?.contratto) || "-",
+      safeStr(item?.revisione) || "-",
     ];
   });
 
@@ -3599,7 +3599,7 @@ export async function stampOriginalPdfWithStatus(
 }
 
 // =========================================================
-// PROMPT 30.5 — Archivio Storico (lista corrente per sub-tab)
+// PROMPT 30.5 - Archivio Storico (lista corrente per sub-tab)
 // =========================================================
 
 export type ArchivioStoricoPdfKind =
@@ -3703,7 +3703,7 @@ function buildArchivioStoricoFiltersLabel(
   if (filters.targa) parts.push(`Targa: ${filters.targa}`);
   const q: string = (filters.searchQuery || "").trim();
   if (q) parts.push(`Cerca: "${q}"`);
-  return parts.length > 0 ? parts.join(" · ") : "Nessun filtro applicato";
+  return parts.length > 0 ? parts.join(" - ") : "Nessun filtro applicato";
 }
 
 function formatArchivioStoricoTimestamp(ts: number): string {
@@ -3730,7 +3730,7 @@ export async function generateArchivioStoricoPDFBlob(
   doc.setTextColor(40, 40, 40);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.text(`Archivio Storico — ${input.kindLabel}`, marginX, 11);
+  doc.text(`Archivio Storico - ${input.kindLabel}`, marginX, 11);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -3742,7 +3742,7 @@ export async function generateArchivioStoricoPDFBlob(
   let currentY: number = 24;
   doc.setTextColor(60, 60, 60);
   doc.setFontSize(10);
-  // PROMPT 31.2: riga "Periodo" in grassetto per maggiore visibilità.
+  // PROMPT 31.2: riga "Periodo" in grassetto per maggiore visibilitÃ .
   doc.setFont("helvetica", "bold");
   doc.text(`Periodo: ${input.filters.periodoLabel}`, marginX, currentY);
   doc.setFont("helvetica", "normal");
@@ -3790,7 +3790,7 @@ export async function generateArchivioStoricoPDFBlob(
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
       doc.text(
-        "GestioneManutenzione · Archivio Storico",
+        "GestioneManutenzione - Archivio Storico",
         marginX,
         pageHeight - 8,
       );
@@ -3888,7 +3888,7 @@ async function renderOrariCartellinoPage(
           { content: safeStr(r.tipoLabel), colSpan: 3, styles: { halign: "center", textColor: [21, 101, 192] } },
           monteCell(r),
           noPausaCell(r),
-          r.notte ? "SÃ¬" : "â€”",
+          r.notte ? "SÃ¬" : "-",
           safeStr(r.note),
         ]
       : [
@@ -3899,7 +3899,7 @@ async function renderOrariCartellinoPage(
           safeStr(r.totale),
           monteCell(r),
           noPausaCell(r),
-          r.notte ? "SÃ¬" : "â€”",
+          r.notte ? "SÃ¬" : "-",
           safeStr(r.note),
         ]
   );
