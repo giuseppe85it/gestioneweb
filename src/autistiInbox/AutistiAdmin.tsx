@@ -2973,13 +2973,42 @@ export default function AutistiAdmin() {
     if (cambioCanonico.length === 0)
       return <div className="empty">Nessun evento per questa data.</div>;
     const tpl = "100px 64px 80px minmax(140px,1.1fr) minmax(280px,2.4fr) minmax(110px,1fr)";
+    // Collassa i record troppo vicini per la stessa azione: stesso badge + stesso
+    // assetto (prima/dopo) entro 10 minuti -> tiene un solo record con il conteggio.
+    const WINDOW_MS = 10 * 60 * 1000;
+    const normT = (v: string | null) => (v ? String(v).trim().toUpperCase() : "");
+    const kept: any[] = [];
+    const keptMeta: Array<{ badge: string; firma: string; ts: number }> = [];
+    const counts: number[] = [];
+    cambioCanonico.forEach((evt: any) => {
+      const ts = evt?._ts ?? toTs(evt?.timestamp) ?? 0;
+      const { prima, dopo } = getCambioCanonSnapshot(evt);
+      const { badge } = getCambioBadgeNome(evt);
+      const firma = `${normT(prima.motrice)}|${normT(prima.rimorchio)}|${normT(dopo.motrice)}|${normT(dopo.rimorchio)}`;
+      const idx = keptMeta.findIndex(
+        (s) => s.badge === badge && s.firma === firma && Math.abs(s.ts - ts) <= WINDOW_MS
+      );
+      if (idx >= 0) {
+        counts[idx] += 1;
+        return;
+      }
+      kept.push(evt);
+      keptMeta.push({ badge, firma, ts });
+      counts.push(1);
+    });
+    const nascosti = cambioCanonico.length - kept.length;
     return (
       <>
+        {nascosti > 0 ? (
+          <div className="aa-legend">
+            Nascosti {nascosti} record ravvicinati per la stessa azione · "×N" indica le ripetizioni
+          </div>
+        ) : null}
         <SchemaHead
           template={tpl}
           labels={["Data", "Ora", "Badge", "Autista", "Cosa è successo", "Luogo"]}
         />
-        {cambioCanonico.map((evt: any) => {
+        {kept.map((evt: any, i: number) => {
           const ts = evt?._ts ?? toTs(evt?.timestamp) ?? 0;
           const dt = formatDateTime(ts);
           const sp = dt.indexOf(" ");
@@ -2999,6 +3028,7 @@ export default function AutistiAdmin() {
                 <span className="aa-td-strong">{nome}</span>,
                 <span className={`aa-evt-desc${desc.conferma ? " aa-evt-desc--muted" : ""}`}>
                   {desc.node}
+                  {counts[i] > 1 ? <span className="aa-evt-count">×{counts[i]}</span> : null}
                 </span>,
                 luogo,
               ]}

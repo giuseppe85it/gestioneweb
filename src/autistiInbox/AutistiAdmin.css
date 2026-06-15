@@ -1257,3 +1257,4 @@
 .aa-evt-desc--muted{ color: #7a715e; font-weight: 600; font-style: italic; }
 .aa-evt-targa{ font-weight: 900; color: #1f6f24; }            /* targa nuova: in evidenza */
 .aa-evt-targa-old{ font-weight: 700; color: #7a715e; text-decoration: line-through; } /* targa precedente */
+.aa-evt-count{ display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 900; color: #7a715e; background: #efe2c5; border: 1px solid #e3cf9a; border-radius: 999px; padding: 1px 8px; vertical-align: middle; }
