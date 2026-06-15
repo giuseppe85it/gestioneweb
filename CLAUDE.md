@@ -34,3 +34,9 @@ _None found (or no workspace open)._
 _None found._
 
 <!-- cloude-code-toolbox:mcp-skills-awareness-end -->
+
+## Lingua
+Comunica SEMPRE in italiano, in OGNI parte della risposta: spiegazioni,
+domande, richieste di chiarimento, conferme e messaggi di stato. Mai inglese,
+nemmeno per le domande che fai a me. Se stai per scrivermi una domanda in
+inglese, riscrivila in italiano prima di inviarla.

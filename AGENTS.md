@@ -285,3 +285,9 @@ con timestamp 15/05 17:45 invece di 12/05. PROMPT 50 ha corretto:
 - `patchSegnalazione` non scrive piu' `dataPresaInCarico`
 - nuovo writer `segnaPresaInCaricoSegnalazione` e' la sola via per scrivere quel campo
 Riferimento: `docs/_live/REPORT_PROMPT50_TIMESTAMP_FIX_2026-05-15.md`.
+
+## Lingua
+Comunica SEMPRE in italiano, in OGNI parte della risposta: spiegazioni,
+domande, richieste di chiarimento, conferme e messaggi di stato. Mai inglese,
+nemmeno per le domande che fai a me. Se stai per scrivermi una domanda in
+inglese, riscrivila in italiano prima di inviarla.
