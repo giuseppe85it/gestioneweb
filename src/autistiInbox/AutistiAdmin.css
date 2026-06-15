@@ -1251,3 +1251,9 @@
 
 /* Cartellino in modale: nascondi il back interno (resta nella pagina standalone) */
 .aa-cartellino-body .next-orari-head .next-orari-back{ display: none; }
+
+/* Cambio mezzo storico: descrizione esplicita dell'evento */
+.aa-evt-desc{ font-size: 15px; font-weight: 700; color: #2b2923; line-height: 1.4; }
+.aa-evt-desc--muted{ color: #7a715e; font-weight: 600; font-style: italic; }
+.aa-evt-targa{ font-weight: 900; color: #1f6f24; }            /* targa nuova: in evidenza */
+.aa-evt-targa-old{ font-weight: 700; color: #7a715e; text-decoration: line-through; } /* targa precedente */

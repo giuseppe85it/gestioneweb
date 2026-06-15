@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import "./AutistiAdmin.css";
 
@@ -2921,16 +2921,63 @@ export default function AutistiAdmin() {
     );
   };
 
+  // Descrizione esplicita di cosa e successo nell'evento di cambio assetto.
+  // Usa i dati gia letti da getCambioCanonSnapshot (stato completo prima/dopo).
+  const describeCambioMezzo = (evt: any): { node: ReactNode; conferma: boolean } => {
+    const { prima, dopo } = getCambioCanonSnapshot(evt);
+    const norm = (v: string | null) => (v ? String(v).trim().toUpperCase() : "");
+    const pm = norm(prima.motrice);
+    const dm = norm(dopo.motrice);
+    const pr = norm(prima.rimorchio);
+    const dr = norm(dopo.rimorchio);
+    const nuova = (t: string) => <b className="aa-evt-targa">{t}</b>;
+    const vecchia = (t: string) => <b className="aa-evt-targa-old">{t}</b>;
+    const parts: ReactNode[] = [];
+    if (pm !== dm) {
+      if (!pm && dm) parts.push(<>Agganciata la motrice {nuova(dm)}</>);
+      else if (pm && !dm) parts.push(<>Staccata la motrice {vecchia(pm)}</>);
+      else parts.push(<>Cambiata la motrice da {vecchia(pm)} a {nuova(dm)}</>);
+    }
+    if (pr !== dr) {
+      if (!pr && dr) parts.push(<>Agganciato il rimorchio {nuova(dr)}</>);
+      else if (pr && !dr) parts.push(<>Staccato il rimorchio {vecchia(pr)}</>);
+      else parts.push(<>Cambiato il rimorchio da {vecchia(pr)} a {nuova(dr)}</>);
+    }
+    if (parts.length === 0) {
+      const label = String(evt?.tipo) === "INIZIO_ASSETTO" ? "Inizio assetto" : "Conferma assetto";
+      return {
+        conferma: true,
+        node: (
+          <span>
+            <b>{label}:</b> motrice {dm || "—"} + rimorchio {dr || "—"}
+          </span>
+        ),
+      };
+    }
+    return {
+      conferma: false,
+      node: (
+        <span>
+          {parts.map((p, i) => (
+            <span key={i}>
+              {i > 0 ? " · " : ""}
+              {p}
+            </span>
+          ))}
+        </span>
+      ),
+    };
+  };
+
   const renderStoricoCompact = () => {
     if (cambioCanonico.length === 0)
       return <div className="empty">Nessun evento per questa data.</div>;
-    const tpl =
-      "112px 78px 90px minmax(140px,1.3fr) minmax(110px,1fr) minmax(130px,1.2fr) minmax(130px,1.2fr)";
+    const tpl = "100px 64px 80px minmax(140px,1.1fr) minmax(280px,2.4fr) minmax(110px,1fr)";
     return (
       <>
         <SchemaHead
           template={tpl}
-          labels={["Data", "Ora", "Badge", "Nome autista", "Luogo", "Motrice", "Rimorchio"]}
+          labels={["Data", "Ora", "Badge", "Autista", "Cosa è successo", "Luogo"]}
         />
         {cambioCanonico.map((evt: any) => {
           const ts = evt?._ts ?? toTs(evt?.timestamp) ?? 0;
@@ -2938,11 +2985,9 @@ export default function AutistiAdmin() {
           const sp = dt.indexOf(" ");
           const dataStr = sp > 0 ? dt.slice(0, sp) : dt;
           const oraStr = sp > 0 ? dt.slice(sp + 1) : "";
-          const { prima, dopo } = getCambioCanonSnapshot(evt);
-          const motriceLine = buildCambioLine("MOTRICE", prima.motrice, dopo.motrice);
-          const rimorchioLine = buildCambioLine("RIMORCHIO", prima.rimorchio, dopo.rimorchio);
           const { badge, nome } = getCambioBadgeNome(evt);
-          const luogo = toStrOrNull(evt?.luogo) ?? "-";
+          const luogo = toStrOrNull(evt?.luogo) ?? "—";
+          const desc = describeCambioMezzo(evt);
           return (
             <SchemaRow
               key={evt?.id ?? `${ts}-${evt?._index ?? 0}`}
@@ -2952,9 +2997,10 @@ export default function AutistiAdmin() {
                 oraStr,
                 badge,
                 <span className="aa-td-strong">{nome}</span>,
+                <span className={`aa-evt-desc${desc.conferma ? " aa-evt-desc--muted" : ""}`}>
+                  {desc.node}
+                </span>,
                 luogo,
-                motriceLine ? String(motriceLine) : "—",
-                rimorchioLine ? String(rimorchioLine) : "—",
               ]}
               primaryLabel="Modifica"
               onPrimary={() => openCanonEdit(evt)}
