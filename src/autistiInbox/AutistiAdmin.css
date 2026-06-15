@@ -1074,7 +1074,7 @@
   display: flex; align-items: center; gap: 7px;
   border: 1px solid rgba(180,167,144,0.55);
   background: #fff; border-radius: 9px;
-  padding: 6px 10px; flex: 1; min-width: 180px;
+  padding: 6px 10px; flex: 0 1 360px; min-width: 200px;
 }
 .aa-search svg{ width: 15px; height: 15px; color: #a59a82; flex: 0 0 auto; }
 .aa-search input{ border: none; outline: none; font: inherit; font-weight: 700; flex: 1; color: #2b2923; background: none; }
@@ -1220,3 +1220,34 @@
   .aa-srow{ grid-template-columns: 1fr; }
   .aa-srow-actions{ justify-content: flex-start; }
 }
+
+/* Targa oggetto della segnalazione: riquadro rosso */
+.aa-hit{
+  display: inline-block;
+  border: 2px solid #c62828;
+  background: #f9e3e0;
+  color: #7a2c27;
+  font-weight: 900;
+  font-size: 14px;
+  padding: 2px 8px;
+  border-radius: 7px;
+}
+/* Legenda */
+.aa-legend{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #665d49;
+  margin: 0 0 10px 2px;
+}
+.aa-legend-box{
+  width: 22px;
+  height: 16px;
+  padding: 0;
+  font-size: 0;
+}
+
+/* Cartellino in modale: nascondi il back interno (resta nella pagina standalone) */
+.aa-cartellino-body .next-orari-head .next-orari-back{ display: none; }

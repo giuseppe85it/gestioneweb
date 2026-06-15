@@ -2609,15 +2609,18 @@ export default function AutistiAdmin() {
   const renderSegnalazioniCompact = () => {
     if (segnalazioniFiltered.length === 0)
       return <div className="empty">Nessuna segnalazione trovata.</div>;
-    const tpl = "140px minmax(150px,1.4fr) 110px minmax(120px,1fr) 100px 80px";
+    const tpl = "140px minmax(150px,1.3fr) 100px 120px 120px 90px 70px";
     const nuove = segnalazioniFiltered.filter((x: any) => x.isNuova);
     const lette = segnalazioniFiltered.filter((x: any) => !x.isNuova);
     const rowOf = (item: any) => {
       const r = item.record || {};
       const ts = item.ts ?? 0;
-      const targaMain = r.targa ?? r.targaCamion ?? r.targaMotrice ?? "-";
-      const targaRimorchio = r.targaRimorchio ?? null;
       const ambito = String(r.ambito ?? r.target ?? "").toUpperCase() || "-";
+      const targaMain = r.targa ?? r.targaCamion ?? r.targaMotrice ?? null;
+      const motrice = r.targaCamion ?? r.targaMotrice ?? (ambito !== "RIMORCHIO" ? targaMain : null);
+      const rimorchio = r.targaRimorchio ?? (ambito === "RIMORCHIO" ? targaMain : null);
+      const motriceHit = ambito === "MOTRICE" || ambito === "ENTRAMBI";
+      const rimorchioHit = ambito === "RIMORCHIO" || ambito === "ENTRAMBI";
       const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
       const badge = r.badgeAutista ?? "-";
       const fotoList = getFotoList(r);
@@ -2638,10 +2641,16 @@ export default function AutistiAdmin() {
               <span className="aa-td-sub">badge {badge}</span>
             </>,
             <span className="aa-ambito">{ambito}</span>,
-            <>
-              <span className="aa-td-strong">{String(targaMain)}</span>
-              {targaRimorchio ? <span className="aa-td-sub">Rim: {String(targaRimorchio)}</span> : null}
-            </>,
+            motrice ? (
+              <span className={motriceHit ? "aa-hit" : "aa-td-strong"}>{String(motrice)}</span>
+            ) : (
+              <span className="aa-td-sub">—</span>
+            ),
+            rimorchio ? (
+              <span className={rimorchioHit ? "aa-hit" : "aa-td-strong"}>{String(rimorchio)}</span>
+            ) : (
+              <span className="aa-td-sub">—</span>
+            ),
             item.isNuova ? (
               <span className="pill pill-danger">NUOVA</span>
             ) : (
@@ -2672,7 +2681,14 @@ export default function AutistiAdmin() {
     };
     return (
       <>
-        <SchemaHead template={tpl} labels={["Data/ora", "Autista", "Ambito", "Targa", "Stato", "Foto"]} />
+        <div className="aa-legend">
+          <span className="aa-hit aa-legend-box" />
+          Riquadro rosso = targa oggetto della segnalazione
+        </div>
+        <SchemaHead
+          template={tpl}
+          labels={["Data/ora", "Autista", "Ambito", "Motrice", "Rimorchio", "Stato", "Foto"]}
+        />
         {nuove.length > 0 && (
           <CollapsibleGroup title="Nuove" count={nuove.length} tone="danger" defaultOpen>
             {nuove.map(rowOf)}
