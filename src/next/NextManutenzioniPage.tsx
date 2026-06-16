@@ -57,6 +57,8 @@ import {
 } from "./helpers/manutenzioniPerAggancio";
 import { getDataRiferimentoRecord } from "./helpers/parseRobusto";
 import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
+import { readLegamiOrigine } from "./helpers/cicloLegame";
+import { readNextUnifiedStorageDocument } from "./domain/nextUnifiedReadRegistryDomain";
 import { buildFraseStoria, recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import { OfficinaAutocomplete } from "./components/OfficinaAutocomplete";
@@ -199,6 +201,9 @@ type PageLoadData = {
   mezzoPreview: MezzoPreview[];
   kmUltimoByTarga: Record<string, number | null>;
   lavoriInAttesaByTarga: Record<string, number>;
+  // Mappa id->record GREZZO delle origini (segnalazioni/controlli), per costruire
+  // la frase storia coerentemente in dashboard/lista/PDF come fa il dettaglio.
+  origineRawById: Map<string, Record<string, unknown>>;
 };
 
 type SegnalazioniDaFareGroup = {
@@ -591,8 +596,11 @@ function buildPdfDescrizioneWithOrigin(
   item: NextManutenzioniLegacyDatasetRecord,
   notesById: PdfOriginNotesById,
 ): string {
+  const base = buildPdfDescrizione(item);
   const originNote = notesById[item.id];
-  return originNote ? `${buildPdfDescrizione(item)}\n${originNote}` : buildPdfDescrizione(item);
+  const withOrigin = originNote ? `${base}\n${originNote}` : base;
+  const noteEsecuzione = item.noteEsecuzione?.trim();
+  return noteEsecuzione ? `${withOrigin}\nCosa è stato fatto: ${noteEsecuzione}` : withOrigin;
 }
 
 function formatDaFareDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
@@ -1283,6 +1291,8 @@ async function readPageData(): Promise<PageLoadData> {
     rifornimentiSnapshot,
     manutenzioniDaFare,
     autistiSnapshot,
+    segnalazioniDoc,
+    controlliDoc,
   ] = await Promise.all([
     readNextManutenzioniWorkspaceSnapshot(),
     readNextInventarioSnapshot({ includeCloneOverlays: false }),
@@ -1293,7 +1303,17 @@ async function readPageData(): Promise<PageLoadData> {
       includeLocalClone: false,
       includeStorageOverlay: false,
     }),
+    readNextUnifiedStorageDocument({ key: "@segnalazioni_autisti_tmp" }),
+    readNextUnifiedStorageDocument({ key: "@controlli_mezzo_autisti" }),
   ]);
+
+  // Indicizza per id i record GREZZI di origine (segnalazioni + controlli), una
+  // volta sola: serve a dashboard/lista/PDF per la frase storia cross-letta.
+  const origineRawById = new Map<string, Record<string, unknown>>();
+  for (const record of [...segnalazioniDoc.records, ...controlliDoc.records]) {
+    const id = String((record as Record<string, unknown>).id ?? "").trim();
+    if (id) origineRawById.set(id, record as Record<string, unknown>);
+  }
 
   const fallbackByTarga = new Map(
     workspace.mezzi.map((mezzo) => [normalizeText(mezzo.targa), mezzo] as const),
@@ -1336,6 +1356,7 @@ async function readPageData(): Promise<PageLoadData> {
     mezzoPreview,
     kmUltimoByTarga,
     lavoriInAttesaByTarga,
+    origineRawById,
   };
 }
 
@@ -1353,6 +1374,7 @@ export default function NextManutenzioniPage() {
   const [storico, setStorico] = useState<NextManutenzioniLegacyDatasetRecord[]>([]);
   const [mezzi, setMezzi] = useState<NextManutenzioniMezzoOption[]>([]);
   const [segnalazioniAutisti, setSegnalazioniAutisti] = useState<NextAutistiSegnalazioneSectionItem[]>([]);
+  const [origineRawById, setOrigineRawById] = useState<Map<string, Record<string, unknown>>>(new Map());
   const [mezzoPreview, setMezzoPreview] = useState<MezzoPreview[]>([]);
   const [materialiInventario, setMaterialiInventario] = useState<MaterialeInventario[]>([]);
   const [kmUltimoByTarga, setKmUltimoByTarga] = useState<Record<string, number | null>>({});
@@ -1406,6 +1428,7 @@ export default function NextManutenzioniPage() {
   const [sottotipo, setSottotipo] = useState<SottoTipo>("motrice");
   const [descrizione, setDescrizione] = useState("");
   const [eseguito, setEseguito] = useState("");
+  const [noteEsecuzione, setNoteEsecuzione] = useState("");
   const [draftSegnalatoDa, setDraftSegnalatoDa] = useState("");
   const [data, setData] = useState(todayLabel());
   const [importo, setImporto] = useState("");
@@ -1455,6 +1478,7 @@ export default function NextManutenzioniPage() {
         setMaterialiInventario(pageData.materialiInventario);
         setKmUltimoByTarga(pageData.kmUltimoByTarga);
         setLavoriInAttesaByTarga(pageData.lavoriInAttesaByTarga);
+        setOrigineRawById(pageData.origineRawById);
       } catch (loadError) {
         console.error("Errore caricamento Manutenzioni NEXT:", loadError);
         if (cancelled) return;
@@ -1465,6 +1489,7 @@ export default function NextManutenzioniPage() {
         setMaterialiInventario([]);
         setKmUltimoByTarga({});
         setLavoriInAttesaByTarga({});
+        setOrigineRawById(new Map());
         setError("Impossibile leggere il dataset reale di manutenzioni.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -1486,6 +1511,22 @@ export default function NextManutenzioniPage() {
     setMaterialiInventario(pageData.materialiInventario);
     setKmUltimoByTarga(pageData.kmUltimoByTarga);
     setLavoriInAttesaByTarga(pageData.lavoriInAttesaByTarga);
+    setOrigineRawById(pageData.origineRawById);
+  }
+
+  // Risolve i record GREZZI di origine (segnalazioni/controlli) collegati a una
+  // manutenzione, dalla mappa caricata una sola volta. Cosi' dashboard/lista/PDF
+  // costruiscono la frase storia leggendo la segnalazione reale, come il dettaglio.
+  function resolveSourceRecordsForItem(
+    item: Record<string, unknown>,
+  ): Record<string, unknown>[] {
+    const legami = readLegamiOrigine(item);
+    const out: Record<string, unknown>[] = [];
+    for (const legame of legami) {
+      const rec = origineRawById.get(legame.refId);
+      if (rec) out.push(rec);
+    }
+    return out;
   }
 
   useEffect(() => {
@@ -2353,6 +2394,7 @@ export default function NextManutenzioniPage() {
     setSottotipo("motrice");
     setDescrizione("");
     setEseguito("");
+    setNoteEsecuzione("");
     setDraftSegnalatoDa("");
     setData(todayLabel());
     setImporto("");
@@ -2418,6 +2460,7 @@ export default function NextManutenzioniPage() {
     setUiSubtype(deriveUiSubtype(item));
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
+    setNoteEsecuzione(item.noteEsecuzione ?? "");
     setDraftSegnalatoDa(item.segnalatoDa ?? "");
     setData(item.data);
     setImporto(item.importo != null ? String(item.importo) : "");
@@ -2705,6 +2748,7 @@ export default function NextManutenzioniPage() {
         sottotipo: tipo === "compressore" ? sottotipo : null,
         descrizione: normalizedDescrizione,
         eseguito: normalizeFreeText(eseguito) || null,
+        noteEsecuzione: normalizeFreeText(noteEsecuzione) || null,
         data: normalizedData,
         stato: selectedStato,
         importo: normalizedImporto,
@@ -2719,7 +2763,11 @@ export default function NextManutenzioniPage() {
         gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
         ...(sourceRecord
           ? {
-              dataEsecuzione: isCompletionSave ? normalizedData : sourceRecord.dataEsecuzione ?? null,
+              // Per le manutenzioni ESEGUITE la data di esecuzione deve seguire
+              // SEMPRE `data` (sia in completamento che in modifica), altrimenti i
+              // due campi divergono e dashboard/dettaglio mostrano date diverse.
+              dataEsecuzione:
+                isCompletionSave || selectedStato === "eseguita" ? normalizedData : sourceRecord.dataEsecuzione ?? null,
               dataProgrammata: sourceRecord.dataProgrammata ?? null,
               origineTipo: sourceRecord.origineTipo ?? null,
               origineRefId: sourceRecord.origineRefId ?? null,
@@ -2956,7 +3004,9 @@ export default function NextManutenzioniPage() {
           toPdfText(formatPdfChiusuraDateLabel(item), fontReady),
           toPdfText(
             `${buildPdfDescrizione(item)}\n${buildFraseStoria(
-              recordChiusoFromRaw(item as unknown as Record<string, unknown>),
+              recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
+                sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
+              }),
             )}`,
             fontReady,
           ),
@@ -3009,7 +3059,9 @@ export default function NextManutenzioniPage() {
     };
     const estimateExternalPdfRowHeight = (item: NextManutenzioniLegacyDatasetRecord) => {
       const description = `${buildPdfDescrizione(item)}\n${buildFraseStoria(
-        recordChiusoFromRaw(item as unknown as Record<string, unknown>),
+        recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
+          sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
+        }),
       )}`;
       const descriptionLines = estimateTextLineCount(description, 122);
       return Math.max(8.4, descriptionLines * 3.4 + 5.2);
@@ -4022,6 +4074,17 @@ export default function NextManutenzioniPage() {
   }
 
   async function handleDeleteSegnalazione(item: NextAutistiSegnalazioneSectionItem) {
+    await handleDeleteSegnalazioneById(item.id);
+  }
+
+  async function handleDeleteSegnalazioneById(segnalazioneId: string) {
+    // NB: l'id segnalazione e' un UUID case-sensitive. NON usare normalizeText
+    // (che e' il normalizzatore TARGHE e mette in maiuscolo): va solo trimmato.
+    const id = (segnalazioneId ?? "").trim();
+    if (!id) {
+      setError("ID segnalazione mancante.");
+      return;
+    }
     const confirmed = window.confirm(
       "Eliminare definitivamente questa segnalazione?\n\n"
         + "La segnalazione e le sue foto verranno cancellate in modo irreversibile anche dalla madre.\n"
@@ -4032,12 +4095,12 @@ export default function NextManutenzioniPage() {
       setSaving(true);
       setError(null);
       setNotice(null);
-      const result = await deleteSegnalazioneAutista({ segnalazioneId: item.id });
+      const result = await deleteSegnalazioneAutista({ segnalazioneId: id });
       if (!result.ok) {
         throw new Error(result.error || "Eliminazione segnalazione non riuscita.");
       }
       await refreshData();
-      clearSegnalazioneSelectionEverywhere(item.id);
+      clearSegnalazioneSelectionEverywhere(id);
       setNotice("Segnalazione eliminata.");
     } catch (deleteError) {
       console.error("Errore eliminazione segnalazione:", deleteError);
@@ -4373,7 +4436,9 @@ export default function NextManutenzioniPage() {
           <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
         </div>
         <FraseStoriaRecord
-          {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
+          {...recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
+            sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
+          })}
           compact
         />
         <div className="man2-form-actions man2-form-actions--row">
@@ -4752,7 +4817,7 @@ export default function NextManutenzioniPage() {
                         buildMisuraLabel(item),
                         item.fornitore || null,
                         formatMaintenanceImporto(item),
-                        item.sottotipo || "intervento programmato",
+                        item.sottotipo || null,
                       ]
                         .filter(Boolean)
                         .join(" - ")}
@@ -4770,7 +4835,9 @@ export default function NextManutenzioniPage() {
                   </div>
                 </div>
                 <FraseStoriaRecord
-                  {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)}
+                  {...recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
+                    sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
+                  })}
                   compact
                   as="span"
                 />
@@ -5135,6 +5202,75 @@ export default function NextManutenzioniPage() {
                 value={descrizione}
                 onChange={(event) => setDescrizione(event.target.value)}
                 placeholder="Es. Sostituzione pastiglie freno anteriori"
+              />
+            </div>
+          </section>
+
+          {editingId && selectedDetailRecord
+            ? (() => {
+                const refs =
+                  selectedDetailRecord.origineRefs && selectedDetailRecord.origineRefs.length > 0
+                    ? selectedDetailRecord.origineRefs
+                    : selectedDetailRecord.origineRefKey &&
+                        selectedDetailRecord.origineRefId &&
+                        selectedDetailRecord.origineTipo
+                      ? [
+                          {
+                            tipo: selectedDetailRecord.origineTipo,
+                            refKey: selectedDetailRecord.origineRefKey,
+                            refId: selectedDetailRecord.origineRefId,
+                          },
+                        ]
+                      : [];
+                const segnRefs = refs.filter((ref) => ref.tipo === "segnalazione");
+                if (segnRefs.length === 0) return null;
+                return (
+                  <section className="man2-form-block man2-form-block--accent">
+                    <div className="man2-section-title">Segnalazione di origine (sola lettura)</div>
+                    <div className="man2-origine-cards">
+                      {segnRefs.map((origine, index) => {
+                        const key = `${origine.refKey}:${origine.refId}`;
+                        const rec = origineInlineMap[key] ?? null;
+                        const details = rec ? buildOrigineDetails(rec) : [];
+                        const get = (lab: string) => details.find((detail) => detail.label === lab)?.value ?? null;
+                        const autista = get("Autista");
+                        const dataSegn = get("Data");
+                        const problema = get("Problema") ?? get("KO");
+                        const descrizioneSegn = get("Descrizione");
+                        return (
+                          <article key={`${key}:${index}`} className="man2-origine-card">
+                            <div className="man2-origine-card__top">
+                              <span className="man2-origine-chip man2-origine-chip--segn">Segnalazione</span>
+                              {autista ? <span className="man2-origine-autista">{autista}</span> : null}
+                              {dataSegn ? <span className="man2-origine-data">· {dataSegn}</span> : null}
+                            </div>
+                            {problema || descrizioneSegn ? (
+                              <div className="man2-origine-card__body">
+                                {problema ? <span className="man2-origine-prob">{problema}</span> : null}
+                                {descrizioneSegn ? <span className="man2-origine-desc">{descrizioneSegn}</span> : null}
+                              </div>
+                            ) : (
+                              <div className="man2-origine-card__empty">Dettaglio segnalazione non caricato.</div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })()
+            : null}
+
+          <section className="man2-form-block">
+            <div className="man2-section-title">Cosa è stato fatto</div>
+            <div className="man2-field">
+              <label className="man2-field__label">Dettaglio esecuzione</label>
+              <textarea
+                className="man2-text-strong-input"
+                rows={3}
+                value={noteEsecuzione}
+                onChange={(event) => setNoteEsecuzione(event.target.value)}
+                placeholder="Es. Oltre alla segnalazione, sostituiti anche i dischi e rabboccato l'olio"
               />
             </div>
           </section>
@@ -5806,6 +5942,17 @@ export default function NextManutenzioniPage() {
                         disabled={saving}
                       >
                         Riapri
+                      </button>
+                    ) : null}
+                    {isSegn ? (
+                      <button
+                        type="button"
+                        className="man2-origine-btn"
+                        style={{ color: "#b91c1c" }}
+                        onClick={() => void handleDeleteSegnalazioneById(origine.refId)}
+                        disabled={saving}
+                      >
+                        Elimina
                       </button>
                     ) : null}
                   </div>

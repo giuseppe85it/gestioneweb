@@ -197,7 +197,7 @@ export function ArchivioRowManutenzione({
           <div className="archivio-row-people">
             {fornitore ? (
               <span>
-                Fornitore <strong>{fornitore}</strong>
+                Officina <strong>{fornitore}</strong>
               </span>
             ) : null}
             {showImporto ? (

@@ -1564,6 +1564,15 @@ export default function NextMappaStoricoPage({
                     ) : null}
                   </section>
 
+                  {selectedRecord.noteEsecuzione?.trim() ? (
+                    <section className="man2-detail-v2__section">
+                      <div className="man2-detail-v2__section-title">Cosa è stato fatto</div>
+                      <div className="man2-detail-v2__description-box">
+                        {selectedRecord.noteEsecuzione.trim()}
+                      </div>
+                    </section>
+                  ) : null}
+
                   {showTyreSection ? (
                     <section className="man2-detail-v2__section">
                       <div className="man2-detail-v2__section-title">
@@ -1627,7 +1636,7 @@ export default function NextMappaStoricoPage({
                                 </strong>
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">
-                                <span>Fornitore</span>
+                                <span>Officina</span>
                                 <strong>{selectedRecord.fornitore?.trim() || "non indicato"}</strong>
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">

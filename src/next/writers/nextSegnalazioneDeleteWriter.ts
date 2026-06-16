@@ -1,6 +1,7 @@
 import { ref } from "firebase/storage";
-import { storage } from "../../firebase";
-import { getItemSync, setItemSync } from "../../utils/storageSync";
+import { doc, getDoc } from "firebase/firestore";
+import { db, storage } from "../../firebase";
+import { setItemSync } from "../../utils/storageSync";
 import { deleteObject } from "../../utils/storageWriteOps";
 import {
   assertCloneWriteAllowed,
@@ -45,6 +46,18 @@ function unwrapList(raw: unknown): RawRecord[] {
     return raw.items.filter(isRecord);
   }
   return [];
+}
+
+/**
+ * Lettura DIRETTA dal documento storage Firestore (stesso percorso usato dal
+ * pannello per mostrare le origini), invece di `getItemSync` che in clone runtime
+ * passa per l'overlay. Garantisce che il delete veda esattamente cio' che e'
+ * persistito (e che ricevera' la scrittura), evitando il falso "non trovata".
+ */
+async function readStorageListDirect(key: string): Promise<RawRecord[]> {
+  const snap = await getDoc(doc(db, "storage", key));
+  if (!snap.exists()) return [];
+  return unwrapList(snap.data());
 }
 
 function normalizeText(value: unknown): string {
@@ -132,8 +145,7 @@ export async function deleteSegnalazioneAutista(
     return await runWithCloneWriteScopedAllowance(
       NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE,
       async () => {
-        const segnalazioniRaw = await getItemSync(SEGNALAZIONI_KEY);
-        const segnalazioniList = unwrapList(segnalazioniRaw);
+        const segnalazioniList = await readStorageListDirect(SEGNALAZIONI_KEY);
         const sourceIndex = segnalazioniList.findIndex(
           (record) => normalizeText(record.id) === segnalazioneId,
         );
@@ -146,8 +158,7 @@ export async function deleteSegnalazioneAutista(
 
         let detachedManutenzioneIds: string[] = [];
         if (linkedManutenzioneIds.length > 0) {
-          const manutenzioniRaw = await getItemSync(MANUTENZIONI_KEY);
-          const manutenzioniList = unwrapList(manutenzioniRaw);
+          const manutenzioniList = await readStorageListDirect(MANUTENZIONI_KEY);
           const linkedSet = new Set(linkedManutenzioneIds);
           let changed = false;
           const nextManutenzioni = manutenzioniList.map((record) => {

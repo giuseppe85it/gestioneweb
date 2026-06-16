@@ -152,6 +152,7 @@ export type NextManutenzioniLegacyDatasetRecord = {
   sottotipo: SottoTipo | null;
   descrizione: string;
   eseguito: string | null;
+  noteEsecuzione?: string | null;
   data: string;
   dataEsecuzione?: string | null;
   tipo: TipoVoce;
@@ -242,6 +243,7 @@ export type NextManutenzioneBusinessSavePayload = {
   sottotipo?: SottoTipo | null;
   descrizione: string;
   eseguito?: string | null;
+  noteEsecuzione?: string | null;
   data: string;
   dataEsecuzione?: string | null;
   stato?: NextManutenzioneStato | null;
@@ -661,6 +663,7 @@ function toLegacyDatasetRecord(
   const origineRefs = readLegamiOrigine(raw);
   const segnalatoDa = optionalTextField(raw, "segnalatoDa");
   const eseguitoDa = optionalTextField(raw, "eseguitoDa");
+  const noteEsecuzione = optionalTextField(raw, "noteEsecuzione");
   const urgenza = optionalUrgenzaField(raw);
   const chiusuraDi = optionalTextField(raw, "chiusuraDi");
   const chiusuraRefId = optionalTextField(raw, "chiusuraRefId");
@@ -675,6 +678,7 @@ function toLegacyDatasetRecord(
     sottotipo: tipo === "compressore" ? normalizeLegacySottotipo(raw.sottotipo) : null,
     descrizione,
     eseguito: normalizeOptionalText(raw.eseguito),
+    ...(noteEsecuzione !== undefined ? { noteEsecuzione } : {}),
     data,
     ...(dataEsecuzione !== undefined ? { dataEsecuzione } : {}),
     tipo,
@@ -1092,6 +1096,9 @@ function sanitizeBusinessRecord(
   const urgenza = hasOwnField(payloadRaw, "urgenza")
     ? sanitizeManutenzioneUrgenza(payload.urgenza)
     : undefined;
+  const noteEsecuzione = hasOwnField(payloadRaw, "noteEsecuzione")
+    ? normalizeOptionalText(payload.noteEsecuzione)
+    : undefined;
   return {
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
@@ -1102,6 +1109,7 @@ function sanitizeBusinessRecord(
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
     descrizione: normalizeOptionalText(payload.descrizione) ?? "Manutenzione",
     eseguito: normalizeOptionalText(payload.eseguito),
+    ...(noteEsecuzione !== undefined ? { noteEsecuzione } : {}),
     data,
     ...(dataEsecuzione !== undefined ? { dataEsecuzione } : {}),
     ...(stato !== undefined ? { stato } : {}),
