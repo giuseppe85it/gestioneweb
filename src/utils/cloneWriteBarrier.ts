@@ -108,6 +108,9 @@ const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
 const SCADENZE_COLLAUDI_ALLOWED_WRITE_PATH = "/next/scadenze-collaudi";
 const SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS = new Set<string>(["@mezzi_aziendali"]);
 const SCADENZE_COLLAUDI_WRITE_SCOPE = "scadenze_collaudi_write_scope";
+const NEXT_HOME_LUOGO_MEZZO_ALLOWED_WRITE_PATH = "/next";
+const NEXT_HOME_LUOGO_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>(["@storico_eventi_operativi"]);
+export const NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE = "next_home_luogo_mezzo_write_scope";
 const RIFORNIMENTI_ALLOWED_WRITE_PATH = "/next/centro-controllo";
 const RIFORNIMENTI_ALLOWED_STORAGE_KEYS = new Set<string>(["@rifornimenti_autisti_tmp"]);
 const RIFORNIMENTI_ALLOWED_FIRESTORE_DOC_PATHS = new Set<string>(["storage/@rifornimenti"]);
@@ -537,7 +540,8 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof GRUPPO_SEGNALAZIONI_WRITE_SCOPE
     | typeof NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE
-    | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE,
+    | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE
+    | typeof NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -771,6 +775,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    pathname === NEXT_HOME_LUOGO_MEZZO_ALLOWED_WRITE_PATH &&
+    hasCloneWriteScopedAllowance(NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return NEXT_HOME_LUOGO_MEZZO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

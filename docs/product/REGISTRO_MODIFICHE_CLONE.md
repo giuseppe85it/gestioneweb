@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-16 1615
+
+DATA: `2026-06-16`
+TITOLO: `Home NEXT targa dossier`
+FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/next/domain/nextCentroControlloDomain.ts`, `src/next/next-home.css`
+COSA: Rimossa la seconda card bassa `Manutenzioni da fare`. La targa nelle card luogo mezzi/rimorchi apre il dossier NEXT e mostra su hover/focus una mini scheda read-only con foto, categoria, autista e sessione attiva.
+ESITO: `FATTO`
+NOTE: Nessuna nuova scrittura, nessun barrier/writer/madre toccato.
+
 ## 2026-06-10 1615
 
 DATA: `2026-06-10`
@@ -125,3 +134,12 @@ FILE TOCCATI: `docs/mockups/*`, `src/next/NextTyreVehicleViewDemoPage.tsx`, `doc
 COSA: Creata `schema delle gomme_neutra.png` dalla stessa geometria del mockup colorato e generate tre maschere da rosso/blu/giallo. La demo usa la neutra e applica overlay colore da mask PNG in SVG.
 ESITO: `FATTO`
 NOTE: Build verde e controllo browser su `/next/dev/gomme-demo`; preset `Gemellato completo` e `Tutte` verificati.
+
+## 2026-06-16 1502
+
+DATA: `2026-06-16`
+TITOLO: `Home NEXT salva luogo mezzi`
+FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/next/writers/nextHomeLuogoMezzoWriter.ts`, `src/utils/cloneWriteBarrier.ts`
+COSA: Il pulsante Modifica/Salva del luogo motrici/rimorchi scrive ora solo `@storico_eventi_operativi`, aggiornando `luogo` sull'evento esistente o creando un `CAMBIO_ASSETTO` admin coerente con la madre. Rimosso il falso overlay locale e sostituita la card mezzi fissa con conteggi reali.
+ESITO: `FATTO`
+NOTE: Lint mirato, test writer 6/6 e build canonica OK; verifica browser live solo non distruttiva.

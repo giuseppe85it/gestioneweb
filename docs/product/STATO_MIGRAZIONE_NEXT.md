@@ -1,5 +1,32 @@
 # STATO MIGRAZIONE NEXT
 
+## 2026-06-16 - Home NEXT targa dossier e mini scheda
+
+La Home NEXT `/next` rimuove il widget basso duplicato `Manutenzioni da fare`: resta la card alta a destra con conteggi e prime righe operative.
+
+- Nelle card luogo mezzi/rimorchi la targa e' ora il solo link verso il dossier NEXT `/next/dossier/:targa`.
+- La riga flotta non apre piu Autisti Admin; `Modifica / Salva` resta separato e continua a usare il writer luogo gia aperto.
+- Su hover/focus della targa appare una mini scheda read-only con categoria, foto mezzo se presente, autista abituale e sessione attiva.
+- I dati della mini scheda derivano dallo snapshot D10 gia letto dalla Home: `@mezzi_aziendali` e `@autisti_sessione_attive` in sola lettura.
+- `D10MezzoItem` espone ora `fotoUrl`, `fotoPath`, `fotoStoragePath` per permettere alla Home di mostrare la foto senza nuove query.
+- Nessun writer, barrier, dataset di scrittura o madre legacy toccato.
+
+Stato: **HOME NEXT PARZIALE, UI DOSSIER RAPIDA READ-ONLY AGGIUNTA**.
+
+## 2026-06-16 - Home NEXT salva luogo mezzi/rimorchi
+
+La Home NEXT `/next` non usa piu un overlay React temporaneo per il campo luogo di motrici e rimorchi liberi.
+
+- Il pulsante `Modifica / Salva` chiama ora `src/next/writers/nextHomeLuogoMezzoWriter.ts`.
+- La sola scrittura aperta e' `storageSync.setItemSync("@storico_eventi_operativi")` dal path `/next`, protetta dallo scope `NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE` in `src/utils/cloneWriteBarrier.ts`.
+- Se la riga ha un evento sorgente, il writer aggiorna solo il campo `luogo` e preserva timestamp e resto payload.
+- Se manca un evento sorgente, il writer crea un evento `CAMBIO_ASSETTO` admin con `source: "Home NEXT"`, coerente con la madre.
+- Nessuna scrittura aperta su `@mezzi_aziendali`, `@alerts_state`, manutenzioni, inventario, procurement o altre card Home.
+- La card `Mezzi attivi` usa conteggi reali da `readNextCentroControlloSnapshot()` invece dei valori fissi `12 / 15`.
+- Il reader procurement della Home usa `includeCloneOverlays: false`.
+
+Stato: **HOME NEXT PARZIALE, SCRITTURA LUOGO MEZZO APERTA IN MODO CHIRURGICO**.
+
 ## 2026-06-10 - Resolver immagine mezzo nel Dettaglio gomme
 
 Il Dettaglio manutenzione gomme ora sceglie l'immagine mezzo seguendo la stessa fonte usata da Gomme Autisti: `src/components/wheels.ts` e la regola equivalente a `resolveWheelGeomKey(categoria)`.

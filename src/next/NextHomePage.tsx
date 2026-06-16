@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate } from "react-router-dom";
 import "./next-home.css";
 import { getNextRoleFromSearch } from "./nextAccess";
 import {
   NEXT_AUTISTI_APP_PATH,
   NEXT_MAGAZZINO_PATH,
+  buildNextDossierPath,
   buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
 import {
   readNextCentroControlloSnapshot,
   type D10AssetLocationItem,
+  type D10MezzoItem,
+  type D10SessionItem,
   type D10Snapshot,
 } from "./domain/nextCentroControlloDomain";
 import {
@@ -24,6 +27,7 @@ import {
 } from "./domain/nextInventarioDomain";
 import { readNextProcurementSnapshot } from "./domain/nextProcurementDomain";
 import { toDisplay } from "./helpers/dateUnica";
+import { saveNextHomeLuogoMezzo } from "./writers/nextHomeLuogoMezzoWriter";
 
 type StatCard = {
   label: string;
@@ -38,13 +42,26 @@ type FleetRow = {
   luogo: string;
   luogoRaw: string;
   categoria: string | null;
+  autistaNome: string | null;
+  fotoUrl: string | null;
   tone: StatusTone;
   badge: string;
+  dossierHref: string;
+  sessionActive: boolean;
+  sessionDriver: string | null;
+  sessionBadge: string | null;
+  sessionStatus: string | null;
+  assetKind: D10AssetLocationItem["assetKind"];
+  luogoEventId: string | null;
+  luogoEventIndex: number | null;
 };
 
 type FleetEditState = {
   targa: string;
   luogo: string;
+  assetKind: D10AssetLocationItem["assetKind"];
+  luogoEventId: string | null;
+  luogoEventIndex: number | null;
 };
 
 type TaskRow = {
@@ -75,13 +92,6 @@ type HomeStatsState = {
 };
 
 const FLEET_PREVIEW_ROWS = 3;
-const PLACEHOLDER_MEZZI_CARD: StatCard = {
-  label: "Mezzi attivi",
-  value: "12",
-  detail: "su 15 totali",
-};
-
-const FLEET_ADMIN_PATH = "/next/autisti-admin";
 
 function formatCurrentDate(date: Date) {
   const giorni = ["Domenica", "Lunedi", "Martedi", "Mercoledi", "Giovedi", "Venerdi", "Sabato"];
@@ -212,22 +222,82 @@ function formatFleetCategoria(categoria: string | null | undefined): string {
   return value || "Categoria non indicata";
 }
 
+function buildMezziByTarga(snapshot: D10Snapshot | null): Map<string, D10MezzoItem> {
+  const result = new Map<string, D10MezzoItem>();
+  snapshot?.mezzi.forEach((mezzo) => {
+    if (mezzo.targa) {
+      result.set(mezzo.targa, mezzo);
+    }
+  });
+  return result;
+}
+
+function buildSessioniByTarga(snapshot: D10Snapshot | null): Map<string, D10SessionItem> {
+  const result = new Map<string, D10SessionItem>();
+  snapshot?.sessioni.forEach((sessione) => {
+    if (sessione.targaMotrice) {
+      result.set(sessione.targaMotrice, sessione);
+    }
+    if (sessione.targaRimorchio) {
+      result.set(sessione.targaRimorchio, sessione);
+    }
+  });
+  return result;
+}
+
 function buildFleetWidgetRows(
   items: D10AssetLocationItem[],
-  overrides: Record<string, string>,
+  snapshot: D10Snapshot | null,
 ): FleetRow[] {
-  return items.map((item) => ({
-    targa: item.targa,
-    luogo: Object.prototype.hasOwnProperty.call(overrides, item.targa)
-      ? overrides[item.targa].trim() || "Luogo non impostato"
-      : item.luogo,
-    luogoRaw: Object.prototype.hasOwnProperty.call(overrides, item.targa)
-      ? overrides[item.targa]
-      : item.luogoRaw,
-    categoria: item.categoria,
-    tone: mapAssetStatusTone(item.statusLabel),
-    badge: item.statusLabel.toLowerCase(),
-  }));
+  const mezziByTarga = buildMezziByTarga(snapshot);
+  const sessioniByTarga = buildSessioniByTarga(snapshot);
+
+  return items.map((item) => {
+    const mezzo = mezziByTarga.get(item.targa) ?? null;
+    const sessione = sessioniByTarga.get(item.targa) ?? null;
+
+    return {
+      targa: item.targa,
+      luogo: item.luogo,
+      luogoRaw: item.luogoRaw,
+      categoria: item.categoria ?? mezzo?.categoria ?? null,
+      autistaNome: item.autistaNome ?? mezzo?.autistaNome ?? null,
+      fotoUrl: mezzo?.fotoUrl ?? null,
+      tone: mapAssetStatusTone(item.statusLabel),
+      badge: item.statusLabel.toLowerCase(),
+      dossierHref: buildNextDossierPath(item.targa),
+      sessionActive: Boolean(sessione),
+      sessionDriver: sessione?.nomeAutista ?? null,
+      sessionBadge: sessione?.badgeAutista ?? null,
+      sessionStatus: sessione?.statoSessione ?? null,
+      assetKind: item.assetKind,
+      luogoEventId: item.luogoEventId,
+      luogoEventIndex: item.luogoEventIndex,
+    };
+  });
+}
+
+function buildMezziAttiviCard(snapshot: D10Snapshot | null): StatCard {
+  if (!snapshot) {
+    return {
+      label: "Mezzi attivi",
+      value: "-",
+      detail: "in caricamento",
+    };
+  }
+
+  const activeTarghe = new Set<string>();
+  snapshot.sessioni.forEach((sessione) => {
+    if (sessione.targaMotrice) activeTarghe.add(sessione.targaMotrice);
+    if (sessione.targaRimorchio) activeTarghe.add(sessione.targaRimorchio);
+  });
+
+  const mezziTotali = snapshot.mezzi.filter((mezzo) => Boolean(mezzo.targa)).length;
+  return {
+    label: "Mezzi attivi",
+    value: String(activeTarghe.size),
+    detail: `su ${mezziTotali} totali`,
+  };
 }
 
 function rebucketHomeFleetItems(snapshot: D10Snapshot | null): {
@@ -340,23 +410,21 @@ export default function NextHomePage() {
   });
   const [lavoriSnapshot, setLavoriSnapshot] = useState<NextManutenzioniLegacyDatasetRecord[] | null>(null);
   const [inventarioSnapshot, setInventarioSnapshot] = useState<NextInventarioSnapshot | null>(null);
-  const [fleetLocationOverrides, setFleetLocationOverrides] = useState<Record<string, string>>({});
   const [fleetEdit, setFleetEdit] = useState<FleetEditState | null>(null);
+  const [fleetSaving, setFleetSaving] = useState(false);
   const [motriciExpanded, setMotriciExpanded] = useState(false);
   const [rimorchiExpanded, setRimorchiExpanded] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-
-    const loadSnapshot = async () => {
+  const loadSnapshot = useCallback(
+    async (isActive: () => boolean = () => true) => {
       const [centroResult, lavoriResult, procurementResult, inventarioResult] = await Promise.allSettled([
         readNextCentroControlloSnapshot(Date.now()),
         readNextManutenzioniDaFareSnapshot(),
-        readNextProcurementSnapshot(),
+        readNextProcurementSnapshot({ includeCloneOverlays: false }),
         readNextInventarioSnapshot({ includeCloneOverlays: false }),
       ]);
 
-      if (!active) {
+      if (!isActive()) {
         return;
       }
 
@@ -396,19 +464,24 @@ export default function NextHomePage() {
         segnalazioniNuove:
           centroResult.status === "fulfilled" ? centroResult.value.counters.segnalazioniNuove : null,
       });
-    };
+    },
+    [],
+  );
 
-    void loadSnapshot();
+  useEffect(() => {
+    let active = true;
+
+    void loadSnapshot(() => active);
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadSnapshot]);
 
   const alertBanner = useMemo(() => buildHomeAlertBanner(centroSnapshot), [centroSnapshot]);
   const statCards = useMemo<StatCard[]>(
     () => [
-      PLACEHOLDER_MEZZI_CARD,
+      buildMezziAttiviCard(centroSnapshot),
       {
         label: "Manutenzioni da fare",
         value: formatHomeStatValue(homeStats.lavoriAperti),
@@ -430,18 +503,17 @@ export default function NextHomePage() {
               : "da gestire",
       },
     ],
-    [homeStats],
+    [centroSnapshot, homeStats],
   );
   const fleetBuckets = useMemo(() => rebucketHomeFleetItems(centroSnapshot), [centroSnapshot]);
   const motriciRows = useMemo(
-    () => buildFleetWidgetRows(fleetBuckets.motrici, fleetLocationOverrides),
-    [fleetBuckets, fleetLocationOverrides],
+    () => buildFleetWidgetRows(fleetBuckets.motrici, centroSnapshot),
+    [centroSnapshot, fleetBuckets],
   );
   const rimorchiRows = useMemo(
-    () => buildFleetWidgetRows(fleetBuckets.rimorchi, fleetLocationOverrides),
-    [fleetBuckets, fleetLocationOverrides],
+    () => buildFleetWidgetRows(fleetBuckets.rimorchi, centroSnapshot),
+    [centroSnapshot, fleetBuckets],
   );
-  const lavoriOpenRows = useMemo(() => buildLavoriWidgetRows(lavoriSnapshot), [lavoriSnapshot]);
   const inventarioRows = useMemo(
     () => buildInventarioWidgetRows(inventarioSnapshot),
     [inventarioSnapshot],
@@ -455,6 +527,9 @@ export default function NextHomePage() {
     setFleetEdit({
       targa: row.targa,
       luogo: row.luogoRaw || "",
+      assetKind: row.assetKind,
+      luogoEventId: row.luogoEventId,
+      luogoEventIndex: row.luogoEventIndex,
     });
   };
 
@@ -462,20 +537,78 @@ export default function NextHomePage() {
     setFleetEdit(null);
   };
 
-  const saveFleetEdit = () => {
+  const saveFleetEdit = async () => {
     if (!fleetEdit) {
       return;
     }
 
-    setFleetLocationOverrides((prev) => ({
-      ...prev,
-      [fleetEdit.targa]: fleetEdit.luogo.trim(),
-    }));
-    setFleetEdit(null);
+    setFleetSaving(true);
+    try {
+      const result = await saveNextHomeLuogoMezzo({
+        targa: fleetEdit.targa,
+        luogo: fleetEdit.luogo,
+        assetKind: fleetEdit.assetKind,
+        eventId: fleetEdit.luogoEventId,
+        eventIndex: fleetEdit.luogoEventIndex,
+      });
+
+      if (!result.ok) {
+        const message =
+          result.reason === "luogo_mancante"
+            ? "Inserisci il luogo del mezzo."
+            : result.reason === "targa_mancante"
+              ? "Targa mezzo non disponibile."
+              : "Storico eventi non leggibile: salvataggio non eseguito.";
+        window.alert(message);
+        return;
+      }
+
+      setFleetEdit(null);
+      await loadSnapshot();
+    } catch {
+      window.alert("Salvataggio luogo non riuscito.");
+    } finally {
+      setFleetSaving(false);
+    }
   };
 
-  const openFleetAdmin = () => {
-    navigate(FLEET_ADMIN_PATH);
+  const renderFleetMiniDossier = (row: FleetRow) => {
+    const sessionLabel = row.sessionActive
+      ? `${row.sessionDriver ?? "Autista non indicato"}${row.sessionBadge ? ` (${row.sessionBadge})` : ""}`
+      : "no";
+
+    return (
+      <div className="next-home__fleet-mini-dossier" role="tooltip">
+        <div className="next-home__fleet-mini-photo">
+          {row.fotoUrl ? (
+            <img src={row.fotoUrl} alt={`Foto mezzo ${row.targa}`} />
+          ) : (
+            <span>Nessuna foto</span>
+          )}
+        </div>
+        <div className="next-home__fleet-mini-content">
+          <div className="next-home__fleet-mini-title">{row.targa}</div>
+          <div className="next-home__fleet-mini-row">
+            <span>Categoria</span>
+            <strong>{formatFleetCategoria(row.categoria)}</strong>
+          </div>
+          <div className="next-home__fleet-mini-row">
+            <span>Autista abituale</span>
+            <strong>{row.autistaNome ?? "Non indicato"}</strong>
+          </div>
+          <div className="next-home__fleet-mini-row">
+            <span>Sessione attiva</span>
+            <strong>{sessionLabel}</strong>
+          </div>
+          {row.sessionActive && row.sessionStatus ? (
+            <div className="next-home__fleet-mini-row">
+              <span>Stato</span>
+              <strong>{row.sessionStatus}</strong>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
   };
 
   const renderFleetWidget = (
@@ -500,7 +633,12 @@ export default function NextHomePage() {
           <div key={row.targa} className="next-home__fleet-edit-row">
             <div className="next-home__fleet-row-top">
               <div className={`next-home__tone-dot next-home__tone-dot--${row.tone}`} />
-              <div className="next-home__fleet-code">{row.targa}</div>
+              <div className="next-home__fleet-plate-wrap">
+                <NavLink to={row.dossierHref} className="next-home__fleet-code next-home__fleet-code--link">
+                  {row.targa}
+                </NavLink>
+                {renderFleetMiniDossier(row)}
+              </div>
               <div className="next-home__fleet-main">
                 <div className="next-home__fleet-detail">{row.luogo}</div>
                 <div className="next-home__fleet-category">{formatFleetCategoria(row.categoria)}</div>
@@ -512,6 +650,7 @@ export default function NextHomePage() {
                 type="text"
                 className="next-home__fleet-inline-input"
                 value={fleetEdit?.luogo ?? ""}
+                disabled={fleetSaving}
                 onChange={(event) =>
                   setFleetEdit((prev) =>
                     prev ? { ...prev, luogo: event.target.value } : prev,
@@ -523,6 +662,7 @@ export default function NextHomePage() {
                 <button
                   type="button"
                   className="next-home__fleet-inline-btn"
+                  disabled={fleetSaving}
                   onClick={cancelFleetEdit}
                 >
                   Annulla
@@ -530,9 +670,12 @@ export default function NextHomePage() {
                 <button
                   type="button"
                   className="next-home__fleet-inline-btn next-home__fleet-inline-btn--primary"
-                  onClick={saveFleetEdit}
+                  disabled={fleetSaving}
+                  onClick={() => {
+                    void saveFleetEdit();
+                  }}
                 >
-                  Salva
+                  {fleetSaving ? "Salvataggio..." : "Salva"}
                 </button>
               </div>
             </div>
@@ -544,18 +687,14 @@ export default function NextHomePage() {
         <div
           key={row.targa}
           className="next-home__fleet-link-row"
-          role="link"
-          tabIndex={0}
-          onClick={openFleetAdmin}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              openFleetAdmin();
-            }
-          }}
         >
           <div className={`next-home__tone-dot next-home__tone-dot--${row.tone}`} />
-          <div className="next-home__fleet-code">{row.targa}</div>
+          <div className="next-home__fleet-plate-wrap">
+            <NavLink to={row.dossierHref} className="next-home__fleet-code next-home__fleet-code--link">
+              {row.targa}
+            </NavLink>
+            {renderFleetMiniDossier(row)}
+          </div>
           <div className="next-home__fleet-main">
             <div className="next-home__fleet-detail">{row.luogo}</div>
             <div className="next-home__fleet-category">{formatFleetCategoria(row.categoria)}</div>
@@ -572,9 +711,6 @@ export default function NextHomePage() {
             Modifica
           </button>
           <div className={`next-home__badge next-home__badge--${row.tone}`}>{row.badge}</div>
-          <span className="next-home__fleet-arrow" aria-hidden="true">
-            -&gt;
-          </span>
         </div>
       );
         })}
@@ -723,35 +859,7 @@ export default function NextHomePage() {
         </article>
       </section>
 
-      <section className="next-home__widgets-grid" aria-label="Widget operativi">
-        <article className="next-home__widget">
-          <div className="next-home__widget-head">
-            <h2>Manutenzioni da fare</h2>
-            <NavLink to="/next/manutenzioni" className="next-home__widget-link">
-              Tutti -&gt;
-            </NavLink>
-          </div>
-          <div className="next-home__widget-list next-home__widget-list--tasks">
-            {lavoriOpenRows.length ? (
-              lavoriOpenRows.map((row) => (
-                <NavLink
-                  key={`${row.title}:${row.detail}`}
-                  to={row.href ?? "/next/manutenzioni"}
-                  className="next-home__task-row"
-                >
-                  <div>
-                    <div className="next-home__task-title">{row.title}</div>
-                    <div className="next-home__task-detail">{row.detail}</div>
-                  </div>
-                  <div className={`next-home__badge next-home__badge--${row.tone}`}>{row.badge}</div>
-                </NavLink>
-              ))
-            ) : (
-              <div className="next-home__widget-empty">Nessuna manutenzione da fare disponibile</div>
-            )}
-          </div>
-        </article>
-
+      <section className="next-home__widgets-grid next-home__widgets-grid--single" aria-label="Widget operativi">
         <article className="next-home__widget">
           <div className="next-home__widget-head">
             <h2>Magazzino</h2>

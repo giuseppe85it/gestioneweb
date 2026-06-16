@@ -134,6 +134,9 @@ export type D10MezzoItem = {
   targa: string | null;
   categoria: string | null;
   autistaNome: string | null;
+  fotoUrl: string | null;
+  fotoPath: string | null;
+  fotoStoragePath: string | null;
   marca: string | null;
   modello: string | null;
   dataImmatricolazioneTs: number | null;
@@ -635,6 +638,9 @@ function normalizeMezzoRecord(record: MezzoRecord, index: number): D10MezzoItem 
     targa,
     categoria: normalizeOptionalText(record.categoria),
     autistaNome: normalizeOptionalText(record.autistaNome),
+    fotoUrl: normalizeOptionalText(record.fotoUrl),
+    fotoPath: normalizeOptionalText(record.fotoPath),
+    fotoStoragePath: normalizeOptionalText(record.fotoStoragePath),
     marca: normalizeOptionalText(record.marca),
     modello: normalizeOptionalText(record.modello),
     dataImmatricolazioneTs: toTimestamp(record.dataImmatricolazione),
