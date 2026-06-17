@@ -216,6 +216,13 @@ function NextSchedaMezzoPage() {
                   .filter(Boolean)
                   .join(" · ") || "Mezzo"}
               </div>
+              {view.mezzo?.manutenzioneProgrammata ? (
+                <div className="next-scheda__tags">
+                  <span className="next-scheda__badge next-scheda__badge--info">
+                    Manutenzione programmata
+                  </span>
+                </div>
+              ) : null}
             </div>
             <div className="next-scheda__actions">
               <a className="next-scheda__btn next-scheda__btn--primary" href={dossierPath}>
@@ -251,13 +258,47 @@ function NextSchedaMezzoPage() {
               <MetaItem label="Anno" value={view.mezzo?.anno} />
               <MetaItem label="Autista assegnato" value={view.mezzo?.autistaNome} />
               <MetaItem label="Proprietario" value={view.mezzo?.proprietario} />
-              <MetaItem label="Scadenza revisione" value={view.mezzo?.dataScadenzaRevisione} />
+              <MetaItem
+                label="Scadenza revisione"
+                value={
+                  view.mezzo?.dataScadenzaRevisione
+                    ? toDisplay(view.mezzo.dataScadenzaRevisione) || view.mezzo.dataScadenzaRevisione
+                    : null
+                }
+              />
               <MetaItem
                 label="Km attuali"
                 value={kmAttuali !== null ? kmAttuali.toLocaleString("it-IT") : null}
               />
             </div>
           </section>
+
+          {view.mezzo?.manutenzioneProgrammata ? (
+            <section className="next-scheda__section">
+              <SectionHead title="Manutenzione programmata" />
+              <div className="next-scheda__meta-grid">
+                <MetaItem label="Contratto / Officina" value={view.mezzo.manutenzioneContratto} />
+                <MetaItem
+                  label="Dal"
+                  value={
+                    view.mezzo.manutenzioneDataInizio
+                      ? toDisplay(view.mezzo.manutenzioneDataInizio) ||
+                        view.mezzo.manutenzioneDataInizio
+                      : null
+                  }
+                />
+                <MetaItem
+                  label="Al"
+                  value={
+                    view.mezzo.manutenzioneDataFine
+                      ? toDisplay(view.mezzo.manutenzioneDataFine) || view.mezzo.manutenzioneDataFine
+                      : null
+                  }
+                />
+                <MetaItem label="Km massimi" value={view.mezzo.manutenzioneKmMax} />
+              </div>
+            </section>
+          ) : null}
 
           <section className="next-scheda__section">
             <SectionHead title="Scadenze" count={extra.scadenze.length} />

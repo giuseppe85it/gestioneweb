@@ -91,6 +91,13 @@
   font-size: 16px;
 }
 
+.next-scheda__tags {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .next-scheda__actions {
   display: flex;
   flex-wrap: wrap;
