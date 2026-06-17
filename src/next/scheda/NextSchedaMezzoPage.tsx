@@ -311,40 +311,60 @@ function NextSchedaMezzoPage() {
           <section className="next-scheda__section">
             <SectionHead title="Conduzione mezzo" />
             {conducenteAttuale ? (
-              <>
-                <p className="next-scheda__lead">
-                  Alla guida ora: <strong>{conducenteAttuale.nome}</strong>
-                  {conducenteAttuale.badge ? ` (badge ${conducenteAttuale.badge})` : ""}, dal{" "}
-                  {toDisplay(conducenteAttuale.start) || "data non disponibile"}.
-                </p>
-                {conducentePrecedente ? (
-                  <p className="next-scheda__note">
-                    Prima di {conducenteAttuale.nome} lo ha guidato{" "}
-                    <strong>{conducentePrecedente.nome}</strong>, dal{" "}
-                    {toDisplay(conducentePrecedente.start) || "—"} al{" "}
-                    {toDisplay(conducentePrecedente.end) || "—"}.
-                  </p>
-                ) : (
-                  <p className="next-scheda__note">Nessun conducente precedente registrato.</p>
-                )}
-                {conduzioneStorica.length > 0 ? (
-                  <div className="next-scheda__list">
-                    {conduzioneStorica.map((periodo, index) => (
-                      <div key={`${periodo.nome}:${periodo.start}:${index}`} className="next-scheda__row">
-                        <div className="next-scheda__row-main">
-                          <div className="next-scheda__row-title">{periodo.nome}</div>
-                          <div className="next-scheda__row-meta">
-                            <span>
-                              dal {toDisplay(periodo.start) || "—"}
-                              {periodo.end ? ` al ${toDisplay(periodo.end)}` : ""}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              <div className="next-scheda__kv-list">
+                <div className="next-scheda__kv next-scheda__kv--current">
+                  <div className="next-scheda__kv-key">
+                    <span className="next-scheda__kv-name">{conducenteAttuale.nome}</span>
+                    {conducenteAttuale.badge ? (
+                      <span className="next-scheda__kv-sub">badge {conducenteAttuale.badge}</span>
+                    ) : null}
                   </div>
-                ) : null}
-              </>
+                  <div className="next-scheda__kv-val">
+                    <span className="next-scheda__badge next-scheda__badge--ok">in uso</span>
+                    <span className="next-scheda__kv-meta">
+                      dal {toDisplay(conducenteAttuale.start) || "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {conducentePrecedente ? (
+                  <div className="next-scheda__kv">
+                    <div className="next-scheda__kv-key">
+                      <span className="next-scheda__kv-name">{conducentePrecedente.nome}</span>
+                      <span className="next-scheda__kv-sub">conducente precedente</span>
+                    </div>
+                    <div className="next-scheda__kv-val">
+                      <span className="next-scheda__kv-strong">
+                        {toDisplay(conducentePrecedente.start) || "—"} –{" "}
+                        {toDisplay(conducentePrecedente.end) || "—"}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="next-scheda__kv">
+                    <div className="next-scheda__kv-key">
+                      <span className="next-scheda__kv-name">Nessun conducente precedente</span>
+                    </div>
+                  </div>
+                )}
+
+                {conduzioneStorica.map((periodo, index) => (
+                  <div
+                    key={`${periodo.nome}:${periodo.start}:${index}`}
+                    className="next-scheda__kv"
+                  >
+                    <div className="next-scheda__kv-key">
+                      <span className="next-scheda__kv-name">{periodo.nome}</span>
+                    </div>
+                    <div className="next-scheda__kv-val">
+                      <span className="next-scheda__kv-strong">
+                        {toDisplay(periodo.start) || "—"}
+                        {periodo.end ? ` – ${toDisplay(periodo.end)}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="next-scheda__empty">
                 Nessuna assegnazione conducente tracciata.
@@ -408,25 +428,29 @@ function NextSchedaMezzoPage() {
             {extra.scadenze.length === 0 ? (
               <div className="next-scheda__empty">Nessuna scadenza configurata.</div>
             ) : (
-              <div className="next-scheda__list">
+              <div className="next-scheda__kv-list">
                 {extra.scadenze.map((scadenza) => {
                   const badge = scadenzaBadge(scadenza);
                   const prossima = scadenza.componenti.find((c) => c.base === "tempo")?.prossimaData;
                   return (
-                    <div key={scadenza.id} className="next-scheda__row">
-                      <div className="next-scheda__row-main">
-                        <div className="next-scheda__row-title">{scadenza.label || scadenza.tipo}</div>
-                        <div className="next-scheda__row-meta">
-                          {scadenza.giorniMin !== null ? (
-                            <span>{giorniLabel(scadenza.giorniMin)}</span>
-                          ) : null}
-                          {prossima ? <span>scadenza {toDisplay(prossima)}</span> : null}
-                        </div>
+                    <div key={scadenza.id} className="next-scheda__kv">
+                      <div className="next-scheda__kv-key">
+                        <span className="next-scheda__kv-name">
+                          {scadenza.label || scadenza.tipo}
+                        </span>
+                        {prossima ? (
+                          <span className="next-scheda__kv-sub">prossima {toDisplay(prossima)}</span>
+                        ) : null}
                       </div>
-                      <div className="next-scheda__row-aside">
+                      <div className="next-scheda__kv-val next-scheda__kv-val--badge">
                         <span className={`next-scheda__badge next-scheda__badge--${badge.tone}`}>
                           {badge.label}
                         </span>
+                        {scadenza.giorniMin !== null ? (
+                          <span className={`next-scheda__kv-meta next-scheda__kv-meta--${badge.tone}`}>
+                            {giorniLabel(scadenza.giorniMin)}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   );
