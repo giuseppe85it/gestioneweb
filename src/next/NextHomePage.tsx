@@ -22,6 +22,7 @@ import {
   type NextManutenzioniLegacyDatasetRecord,
   type NextManutenzioneUrgenza,
 } from "./domain/nextManutenzioniDomain";
+import { readNextManutenzioniScadenzeSnapshot } from "./domain/nextManutenzioniScadenzeDomain";
 import {
   readNextInventarioSnapshot,
   type NextInventarioSnapshot,
@@ -120,7 +121,10 @@ function formatAlertSignal(
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function buildHomeAlertBanner(snapshot: D10Snapshot | null): HomeAlertBanner | null {
+function buildHomeAlertBanner(
+  snapshot: D10Snapshot | null,
+  manutScadenze: { scadute: number; inScadenza: number } | null = null,
+): HomeAlertBanner | null {
   if (!snapshot) {
     return null;
   }
@@ -129,6 +133,8 @@ function buildHomeAlertBanner(snapshot: D10Snapshot | null): HomeAlertBanner | n
   const signals = [
     formatAlertSignal(counters.revisioniScadute, "revisione scaduta", "revisioni scadute"),
     formatAlertSignal(counters.revisioniInScadenza, "revisione in scadenza", "revisioni in scadenza"),
+    formatAlertSignal(manutScadenze?.scadute ?? 0, "manutenzione scaduta", "manutenzioni scadute"),
+    formatAlertSignal(manutScadenze?.inScadenza ?? 0, "manutenzione in scadenza", "manutenzioni in scadenza"),
     formatAlertSignal(counters.conflittiSessione, "conflitto sessione", "conflitti sessione"),
     formatAlertSignal(counters.segnalazioniNuove, "segnalazione da gestire", "segnalazioni da gestire"),
     formatAlertSignal(counters.controlliKo, "controllo KO", "controlli KO"),
@@ -403,6 +409,7 @@ export default function NextHomePage() {
   const role = getNextRoleFromSearch(location.search);
   const currentDateLabel = useMemo(() => formatCurrentDate(new Date()), []);
   const [centroSnapshot, setCentroSnapshot] = useState<D10Snapshot | null>(null);
+  const [manutScadenzeCounters, setManutScadenzeCounters] = useState<{ scadute: number; inScadenza: number } | null>(null);
   const [homeStats, setHomeStats] = useState<HomeStatsState>({
     lavoriAperti: null,
     lavoriUrgenti: null,
@@ -420,12 +427,14 @@ export default function NextHomePage() {
 
   const loadSnapshot = useCallback(
     async (isActive: () => boolean = () => true) => {
-      const [centroResult, lavoriResult, procurementResult, inventarioResult] = await Promise.allSettled([
-        readNextCentroControlloSnapshot(Date.now()),
-        readNextManutenzioniDaFareSnapshot(),
-        readNextProcurementSnapshot({ includeCloneOverlays: false }),
-        readNextInventarioSnapshot({ includeCloneOverlays: false }),
-      ]);
+      const [centroResult, lavoriResult, procurementResult, inventarioResult, scadenzeManutResult] =
+        await Promise.allSettled([
+          readNextCentroControlloSnapshot(Date.now()),
+          readNextManutenzioniDaFareSnapshot(),
+          readNextProcurementSnapshot({ includeCloneOverlays: false }),
+          readNextInventarioSnapshot({ includeCloneOverlays: false }),
+          readNextManutenzioniScadenzeSnapshot(Date.now()),
+        ]);
 
       if (!isActive()) {
         return;
@@ -447,6 +456,15 @@ export default function NextHomePage() {
         setInventarioSnapshot(inventarioResult.value);
       } else {
         setInventarioSnapshot(null);
+      }
+
+      if (scadenzeManutResult.status === "fulfilled") {
+        setManutScadenzeCounters({
+          scadute: scadenzeManutResult.value.counters.scadute,
+          inScadenza: scadenzeManutResult.value.counters.inScadenza,
+        });
+      } else {
+        setManutScadenzeCounters(null);
       }
 
       setHomeStats({
@@ -481,7 +499,10 @@ export default function NextHomePage() {
     };
   }, [loadSnapshot]);
 
-  const alertBanner = useMemo(() => buildHomeAlertBanner(centroSnapshot), [centroSnapshot]);
+  const alertBanner = useMemo(
+    () => buildHomeAlertBanner(centroSnapshot, manutScadenzeCounters),
+    [centroSnapshot, manutScadenzeCounters],
+  );
   const statCards = useMemo<StatCard[]>(
     () => [
       buildMezziAttiviCard(centroSnapshot),
