@@ -22,7 +22,10 @@ import {
   type NextManutenzioniLegacyDatasetRecord,
   type NextManutenzioneUrgenza,
 } from "./domain/nextManutenzioniDomain";
-import { readNextManutenzioniScadenzeSnapshot } from "./domain/nextManutenzioniScadenzeDomain";
+import {
+  readNextManutenzioniScadenzeSnapshot,
+  type NextManutenzioniScadenzeSnapshot,
+} from "./domain/nextManutenzioniScadenzeDomain";
 import {
   readNextInventarioSnapshot,
   type NextInventarioSnapshot,
@@ -123,27 +126,45 @@ function formatAlertSignal(
 
 function buildHomeAlertBanner(
   snapshot: D10Snapshot | null,
-  manutScadenze: { scadute: number; inScadenza: number } | null = null,
+  manutCounters: NextManutenzioniScadenzeSnapshot["counters"] | null = null,
 ): HomeAlertBanner | null {
   if (!snapshot) {
     return null;
   }
 
   const { counters } = snapshot;
-  const signals = [
-    formatAlertSignal(counters.revisioniScadute, "revisione scaduta", "revisioni scadute"),
-    formatAlertSignal(counters.revisioniInScadenza, "revisione in scadenza", "revisioni in scadenza"),
-    formatAlertSignal(manutScadenze?.scadute ?? 0, "manutenzione scaduta", "manutenzioni scadute"),
-    formatAlertSignal(manutScadenze?.inScadenza ?? 0, "manutenzione in scadenza", "manutenzioni in scadenza"),
+  const cat = manutCounters?.perCategoria ?? null;
+
+  // Scadenze per settore: collaudi + cronotachigrafo / tagliandi / estintore.
+  const scadenze = [
+    formatAlertSignal(counters.revisioniScadute, "collaudo scaduto", "collaudi scaduti"),
+    formatAlertSignal(counters.revisioniInScadenza, "collaudo in scadenza", "collaudi in scadenza"),
+    formatAlertSignal(cat?.cronotachigrafo.scadute ?? 0, "cronotachigrafo scaduto", "cronotachigrafi scaduti"),
+    formatAlertSignal(cat?.cronotachigrafo.inScadenza ?? 0, "cronotachigrafo in scadenza", "cronotachigrafi in scadenza"),
+    formatAlertSignal(cat?.tagliandi.scadute ?? 0, "tagliando scaduto", "tagliandi scaduti"),
+    formatAlertSignal(cat?.tagliandi.inScadenza ?? 0, "tagliando in scadenza", "tagliandi in scadenza"),
+    formatAlertSignal(cat?.estintore.scadute ?? 0, "estintore scaduto", "estintori scaduti"),
+    formatAlertSignal(cat?.estintore.inScadenza ?? 0, "estintore in scadenza", "estintori in scadenza"),
+  ].filter((signal): signal is string => Boolean(signal));
+
+  if (scadenze.length > 0) {
+    return {
+      tone: "warning",
+      text: scadenze.join(" \u00b7 "),
+    };
+  }
+
+  // Nessuna scadenza: fallback agli altri segnali operativi.
+  const operativi = [
     formatAlertSignal(counters.conflittiSessione, "conflitto sessione", "conflitti sessione"),
     formatAlertSignal(counters.segnalazioniNuove, "segnalazione da gestire", "segnalazioni da gestire"),
     formatAlertSignal(counters.controlliKo, "controllo KO", "controlli KO"),
   ].filter((signal): signal is string => Boolean(signal));
 
-  if (signals.length > 0) {
+  if (operativi.length > 0) {
     return {
       tone: "warning",
-      text: signals.slice(0, 2).join(" \u00b7 "),
+      text: operativi.slice(0, 2).join(" \u00b7 "),
     };
   }
 
@@ -409,7 +430,9 @@ export default function NextHomePage() {
   const role = getNextRoleFromSearch(location.search);
   const currentDateLabel = useMemo(() => formatCurrentDate(new Date()), []);
   const [centroSnapshot, setCentroSnapshot] = useState<D10Snapshot | null>(null);
-  const [manutScadenzeCounters, setManutScadenzeCounters] = useState<{ scadute: number; inScadenza: number } | null>(null);
+  const [manutScadenzeCounters, setManutScadenzeCounters] = useState<
+    NextManutenzioniScadenzeSnapshot["counters"] | null
+  >(null);
   const [homeStats, setHomeStats] = useState<HomeStatsState>({
     lavoriAperti: null,
     lavoriUrgenti: null,
@@ -459,10 +482,7 @@ export default function NextHomePage() {
       }
 
       if (scadenzeManutResult.status === "fulfilled") {
-        setManutScadenzeCounters({
-          scadute: scadenzeManutResult.value.counters.scadute,
-          inScadenza: scadenzeManutResult.value.counters.inScadenza,
-        });
+        setManutScadenzeCounters(scadenzeManutResult.value.counters);
       } else {
         setManutScadenzeCounters(null);
       }

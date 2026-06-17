@@ -31,6 +31,17 @@ export const SOGLIA_ORE_RESIDUO = 50;
 
 export type ScadenzaBase = "tempo" | "km" | "ore";
 
+// Settore della scadenza (per i riepiloghi: card home, filtri pagina).
+export type ScadenzaCategoria = "cronotachigrafo" | "tagliandi" | "estintore" | "altro";
+export const SCADENZA_CATEGORIE: ScadenzaCategoria[] = ["cronotachigrafo", "tagliandi", "estintore", "altro"];
+
+export function categoriaScadenza(tipo: string): ScadenzaCategoria {
+  if (tipo === "cronotachigrafo") return "cronotachigrafo";
+  if (tipo === "estintore") return "estintore";
+  if (tipo === "tagliando_mezzo" || tipo === "tagliando_compressore") return "tagliandi";
+  return "altro";
+}
+
 export type NextScadenzaStato =
   | "ok"
   | "in_scadenza"
@@ -105,6 +116,8 @@ export type NextManutenzioniScadenzeSnapshot = {
     totali: number; // record attivi
     scadute: number;
     inScadenza: number;
+    // Ripartizione per settore (scadute / in scadenza), per la card home "Scadenze".
+    perCategoria: Record<ScadenzaCategoria, { scadute: number; inScadenza: number }>;
   };
 };
 
@@ -418,6 +431,14 @@ export async function readNextManutenzioniScadenzeSnapshot(
   });
 
   const attivi = items.filter((item) => item.attiva);
+  const perCategoria = {} as Record<ScadenzaCategoria, { scadute: number; inScadenza: number }>;
+  for (const categoria of SCADENZA_CATEGORIE) {
+    const ofCat = attivi.filter((item) => categoriaScadenza(item.tipo) === categoria);
+    perCategoria[categoria] = {
+      scadute: ofCat.filter((item) => item.stato === "scaduta").length,
+      inScadenza: ofCat.filter((item) => item.stato === "in_scadenza").length,
+    };
+  }
   return {
     sourceKey: MANUTENZIONI_SCADENZE_KEY,
     items,
@@ -425,6 +446,7 @@ export async function readNextManutenzioniScadenzeSnapshot(
       totali: attivi.length,
       scadute: attivi.filter((item) => item.stato === "scaduta").length,
       inScadenza: attivi.filter((item) => item.stato === "in_scadenza").length,
+      perCategoria,
     },
   };
 }
