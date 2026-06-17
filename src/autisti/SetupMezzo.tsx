@@ -79,6 +79,19 @@ function norm(s: string) {
   return (s || "").trim().toLowerCase();
 }
 
+// Regola aggancio: una MOTRICE a 2/3/4 assi può trainare SOLO un rimorchio
+// di categoria "biga". Il "trattore stradale" NON è una motrice 2/3/4 assi
+// (traina semirimorchi) e quindi non è soggetto al vincolo.
+function isMotriceVincolata(categoria?: string) {
+  const cat = norm(String(categoria || ""));
+  if (!cat.includes("motrice")) return false;
+  return cat.includes("2 ass") || cat.includes("3 ass") || cat.includes("4 ass");
+}
+
+function isCategoriaBiga(categoria?: string) {
+  return norm(String(categoria || "")).includes("biga");
+}
+
 const fmtTarga = (t: string) => (t || "").trim().toUpperCase();
 const fmtText = (t: any) => String(t ?? "").trim();
 
@@ -159,6 +172,15 @@ export default function SetupMezzo() {
     });
   }, [mezziAll]);
 
+  const categoriaByTarga = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of mezziAll) {
+      const key = fmtTarga(String(m.targa || ""));
+      if (key) map.set(key, String(m.categoria || ""));
+    }
+    return map;
+  }, [mezziAll]);
+
   useEffect(() => {
     let alive = true;
 
@@ -232,6 +254,28 @@ export default function SetupMezzo() {
     return `IN USO da ${s.nomeAutista}`;
   }
 
+  // Verifica la compatibilità dell'aggancio motrice↔rimorchio.
+  // Una motrice 2/3/4 assi può agganciare SOLO rimorchi "biga"; qualsiasi
+  // altra categoria è vietata con messaggio esplicito.
+  function verificaAggancio(
+    targaMot: string,
+    targaRim: string | null
+  ): { ok: boolean; message?: string } {
+    const catMot = categoriaByTarga.get(fmtTarga(String(targaMot || ""))) || "";
+    if (!isMotriceVincolata(catMot)) return { ok: true };
+    if (!targaRim) return { ok: true }; // nessun rimorchio: consentito
+    const catRim = categoriaByTarga.get(fmtTarga(String(targaRim || ""))) || "";
+    if (isCategoriaBiga(catRim)) return { ok: true };
+    const message =
+      `Aggancio non consentito.\n` +
+      `La motrice ${fmtTarga(targaMot)} (${catMot || "categoria non specificata"}) ` +
+      `è a 2/3/4 assi: può essere agganciata SOLO a un rimorchio di categoria «biga».\n` +
+      `Il rimorchio ${fmtTarga(String(targaRim))} è di categoria ` +
+      `«${catRim || "categoria non specificata"}».\n` +
+      `Seleziona un rimorchio «biga» oppure «NESSUN RIMORCHIO».`;
+    return { ok: false, message };
+  }
+
   async function handleConfirm() {
     setErrore("");
 
@@ -242,6 +286,12 @@ export default function SetupMezzo() {
 
     if (!targaCamion) {
       setErrore("Seleziona una motrice o trattore");
+      return;
+    }
+
+    const aggancioCheck = verificaAggancio(targaCamion, targaRimorchio);
+    if (!aggancioCheck.ok) {
+      setErrore(aggancioCheck.message ?? "Aggancio non consentito.");
       return;
     }
 
@@ -444,7 +494,29 @@ export default function SetupMezzo() {
                 warn ? "warn" : ""
               }`}
               onClick={() => {
-                if (!lockMotrice) setTargaCamion(m.targa);
+                if (lockMotrice) return;
+                const check = verificaAggancio(m.targa, targaRimorchio);
+                if (!check.ok) {
+                  if (lockRimorchio) {
+                    // Cambio motrice: il rimorchio è bloccato, non posso
+                    // risolvere l'incompatibilità. Blocco la selezione.
+                    window.alert(
+                      check.message +
+                        "\n\nIl rimorchio è bloccato (CAMBIO MOTRICE): non puoi " +
+                        "agganciare questa motrice. Annulla e cambia prima il rimorchio."
+                    );
+                    return;
+                  }
+                  // Rimorchio modificabile: rimuovo quello incompatibile.
+                  window.alert(
+                    check.message +
+                      "\n\nIl rimorchio selezionato è stato rimosso perché incompatibile."
+                  );
+                  setTargaCamion(m.targa);
+                  setTargaRimorchio(null);
+                  return;
+                }
+                setTargaCamion(m.targa);
               }}
               style={lockMotrice ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
               title={warn ?? undefined}
@@ -496,7 +568,13 @@ export default function SetupMezzo() {
                 warn ? "warn" : ""
               }`}
               onClick={() => {
-                if (!lockRimorchio) setTargaRimorchio(m.targa);
+                if (lockRimorchio) return;
+                const check = verificaAggancio(targaCamion, m.targa);
+                if (!check.ok) {
+                  window.alert(check.message);
+                  return;
+                }
+                setTargaRimorchio(m.targa);
               }}
               style={lockRimorchio ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
               title={warn ?? undefined}
@@ -514,7 +592,11 @@ export default function SetupMezzo() {
         })}
       </div>
 
-      {errore && <div className="setup-error">{errore}</div>}
+      {errore && (
+        <div className="setup-error" style={{ whiteSpace: "pre-line" }}>
+          {errore}
+        </div>
+      )}
 
       <div className="setup-actions">
         <button className="setup-confirm" onClick={handleConfirm}>
