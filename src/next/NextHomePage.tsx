@@ -80,6 +80,7 @@ type TaskRow = {
 type HomeAlertBanner = {
   tone: "warning" | "success";
   text: string;
+  rows?: { label: string; detail: string }[];
 };
 
 type HomeLavoriAlert = {
@@ -123,6 +124,14 @@ function formatAlertSignal(
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+// Dettaglio di un settore per la card "Scadenze": "N scaduti · M in scadenza".
+function buildSettoreDetail(scadute: number, inScadenza: number): string | null {
+  const parts: string[] = [];
+  if (scadute > 0) parts.push(`${scadute} ${scadute === 1 ? "scaduto" : "scaduti"}`);
+  if (inScadenza > 0) parts.push(`${inScadenza} in scadenza`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function buildHomeAlertBanner(
   snapshot: D10Snapshot | null,
   manutCounters: NextManutenzioniScadenzeSnapshot["counters"] | null = null,
@@ -134,22 +143,22 @@ function buildHomeAlertBanner(
   const { counters } = snapshot;
   const cat = manutCounters?.perCategoria ?? null;
 
-  // Scadenze per settore: collaudi + cronotachigrafo / tagliandi / estintore.
-  const scadenze = [
-    formatAlertSignal(counters.revisioniScadute, "collaudo scaduto", "collaudi scaduti"),
-    formatAlertSignal(counters.revisioniInScadenza, "collaudo in scadenza", "collaudi in scadenza"),
-    formatAlertSignal(cat?.cronotachigrafo.scadute ?? 0, "cronotachigrafo scaduto", "cronotachigrafi scaduti"),
-    formatAlertSignal(cat?.cronotachigrafo.inScadenza ?? 0, "cronotachigrafo in scadenza", "cronotachigrafi in scadenza"),
-    formatAlertSignal(cat?.tagliandi.scadute ?? 0, "tagliando scaduto", "tagliandi scaduti"),
-    formatAlertSignal(cat?.tagliandi.inScadenza ?? 0, "tagliando in scadenza", "tagliandi in scadenza"),
-    formatAlertSignal(cat?.estintore.scadute ?? 0, "estintore scaduto", "estintori scaduti"),
-    formatAlertSignal(cat?.estintore.inScadenza ?? 0, "estintore in scadenza", "estintori in scadenza"),
-  ].filter((signal): signal is string => Boolean(signal));
+  // Scadenze divise per settore: collaudi + cronotachigrafo / tagliandi / estintore.
+  const rows: { label: string; detail: string }[] = [];
+  const pushRow = (label: string, scadute: number, inScadenza: number) => {
+    const detail = buildSettoreDetail(scadute, inScadenza);
+    if (detail) rows.push({ label, detail });
+  };
+  pushRow("Collaudi", counters.revisioniScadute, counters.revisioniInScadenza);
+  pushRow("Cronotachigrafo", cat?.cronotachigrafo.scadute ?? 0, cat?.cronotachigrafo.inScadenza ?? 0);
+  pushRow("Tagliandi", cat?.tagliandi.scadute ?? 0, cat?.tagliandi.inScadenza ?? 0);
+  pushRow("Estintore", cat?.estintore.scadute ?? 0, cat?.estintore.inScadenza ?? 0);
 
-  if (scadenze.length > 0) {
+  if (rows.length > 0) {
     return {
       tone: "warning",
-      text: scadenze.join(" \u00b7 "),
+      text: rows.map((row) => `${row.label}: ${row.detail}`).join(" \u00b7 "),
+      rows,
     };
   }
 
@@ -825,7 +834,18 @@ export default function NextHomePage() {
                 Apri -&gt;
               </NavLink>
             </div>
-            <div className="next-home__alert-card-copy">{alertBanner.text}</div>
+            {alertBanner.rows && alertBanner.rows.length > 0 ? (
+              <ul className="next-home__alert-card-rows">
+                {alertBanner.rows.map((row) => (
+                  <li key={row.label} className="next-home__alert-card-row">
+                    <span className="next-home__alert-card-row-label">{row.label}</span>
+                    <span className="next-home__alert-card-row-detail">{row.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="next-home__alert-card-copy">{alertBanner.text}</div>
+            )}
           </button>
 
           <article

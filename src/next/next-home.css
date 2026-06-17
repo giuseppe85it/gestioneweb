@@ -93,6 +93,35 @@
   line-height: 1.45;
 }
 
+.next-home__alert-card-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.next-home__alert-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.next-home__alert-card-row-label {
+  font-weight: 700;
+}
+
+.next-home__alert-card-row-detail {
+  font-weight: 600;
+  opacity: 0.85;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .next-home__alert-card-metrics {
   display: flex;
   flex-direction: column;
