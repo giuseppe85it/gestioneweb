@@ -31,6 +31,8 @@ export const NEXT_CISTERNA_SCHEDE_TEST_PATH = "/next/cisterna/schede-test";
 export const NEXT_AUTISTI_INBOX_PATH = "/next/autisti-inbox";
 export const NEXT_AUTISTI_ADMIN_PATH = "/next/autisti-admin";
 export const NEXT_AUTISTI_APP_PATH = "/next/autisti";
+export const NEXT_SCHEDA_MEZZO_PREFIX = "/next/scheda-mezzo";
+export const NEXT_SCHEDA_AUTISTA_PREFIX = "/next/scheda-autista";
 
 export type NextMagazzinoTab =
   | "inventario"
@@ -57,6 +59,14 @@ export function buildNextManutenzioniPath(targa?: string, recordId?: string) {
 
 export function buildNextDossierPath(targa: string) {
   return `${NEXT_DOSSIER_PREFIX}/${encodeURIComponent(targa)}`;
+}
+
+export function buildNextSchedaMezzoPath(targa: string) {
+  return `${NEXT_SCHEDA_MEZZO_PREFIX}/${encodeURIComponent(targa)}`;
+}
+
+export function buildNextSchedaAutistaPath(badgeOrId: string) {
+  return `${NEXT_SCHEDA_AUTISTA_PREFIX}/${encodeURIComponent(badgeOrId)}`;
 }
 
 export function buildNextDossierPreventiviPath(targa: string) {

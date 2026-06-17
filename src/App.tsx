@@ -33,6 +33,8 @@ import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
 import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
 import NextDossierListaPage from "./next/NextDossierListaPage";
+import NextSchedaMezzoPage from "./next/scheda/NextSchedaMezzoPage";
+import NextSchedaAutistaPage from "./next/scheda/NextSchedaAutistaPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
 import NextDettaglioLavoroLegacyRedirect from "./next/redirects/NextDettaglioLavoroLegacyRedirect";
@@ -417,6 +419,22 @@ function App() {
           element={
             <NextRoleGuard areaId="mezzi-dossier">
               <NextDossierMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="scheda-mezzo/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextSchedaMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="scheda-autista/:badge"
+          element={
+            <NextRoleGuard areaId="colleghi">
+              <NextSchedaAutistaPage />
             </NextRoleGuard>
           }
         />

@@ -1,0 +1,125 @@
+.next-gsearch {
+  position: relative;
+  width: min(360px, 100%);
+}
+
+.next-gsearch__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(35, 41, 55, 0.16);
+  background: #fffdfa;
+  color: #4a4f58;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.next-gsearch__field:focus-within {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+.next-gsearch__icon {
+  flex-shrink: 0;
+  color: #7b818c;
+}
+
+.next-gsearch__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #202329;
+  font-size: 15px;
+  outline: none;
+}
+
+.next-gsearch__input::placeholder {
+  color: #8a8f99;
+}
+
+/* nasconde la "x" nativa del type=search per un look pulito */
+.next-gsearch__input::-webkit-search-decoration,
+.next-gsearch__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.next-gsearch__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1px solid rgba(31, 36, 45, 0.14);
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(32, 37, 54, 0.18);
+}
+
+.next-gsearch__hint {
+  padding: 12px 12px;
+  color: #626772;
+  font-size: 14px;
+}
+
+.next-gsearch__group + .next-gsearch__group {
+  margin-top: 4px;
+  border-top: 1px solid rgba(37, 43, 53, 0.08);
+  padding-top: 4px;
+}
+
+.next-gsearch__group-title {
+  padding: 8px 12px 6px;
+  color: #8a8f99;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.next-gsearch__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #202329;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.next-gsearch__option--active,
+.next-gsearch__option:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.next-gsearch__option-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d222c;
+}
+
+.next-gsearch__option-sub {
+  font-size: 13px;
+  color: #626772;
+}
+
+@media (max-width: 720px) {
+  .next-gsearch {
+    width: 100%;
+  }
+}

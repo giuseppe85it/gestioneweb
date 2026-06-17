@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { NEXT_SHELL_NAV_SECTIONS, type NextShellNavItem } from "./nextData";
 import { useNextCloneNavigation } from "./nextCloneNavigation";
+import NextGlobalSearch from "./search/NextGlobalSearch";
 import "./next-shell.css";
 
 function buildInitialSectionsState() {
@@ -177,6 +178,10 @@ function NextShell() {
             </span>
           </button>
         ) : null}
+
+        <div className="next-shell__topbar">
+          <NextGlobalSearch />
+        </div>
 
         <main className="next-shell__main">
           <Outlet />

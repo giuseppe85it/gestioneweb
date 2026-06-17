@@ -250,6 +250,20 @@
   overflow-x: hidden;
 }
 
+.next-shell__topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 28px;
+  background: rgba(245, 241, 233, 0.82);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(35, 41, 55, 0.1);
+}
+
 .next-shell__main {
   min-width: 0;
   min-height: 100vh;
@@ -1084,6 +1098,10 @@ button.next-clone-button-disabled:disabled,
   .next-shell__reopen-toggle {
     top: 18px;
     left: 18px;
+  }
+
+  .next-shell__topbar {
+    padding: 10px 16px 10px 76px;
   }
 
   .next-shell__modal-backdrop {
