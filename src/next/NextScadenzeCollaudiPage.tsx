@@ -1,5 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import {
   readNextCentroControlloSnapshot,
@@ -35,6 +44,13 @@ import {
   deleteScadenzaManutenzione,
   saveScadenzaManutenzione,
 } from "./nextManutenzioniScadenzeWriter";
+import {
+  SCADENZE_PDF_CATEGORY_OPTIONS,
+  filterScadenzePdfRows,
+  generateScadenzePdfBlob,
+  type ScadenzePdfCategoryFilter,
+  type ScadenzePdfRow,
+} from "./nextScadenzePdf";
 import "./next-scadenze.css";
 
 type FeedbackState = {
@@ -381,6 +397,15 @@ export default function NextScadenzeCollaudiPage() {
   // Modal "nuova/modifica scadenza" (il menu regola).
   const [manutForm, setManutForm] = useState<ManutFormState | null>(null);
   const [manutSubmitting, setManutSubmitting] = useState(false);
+  const [pdfPanelOpen, setPdfPanelOpen] = useState(false);
+  const [pdfCategoria, setPdfCategoria] = useState<ScadenzePdfCategoryFilter>("tutte");
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("scadenze-flotta.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF scadenze");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   const loadSnapshot = async () => {
     setLoading(true);
@@ -457,6 +482,12 @@ export default function NextScadenzeCollaudiPage() {
       operationPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }, [operation]);
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   const filteredOfficine = useMemo(() => {
     if (!operation || operation.kind !== "pre-collaudo") return [];
@@ -1197,6 +1228,179 @@ export default function NextScadenzeCollaudiPage() {
   const catCount = (key: ScadenzaCategoria) => visVoci.filter((v) => v.categoria === key).length;
   const ordina = (voci: Voce[]) => [...voci].sort((a, b) => b.sev - a.sev || a.sort - b.sort);
 
+  const getCategoriaLabel = (key: ScadenzePdfCategoryFilter): string =>
+    SCADENZE_PDF_CATEGORY_OPTIONS.find((option) => option.value === key)?.label ?? "Tutte";
+
+  const getMezzoSessioneLabels = (targa: string) => {
+    const key = normTarga(targa);
+    const mezzo = mezzoByTarga.get(key) ?? null;
+    const sessione = sessioneByTarga.get(key) ?? null;
+    return {
+      mezzoLabel: [mezzo?.marca, mezzo?.modello].filter(Boolean).join(" "),
+      autistaLabel: sessione?.nomeAutista ?? mezzo?.autistaNome ?? "",
+    };
+  };
+
+  const buildPdfRow = (voce: Voce): ScadenzePdfRow => {
+    if (voce.kind === "collaudo") {
+      const item = voce.collaudo;
+      const targa = item.targa ?? "";
+      const prenotazione = item.prenotazioneCollaudo;
+      const preCollaudo = item.preCollaudo;
+      const completata = prenotazione?.completata === true;
+      const stato: NextScadenzaStato = completata ? "ok" : statoCollaudo(item);
+      const mezzoLabel = [item.marca, item.modello].filter(Boolean).join(" ");
+      const lavori = getPreCollaudoLavori(preCollaudo);
+      const labels = getMezzoSessioneLabels(targa);
+      return {
+        id: `collaudo-${item.id}`,
+        categoria: "collaudi",
+        categoriaLabel: "Collaudi",
+        targa,
+        mezzoLabel: mezzoLabel || labels.mezzoLabel,
+        autistaLabel: item.autistaNome ?? labels.autistaLabel,
+        tipoLabel: "Collaudo",
+        stato,
+        statoLabel: completata ? "Completato" : pillLabelForStato(stato),
+        scadenzaLabel: completata
+          ? formatPrenotazioneSummary(prenotazione)
+          : `${formatDateLabel(item.scadenzaTs)} - ${formatGiorniLabel(item.giorni)}`,
+        dettaglioLabel: "",
+        prenotazioneLabel: prenotazione ? formatPrenotazioneSummary(prenotazione) : "non prenotato",
+        preCollaudoLabel: preCollaudo
+          ? `pre-collaudo ${formatPreCollaudoSummary(preCollaudo)}${lavori ? ` - ${lavori}` : ""}`
+          : "",
+        note: item.flags.length ? item.flags.join(", ") : "",
+        sortSeverity: STATO_SEVERITA[stato],
+        sortValue: item.giorni ?? 1_000_000,
+      };
+    }
+
+    const item = voce.manut;
+    const categoria = categoriaDiTipo(item.tipo);
+    const labels = getMezzoSessioneLabels(item.targa);
+    return {
+      id: `manutenzione-${item.id}`,
+      categoria,
+      categoriaLabel: getCategoriaLabel(categoria),
+      targa: item.targa,
+      mezzoLabel: labels.mezzoLabel,
+      autistaLabel: labels.autistaLabel,
+      tipoLabel: item.label,
+      stato: item.stato,
+      statoLabel: pillLabelForStato(item.stato),
+      scadenzaLabel: item.componenti.map(formatComponenteTesto).join(" | "),
+      dettaglioLabel: item.base.length ? `Base: ${item.base.join(", ")}` : "",
+      prenotazioneLabel: "",
+      preCollaudoLabel: "",
+      note: item.note ?? "",
+      sortSeverity: STATO_SEVERITA[item.stato],
+      sortValue: item.giorniMin ?? 1_000_000,
+    };
+  };
+
+  const pdfBaseVoci = visVoci.filter((voce) => !qNorm || matchTargaOrAutista(voce.targa));
+  const pdfRows = pdfBaseVoci.map(buildPdfRow);
+  const pdfRowsSelezionate = filterScadenzePdfRows(pdfRows, pdfCategoria);
+
+  const buildPdfFiltersLabel = () => {
+    const parts: string[] = [];
+    if (kpiFiltro) parts.push(`${kpiFiltro.ambito === "collaudo" ? "collaudi" : "manutenzioni"} ${pillLabelForStato(kpiFiltro.stato).toLowerCase()}`);
+    if (queryTarga.trim()) parts.push(`ricerca ${queryTarga.trim()}`);
+    if (filtroSettore !== "tutte") parts.push(`vista ${getCategoriaLabel(filtroSettore)}`);
+    parts.push(`export ${getCategoriaLabel(pdfCategoria)}`);
+    return parts.join(" - ");
+  };
+
+  const openPdfPanel = () => {
+    setPdfCategoria(filtroSettore === "tutte" ? "tutte" : filtroSettore);
+    setPdfPanelOpen(true);
+    setPdfShareHint(null);
+  };
+
+  const ensurePdfPreviewReady = async () => {
+    if (pdfRowsSelezionate.length === 0) {
+      window.alert("Nessuna scadenza nel perimetro PDF selezionato.");
+      return null;
+    }
+    setPdfGenerating(true);
+    try {
+      const preview = await openPreview({
+        source: async () =>
+          generateScadenzePdfBlob({
+            rows: pdfRows,
+            categoria: pdfCategoria,
+            generatedAtLabel: toDisplay(Date.now()) || "",
+            filtersLabel: buildPdfFiltersLabel(),
+          }),
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF scadenze - ${getCategoriaLabel(pdfCategoria)}`);
+      setPdfPreviewUrl(preview.url);
+      return preview;
+    } catch (error) {
+      console.error("Errore anteprima PDF scadenze:", error);
+      window.alert("Impossibile generare l'anteprima PDF.");
+      return null;
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handleOpenPdfPreview = async () => {
+    const preview = await ensurePdfPreviewReady();
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: pdfPreviewTitle || "Scadenze",
+      dateLabel: toDisplay(Date.now()),
+      fileName: pdfPreviewFileName,
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePdf = async () => {
+    if (!pdfPreviewBlob) {
+      setPdfShareHint("Apri prima un'anteprima PDF.");
+      return;
+    }
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName,
+      title: pdfPreviewTitle,
+      text: buildPdfShareMessage(),
+    });
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPdfLink = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato negli appunti." : "Impossibile copiare automaticamente.");
+  };
+
+  const handleOpenWhatsAppPdf = () => {
+    window.open(buildWhatsAppShareUrl(buildPdfShareMessage()), "_blank", "noopener,noreferrer");
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
+
   const categoryIcon = (icon: string) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} dangerouslySetInnerHTML={{ __html: icon }} />
   );
@@ -1357,6 +1561,9 @@ export default function NextScadenzeCollaudiPage() {
           </div>
         </div>
         <div className="right">
+          <button type="button" className="btn" onClick={openPdfPanel}>
+            Anteprima PDF
+          </button>
           <button type="button" className="btn primary" onClick={openNuovaManut}>
             + Nuova scadenza
           </button>
@@ -1431,6 +1638,38 @@ export default function NextScadenzeCollaudiPage() {
           ) : null}
         </div>
       </div>
+
+      {pdfPanelOpen ? (
+        <div className="pdfbar">
+          <div>
+            <div className="pdfbar-title">Export PDF scadenze</div>
+            <div className="pdfbar-sub">
+              Parte dalla vista filtrata corrente. Righe pronte: <b>{pdfRowsSelezionate.length}</b>
+            </div>
+          </div>
+          <label className="pdfbar-field">
+            Categoria
+            <select
+              value={pdfCategoria}
+              onChange={(event) => setPdfCategoria(event.target.value as ScadenzePdfCategoryFilter)}
+            >
+              {SCADENZE_PDF_CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="pdfbar-actions">
+            <button type="button" className="btn" onClick={() => setPdfPanelOpen(false)}>
+              Chiudi
+            </button>
+            <button type="button" className="btn primary" onClick={() => void handleOpenPdfPreview()} disabled={pdfGenerating}>
+              {pdfGenerating ? "Generazione..." : "Apri anteprima"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {feedback ? renderFeedback() : null}
 
@@ -1705,6 +1944,17 @@ export default function NextScadenzeCollaudiPage() {
           </div>
         </div>
       ) : null}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={() => void handleSharePdf()}
+        onCopyLink={() => void handleCopyPdfLink()}
+        onWhatsApp={handleOpenWhatsAppPdf}
+      />
     </div>
   );
 }

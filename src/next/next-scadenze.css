@@ -90,6 +90,13 @@
 .scd .search .clr{cursor:pointer;color:var(--faint);font-weight:800;border:none;background:none;font-size:16px}
 .scd .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 
+.scd .pdfbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:13px 14px;margin:-4px 0 18px}
+.scd .pdfbar-title{font-size:13px;font-weight:800;color:var(--ink)}
+.scd .pdfbar-sub{font-size:12px;color:var(--muted);font-weight:600;margin-top:2px}
+.scd .pdfbar-field{display:flex;flex-direction:column;gap:5px;font-size:11.5px;font-weight:800;color:var(--muted);margin-left:auto;min-width:190px}
+.scd .pdfbar-field select{border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:inherit;font-size:13px;font-weight:700;padding:8px 10px}
+.scd .pdfbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
 .scd .dossier-h{display:flex;align-items:center;gap:14px;margin:0 0 16px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff}
 .scd .dossier-h .tgbig{background:#fff;color:#0f172a;border-radius:9px;padding:8px 12px;font-weight:800;font-size:16px}
 .scd .dossier-h .info b{font-size:15px}
@@ -138,4 +145,7 @@
   .scd .kpis{grid-template-columns:repeat(2,1fr)}
   .scd .row{grid-template-columns:1fr}
   .scd .acts{justify-content:flex-start}
+  .scd .pdfbar{align-items:stretch}
+  .scd .pdfbar-field{margin-left:0;min-width:180px;flex:1}
+  .scd .pdfbar-actions{width:100%;justify-content:flex-start}
 }
