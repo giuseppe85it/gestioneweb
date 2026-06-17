@@ -23,6 +23,11 @@ import {
   readNextMezzoSegnalazioniControlliSnapshot,
   type NextMezzoSegnalazioniControlliTimelineItem,
 } from "../domain/nextSegnalazioniControlliDomain";
+import {
+  findNextAutistiAssignmentsByTarga,
+  readNextAutistiReadOnlySnapshot,
+  type NextAutistiCanonicalAssignment,
+} from "../domain/nextAutistiDomain";
 import { buildNextDossierPath } from "../nextStructuralPaths";
 import { buildNextPathWithRole, getNextRoleFromSearch } from "../nextAccess";
 import { toDisplay } from "../helpers/dateUnica";
@@ -31,12 +36,48 @@ import "./next-scheda.css";
 type LoadStatus = "loading" | "ready" | "notfound" | "error";
 type Tone = "ok" | "warning" | "danger" | "info" | "idle";
 
+type ConduzionePeriodo = {
+  nome: string;
+  badge: string | null;
+  start: number;
+  end: number | null;
+};
+
 type SchedaMezzoExtra = {
   scadenze: NextManutenzioneScadenzaItem[];
   eventi: NextMezzoSegnalazioniControlliTimelineItem[];
   segnalazioniTotali: number;
   controlliKo: number;
+  conduzione: ConduzionePeriodo[];
 };
+
+// Ricostruisce la sequenza di conducenti del mezzo dagli assignment ordinati
+// per tempo: ogni periodo va dall'inizio dell'autista all'inizio del successivo.
+function buildConduzione(
+  assignments: NextAutistiCanonicalAssignment[],
+): ConduzionePeriodo[] {
+  const withTs = assignments
+    .filter((entry) => typeof entry.timestamp === "number" && (entry.timestamp as number) > 0)
+    .sort((left, right) => (left.timestamp as number) - (right.timestamp as number));
+
+  const periods: ConduzionePeriodo[] = [];
+  let lastKey = "";
+  for (const entry of withTs) {
+    const key =
+      (entry.badgeAutista ?? "").trim().toUpperCase().replace(/\s+/g, "") ||
+      (entry.autistaNome ?? "").trim().toLowerCase();
+    if (!key || key === lastKey) continue;
+    if (periods.length > 0) periods[periods.length - 1].end = entry.timestamp as number;
+    periods.push({
+      nome: (entry.autistaNome ?? "").trim() || "Autista non indicato",
+      badge: entry.badgeAutista ?? null,
+      start: entry.timestamp as number,
+      end: null,
+    });
+    lastKey = key;
+  }
+  return periods;
+}
 
 const SCADENZA_SEVERITA: Record<NextScadenzaStato, number> = {
   scaduta: 4,
@@ -118,10 +159,11 @@ function NextSchedaMezzoPage() {
 
     (async () => {
       try {
-        const [composite, scadenzeSnap, segnControlli] = await Promise.all([
+        const [composite, scadenzeSnap, segnControlli, autistiSnap] = await Promise.all([
           readNextDossierMezzoCompositeSnapshot(rawTarga ?? ""),
           readNextManutenzioniScadenzeSnapshot(),
           readNextMezzoSegnalazioniControlliSnapshot(rawTarga ?? ""),
+          readNextAutistiReadOnlySnapshot(),
         ]);
         if (!alive) return;
         if (!composite) {
@@ -131,6 +173,9 @@ function NextSchedaMezzoPage() {
 
         const builtView = buildNextDossierMezzoLegacyView(composite);
         const targaNorm = normalizeScadenzaTarga(builtView.mezzo?.targa ?? rawTarga ?? "");
+        const conduzione = buildConduzione(
+          findNextAutistiAssignmentsByTarga(autistiSnap, builtView.mezzo?.targa ?? rawTarga ?? ""),
+        );
         const scadenze = scadenzeSnap.items
           .filter((item) => item.attiva && normalizeScadenzaTarga(item.targa) === targaNorm)
           .sort(
@@ -145,6 +190,7 @@ function NextSchedaMezzoPage() {
           eventi: segnControlli.timelineItems,
           segnalazioniTotali: segnControlli.counts.segnalazioniTotali,
           controlliKo: segnControlli.counts.controlliKo,
+          conduzione,
         });
         setStatus("ready");
       } catch {
@@ -180,6 +226,11 @@ function NextSchedaMezzoPage() {
     ? extra.scadenze.filter((item) => item.stato === "scaduta" || item.stato === "in_scadenza").length
     : 0;
 
+  const conduzione = extra?.conduzione ?? [];
+  const conducenteAttuale = conduzione.length > 0 ? conduzione[conduzione.length - 1] : null;
+  const conducentePrecedente = conduzione.length >= 2 ? conduzione[conduzione.length - 2] : null;
+  const conduzioneStorica = conduzione.length > 2 ? conduzione.slice(0, -2).reverse() : [];
+
   return (
     <div className="next-scheda">
       <button type="button" className="next-scheda__back" onClick={() => navigate(-1)}>
@@ -205,24 +256,31 @@ function NextSchedaMezzoPage() {
       {status === "ready" && view && extra ? (
         <>
           <div className="next-scheda__header">
-            <div className="next-scheda__header-main">
-              <div className="next-scheda__eyebrow">Scheda mezzo</div>
-              <h1 className="next-scheda__title next-scheda__title--plate">
-                {view.mezzo?.targa ?? rawTarga}
-              </h1>
-              <div className="next-scheda__subtitle">
-                {[view.mezzo?.categoria, view.mezzo?.marcaModello]
-                  .map((part) => (part ?? "").trim())
-                  .filter(Boolean)
-                  .join(" · ") || "Mezzo"}
-              </div>
-              {view.mezzo?.manutenzioneProgrammata ? (
-                <div className="next-scheda__tags">
-                  <span className="next-scheda__badge next-scheda__badge--info">
-                    Manutenzione programmata
-                  </span>
+            <div className="next-scheda__header-left">
+              <img
+                src="/logo.png"
+                alt="Gestione e Manutenzione"
+                className="next-scheda__header-logo"
+              />
+              <div className="next-scheda__header-main">
+                <div className="next-scheda__eyebrow">Scheda mezzo</div>
+                <h1 className="next-scheda__title next-scheda__title--plate">
+                  {view.mezzo?.targa ?? rawTarga}
+                </h1>
+                <div className="next-scheda__subtitle">
+                  {[view.mezzo?.categoria, view.mezzo?.marcaModello]
+                    .map((part) => (part ?? "").trim())
+                    .filter(Boolean)
+                    .join(" · ") || "Mezzo"}
                 </div>
-              ) : null}
+                {view.mezzo?.manutenzioneProgrammata ? (
+                  <div className="next-scheda__tags">
+                    <span className="next-scheda__badge next-scheda__badge--info">
+                      Manutenzione programmata
+                    </span>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="next-scheda__actions">
               <a className="next-scheda__btn next-scheda__btn--primary" href={dossierPath}>
@@ -249,6 +307,51 @@ function NextSchedaMezzoPage() {
               <div className="next-scheda__stat-label">Documenti / costi</div>
             </div>
           </div>
+
+          <section className="next-scheda__section">
+            <SectionHead title="Conduzione mezzo" />
+            {conducenteAttuale ? (
+              <>
+                <p className="next-scheda__lead">
+                  Alla guida ora: <strong>{conducenteAttuale.nome}</strong>
+                  {conducenteAttuale.badge ? ` (badge ${conducenteAttuale.badge})` : ""}, dal{" "}
+                  {toDisplay(conducenteAttuale.start) || "data non disponibile"}.
+                </p>
+                {conducentePrecedente ? (
+                  <p className="next-scheda__note">
+                    Prima di {conducenteAttuale.nome} lo ha guidato{" "}
+                    <strong>{conducentePrecedente.nome}</strong>, dal{" "}
+                    {toDisplay(conducentePrecedente.start) || "—"} al{" "}
+                    {toDisplay(conducentePrecedente.end) || "—"}.
+                  </p>
+                ) : (
+                  <p className="next-scheda__note">Nessun conducente precedente registrato.</p>
+                )}
+                {conduzioneStorica.length > 0 ? (
+                  <div className="next-scheda__list">
+                    {conduzioneStorica.map((periodo, index) => (
+                      <div key={`${periodo.nome}:${periodo.start}:${index}`} className="next-scheda__row">
+                        <div className="next-scheda__row-main">
+                          <div className="next-scheda__row-title">{periodo.nome}</div>
+                          <div className="next-scheda__row-meta">
+                            <span>
+                              dal {toDisplay(periodo.start) || "—"}
+                              {periodo.end ? ` al ${toDisplay(periodo.end)}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="next-scheda__empty">
+                Nessuna assegnazione conducente tracciata.
+                {view.mezzo?.autistaNome ? ` Autista abituale: ${view.mezzo.autistaNome}.` : ""}
+              </div>
+            )}
+          </section>
 
           <section className="next-scheda__section">
             <SectionHead title="Anagrafica" />

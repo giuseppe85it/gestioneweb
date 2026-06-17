@@ -464,13 +464,20 @@ function NextSchedaAutistaPage() {
       {status === "ready" && data ? (
         <>
           <div className="next-scheda__header">
-            <div className="next-scheda__header-main">
-              <div className="next-scheda__eyebrow">Scheda autista</div>
-              <h1 className="next-scheda__title">{data.nome}</h1>
-              <div className="next-scheda__subtitle">
-                {[data.badge ? `Badge ${data.badge}` : null, data.codice ? `Cod. ${data.codice}` : null]
-                  .filter(Boolean)
-                  .join(" · ") || "Anagrafica colleghi"}
+            <div className="next-scheda__header-left">
+              <img
+                src="/logo.png"
+                alt="Gestione e Manutenzione"
+                className="next-scheda__header-logo"
+              />
+              <div className="next-scheda__header-main">
+                <div className="next-scheda__eyebrow">Scheda autista</div>
+                <h1 className="next-scheda__title">{data.nome}</h1>
+                <div className="next-scheda__subtitle">
+                  {[data.badge ? `Badge ${data.badge}` : null, data.codice ? `Cod. ${data.codice}` : null]
+                    .filter(Boolean)
+                    .join(" · ") || "Anagrafica colleghi"}
+                </div>
               </div>
             </div>
           </div>

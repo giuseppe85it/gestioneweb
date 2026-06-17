@@ -28,8 +28,8 @@
 .next-scheda__empty {
   padding: 28px 22px;
   border-radius: 18px;
-  border: 1px solid rgba(31, 36, 45, 0.12);
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(31, 36, 45, 0.16);
+  background: #ffffff;
   color: #4a4f58;
   font-size: 15px;
 }
@@ -50,14 +50,33 @@
 .next-scheda__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px 24px;
+  padding: 22px 26px;
   border-radius: 24px;
-  border: 1px solid rgba(31, 36, 45, 0.12);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 38px rgba(32, 37, 54, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #232a3d 0%, #1a2030 100%);
+  color: #eef2ff;
+  box-shadow: 0 22px 46px rgba(16, 21, 34, 0.28);
+}
+
+.next-scheda__header-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.next-scheda__header-logo {
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 16px;
+  background: rgba(74, 132, 255, 0.14);
+  padding: 5px;
+  box-shadow: 0 12px 24px rgba(11, 18, 38, 0.3);
 }
 
 .next-scheda__header-main {
@@ -65,7 +84,7 @@
 }
 
 .next-scheda__eyebrow {
-  color: #8a8f99;
+  color: rgba(200, 210, 235, 0.62);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -77,7 +96,7 @@
   font-size: 30px;
   font-weight: 800;
   line-height: 1.1;
-  color: #1d222c;
+  color: #ffffff;
 }
 
 .next-scheda__title--plate {
@@ -87,7 +106,7 @@
 
 .next-scheda__subtitle {
   margin-top: 8px;
-  color: #4e525a;
+  color: rgba(214, 222, 240, 0.82);
   font-size: 16px;
 }
 
@@ -146,8 +165,9 @@
 .next-scheda__stat {
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(31, 36, 45, 0.12);
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(31, 36, 45, 0.16);
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(32, 37, 54, 0.06);
 }
 
 .next-scheda__stat-value {
@@ -197,9 +217,32 @@
   margin-top: 18px;
   padding: 18px 22px;
   border-radius: 24px;
-  border: 1px solid rgba(31, 36, 45, 0.12);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 38px rgba(32, 37, 54, 0.06);
+  border: 1px solid rgba(31, 36, 45, 0.16);
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(32, 37, 54, 0.08);
+}
+
+.next-scheda__lead {
+  margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: #1d222c;
+}
+
+.next-scheda__lead strong {
+  font-weight: 800;
+}
+
+.next-scheda__note {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #4e525a;
+}
+
+.next-scheda__note strong {
+  color: #1d222c;
+  font-weight: 700;
 }
 
 .next-scheda__section-head {
