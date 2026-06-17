@@ -95,6 +95,11 @@ import { createManutenzioneDaFareFromSegnalazione } from "./writers/nextManutenz
 import { deleteSegnalazioneAutista } from "./writers/nextSegnalazioneDeleteWriter";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
+import {
+  readNextManutenzioniScadenzeSnapshot,
+  type NextManutenzioneScadenzaItem,
+} from "./domain/nextManutenzioniScadenzeDomain";
+import { saveScadenzaManutenzione } from "./nextManutenzioniScadenzeWriter";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
@@ -1443,6 +1448,9 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Fase B: scadenze del mezzo, per collegare un'esecuzione alla scadenza.
+  const [scadenzeAll, setScadenzeAll] = useState<NextManutenzioneScadenzaItem[]>([]);
+  const [selectedScadenzaId, setSelectedScadenzaId] = useState("");
   const [completionRecordId, setCompletionRecordId] = useState<string | null>(null);
   const [completionModalRecord, setCompletionModalRecord] =
     useState<NextManutenzioniLegacyDatasetRecord | null>(null);
@@ -1630,6 +1638,36 @@ export default function NextManutenzioniPage() {
   }
 
   const activeTarga = normalizeText(selectedTarga || targa);
+
+  // Fase B: carica le scadenze del mezzo (riusabile dopo un aggiornamento).
+  async function reloadScadenze() {
+    try {
+      const snapshot = await readNextManutenzioniScadenzeSnapshot();
+      setScadenzeAll(snapshot.items);
+    } catch (err) {
+      console.error("Errore caricamento scadenze:", err);
+    }
+  }
+
+  useEffect(() => {
+    void reloadScadenze();
+  }, []);
+
+  // Azzero la scadenza selezionata quando cambio mezzo (la lista cambia).
+  useEffect(() => {
+    setSelectedScadenzaId("");
+  }, [activeTarga]);
+
+  const normTargaCompare = (value: string) =>
+    normalizeText(value).toUpperCase().replace(/\s+/g, "");
+
+  const scadenzeDelMezzo = useMemo(
+    () =>
+      scadenzeAll.filter(
+        (s) => s.attiva && normTargaCompare(s.targa) === normTargaCompare(activeTarga),
+      ),
+    [scadenzeAll, activeTarga],
+  );
   const mezzoPreviewByTarga = useMemo(
     () => new Map(mezzoPreview.map((mezzo) => [mezzo.targa, mezzo] as const)),
     [mezzoPreview],
@@ -2796,6 +2834,45 @@ export default function NextManutenzioniPage() {
           : {}),
       });
       await refreshData();
+
+      // Fase B: se richiesto, registra questa esecuzione sulla scadenza collegata
+      // (ultima esecuzione = data/km dell'intervento) e ricalcola la prossima.
+      let scadenzaAggiornata = false;
+      if (selectedStato === "eseguita" && selectedScadenzaId) {
+        const scad = scadenzeAll.find((s) => s.id === selectedScadenzaId);
+        if (scad) {
+          const rec = scad.record;
+          try {
+            await saveScadenzaManutenzione({
+              id: rec.id,
+              targa: rec.targa,
+              tipo: rec.tipo,
+              label: rec.label,
+              base: rec.base,
+              intervalloMesi: rec.intervalloMesi ?? null,
+              intervalloKm: rec.intervalloKm ?? null,
+              intervalloOre: rec.intervalloOre ?? null,
+              ultimaEsecuzioneData: rec.base.includes("tempo") ? normalizedData : rec.ultimaEsecuzioneData ?? null,
+              ultimaEsecuzioneKm:
+                rec.base.includes("km") && effectiveKmNumber != null
+                  ? effectiveKmNumber
+                  : rec.ultimaEsecuzioneKm ?? null,
+              ultimaEsecuzioneOre: rec.base.includes("ore") && ore ? Number(ore) : rec.ultimaEsecuzioneOre ?? null,
+              prossimaScadenzaDataManuale: null,
+              prossimaScadenzaKmManuale: null,
+              prossimaScadenzaOreManuale: null,
+              note: rec.note ?? null,
+              attiva: rec.attiva,
+            });
+            await reloadScadenze();
+            scadenzaAggiornata = true;
+          } catch (scadErr) {
+            console.error("Errore aggiornamento scadenza collegata:", scadErr);
+          }
+        }
+      }
+      setSelectedScadenzaId("");
+
       setSelectedDetailRecordId(savedRecord.id);
       resetForm(activeTargaBeforeSave);
       setCompletionModalRecord(null);
@@ -2803,15 +2880,14 @@ export default function NextManutenzioniPage() {
       setCompletionDraftData(todayLabel());
       setCompletionDraftKm("");
       setView(isCompletionSave ? "mappa" : createAsDaFare ? "dafare" : "dashboard");
-      setNotice(
-        isCompletionSave
-          ? "Manutenzione completata e marcata come eseguita."
-          : createAsDaFare
-            ? "Manutenzione da fare creata."
+      const baseNotice = isCompletionSave
+        ? "Manutenzione completata e marcata come eseguita."
+        : createAsDaFare
+          ? "Manutenzione da fare creata."
           : wasEditing
-          ? "Manutenzione aggiornata in modo compatibile con il legacy."
-          : "Manutenzione salvata in modo compatibile con il legacy.",
-      );
+            ? "Manutenzione aggiornata in modo compatibile con il legacy."
+            : "Manutenzione salvata in modo compatibile con il legacy.";
+      setNotice(scadenzaAggiornata ? `${baseNotice} Scadenza del mezzo aggiornata.` : baseNotice);
     } catch (saveError) {
       console.error("Errore salvataggio manutenzione:", saveError);
       setError("Salvataggio manutenzione non riuscito.");
@@ -5056,6 +5132,28 @@ export default function NextManutenzioniPage() {
                 />
               </div>
             </div>
+
+            {!editingId && !createAsDaFare && scadenzeDelMezzo.length > 0 ? (
+              <div className="man2-field" style={{ marginTop: 12 }}>
+                <label className="man2-field__label">Aggiorna scadenza del mezzo (opzionale)</label>
+                <select
+                  value={selectedScadenzaId}
+                  onChange={(event) => setSelectedScadenzaId(event.target.value)}
+                  aria-label="Scadenza del mezzo da aggiornare con questa esecuzione"
+                >
+                  <option value="">— Nessuna —</option>
+                  {scadenzeDelMezzo.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+                  Se selezioni una scadenza, questa data (e i km) diventano l'ultima esecuzione e la
+                  prossima scadenza viene ricalcolata.
+                </small>
+              </div>
+            ) : null}
 
             {isUiSubtypeGommeOrdinario(uiSubtype) ? (
               <div className="man2-assi-section">

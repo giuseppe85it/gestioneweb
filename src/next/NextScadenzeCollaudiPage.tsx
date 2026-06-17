@@ -303,6 +303,34 @@ function formatNumIt(value: number | null | undefined): string {
   return value == null ? "—" : Number(value).toLocaleString("it-IT");
 }
 
+// Colonna "Prossima": solo data/valore della componente (per la vista tabellare).
+function formatProssima(componente: NextScadenzaComponente): string {
+  if (componente.base === "tempo") {
+    return componente.prossimaData ? toDisplay(componente.prossimaData) : "—";
+  }
+  if (componente.base === "km") {
+    if (componente.stato === "data_mancante") return "km non impostati";
+    return componente.prossimoValore != null ? `${formatNumIt(componente.prossimoValore)} km` : "—";
+  }
+  if (componente.stato === "data_mancante") return "ore non impostate";
+  return componente.prossimoValore != null ? `${formatNumIt(componente.prossimoValore)} h` : "—";
+}
+
+// Colonna "Quando": tempo residuo / scaduto della componente (per la vista tabellare).
+function formatQuando(componente: NextScadenzaComponente): string {
+  if (componente.base === "tempo") {
+    return componente.giorni != null ? formatGiorniLabel(componente.giorni) : "—";
+  }
+  if (componente.base === "km") {
+    if (componente.stato === "valore_non_disponibile") return "km sconosciuti";
+    if (componente.residuo == null) return "—";
+    return componente.residuo < 0
+      ? `oltre di ${formatNumIt(-componente.residuo)} km`
+      : `residuo ${formatNumIt(componente.residuo)} km`;
+  }
+  return "ore non disponibili";
+}
+
 // Testo descrittivo di una componente manutenzione (replica fedele del mockup).
 function formatComponenteTesto(componente: NextScadenzaComponente): string {
   if (componente.base === "tempo") {
@@ -397,6 +425,15 @@ export default function NextScadenzeCollaudiPage() {
   // Modal "nuova/modifica scadenza" (il menu regola).
   const [manutForm, setManutForm] = useState<ManutFormState | null>(null);
   const [manutSubmitting, setManutSubmitting] = useState(false);
+  // Mini-form "Segna eseguita": registra l'esecuzione di una scadenza e
+  // lascia che la prossima venga ricalcolata da ultima esecuzione + intervallo.
+  const [eseguitaForm, setEseguitaForm] = useState<{
+    item: NextManutenzioneScadenzaItem;
+    data: string;
+    km: string;
+    ore: string;
+  } | null>(null);
+  const [eseguitaSubmitting, setEseguitaSubmitting] = useState(false);
   const [pdfPanelOpen, setPdfPanelOpen] = useState(false);
   const [pdfCategoria, setPdfCategoria] = useState<ScadenzePdfCategoryFilter>("tutte");
   const [pdfGenerating, setPdfGenerating] = useState(false);
@@ -749,6 +786,62 @@ export default function NextScadenzeCollaudiPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Errore durante l'eliminazione.";
       showValidationError(message);
+    }
+  };
+
+  // ————— "Segna eseguita": registra l'esecuzione e ricalcola la prossima —————
+  const openEseguita = (item: NextManutenzioneScadenzaItem) => {
+    const kmCorrente = kmByTarga.get(normTarga(item.targa)) ?? null;
+    setEseguitaForm({
+      item,
+      // Data odierna proposta come comodità: è un campo modificabile che
+      // l'utente conferma (la data salvata viene dall'input, non da Date.now()).
+      data: toDisplay(Date.now()),
+      km: item.base.includes("km") && kmCorrente != null ? String(kmCorrente) : "",
+      ore: "",
+    });
+  };
+
+  const closeEseguita = () => setEseguitaForm(null);
+
+  const salvaEseguita = async () => {
+    if (!eseguitaForm) return;
+    const { item, data, km, ore } = eseguitaForm;
+    const rec = item.record;
+    if (rec.base.includes("tempo") && !data.trim()) {
+      showValidationError("Inserisci la data di esecuzione.");
+      return;
+    }
+    setEseguitaSubmitting(true);
+    try {
+      await saveScadenzaManutenzione({
+        id: rec.id,
+        targa: rec.targa,
+        tipo: rec.tipo,
+        label: rec.label,
+        base: rec.base,
+        intervalloMesi: rec.intervalloMesi ?? null,
+        intervalloKm: rec.intervalloKm ?? null,
+        intervalloOre: rec.intervalloOre ?? null,
+        // Aggiorno l'ultima esecuzione con i valori inseriti (solo per le basi attive).
+        ultimaEsecuzioneData: rec.base.includes("tempo") ? data : rec.ultimaEsecuzioneData ?? null,
+        ultimaEsecuzioneKm: rec.base.includes("km") ? numOrNull(km) : rec.ultimaEsecuzioneKm ?? null,
+        ultimaEsecuzioneOre: rec.base.includes("ore") ? numOrNull(ore) : rec.ultimaEsecuzioneOre ?? null,
+        // Azzero gli override manuali: la prossima scadenza si ricalcola da ultima + intervallo.
+        prossimaScadenzaDataManuale: null,
+        prossimaScadenzaKmManuale: null,
+        prossimaScadenzaOreManuale: null,
+        note: rec.note ?? null,
+        attiva: rec.attiva,
+      });
+      setEseguitaForm(null);
+      await loadSnapshot();
+      showSuccess("Esecuzione registrata: prossima scadenza ricalcolata.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore durante il salvataggio.";
+      showValidationError(message);
+    } finally {
+      setEseguitaSubmitting(false);
     }
   };
 
@@ -1417,30 +1510,35 @@ export default function NextScadenzeCollaudiPage() {
       <Fragment key={item.id}>
         <div className="row">
           {renderTarga(item.targa)}
-          <div>
-            <div className="l1">
-              Collaudo{" "}
-              <span className={prenCompletata ? "pill pill-ok" : pillClassForStato(stato)}>
-                {prenCompletata ? "Completato" : pillLabelForStato(stato)}
-              </span>
-              {mezzoLabel ? <span className="chip">{mezzoLabel}</span> : null}
-            </div>
-            <div className="l2">
-              {prenCompletata ? (
-                <span className="pill pill-neutral">{formatPrenotazioneSummary(prenotazione)}</span>
-              ) : (
-                <>
-                  <span>{formatDateLabel(item.scadenzaTs)}</span>
-                  <span>· {formatGiorniLabel(item.giorni)}</span>
-                  {prenotazione ? (
-                    <span className="pill pill-neutral">{formatPrenotazioneSummary(prenotazione)}</span>
-                  ) : (
-                    <span className="chip">non prenotato</span>
-                  )}
-                </>
-              )}
-              {preCollaudo ? <span className="chip">pre-collaudo {formatPreCollaudoSummary(preCollaudo)}</span> : null}
-            </div>
+          <div className="cell cell-scad">
+            <div className="cell-title">Collaudo</div>
+            {mezzoLabel ? <div className="cell-sub">{mezzoLabel}</div> : null}
+          </div>
+          <div className="cell">
+            <span className={prenCompletata ? "pill pill-ok" : pillClassForStato(stato)}>
+              {prenCompletata ? "Completato" : pillLabelForStato(stato)}
+            </span>
+          </div>
+          <div className="cell cell-bases">
+            <span className="chip">tempo</span>
+          </div>
+          <div className="cell">
+            <div className="cell-data">{prenCompletata ? "—" : formatDateLabel(item.scadenzaTs)}</div>
+          </div>
+          <div className="cell">
+            {prenCompletata ? (
+              <div className="cell-when">{formatPrenotazioneSummary(prenotazione)}</div>
+            ) : (
+              <>
+                <div className="cell-when">{formatGiorniLabel(item.giorni)}</div>
+                <div className="cell-sub">
+                  {prenotazione ? formatPrenotazioneSummary(prenotazione) : "non prenotato"}
+                </div>
+              </>
+            )}
+            {preCollaudo ? (
+              <div className="cell-sub">pre-collaudo {formatPreCollaudoSummary(preCollaudo)}</div>
+            ) : null}
           </div>
           <div className="acts">
             {canOperate ? (
@@ -1487,27 +1585,39 @@ export default function NextScadenzeCollaudiPage() {
   const renderRigaManut = (item: NextManutenzioneScadenzaItem) => (
     <div className="row" key={item.id}>
       {renderTarga(item.targa)}
-      <div>
-        <div className="l1">
-          {item.label} <span className={pillClassForStato(item.stato)}>{pillLabelForStato(item.stato)}</span>
-        </div>
-        <div className="l2">
-          {item.base.map((base) => (
-            <span className="chip" key={base}>
-              {base}
-            </span>
-          ))}
-          {item.componenti.map((componente, index) => (
-            <span key={index}>{formatComponenteTesto(componente)}</span>
-          ))}
-          {item.note ? <span>· {item.note}</span> : null}
-        </div>
+      <div className="cell cell-scad">
+        <div className="cell-title">{item.label}</div>
+        {item.note ? <div className="cell-sub">{item.note}</div> : null}
+      </div>
+      <div className="cell">
+        <span className={pillClassForStato(item.stato)}>{pillLabelForStato(item.stato)}</span>
+      </div>
+      <div className="cell cell-bases">
+        {item.base.map((base) => (
+          <span className="chip" key={base}>
+            {base}
+          </span>
+        ))}
+      </div>
+      <div className="cell">
+        {item.componenti.map((componente, index) => (
+          <div className="cell-data" key={index}>
+            {formatProssima(componente)}
+          </div>
+        ))}
+      </div>
+      <div className="cell">
+        {item.componenti.map((componente, index) => (
+          <div className="cell-when" key={index}>
+            {formatQuando(componente)}
+          </div>
+        ))}
       </div>
       <div className="acts">
         <button type="button" className="btn" onClick={() => openModificaManut(item)}>
           Modifica
         </button>
-        <button type="button" className="btn" onClick={() => openModificaManut(item)}>
+        <button type="button" className="btn primary" onClick={() => openEseguita(item)}>
           Segna eseguita
         </button>
         <button type="button" className="btn danger" onClick={() => void eliminaManut(item)}>
@@ -1519,6 +1629,19 @@ export default function NextScadenzeCollaudiPage() {
 
   const renderVoce = (voce: Voce) =>
     voce.kind === "collaudo" ? renderRigaCollaudo(voce.collaudo) : renderRigaManut(voce.manut);
+
+  // Intestazione colonne della vista tabellare (stile Excel).
+  const renderColonneHeader = () => (
+    <div className="row-head">
+      <span>Targa</span>
+      <span>Scadenza</span>
+      <span>Stato</span>
+      <span>Base</span>
+      <span>Prossima</span>
+      <span>Quando</span>
+      <span className="row-head-acts">Azioni</span>
+    </div>
+  );
 
   const cats = filtroSettore === "tutte" ? SCADENZE_CATEGORIE : SCADENZE_CATEGORIE.filter((c) => c.key === filtroSettore);
 
@@ -1544,6 +1667,25 @@ export default function NextScadenzeCollaudiPage() {
     };
     const km = kmByTarga.get(normTarga(manutForm.targa)) ?? null;
     previewItem = evaluateScadenzaManutenzione(previewRecord, { kmAttuali: km, oreAttuali: null }, Date.now());
+  }
+
+  // Anteprima della prossima scadenza dopo "Segna eseguita".
+  let previewEseguitaItem: NextManutenzioneScadenzaItem | null = null;
+  if (eseguitaForm) {
+    const rec = eseguitaForm.item.record;
+    const tempRecord: NextManutenzioneScadenzaRecord = {
+      ...rec,
+      ultimaEsecuzioneData: rec.base.includes("tempo")
+        ? fromUserInput(eseguitaForm.data) ?? rec.ultimaEsecuzioneData ?? null
+        : rec.ultimaEsecuzioneData ?? null,
+      ultimaEsecuzioneKm: rec.base.includes("km") ? numOrNull(eseguitaForm.km) : rec.ultimaEsecuzioneKm ?? null,
+      ultimaEsecuzioneOre: rec.base.includes("ore") ? numOrNull(eseguitaForm.ore) : rec.ultimaEsecuzioneOre ?? null,
+      prossimaScadenzaDataManuale: null,
+      prossimaScadenzaKmManuale: null,
+      prossimaScadenzaOreManuale: null,
+    };
+    const kmEseg = kmByTarga.get(normTarga(rec.targa)) ?? null;
+    previewEseguitaItem = evaluateScadenzaManutenzione(tempRecord, { kmAttuali: kmEseg, oreAttuali: null }, Date.now());
   }
   const baseAttiva = (base: ScadenzaBase) => Boolean(manutForm?.base.includes(base));
   const targheModal =
@@ -1717,7 +1859,10 @@ export default function NextScadenzeCollaudiPage() {
                         <span className="ln" />
                       </div>
                       {vs.length ? (
-                        vs.map(renderVoce)
+                        <>
+                          {renderColonneHeader()}
+                          {vs.map(renderVoce)}
+                        </>
                       ) : (
                         <div className="empty">Nessuna scadenza registrata in questo settore.</div>
                       )}
@@ -1739,7 +1884,14 @@ export default function NextScadenzeCollaudiPage() {
                 </h2>
                 <span className="count">{voci.length}</span>
               </div>
-              {voci.length ? voci.map(renderVoce) : <div className="empty">Nessuna voce in questo settore.</div>}
+              {voci.length ? (
+                <>
+                  {renderColonneHeader()}
+                  {voci.map(renderVoce)}
+                </>
+              ) : (
+                <div className="empty">Nessuna voce in questo settore.</div>
+              )}
             </div>
           );
         })
@@ -1939,6 +2091,95 @@ export default function NextScadenzeCollaudiPage() {
               </button>
               <button type="button" className="btn primary" onClick={() => void salvaManut()} disabled={manutSubmitting}>
                 {manutSubmitting ? "Salvataggio…" : "Salva scadenza"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {eseguitaForm ? (
+        <div
+          className="scd-backdrop open"
+          onClick={(event) => event.target === event.currentTarget && closeEseguita()}
+        >
+          <div className="modal">
+            <div className="modal-h">
+              <h3>Segna eseguita — {eseguitaForm.item.label}</h3>
+              <button type="button" className="x" onClick={closeEseguita}>
+                ×
+              </button>
+            </div>
+            <div className="modal-b">
+              <div className="help" style={{ marginBottom: 12 }}>
+                {eseguitaForm.item.targa} · registra quando/quanto è stata eseguita: la prossima scadenza
+                verrà ricalcolata automaticamente.
+              </div>
+              <div className="grid2">
+                {eseguitaForm.item.base.includes("tempo") ? (
+                  <div className="field">
+                    <label>Data esecuzione</label>
+                    <input
+                      type="text"
+                      placeholder="gg/mm/aaaa"
+                      value={eseguitaForm.data}
+                      onChange={(event) =>
+                        setEseguitaForm((current) => (current ? { ...current, data: event.target.value } : current))
+                      }
+                    />
+                  </div>
+                ) : null}
+                {eseguitaForm.item.base.includes("km") ? (
+                  <div className="field">
+                    <label>Km all'esecuzione</label>
+                    <input
+                      type="number"
+                      placeholder="es. 120000"
+                      value={eseguitaForm.km}
+                      onChange={(event) =>
+                        setEseguitaForm((current) => (current ? { ...current, km: event.target.value } : current))
+                      }
+                    />
+                  </div>
+                ) : null}
+                {eseguitaForm.item.base.includes("ore") ? (
+                  <div className="field">
+                    <label>Ore all'esecuzione</label>
+                    <input
+                      type="number"
+                      placeholder="es. 1200"
+                      value={eseguitaForm.ore}
+                      onChange={(event) =>
+                        setEseguitaForm((current) => (current ? { ...current, ore: event.target.value } : current))
+                      }
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="preview">
+                {previewEseguitaItem ? (
+                  <>
+                    Nuova prossima scadenza:{" "}
+                    {previewEseguitaItem.componenti.map((componente, index) => (
+                      <span key={index}>
+                        <span className="chip">{componente.base}</span> {formatComponenteTesto(componente)}
+                      </span>
+                    ))}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </div>
+            </div>
+            <div className="modal-f">
+              <button type="button" className="btn" onClick={closeEseguita} disabled={eseguitaSubmitting}>
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => void salvaEseguita()}
+                disabled={eseguitaSubmitting}
+              >
+                {eseguitaSubmitting ? "Salvataggio…" : "Conferma esecuzione"}
               </button>
             </div>
           </div>

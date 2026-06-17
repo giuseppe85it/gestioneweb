@@ -14,6 +14,8 @@
   font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   color:var(--ink);
   padding:22px clamp(14px,2.5vw,30px) 50px;
+  /* Colonne condivise dalla vista tabellare (riga + intestazione). */
+  --scad-cols:84px minmax(150px,1.5fr) 108px 70px minmax(110px,1fr) minmax(110px,.95fr) auto;
 }
 .scd *{box-sizing:border-box}
 
@@ -50,8 +52,19 @@
 .scd .pill-neutral{background:#eef1f6;color:var(--ink2)}
 .scd .chip{font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:6px;background:#eef1f6;color:var(--muted);text-transform:uppercase}
 
-.scd .row{display:grid;grid-template-columns:96px 1fr auto;gap:14px;align-items:center;padding:13px;border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:9px;background:var(--surface-2)}
+.scd .row{display:grid;grid-template-columns:var(--scad-cols);gap:12px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:7px;background:var(--surface-2)}
 .scd .row:last-child{margin-bottom:0}
+/* Intestazione colonne (stile Excel) */
+.scd .row-head{display:grid;grid-template-columns:var(--scad-cols);gap:12px;align-items:center;padding:2px 13px 7px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--faint)}
+.scd .row-head-acts{text-align:right}
+/* Celle della riga tabellare */
+.scd .cell{min-width:0}
+.scd .cell-title{font-weight:700;font-size:13.5px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scd .cell-sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scd .cell-bases{display:flex;gap:4px;flex-wrap:wrap}
+.scd .cell-data{font-weight:700;font-size:12.5px;line-height:1.3}
+.scd .cell-when{font-size:12px;color:var(--muted);font-weight:600;line-height:1.3}
+.scd .cell-data + .cell-data,.scd .cell-when + .cell-when{margin-top:3px}
 .scd .tg{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-weight:800;font-size:13px;text-align:center;cursor:pointer}
 .scd .tg:hover{border-color:#cbd2dd}
 
@@ -144,6 +157,8 @@
 @media(max-width:980px){
   .scd .kpis{grid-template-columns:repeat(2,1fr)}
   .scd .row{grid-template-columns:1fr}
+  .scd .row-head{display:none}
+  .scd .cell-title,.scd .cell-sub{white-space:normal}
   .scd .acts{justify-content:flex-start}
   .scd .pdfbar{align-items:stretch}
   .scd .pdfbar-field{margin-left:0;min-width:180px;flex:1}
