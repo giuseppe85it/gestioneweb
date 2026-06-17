@@ -1,5 +1,16 @@
 # STATO MIGRAZIONE NEXT
 
+## 2026-06-17 - Sidebar NEXT senza link Segnalazioni separato
+
+La sidebar globale NEXT non mostra piu la voce `Segnalazioni` sotto `PRINCIPALE`.
+
+- Rimosso solo l'item di navigazione da `NEXT_SHELL_NAV_SECTIONS`.
+- La route `/next/autisti-inbox/segnalazioni` non e' stata cancellata.
+- L'ingresso operativo resta la card `Segnalazioni` della Home verso `/next/autisti-admin?module=segnalazioni`.
+- Nessuna scrittura, writer, barrier o madre legacy toccati.
+
+Stato: **SHELL NEXT AGGIORNATA, LINK SEGNALAZIONI DOPPIO RIMOSSO**.
+
 ## 2026-06-17 - Home NEXT Segnalazioni come ingresso ad Autisti Admin
 
 La card `Segnalazioni` della Home NEXT `/next` non apre piu un modale Home duplicato.

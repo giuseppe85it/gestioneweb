@@ -1,6 +1,5 @@
 import {
   NEXT_ATTREZZATURE_CANTIERI_PATH,
-  NEXT_AUTISTI_INBOX_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_PATH,
   NEXT_DOSSIER_LISTA_PATH,
@@ -128,11 +127,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     items: [
       { id: "dashboard", label: "Dashboard", path: NEXT_HOME_PATH, exact: true },
       { id: "alert", label: "Alert", path: NEXT_CENTRO_CONTROLLO_PATH },
-      {
-        id: "segnalazioni",
-        label: "Segnalazioni",
-        path: `${NEXT_AUTISTI_INBOX_PATH}/segnalazioni`,
-      },
     ],
   },
   {

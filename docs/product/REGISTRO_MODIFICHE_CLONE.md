@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-17 1148
+
+DATA: `2026-06-17`
+TITOLO: `Sidebar NEXT senza link Segnalazioni`
+FILE TOCCATI: `src/next/nextData.ts`, `CONTEXT_CLAUDE.md`, `docs/product/STATO_MIGRAZIONE_NEXT.md`, `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+COSA: Rimossa dalla sidebar globale NEXT la voce `Segnalazioni` sotto `PRINCIPALE`; resta l'accesso corretto dalla card Home verso Autisti Admin con `module=segnalazioni`. Route diretta non cancellata.
+ESITO: `FATTO`
+NOTE: `npx eslint src/next/nextData.ts` OK, `npm run build` OK, verifica browser OK: sidebar `PRINCIPALE` con `Dashboard` e `Alert`, senza `Segnalazioni`; card Home invariata.
+
 ## 2026-06-17 1048
 
 DATA: `2026-06-17`
