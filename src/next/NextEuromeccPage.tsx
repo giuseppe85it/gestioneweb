@@ -4773,7 +4773,12 @@ function RiepilogoTab(props: {
     const doneOnly = cards.filter(
       (c) => !c.hasUrgency && c.pendingItems.length === 0 && c.doneItems.length > 0,
     );
-    return [...withUrgency, ...withPending, ...doneOnly];
+    // "resto": card senza urgenze/da fare/fatte ma con solo problemi chiusi o solo
+    // osservazioni aperte. Senza questo gruppo sparivano da PDF e griglia (es. un
+    // problema aperto e chiuso in giornata era l'unica attivita dell'area).
+    const shown = new Set([...withUrgency, ...withPending, ...doneOnly]);
+    const rest = cards.filter((c) => !shown.has(c));
+    return [...withUrgency, ...withPending, ...doneOnly, ...rest];
   }, [cards]);
 
   const closePdfPreview = () => {
