@@ -1,5 +1,46 @@
 # STATO MIGRAZIONE NEXT
 
+## 2026-06-17 - Segnalazioni operative allineate a Manutenzioni
+
+Le superfici operative NEXT leggono ora le segnalazioni con lo stesso criterio della lista `Segnalazioni aperte` di `/next/manutenzioni`.
+
+- Nuovo helper condiviso `src/next/helpers/segnalazioniOperative.ts`.
+- Una segnalazione e' operativa solo se ha targa reale, non risulta chiusa (`chiusa`, `stato`, `chiusuraRefId`, `chiusuraData`) e non e' gia collegata a un lavoro (`linkedLavoroId`, `linkedLavoroIds`, `hasLinkedLavoro`).
+- Home NEXT usa `counters.segnalazioniOperative` per la card e passa al modale solo `snapshot.segnalazioniOperative`.
+- Centro Controllo Parity usa lo stesso filtro per tab `Segnalazioni autisti` e sinottica; il filtro `Solo nuove` non e' piu attivo di default.
+- `/next/manutenzioni` usa lo stesso helper per `Segnalazioni aperte`, evitando divergenze future.
+- Verifica browser locale: Home `Segnalazioni 5 da gestire`, modale con `5 risultati da dati reali`, Centro Controllo `Da gestire: 5`.
+- Nessuna nuova scrittura o modifica alla madre legacy.
+
+Stato: **HOME/CENTRO/MANUTENZIONI NEXT ALLINEATI SULLE SEGNALAZIONI OPERATIVE**.
+
+## 2026-06-16 - Home NEXT modale Segnalazioni stile Centro rettifica
+
+Il modale aperto dalla card `Segnalazioni` della Home NEXT `/next` e' stato riallineato al Centro rettifica dati.
+
+- Il contenuto non usa piu il pannello visuale custom `next-home__seg-modal` come superficie principale, ma una finestra con classi `aix-backdrop aa-module-backdrop` e `aix-modal aa-module-window`.
+- Il render resta via portal su `document.body`; il flusso della Home non contiene righe o gruppi segnalazioni.
+- Righe, gruppi, toolbar e menu azioni sono compatti e coerenti con il modulo rettifica: ricerca targa con icona/placeholder, select `Tutti gli ambiti`, `Modifica` primaria, altre azioni nel menu.
+- Su mobile la finestra occupa il viewport e usa scroll interno, evitando l'effetto di blocco sotto pagina.
+- Nessuna nuova scrittura o modifica alla madre legacy.
+
+Stato: **HOME NEXT PARZIALE, MODALE SEGNALAZIONI RIALLINEATO A RETTIFICA**.
+
+## 2026-06-16 - Home NEXT contatori alti e modale segnalazioni
+
+La Home NEXT `/next` mostra ora le 4 card contatore subito sotto `Dashboard`/data, prima di scadenze, manutenzioni e IA.
+
+- La sola card cliccabile e' `Segnalazioni`: apre un modale NEXT dedicato, senza importare runtime `src/autistiInbox`.
+- Il modale viene montato con portal su `document.body`, quindi resta overlay reale anche su mobile e non entra nel flusso verticale della Home.
+- Il modale legge le segnalazioni reali gia normalizzate nello snapshot D10: filtri targa/ambito/solo nuove, gruppi `Nuove` e `Lette`, righe con data, autista, badge, ambito, motrice, rimorchio, stato, foto e descrizione.
+- Azioni disponibili: `Modifica`, `Anteprima PDF`, `Crea lavoro`, `Elimina`.
+- `Modifica` usa il nuovo writer `src/next/writers/nextHomeSegnalazioneAdminWriter.ts` e scrive solo `@segnalazioni_autisti_tmp` da `/next` con scope dedicato.
+- `Crea lavoro` riusa il writer NEXT esistente verso `@manutenzioni`; `Elimina` riusa il writer NEXT esistente con delete foto sotto `autisti/segnalazioni/*`.
+- Ogni azione scrivente chiede conferma prima di partire; apertura modale e filtri restano read-only.
+- Madre legacy non toccata.
+
+Stato: **HOME NEXT PARZIALE, MODALE SEGNALAZIONI ADMIN AGGIUNTO CON SCRITTURE CHIRURGICHE**.
+
 ## 2026-06-16 - Home NEXT targa dossier e mini scheda
 
 La Home NEXT `/next` rimuove il widget basso duplicato `Manutenzioni da fare`: resta la card alta a destra con conteggi e prime righe operative.

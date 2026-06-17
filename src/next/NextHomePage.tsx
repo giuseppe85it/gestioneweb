@@ -9,6 +9,7 @@ import {
   buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
+import NextHomeSegnalazioniModal from "./components/NextHomeSegnalazioniModal";
 import {
   readNextCentroControlloSnapshot,
   type D10AssetLocationItem,
@@ -33,6 +34,7 @@ type StatCard = {
   label: string;
   value: string;
   detail: string;
+  action?: "segnalazioni";
 };
 
 type StatusTone = "ok" | "warning" | "danger" | "idle" | "info";
@@ -128,7 +130,7 @@ function buildHomeAlertBanner(snapshot: D10Snapshot | null): HomeAlertBanner | n
     formatAlertSignal(counters.revisioniScadute, "revisione scaduta", "revisioni scadute"),
     formatAlertSignal(counters.revisioniInScadenza, "revisione in scadenza", "revisioni in scadenza"),
     formatAlertSignal(counters.conflittiSessione, "conflitto sessione", "conflitti sessione"),
-    formatAlertSignal(counters.segnalazioniNuove, "segnalazione nuova", "segnalazioni nuove"),
+    formatAlertSignal(counters.segnalazioniNuove, "segnalazione da gestire", "segnalazioni da gestire"),
     formatAlertSignal(counters.controlliKo, "controllo KO", "controlli KO"),
   ].filter((signal): signal is string => Boolean(signal));
 
@@ -414,6 +416,7 @@ export default function NextHomePage() {
   const [fleetSaving, setFleetSaving] = useState(false);
   const [motriciExpanded, setMotriciExpanded] = useState(false);
   const [rimorchiExpanded, setRimorchiExpanded] = useState(false);
+  const [segnalazioniModalOpen, setSegnalazioniModalOpen] = useState(false);
 
   const loadSnapshot = useCallback(
     async (isActive: () => boolean = () => true) => {
@@ -462,7 +465,7 @@ export default function NextHomePage() {
             ? procurementResult.value.counts.partialOrders
             : null,
         segnalazioniNuove:
-          centroResult.status === "fulfilled" ? centroResult.value.counters.segnalazioniNuove : null,
+          centroResult.status === "fulfilled" ? centroResult.value.counters.segnalazioniOperative : null,
       });
     },
     [],
@@ -501,6 +504,7 @@ export default function NextHomePage() {
             : homeStats.segnalazioniNuove === 0
               ? "nessuna"
               : "da gestire",
+        action: "segnalazioni",
       },
     ],
     [centroSnapshot, homeStats],
@@ -738,6 +742,29 @@ export default function NextHomePage() {
         <div className="next-home__date">{currentDateLabel}</div>
       </header>
 
+      <section className="next-home__stats-grid" aria-label="Statistiche dashboard">
+        {statCards.map((card) =>
+          card.action === "segnalazioni" ? (
+            <button
+              key={card.label}
+              type="button"
+              className="next-home__stat-card next-home__stat-card--button"
+              onClick={() => setSegnalazioniModalOpen(true)}
+            >
+              <div className="next-home__stat-label">{card.label}</div>
+              <div className="next-home__stat-value">{card.value}</div>
+              <div className="next-home__stat-detail">{card.detail}</div>
+            </button>
+          ) : (
+            <article key={card.label} className="next-home__stat-card">
+              <div className="next-home__stat-label">{card.label}</div>
+              <div className="next-home__stat-value">{card.value}</div>
+              <div className="next-home__stat-detail">{card.detail}</div>
+            </article>
+          ),
+        )}
+      </section>
+
       {alertBanner ? (
         <section className="next-home__alerts-grid" aria-label="Scadenze e manutenzioni da fare">
           <button
@@ -819,16 +846,6 @@ export default function NextHomePage() {
         </div>
       </section>
 
-      <section className="next-home__stats-grid" aria-label="Statistiche dashboard">
-        {statCards.map((card) => (
-          <article key={card.label} className="next-home__stat-card">
-            <div className="next-home__stat-label">{card.label}</div>
-            <div className="next-home__stat-value">{card.value}</div>
-            <div className="next-home__stat-detail">{card.detail}</div>
-          </article>
-        ))}
-      </section>
-
       <section className="next-home__widgets-grid" aria-label="Widget flotta">
         <article className="next-home__widget">
           <div className="next-home__widget-head">
@@ -884,6 +901,15 @@ export default function NextHomePage() {
           </div>
         </article>
       </section>
+
+      <NextHomeSegnalazioniModal
+        open={segnalazioniModalOpen}
+        segnalazioni={centroSnapshot?.segnalazioniOperative ?? []}
+        onClose={() => setSegnalazioniModalOpen(false)}
+        onChanged={async () => {
+          await loadSnapshot();
+        }}
+      />
     </main>
   );
 }

@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-16 2115
+
+DATA: `2026-06-16`
+TITOLO: `Home NEXT modale segnalazioni`
+FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/next/components/NextHomeSegnalazioniModal.tsx`, `src/next/domain/nextCentroControlloDomain.ts`, `src/next/writers/nextHomeSegnalazioneAdminWriter.ts`, `src/next/writers/__tests__/nextHomeSegnalazioneAdminWriter.test.ts`, `src/next/writers/__tests__/nextSegnalazioneDeleteWriter.test.ts`, `src/utils/cloneWriteBarrier.ts`
+COSA: Spostate le card contatore subito sotto header Dashboard. La card `Segnalazioni` apre un modale NEXT con filtri, gruppi nuove/lette, anteprima PDF, modifica admin, creazione manutenzione daFare ed eliminazione tramite writer NEXT e conferme.
+ESITO: `FATTO`
+NOTE: Lint mirato, test writer 12/12, build canonica e verifica browser non distruttiva OK. Follow-up: modale Segnalazioni montato via portal su `body` per restare overlay anche su mobile.
+
 ## 2026-06-16 1615
 
 DATA: `2026-06-16`
@@ -143,3 +152,21 @@ FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/next/writers/nextHomeLuogoMezzoW
 COSA: Il pulsante Modifica/Salva del luogo motrici/rimorchi scrive ora solo `@storico_eventi_operativi`, aggiornando `luogo` sull'evento esistente o creando un `CAMBIO_ASSETTO` admin coerente con la madre. Rimosso il falso overlay locale e sostituita la card mezzi fissa con conteggi reali.
 ESITO: `FATTO`
 NOTE: Lint mirato, test writer 6/6 e build canonica OK; verifica browser live solo non distruttiva.
+
+## 2026-06-16 2148
+
+DATA: `2026-06-16`
+TITOLO: `Home NEXT modale Segnalazioni rettifica`
+FILE TOCCATI: `src/next/components/NextHomeSegnalazioniModal.tsx`, `src/next/next-home.css`, `CONTEXT_CLAUDE.md`, `docs/product/STATO_MIGRAZIONE_NEXT.md`, `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+COSA: Riallineato il modale Segnalazioni della Home NEXT allo stile Centro rettifica dati con overlay/finestra `aix`/`aa`, righe dense, toolbar con ricerca targa + select ambito e menu azioni. Il contenuto resta in portal su `body` e non nel flusso della Home.
+ESITO: `FATTO`
+NOTE: Nessuna nuova scrittura e madre non toccata.
+
+## 2026-06-17 0717
+
+DATA: `2026-06-17`
+TITOLO: `Segnalazioni operative allineate`
+FILE TOCCATI: `src/next/helpers/segnalazioniOperative.ts`, `src/next/domain/nextCentroControlloDomain.ts`, `src/next/NextHomePage.tsx`, `src/next/NextCentroControlloParityPage.tsx`, `src/next/NextManutenzioniPage.tsx`
+COSA: Home, Centro Controllo e Manutenzioni usano lo stesso criterio per le segnalazioni da gestire: targa reale, non chiusa, non collegata a lavoro. La card Home e il modale mostrano 5 risultati, coerenti con `Segnalazioni aperte`.
+ESITO: `FATTO`
+NOTE: Lint mirato, test helper 5/5, build canonica OK; verifica browser locale su `/next` e `/next/centro-controllo`.

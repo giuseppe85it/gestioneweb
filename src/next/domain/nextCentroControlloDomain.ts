@@ -13,6 +13,7 @@ import type { HomeEvent } from "../../utils/homeEvents";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { readNextUnifiedStorageDocument } from "./nextUnifiedReadRegistryDomain";
 import { toDisplay } from "../helpers/dateUnica";
+import { isNextSegnalazioneOperativa } from "../helpers/segnalazioniOperative";
 
 const ALERTS_STATE_KEY = "@alerts_state";
 const MEZZI_KEY = "@mezzi_aziendali";
@@ -308,10 +309,13 @@ export type D10Snapshot = {
     sessioniAttive: number;
     mezziIncompleti: number;
     eventiImportanti: number;
+    segnalazioniOperative: number;
   };
   mezzi: D10MezzoItem[];
   sessioni: D10SessionItem[];
   eventiStorici: D10StoricoEventoItem[];
+  segnalazioni: D10SegnalazioneItem[];
+  segnalazioniOperative: D10SegnalazioneItem[];
   revisioni: D10RevisionItem[];
   revisioniUrgenti: D10RevisionItem[];
   alerts: D10AlertItem[];
@@ -323,17 +327,27 @@ export type D10Snapshot = {
   limitations: string[];
 };
 
-type D10SegnalazioneItem = {
+export type D10SegnalazioneItem = {
   id: string;
   timestamp: number | null;
   targa: string | null;
+  targaCamion: string | null;
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
   autistaNome: string | null;
   badgeAutista: string | null;
   tipoProblema: string | null;
   descrizione: string | null;
   note: string | null;
   ambito: string | null;
+  stato: string | null;
+  letta: boolean | null;
+  flagVerifica: boolean;
+  motivoVerifica: string | null;
+  fotoList: string[];
+  fotoCount: number;
   isNuova: boolean;
+  isOperativa: boolean;
   isImportante: boolean;
   preview: string;
   sourceDataset: string;
@@ -768,14 +782,45 @@ function buildSegnalazionePreview(record: SegnalazioneRecord): string {
   return truncateText(preview, 96);
 }
 
+function pushSegnalazioneFoto(list: string[], value: unknown): void {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim();
+  if (trimmed) list.push(trimmed);
+}
+
+function readSegnalazioneFotoList(record: SegnalazioneRecord): string[] {
+  const list: string[] = [];
+  if (Array.isArray(record.foto)) {
+    record.foto.forEach((entry) => {
+      if (typeof entry === "string") {
+        pushSegnalazioneFoto(list, entry);
+        return;
+      }
+      if (entry && typeof entry === "object") {
+        const fotoRecord = entry as Record<string, unknown>;
+        pushSegnalazioneFoto(list, fotoRecord.dataUrl);
+        pushSegnalazioneFoto(list, fotoRecord.url);
+      }
+    });
+  }
+  pushSegnalazioneFoto(list, record.fotoDataUrl);
+  pushSegnalazioneFoto(list, record.fotoUrl);
+  if (Array.isArray(record.fotoUrls)) {
+    record.fotoUrls.forEach((entry) => pushSegnalazioneFoto(list, entry));
+  }
+  return Array.from(new Set(list));
+}
+
 function normalizeSegnalazioneRecord(
   record: SegnalazioneRecord,
   index: number
 ): D10SegnalazioneItem {
   const timestamp = toTimestamp(record.timestamp) ?? toTimestamp(record.data);
-  const targa = normalizeOptionalTarga(
-    record.targa ?? record.targaCamion ?? record.targaRimorchio
-  );
+  const targaCamion = normalizeOptionalTarga(record.targaCamion);
+  const targaMotrice = normalizeOptionalTarga(record.targaMotrice);
+  const targaRimorchio = normalizeOptionalTarga(record.targaRimorchio);
+  const targa = normalizeOptionalTarga(record.targa) ?? targaCamion ?? targaMotrice ?? targaRimorchio;
+  const fotoList = readSegnalazioneFotoList(record);
   const rawId =
     normalizeOptionalText(record.id) ??
     stableHash32(
@@ -797,13 +842,23 @@ function normalizeSegnalazioneRecord(
     id: rawId,
     timestamp,
     targa,
+    targaCamion,
+    targaMotrice,
+    targaRimorchio,
     autistaNome: normalizeOptionalText(record.autistaNome ?? record.nomeAutista),
     badgeAutista: normalizeOptionalText(record.badgeAutista),
     tipoProblema: normalizeOptionalText(record.tipoProblema),
     descrizione: normalizeOptionalText(record.descrizione),
     note: normalizeOptionalText(record.note ?? record.messaggio),
-    ambito: normalizeOptionalText(record.ambito),
+    ambito: normalizeOptionalText(record.ambito ?? record.target),
+    stato: normalizeOptionalText(record.stato),
+    letta: typeof record.letta === "boolean" ? record.letta : null,
+    flagVerifica: record.flagVerifica === true,
+    motivoVerifica: normalizeOptionalText(record.motivoVerifica),
+    fotoList,
+    fotoCount: fotoList.length,
     isNuova: isSegnalazioneNuova(record),
+    isOperativa: isNextSegnalazioneOperativa({ ...record, targa }),
     isImportante: isSegnalazioneImportante(record),
     preview: buildSegnalazionePreview(record),
     sourceDataset: SEGNALAZIONI_KEY,
@@ -1385,7 +1440,7 @@ function buildSegnalazioneAlertCandidates(
   segnalazioni: D10SegnalazioneItem[]
 ): { candidates: D10BaseAlertCandidate[]; segnalazioniNuove: number } {
   const candidates = segnalazioni
-    .filter((record) => record.isNuova)
+    .filter((record) => record.isOperativa)
     .map<D10BaseAlertCandidate>((record) => {
       const targaId = normalizeTargaForAlertId(record.targa);
       const contentSignature = stableHash32(
@@ -1403,8 +1458,8 @@ function buildSegnalazioneAlertCandidates(
         id: `segnalazione:${record.id}`,
         kind: "segnalazione_nuova",
         title: record.isImportante
-          ? "Segnalazione importante non letta"
-          : "Segnalazione non letta",
+          ? "Segnalazione importante da gestire"
+          : "Segnalazione da gestire",
         detailText: `${record.targa ?? "Senza targa"} | ${
           formatDateTimeLabel(record.timestamp) ?? "Data non disponibile"
         } | ${truncateText(record.tipoProblema ?? "Segnalazione", 48)} | ${record.preview}`,
@@ -1554,6 +1609,7 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
   const segnalazioni = unwrapArrayValue(input.segnalazioniRaw)
     .filter((entry): entry is SegnalazioneRecord => Boolean(entry) && typeof entry === "object")
     .map(normalizeSegnalazioneRecord);
+  const segnalazioniOperative = segnalazioni.filter((record) => record.isOperativa);
   const controlli = unwrapArrayValue(input.controlliRaw)
     .filter((entry): entry is ControlloRecord => Boolean(entry) && typeof entry === "object")
     .map(normalizeControlloRecord);
@@ -1567,11 +1623,11 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
     .sort((left, right) => (left.giorni ?? 0) - (right.giorni ?? 0))
     .slice(0, 6);
   const missingMezzi = buildMissingMezzi(mezzi);
-  const importantAutistiItems = buildImportantAutistiItems(segnalazioni, controlli);
+  const importantAutistiItems = buildImportantAutistiItems(segnalazioniOperative, controlli);
 
   const revisioniResult = buildRevisionAlertCandidates(revisioni);
   const conflittiResult = buildConflittoAlertCandidates(sessioni);
-  const segnalazioniResult = buildSegnalazioneAlertCandidates(segnalazioni);
+  const segnalazioniResult = buildSegnalazioneAlertCandidates(segnalazioniOperative);
   const importantAlert = buildImportantEventsAlertCandidate(importantAutistiItems);
   const allAlertCandidates = sortAlertCandidates([
     ...revisioniResult.candidates,
@@ -1630,6 +1686,7 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
       revisioniInScadenza: revisioniResult.revisioniInScadenza,
       conflittiSessione: conflittiResult.conflittiSessione,
       segnalazioniNuove: segnalazioniResult.segnalazioniNuove,
+      segnalazioniOperative: segnalazioniOperative.length,
       controlliKo: controlli.filter((record) => record.isKo).length,
       sessioniAttive: sessioni.length,
       mezziIncompleti: missingMezzi.length,
@@ -1638,6 +1695,8 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
     mezzi,
     sessioni,
     eventiStorici,
+    segnalazioni,
+    segnalazioniOperative,
     revisioni,
     revisioniUrgenti,
     alerts,
@@ -1649,7 +1708,7 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
     limitations: [
       "Il clone legge direttamente i dataset reali della madre in sola lettura, senza overlay locali Home per alert, mezzi o eventi.",
       "Eventi storici e luoghi mezzo derivano da @storico_eventi_operativi: se il feed non contiene luogo o targa, il limite resta esplicito nel layer.",
-      "Alert e focus supportati in D10 riguardano revisioni, conflitti sessione, segnalazioni nuove, eventi autisti importanti, controlli KO e mezzi incompleti.",
+      "Alert e focus supportati in D10 riguardano revisioni, conflitti sessione, segnalazioni operative da gestire, eventi autisti importanti, controlli KO e mezzi incompleti.",
       "Richieste attrezzature, gomme, rifornimenti e altri feed legacy restano fuori da questo layer per non introdurre aggregazioni non usate oggi dalla Home clone.",
       "Le sessioni e i controlli KO restano feed operativi legacy: il layer li normalizza e li espone come segnali read-only, senza renderli canonici o scrivibili.",
     ],

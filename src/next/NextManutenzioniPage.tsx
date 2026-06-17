@@ -58,6 +58,7 @@ import {
 import { getDataRiferimentoRecord } from "./helpers/parseRobusto";
 import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
 import { readLegamiOrigine } from "./helpers/cicloLegame";
+import { isNextSegnalazioneOperativa } from "./helpers/segnalazioniOperative";
 import { readNextUnifiedStorageDocument } from "./domain/nextUnifiedReadRegistryDomain";
 import { buildFraseStoria, recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
@@ -1827,10 +1828,10 @@ export default function NextManutenzioniPage() {
     () =>
       segnalazioniAutisti
         .filter((item) => {
+          if (!isNextSegnalazioneOperativa(item)) return false;
           const itemTarga = normalizeText(item.targa ?? "");
-          if (!itemTarga) return false;
           if (activeTarga && itemTarga !== activeTarga) return false;
-          return !item.chiusa && !item.hasLinkedLavoro;
+          return true;
         })
         .sort((left, right) => {
           const leftTarga = normalizeText(left.targa ?? "");

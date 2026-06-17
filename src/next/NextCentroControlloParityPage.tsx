@@ -51,6 +51,7 @@ import {
   readNextManutenzioniLegacyDataset,
 } from "./domain/nextManutenzioniDomain";
 import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
+import { isNextSegnalazioneOperativa } from "./helpers/segnalazioniOperative";
 import type {
   Anomaly,
   AnomalyTarget,
@@ -609,7 +610,7 @@ export default function NextCentroControlloParityPage() {
   const [segnalazioniError, setSegnalazioniError] = useState<string | null>(null);
   const [segnalazioniRows, setSegnalazioniRows] = useState<SegnalazioneRow[]>([]);
   const [segnalazioniFilterTarga, setSegnalazioniFilterTarga] = useState("");
-  const [segnalazioniOnlyNuove, setSegnalazioniOnlyNuove] = useState(true);
+  const [segnalazioniOnlyNuove, setSegnalazioniOnlyNuove] = useState(false);
 
   const [loadingControlli, setLoadingControlli] = useState(false);
   const [controlliError, setControlliError] = useState<string | null>(null);
@@ -1260,22 +1261,27 @@ export default function NextCentroControlloParityPage() {
   }, [filteredMonthlyRefuelsWithAnomalies, anomaliesFilterActive]);
 
 
+  const segnalazioniOperativeRows = useMemo(
+    () => segnalazioniRows.filter((row) => isNextSegnalazioneOperativa(row)),
+    [segnalazioniRows]
+  );
+
   const segnalazioniCounters = useMemo(
     () => ({
-      totale: segnalazioniRows.length,
-      nuove: segnalazioniRows.filter((row) => row.isNuova).length,
+      totale: segnalazioniOperativeRows.length,
+      nuove: segnalazioniOperativeRows.filter((row) => row.isNuova).length,
     }),
-    [segnalazioniRows]
+    [segnalazioniOperativeRows]
   );
 
   const segnalazioniFiltered = useMemo(() => {
     const targaKey = normalizeTargaFilter(segnalazioniFilterTarga);
-    return segnalazioniRows.filter((row) => {
+    return segnalazioniOperativeRows.filter((row) => {
       if (segnalazioniOnlyNuove && !row.isNuova) return false;
       if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
       return true;
     });
-  }, [segnalazioniRows, segnalazioniFilterTarga, segnalazioniOnlyNuove]);
+  }, [segnalazioniOperativeRows, segnalazioniFilterTarga, segnalazioniOnlyNuove]);
 
   const controlliCounters = useMemo(
     () => ({
@@ -1512,15 +1518,7 @@ export default function NextCentroControlloParityPage() {
           manutenzioniStorico={manutenzioniStorico}
           manutenzioniDaFare={manutenzioniDaFare}
           activeSessions={activeSessions}
-          segnalazioniAperte={segnalazioniRows
-            .filter(
-              (row) =>
-                !row.chiusa &&
-                !row.hasLinkedLavoro &&
-                row.targa &&
-                row.targa !== "-",
-            )
-            .map((row) => ({
+          segnalazioniAperte={segnalazioniOperativeRows.map((row) => ({
               id: row.id,
               targa: row.targa,
               tipo: row.tipo,
@@ -2181,7 +2179,7 @@ export default function NextCentroControlloParityPage() {
               <h2>Segnalazioni autisti</h2>
               <div className="cc-actions">
                 <span className="cc-inline-count">
-                  Totali: {segnalazioniCounters.totale} | Nuove: {segnalazioniCounters.nuove}
+                  Da gestire: {segnalazioniCounters.totale} | Nuove: {segnalazioniCounters.nuove}
                 </span>
                 <button
                   type="button"

@@ -32,7 +32,18 @@ vi.mock("../../../utils/storageWriteOps", () => ({
 }));
 
 vi.mock("../../../firebase", () => ({
+  db: {},
   storage: {},
+}));
+
+vi.mock("firebase/firestore", () => ({
+  doc: (_db: unknown, collection: string, key: string) => ({ collection, key }),
+  getDoc: vi.fn((reference: { key: string }) =>
+    Promise.resolve({
+      exists: () => store.has(reference.key),
+      data: () => store.get(reference.key),
+    }),
+  ),
 }));
 
 vi.mock("firebase/storage", () => ({
