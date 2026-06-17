@@ -3686,6 +3686,18 @@ function generaleAreaLabel(iss: EuromeccIssue): string {
   return "Impianto";
 }
 
+// Un problema "generale" senza area resta nella sezione PROBLEMI GENERALI; quelli
+// con un'area associata sono mostrati nella sezione della rispettiva area.
+function isArealessIssue(iss: EuromeccIssue): boolean {
+  return !iss.areaKey || iss.areaKey === GENERAL_ISSUE_KEY;
+}
+
+// Etichetta di un problema dentro la sezione di un'area: nome del componente, oppure
+// "Generale" per i problemi generali associati all'area (senza componente specifico).
+function areaIssueLabel(iss: EuromeccIssue): string {
+  return iss.subKey === GENERAL_ISSUE_KEY ? "Generale" : iss.subLabel;
+}
+
 // Carica un'immagine remota (URL Firebase con token) come dataURL + dimensioni naturali.
 // Ritorna null su QUALSIASI errore (rete/CORS/lettura): il chiamante salta la foto
 // senza mai bloccare la generazione del PDF.
@@ -3739,8 +3751,10 @@ async function generatePdfRiepilogo(
   opts: PdfRiepilogoOptions = { categorie: ALL_PDF_CATEGORIE },
 ): Promise<{ blob: Blob; fileName: string }> {
   const cat = opts.categorie;
-  const generalOpen = opts.generalOpen ?? [];
-  const generalClosed = opts.generalClosed ?? [];
+  // Solo i problemi generali SENZA area vanno nella sezione "PROBLEMI GENERALI";
+  // quelli con un'area associata sono mostrati nella sezione della rispettiva area.
+  const generalOpen = (opts.generalOpen ?? []).filter(isArealessIssue);
+  const generalClosed = (opts.generalClosed ?? []).filter(isArealessIssue);
   const { default: JsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
 
@@ -4015,9 +4029,12 @@ async function generatePdfRiepilogo(
   // Sezioni per area — flusso continuo: si concatenano dopo intestazione/KPI/mappa,
   // con salto pagina solo quando lo spazio finisce (nessuna pagina iniziale vuota).
   for (const card of cards) {
-    // I problemi "generali" hanno una sezione dedicata: esclusi dalle tabelle per-area.
-    const areaOpenIssues = card.openIssues.filter((i) => i.subKey !== GENERAL_ISSUE_KEY);
-    const areaClosedIssues = card.closedIssues.filter((i) => i.subKey !== GENERAL_ISSUE_KEY);
+    // Problemi dell'area: sia quelli su un componente sia quelli "generali" ASSOCIATI a
+    // quest'area (subKey __generale__ ma areaKey = area). card.openIssues/closedIssues sono
+    // gia filtrati per areaKey, quindi contengono solo problemi di quest'area. I problemi
+    // generali SENZA area restano nella sezione "PROBLEMI GENERALI" a fine documento.
+    const areaOpenIssues = card.openIssues;
+    const areaClosedIssues = card.closedIssues;
     const showPending = cat.daFare && card.pendingItems.length > 0;
     const showDone = cat.fatte && card.doneItems.length > 0;
     const showOpenIssues = cat.problemi && areaOpenIssues.length > 0;
@@ -4094,9 +4111,9 @@ async function generatePdfRiepilogo(
     if (showOpenIssues || showClosedIssues) {
       problemsEstH += 8; // gap + titolo "PROBLEMI"
       if (showOpenIssues)
-        problemsEstH += 5 + areaOpenIssues.reduce((s, iss) => s + estimateIssueCardH(iss, iss.subLabel), 0);
+        problemsEstH += 5 + areaOpenIssues.reduce((s, iss) => s + estimateIssueCardH(iss, areaIssueLabel(iss)), 0);
       if (showClosedIssues)
-        problemsEstH += 5 + areaClosedIssues.reduce((s, iss) => s + estimateIssueCardH(iss, iss.subLabel), 0);
+        problemsEstH += 5 + areaClosedIssues.reduce((s, iss) => s + estimateIssueCardH(iss, areaIssueLabel(iss)), 0);
     }
     const areaBlockH = titleH + columnBlockEstH + problemsEstH + 4;
     const pageContentH = CONTENT_BOTTOM - CONTENT_TOP;
@@ -4190,7 +4207,7 @@ async function generatePdfRiepilogo(
         doc.text("Aperti", margin, y);
         y += 5;
         for (const iss of areaOpenIssues) {
-          await addIssueCard(iss, iss.subLabel, false);
+          await addIssueCard(iss, areaIssueLabel(iss), false);
         }
       }
       if (showClosedIssues) {
@@ -4200,7 +4217,7 @@ async function generatePdfRiepilogo(
         doc.text("Chiusi / risolti", margin, y);
         y += 5;
         for (const iss of areaClosedIssues) {
-          await addIssueCard(iss, iss.subLabel, true);
+          await addIssueCard(iss, areaIssueLabel(iss), true);
         }
       }
     }
