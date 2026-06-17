@@ -108,6 +108,10 @@ const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
 const SCADENZE_COLLAUDI_ALLOWED_WRITE_PATH = "/next/scadenze-collaudi";
 const SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS = new Set<string>(["@mezzi_aziendali"]);
 const SCADENZE_COLLAUDI_WRITE_SCOPE = "scadenze_collaudi_write_scope";
+// Scadenze di manutenzione ricorrenti: scrivono @manutenzioni_scadenze dalla stessa pagina
+// "Scadenze" (path /next/scadenze-collaudi). Dataset dedicato, isolato dai mezzi.
+const MANUTENZIONI_SCADENZE_ALLOWED_STORAGE_KEYS = new Set<string>(["@manutenzioni_scadenze"]);
+const MANUTENZIONI_SCADENZE_WRITE_SCOPE = "manutenzioni_scadenze_write_scope";
 const NEXT_HOME_LUOGO_MEZZO_ALLOWED_WRITE_PATH = "/next";
 const NEXT_HOME_LUOGO_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>(["@storico_eventi_operativi"]);
 export const NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE = "next_home_luogo_mezzo_write_scope";
@@ -530,6 +534,7 @@ export async function runWithCloneWriteScopedAllowance<T>(
   scope:
     | typeof INTERNAL_AI_MAGAZZINO_INLINE_SCOPE
     | typeof SCADENZE_COLLAUDI_WRITE_SCOPE
+    | typeof MANUTENZIONI_SCADENZE_WRITE_SCOPE
     | typeof RIFORNIMENTI_WRITE_SCOPE
     | typeof SEGNALAZIONI_WRITE_SCOPE
     | typeof CONTROLLI_WRITE_SCOPE
@@ -775,6 +780,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    isAllowedScadenzeCollaudiCloneWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(MANUTENZIONI_SCADENZE_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return MANUTENZIONI_SCADENZE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

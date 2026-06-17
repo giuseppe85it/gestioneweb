@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scadenze — Collaudi + Manutenzioni per settore (mockup navigabile)</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f8fafc; --line:#e6e8ee;
+    --ink:#1e293b; --ink2:#334155; --muted:#64748b; --faint:#94a3b8;
+    --accent:#4f46e5; --accent-soft:#eef2ff; --accent-ink:#4338ca;
+    --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7;
+    --danger:#dc2626; --danger-bg:#fee2e2;
+    --shadow:0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius:14px; --radius-sm:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh}
+  .shell{display:flex;min-height:100vh}
+
+  .side{width:248px;background:#0f172a;color:#cbd5e1;padding:20px 14px;flex:0 0 auto;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px;border-bottom:1px solid #1e293b;margin-bottom:14px}
+  .brand .mk{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+  .brand b{color:#fff;font-size:15px}
+  .brand span{display:block;font-size:11px;color:var(--faint)}
+  .nav-sep{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin:16px 12px 8px}
+  .nav-i{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:600;color:#cbd5e1;cursor:pointer;margin-bottom:3px}
+  .nav-i:hover{background:#1e293b;color:#fff}
+  .nav-i.active{background:var(--accent);color:#fff}
+  .nav-i svg{width:18px;height:18px;flex:0 0 auto}
+
+  .main{flex:1;min-width:0;padding:22px clamp(14px,2.5vw,30px) 50px}
+  .pagehead{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+  .pagehead h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .pagehead .crumb{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}
+  .pagehead .right{margin-left:auto;display:flex;gap:10px}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow);cursor:pointer;transition:transform .08s ease,box-shadow .12s ease,border-color .12s ease;position:relative}
+  .kpi:hover{border-color:#cbd2dd;transform:translateY(-1px)}
+  .kpi.sel{outline:2px solid var(--accent);outline-offset:1px}
+  .kpi.sel::after{content:"Filtro attivo · tocca per togliere";position:absolute;right:14px;bottom:11px;font-size:10px;font-weight:800;color:var(--accent-ink);letter-spacing:.2px}
+  .kpi .k{font-size:12px;color:var(--muted);font-weight:600}
+  .kpi .v{font-size:25px;font-weight:800;margin-top:4px;letter-spacing:-.5px}
+  .kpi.dng{border-left:3px solid var(--danger)}
+  .kpi.wrn{border-left:3px solid var(--warn)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+  .card-h{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+  .card-h h2{margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:9px}
+  .card-h .ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink)}
+  .card-h .ico svg{width:16px;height:16px}
+  .card-h .count{font-size:11px;font-weight:800;background:var(--accent-soft);color:var(--accent-ink);padding:2px 9px;border-radius:999px}
+  .card-h .sub{margin-left:auto;font-size:12px;font-weight:700;color:var(--faint)}
+
+  .pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .pill-ok{background:var(--ok-bg);color:var(--ok)}
+  .pill-warn{background:var(--warn-bg);color:var(--warn)}
+  .pill-danger{background:var(--danger-bg);color:var(--danger)}
+  .pill-neutral{background:#eef1f6;color:var(--ink2)}
+  .chip{font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:6px;background:#eef1f6;color:var(--muted);text-transform:uppercase}
+
+  .row{display:grid;grid-template-columns:96px 1fr auto;gap:14px;align-items:center;padding:13px;border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:9px;background:var(--surface-2)}
+  .row:last-child{margin-bottom:0}
+  .tg{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-weight:800;font-size:13px;text-align:center}
+  .l1{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .l2{font-size:12px;color:var(--muted);font-weight:600;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink2);font-weight:700;font-size:12px;padding:7px 11px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:var(--surface-2);border-color:#cbd2dd}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-ink)}
+  .btn.danger{color:var(--danger);border-color:#f3c4c4}
+  .btn.danger:hover{background:var(--danger-bg)}
+
+  .tabbar{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);padding:5px;border-radius:12px;max-width:max-content}
+  .tab{border:none;background:none;color:var(--muted);font-weight:700;font-size:13px;padding:9px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:var(--surface);color:var(--accent-ink);box-shadow:var(--shadow)}
+  .tab .n{font-size:10.5px;font-weight:800;background:#eef1f6;color:var(--muted);padding:1px 7px;border-radius:999px}
+  .tab.active .n{background:var(--accent-soft);color:var(--accent-ink)}
+
+  .search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;min-width:230px}
+  .search input{border:none;outline:none;font:inherit;font-weight:600;flex:1;color:var(--ink)}
+  .search svg{width:16px;height:16px;color:var(--faint)}
+  .search .clr{cursor:pointer;color:var(--faint);font-weight:800;border:none;background:none;font-size:16px}
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+
+  /* Riepilogo mezzo */
+  .dossier-h{display:flex;align-items:center;gap:14px;margin:0 0 16px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff}
+  .dossier-h .tgbig{background:#fff;color:#0f172a;border-radius:9px;padding:8px 12px;font-weight:800;font-size:16px}
+  .dossier-h .info b{font-size:15px}
+  .dossier-h .info span{display:block;font-size:12px;color:#94a3b8;margin-top:2px}
+  .dossier-h .km{margin-left:auto;text-align:right}
+  .dossier-h .km b{font-size:18px}
+  .dossier-h .km span{display:block;font-size:11px;color:#94a3b8}
+  .seclabel{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:16px 2px 8px;display:flex;align-items:center;gap:8px}
+  .seclabel .ln{flex:1;height:1px;background:var(--line)}
+
+  .empty{padding:14px;text-align:center;color:var(--faint);font-weight:600;font-size:12.5px;border:1px dashed var(--line);border-radius:var(--radius-sm)}
+  .note{font-size:12px;color:var(--faint);text-align:center;margin-top:24px;font-weight:600;line-height:1.6}
+  .hidden{display:none!important}
+
+  .backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .backdrop.open{display:flex}
+  .modal{background:var(--surface);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(620px,100%);max-height:92vh;overflow:auto}
+  .modal-h{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+  .modal-h h3{margin:0;font-size:16px;font-weight:800}
+  .modal-h .x{margin-left:auto;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-b{padding:20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:11.5px;font-weight:700;color:var(--muted)}
+  .field input,.field select,.field textarea{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-weight:600;color:var(--ink);background:var(--surface)}
+  .bases{display:flex;gap:16px;flex-wrap:wrap}
+  .bases label{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ink2)}
+  .subgrid{border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:6px}
+  .subgrid h4{margin:0 0 10px;font-size:12px;font-weight:800;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.4px}
+  .preview{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .modal-f{display:flex;gap:10px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+  .help{font-size:11.5px;color:var(--faint);font-weight:600;margin-top:4px}
+
+  @media(max-width:980px){.side{display:none}.kpis{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:1fr}.acts{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><div class="mk">GW</div><div><b>GestioneWeb</b><span>NEXT</span></div></div>
+    <div class="nav-sep">Principale</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg> Dashboard</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg> Alert</div>
+    <div class="nav-sep">Flotta</div>
+    <div class="nav-i active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Scadenze</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="15" height="11" rx="2"/><path d="M16 9h4l3 3v5h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg> Dossier mezzo</div>
+    <div class="nav-sep">Operatività</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Manutenzioni</div>
+  </aside>
+
+  <main class="main">
+    <div class="pagehead">
+      <div>
+        <h1>Scadenze</h1>
+        <div class="crumb">Flotta · Scadenze · per settore — oggi <b id="oggi"></b></div>
+      </div>
+      <div class="right"><button class="btn primary" onclick="openNuova()">+ Nuova scadenza</button></div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi dng" data-ambito="collaudo" data-stato="scaduta" onclick="setKpi('collaudo','scaduta')" title="Filtra: collaudi scaduti"><div class="k">Collaudi scaduti</div><div class="v" id="kpi-col-scad">0</div></div>
+      <div class="kpi wrn" data-ambito="collaudo" data-stato="in_scadenza" onclick="setKpi('collaudo','in_scadenza')" title="Filtra: collaudi in scadenza"><div class="k">Collaudi in scadenza</div><div class="v" id="kpi-col-prox">0</div></div>
+      <div class="kpi dng" data-ambito="manutenzione" data-stato="scaduta" onclick="setKpi('manutenzione','scaduta')" title="Filtra: manutenzioni scadute"><div class="k">Manutenzioni scadute</div><div class="v" id="kpi-man-scad">0</div></div>
+      <div class="kpi wrn" data-ambito="manutenzione" data-stato="in_scadenza" onclick="setKpi('manutenzione','in_scadenza')" title="Filtra: manutenzioni in scadenza"><div class="k">Manutenzioni in scadenza</div><div class="v" id="kpi-man-prox">0</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabbar" id="tabbar"></div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input id="q" placeholder="Cerca per targa → riepilogo mezzo…" oninput="render()">
+        <button class="clr" id="clr" onclick="document.getElementById('q').value='';render()" title="Pulisci">×</button>
+      </div>
+    </div>
+
+    <div id="content"></div>
+
+    <div class="note">
+      Mockup statico · dati inventati · nessuna connessione reale.<br>
+      Stati calcolati con la STESSA logica della Fase A: soglia 30 giorni per le date, residuo 1.000 km per i km, "ore non disponibili" quando manca il contaore.
+    </div>
+  </main>
+</div>
+
+<!-- MODAL NUOVA / MODIFICA SCADENZA (il "menu regola") -->
+<div class="backdrop" id="bd" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-h"><h3 id="modal-title">Nuova scadenza di manutenzione</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b">
+      <div class="grid2">
+        <div class="field"><label>Tipo / settore</label>
+          <select id="f-tipo" onchange="onTipoChange();updatePreview()">
+            <option value="cronotachigrafo">Cronotachigrafo</option>
+            <option value="tagliando_mezzo">Tagliando mezzo</option>
+            <option value="tagliando_compressore">Tagliando compressore</option>
+            <option value="estintore">Estintore</option>
+            <option value="altro">Altro…</option>
+          </select>
+        </div>
+        <div class="field"><label>Mezzo (targa)</label><select id="f-targa" onchange="updatePreview()"></select></div>
+        <div class="field full"><label>Etichetta mostrata</label><input id="f-label" value="Cronotachigrafo" oninput="updatePreview()"></div>
+      </div>
+
+      <div class="field full" style="margin-top:14px">
+        <label>Su cosa si basa la scadenza</label>
+        <div class="bases">
+          <label><input type="checkbox" class="f-base" value="tempo" checked onchange="syncBaseBlocks();updatePreview()"> A tempo</label>
+          <label><input type="checkbox" class="f-base" value="km" onchange="syncBaseBlocks();updatePreview()"> A km</label>
+          <label><input type="checkbox" class="f-base" value="ore" onchange="syncBaseBlocks();updatePreview()"> A ore</label>
+        </div>
+        <div class="help">Puoi selezionarne più di una: vale la più critica.</div>
+      </div>
+
+      <div class="subgrid" id="blk-tempo">
+        <h4>A tempo</h4>
+        <div class="grid2">
+          <div class="field"><label>Intervallo (mesi)</label><input id="f-mesi" type="number" placeholder="es. 24" oninput="updatePreview()"></div>
+          <div class="field"><label>Ultima esecuzione (data)</label><input id="f-uData" type="text" placeholder="gg/mm/aaaa" oninput="updatePreview()"></div>
+          <div class="field full"><label>Oppure prossima scadenza a mano (data)</label><input id="f-mData" type="text" placeholder="gg/mm/aaaa — prevale sul calcolo" oninput="updatePreview()"></div>
+        </div>
+      </div>
+      <div class="subgrid hidden" id="blk-km">
+        <h4>A km</h4>
+        <div class="grid2">
+          <div class="field"><label>Intervallo (km)</label><input id="f-km" type="number" placeholder="es. 50000" oninput="updatePreview()"></div>
+          <div class="field"><label>Km all'ultima esecuzione</label><input id="f-uKm" type="number" placeholder="es. 120000" oninput="updatePreview()"></div>
+          <div class="field full"><label>Oppure prossimo km a mano</label><input id="f-mKm" type="number" placeholder="prevale sul calcolo" oninput="updatePreview()"></div>
+        </div>
+      </div>
+      <div class="subgrid hidden" id="blk-ore">
+        <h4>A ore</h4>
+        <div class="grid2">
+          <div class="field"><label>Intervallo (ore)</label><input id="f-ore" type="number" placeholder="es. 500" oninput="updatePreview()"></div>
+          <div class="field"><label>Ore all'ultima esecuzione</label><input id="f-uOre" type="number" placeholder="es. 1200" oninput="updatePreview()"></div>
+        </div>
+        <div class="help">In Fase 1 non c'è un contaore corrente affidabile: le scadenze a sole ore mostrano "ore non disponibili".</div>
+      </div>
+
+      <div class="field full" style="margin-top:14px"><label>Note</label><textarea id="f-note" rows="2" placeholder="facoltative"></textarea></div>
+      <div class="preview" id="preview">Anteprima stato…</div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="salva()">Salva scadenza</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TODAY = new Date(2026, 5, 16); // 16 giugno 2026
+  const DAY = 86400000;
+  const SOGLIA_GIORNI = 30, SOGLIA_KM = 1000, SOGLIA_ORE = 50;
+  document.getElementById('oggi').textContent = fmtData(TODAY);
+
+  // Categorie/settori nell'ordine richiesto.
+  const CATEGORIE = [
+    { key:"cronotachigrafo", label:"Cronotachigrafo" },
+    { key:"tagliandi",       label:"Tagliandi" },
+    { key:"estintore",       label:"Estintore" },
+    { key:"collaudi",        label:"Collaudi" },
+  ];
+  const ICONA = {
+    cronotachigrafo:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    tagliandi:'<path d="M14 7l3 3M3 21l3-1 9-9-2-2-9 9z"/><path d="M15 5l4 4"/>',
+    estintore:'<path d="M9 4h4v3H9zM10 7v13a2 2 0 0 0 4 0V7M15 6l3-1"/>',
+    collaudi:'<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
+  };
+  // Mappa tipo manutenzione → categoria
+  function catOfTipo(tipo){
+    if(tipo==="cronotachigrafo") return "cronotachigrafo";
+    if(tipo==="estintore") return "estintore";
+    if(tipo==="tagliando_mezzo"||tipo==="tagliando_compressore") return "tagliandi";
+    return "tagliandi"; // fallback per "altro" nel mockup
+  }
+
+  const MEZZI = [
+    { targa:"TI 298409", marca:"Iveco", modello:"Stralis", km:486200 },
+    { targa:"VA 552 KD", marca:"Scania", modello:"R450",    km:312050 },
+    { targa:"CO 118 RT", marca:"MAN",    modello:"TGX",      km:128900 },
+    { targa:"MI 904 ZP", marca:"Volvo",  modello:"FH",       km:75300  },
+  ];
+  const kmByTarga = Object.fromEntries(MEZZI.map(m => [m.targa, m.km]));
+  const mezzoByTarga = Object.fromEntries(MEZZI.map(m => [m.targa, m]));
+
+  // Collaudi (ex revisioni)
+  const COLLAUDI = [
+    { targa:"TI 298409", scadenza:"2026-06-10", prenotata:false },
+    { targa:"VA 552 KD", scadenza:"2026-07-02", prenotata:true  },
+    { targa:"CO 118 RT", scadenza:"2027-01-20", prenotata:false },
+    { targa:"MI 904 ZP", scadenza:"2026-06-29", prenotata:false },
+  ];
+
+  // Manutenzioni ricorrenti (record come Fase A)
+  let MANUTENZIONI = [
+    { id:"m1", targa:"TI 298409", tipo:"cronotachigrafo", label:"Cronotachigrafo", base:["tempo"], ultimaEsecuzioneData:"2024-05-30", intervalloMesi:24 },
+    { id:"m7", targa:"VA 552 KD", tipo:"cronotachigrafo", label:"Cronotachigrafo", base:["tempo"], ultimaEsecuzioneData:"2025-09-10", intervalloMesi:24 },
+    { id:"m2", targa:"VA 552 KD", tipo:"tagliando_mezzo", label:"Tagliando mezzo", base:["km"], ultimaEsecuzioneKm:265000, intervalloKm:50000 },
+    { id:"m3", targa:"TI 298409", tipo:"tagliando_mezzo", label:"Tagliando mezzo", base:["tempo","km"], ultimaEsecuzioneData:"2025-07-01", intervalloMesi:12, ultimaEsecuzioneKm:486000, intervalloKm:1000 },
+    { id:"m4", targa:"CO 118 RT", tipo:"tagliando_compressore", label:"Tagliando compressore", base:["ore"], ultimaEsecuzioneOre:1200, intervalloOre:500 },
+    { id:"m5", targa:"MI 904 ZP", tipo:"estintore", label:"Estintore", base:["tempo"], prossimaScadenzaDataManuale:"2025-12-31" },
+    { id:"m6", targa:"CO 118 RT", tipo:"estintore", label:"Estintore", base:["tempo"], ultimaEsecuzioneData:"2025-09-15", intervalloMesi:12 },
+  ];
+
+  // ——— Helper ———
+  function parseISO(s){ if(!s) return null; const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m? new Date(+m[1],+m[2]-1,+m[3]) : null; }
+  function parseUser(s){ if(!s) return null; const m=String(s).trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/); return m? new Date(+m[3],+m[2]-1,+m[1]) : parseISO(s); }
+  function fmtData(d){ if(!d) return "—"; return String(d.getDate()).padStart(2,'0')+"/"+String(d.getMonth()+1).padStart(2,'0')+"/"+d.getFullYear(); }
+  function fmtNum(n){ return (n==null)?"—":Number(n).toLocaleString('it-IT'); }
+  function giorni(d){ if(!d) return null; const a=Date.UTC(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()); const b=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()); return Math.round((b-a)/DAY); }
+  function addMesi(d,m){ if(!d||m==null) return null; const x=new Date(d); x.setMonth(x.getMonth()+Number(m)); return x; }
+  function etichettaGiorni(g){ if(g==null) return ""; if(g===0) return "oggi"; const a=Math.abs(g); const base=a===1?"1 giorno":a+" giorni"; return g<0? base+" fa" : "tra "+base; }
+  function statoTempo(g){ if(g==null) return "data_mancante"; if(g<0) return "scaduta"; if(g<=SOGLIA_GIORNI) return "in_scadenza"; return "ok"; }
+  function statoResiduo(r,soglia){ if(r==null) return "data_mancante"; if(r<0) return "scaduta"; if(r<=soglia) return "in_scadenza"; return "ok"; }
+  const SEV = {scaduta:4,in_scadenza:3,ok:2,valore_non_disponibile:1,data_mancante:0};
+  function tone(s){ return s==="scaduta"?"danger":s==="in_scadenza"?"warn":s==="ok"?"ok":"neutral"; }
+  function statoLabel(s){ return {scaduta:"Scaduta",in_scadenza:"In scadenza",ok:"OK",data_mancante:"Dati mancanti",valore_non_disponibile:"Da verificare"}[s]; }
+  function norm(t){ return t.toUpperCase().replace(/\s+/g,''); }
+
+  function valuta(rec){
+    const comp = []; const km = kmByTarga[rec.targa] ?? null;
+    (rec.base||[]).forEach(base=>{
+      if(base==="tempo"){
+        const prossima = parseISO(rec.prossimaScadenzaDataManuale) || addMesi(parseISO(rec.ultimaEsecuzioneData), rec.intervalloMesi);
+        const g = giorni(prossima);
+        comp.push({ base, stato:statoTempo(g), testo: prossima? (fmtData(prossima)+" · "+etichettaGiorni(g)) : "data non impostata" });
+      } else if(base==="km"){
+        const pross = (rec.prossimaScadenzaKmManuale!=null)? rec.prossimaScadenzaKmManuale : (rec.ultimaEsecuzioneKm!=null&&rec.intervalloKm!=null)? rec.ultimaEsecuzioneKm+rec.intervalloKm : null;
+        if(pross==null) comp.push({base,stato:"data_mancante",testo:"km non impostati"});
+        else if(km==null) comp.push({base,stato:"valore_non_disponibile",testo:"km corrente sconosciuto"});
+        else { const r=pross-km; comp.push({base,stato:statoResiduo(r,SOGLIA_KM),testo:fmtNum(pross)+" km · "+(r<0?("oltre di "+fmtNum(-r)):("residuo "+fmtNum(r)))+" km"}); }
+      } else if(base==="ore"){
+        const pross = (rec.prossimaScadenzaOreManuale!=null)? rec.prossimaScadenzaOreManuale : (rec.ultimaEsecuzioneOre!=null&&rec.intervalloOre!=null)? rec.ultimaEsecuzioneOre+rec.intervalloOre : null;
+        if(pross==null) comp.push({base,stato:"data_mancante",testo:"ore non impostate"});
+        else comp.push({base,stato:"valore_non_disponibile",testo:fmtNum(pross)+" h · ore correnti non disponibili"});
+      }
+    });
+    let stato = comp.reduce((acc,c)=> SEV[c.stato]>SEV[acc]?c.stato:acc, "data_mancante");
+    if(!comp.length) stato="data_mancante";
+    return { stato, componenti:comp };
+  }
+  function valutaCollaudo(c){ const d=parseISO(c.scadenza); const g=giorni(d); return { scadenza:d, giorni:g, stato:statoTempo(g) }; }
+
+  function pill(stato){ const t=tone(stato); const cls=t==="danger"?"pill-danger":t==="warn"?"pill-warn":t==="ok"?"pill-ok":"pill-neutral"; return '<span class="pill '+cls+'">'+statoLabel(stato)+'</span>'; }
+
+  // ——— Costruzione voci unificate per categoria ———
+  function vociCollaudi(){ return COLLAUDI.map(c=>{ const k=valutaCollaudo(c); return {kind:"collaudo",categoria:"collaudi",targa:c.targa,raw:c,calc:k,sev:SEV[k.stato],sort:(k.giorni??1e9)}; }); }
+  function vociManutenzioni(){ return MANUTENZIONI.map(m=>{ const k=valuta(m); return {kind:"manutenzione",categoria:catOfTipo(m.tipo),targa:m.targa,raw:m,calc:k,sev:SEV[k.stato],sort:1e9}; }); }
+  function tutteVoci(){ return [...vociManutenzioni(), ...vociCollaudi()]; }
+
+  function rigaCollaudo(v){
+    const c=v.raw, k=v.calc;
+    return `<div class="row">
+      <div class="tg">${c.targa}</div>
+      <div>
+        <div class="l1">Collaudo ${pill(k.stato)}</div>
+        <div class="l2">${fmtData(k.scadenza)} · ${etichettaGiorni(k.giorni)} · ${c.prenotata?'<span class="pill pill-neutral">Collaudo prenotato</span>':'<span class="chip">non prenotato</span>'}</div>
+      </div>
+      <div class="acts"><button class="btn">Prenota collaudo</button><button class="btn">Pre-collaudo</button><button class="btn primary">Collaudo fatto</button></div>
+    </div>`;
+  }
+  function rigaManutenzione(v){
+    const m=v.raw;
+    return `<div class="row">
+      <div class="tg">${m.targa}</div>
+      <div>
+        <div class="l1">${m.label} ${pill(v.calc.stato)}</div>
+        <div class="l2">${(m.base||[]).map(b=>'<span class="chip">'+b+'</span>').join('')} ${v.calc.componenti.map(c=>'<span>'+c.testo+'</span>').join(' · ')}</div>
+      </div>
+      <div class="acts"><button class="btn" onclick='openModifica("${m.id}")'>Modifica</button><button class="btn">Segna eseguita</button><button class="btn danger" onclick='elimina("${m.id}")'>Elimina</button></div>
+    </div>`;
+  }
+  function rigaVoce(v){ return v.kind==="collaudo"? rigaCollaudo(v) : rigaManutenzione(v); }
+
+  function cardCategoria(cat, voci){
+    voci = voci.slice().sort((a,b)=> b.sev-a.sev || a.sort-b.sort);
+    const body = voci.length? voci.map(rigaVoce).join('') : '<div class="empty">Nessuna voce in questo settore.</div>';
+    return `<div class="card">
+      <div class="card-h"><h2><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${ICONA[cat.key]}</svg></span> ${cat.label}</h2><span class="count">${voci.length}</span></div>
+      ${body}
+    </div>`;
+  }
+
+  // ——— Render principale ———
+  let FILTER = "tutte";
+  let KPI = null; // {ambito:'collaudo'|'manutenzione', stato:'scaduta'|'in_scadenza'}
+  function render(){
+    const q = document.getElementById('q').value.trim();
+    document.getElementById('clr').style.visibility = q? 'visible':'hidden';
+    const voci = tutteVoci();
+
+    // KPI globali (i numeri restano sempre i totali)
+    const col = vociCollaudi(), man = vociManutenzioni();
+    document.getElementById('kpi-col-scad').textContent = col.filter(v=>v.calc.stato==="scaduta").length;
+    document.getElementById('kpi-col-prox').textContent = col.filter(v=>v.calc.stato==="in_scadenza").length;
+    document.getElementById('kpi-man-scad').textContent = man.filter(v=>v.calc.stato==="scaduta").length;
+    document.getElementById('kpi-man-prox').textContent = man.filter(v=>v.calc.stato==="in_scadenza").length;
+
+    // Evidenzia il riquadro KPI usato come filtro
+    document.querySelectorAll('.kpi').forEach(k=> k.classList.toggle('sel', !!KPI && k.dataset.ambito===KPI.ambito && k.dataset.stato===KPI.stato));
+
+    // Voci visibili: se un KPI è attivo filtra per ambito (collaudo/manutenzione) + stato
+    const vis = KPI? voci.filter(v=> v.kind===KPI.ambito && v.calc.stato===KPI.stato) : voci;
+
+    // Tabbar (conteggi sulle voci visibili)
+    const counts = {tutte:vis.length}; CATEGORIE.forEach(c=>counts[c.key]=vis.filter(v=>v.categoria===c.key).length);
+    document.getElementById('tabbar').innerHTML =
+      `<button class="tab ${FILTER==='tutte'?'active':''}" onclick="setFilter('tutte')">Tutte <span class="n">${counts.tutte}</span></button>` +
+      CATEGORIE.map(c=>`<button class="tab ${FILTER===c.key?'active':''}" onclick="setFilter('${c.key}')">${c.label} <span class="n">${counts[c.key]}</span></button>`).join('');
+
+    const content = document.getElementById('content');
+
+    // MODALITÀ RIEPILOGO MEZZO (ricerca targa attiva)
+    if(q){
+      const targhe = MEZZI.map(m=>m.targa).filter(t=>norm(t).includes(norm(q)));
+      if(!targhe.length){ content.innerHTML = '<div class="card"><div class="empty">Nessun mezzo trovato per "'+q+'".</div></div>'; return; }
+      content.innerHTML = targhe.map(targa=>{
+        const mz = mezzoByTarga[targa];
+        const vTarga = vis.filter(v=>v.targa===targa);
+        const sezioni = CATEGORIE.map(cat=>{
+          const vs = vTarga.filter(v=>v.categoria===cat.key).sort((a,b)=> b.sev-a.sev || a.sort-b.sort);
+          const body = vs.length? vs.map(rigaVoce).join('') : '<div class="empty">Nessuna scadenza registrata in questo settore.</div>';
+          return `<div class="seclabel"><span class="ico" style="background:none;color:var(--accent)"><svg viewBox="0 0 24 24" width="15" fill="none" stroke="currentColor" stroke-width="2">${ICONA[cat.key]}</svg></span> ${cat.label}<span class="ln"></span></div>${body}`;
+        }).join('');
+        return `<div class="card">
+          <div class="dossier-h">
+            <div class="tgbig">${targa}</div>
+            <div class="info"><b>${mz.marca} ${mz.modello}</b><span>Riepilogo scadenze del mezzo</span></div>
+            <div class="km"><b>${fmtNum(mz.km)} km</b><span>km corrente</span></div>
+          </div>
+          ${sezioni}
+        </div>`;
+      }).join('');
+      return;
+    }
+
+    // MODALITÀ PER SETTORE
+    const cats = (FILTER==="tutte")? CATEGORIE : CATEGORIE.filter(c=>c.key===FILTER);
+    content.innerHTML = cats.map(cat=> cardCategoria(cat, vis.filter(v=>v.categoria===cat.key))).join('');
+  }
+  function setFilter(f){ FILTER=f; KPI=null; render(); }
+  function setKpi(ambito,stato){ if(KPI && KPI.ambito===ambito && KPI.stato===stato){ KPI=null; } else { KPI={ambito,stato}; FILTER='tutte'; } render(); }
+
+  // ——— Modal ———
+  let editingId=null;
+  function fillTargaSelect(){ document.getElementById('f-targa').innerHTML = MEZZI.map(m=>'<option>'+m.targa+'</option>').join(''); }
+  function syncBaseBlocks(){ const sel=b=>document.querySelector('.f-base[value="'+b+'"]').checked; document.getElementById('blk-tempo').classList.toggle('hidden',!sel('tempo')); document.getElementById('blk-km').classList.toggle('hidden',!sel('km')); document.getElementById('blk-ore').classList.toggle('hidden',!sel('ore')); }
+  function onTipoChange(){ const t=document.getElementById('f-tipo').value; const labels={cronotachigrafo:"Cronotachigrafo",tagliando_mezzo:"Tagliando mezzo",tagliando_compressore:"Tagliando compressore",estintore:"Estintore",altro:""}; if(labels[t]!==undefined) document.getElementById('f-label').value=labels[t]; }
+  function isoFrom(id){ const d=parseUser(document.getElementById(id).value); if(!d) return null; return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,'0')+"-"+String(d.getDate()).padStart(2,'0'); }
+  function readForm(){ const base=[...document.querySelectorAll('.f-base:checked')].map(c=>c.value); const num=id=>{const v=document.getElementById(id).value.trim();return v===""?null:Number(v);};
+    return { id:editingId||"m"+Date.now(), targa:document.getElementById('f-targa').value, tipo:document.getElementById('f-tipo').value, label:document.getElementById('f-label').value.trim()||"Scadenza", base,
+      intervalloMesi:num('f-mesi'), ultimaEsecuzioneData:isoFrom('f-uData'), prossimaScadenzaDataManuale:isoFrom('f-mData'),
+      intervalloKm:num('f-km'), ultimaEsecuzioneKm:num('f-uKm'), prossimaScadenzaKmManuale:num('f-mKm'),
+      intervalloOre:num('f-ore'), ultimaEsecuzioneOre:num('f-uOre'), note:document.getElementById('f-note').value.trim()||null }; }
+  function updatePreview(){ const rec=readForm(); if(!rec.base.length){document.getElementById('preview').innerHTML='Seleziona almeno una base.';return;} const c=valuta(rec); document.getElementById('preview').innerHTML='Anteprima: '+pill(c.stato)+' '+c.componenti.map(x=>'<span class="chip">'+x.base+'</span> '+x.testo).join(' &nbsp; '); }
+  function resetForm(){ document.getElementById('f-tipo').value="cronotachigrafo"; document.getElementById('f-label').value="Cronotachigrafo"; document.querySelectorAll('.f-base').forEach(c=>c.checked=(c.value==="tempo")); ['f-mesi','f-uData','f-mData','f-km','f-uKm','f-mKm','f-ore','f-uOre','f-note'].forEach(id=>document.getElementById(id).value=""); syncBaseBlocks(); }
+  function openNuova(){ editingId=null; document.getElementById('modal-title').textContent="Nuova scadenza di manutenzione"; fillTargaSelect(); resetForm(); updatePreview(); document.getElementById('bd').classList.add('open'); }
+  function openModifica(id){ const m=MANUTENZIONI.find(x=>x.id===id); if(!m) return; editingId=id; document.getElementById('modal-title').textContent="Modifica scadenza"; fillTargaSelect();
+    document.getElementById('f-tipo').value=["cronotachigrafo","tagliando_mezzo","tagliando_compressore","estintore"].includes(m.tipo)?m.tipo:"altro";
+    document.getElementById('f-targa').value=m.targa; document.getElementById('f-label').value=m.label;
+    document.querySelectorAll('.f-base').forEach(c=>c.checked=(m.base||[]).includes(c.value));
+    const set=(id,v)=>document.getElementById(id).value=(v==null?"":v);
+    set('f-mesi',m.intervalloMesi); set('f-uData',m.ultimaEsecuzioneData?fmtData(parseISO(m.ultimaEsecuzioneData)):""); set('f-mData',m.prossimaScadenzaDataManuale?fmtData(parseISO(m.prossimaScadenzaDataManuale)):"");
+    set('f-km',m.intervalloKm); set('f-uKm',m.ultimaEsecuzioneKm); set('f-mKm',m.prossimaScadenzaKmManuale);
+    set('f-ore',m.intervalloOre); set('f-uOre',m.ultimaEsecuzioneOre); set('f-note',m.note);
+    syncBaseBlocks(); updatePreview(); document.getElementById('bd').classList.add('open'); }
+  function salva(){ const rec=readForm(); if(!rec.base.length){alert("Seleziona almeno una base (tempo, km o ore).");return;} const i=MANUTENZIONI.findIndex(x=>x.id===rec.id); if(i>=0) MANUTENZIONI[i]=rec; else MANUTENZIONI.push(rec); closeModal(); render(); }
+  function elimina(id){ if(confirm("Eliminare questa scadenza?")){ MANUTENZIONI=MANUTENZIONI.filter(x=>x.id!==id); render(); } }
+  function closeModal(){ document.getElementById('bd').classList.remove('open'); }
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+  render();
+</script>
+</body>
+</html>

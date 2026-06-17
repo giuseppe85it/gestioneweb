@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
 import {
   readNextCentroControlloSnapshot,
+  type D10MezzoItem,
   type D10PrenotazioneCollaudo,
   type D10PreCollaudo,
   type D10RevisionItem,
+  type D10SessionItem,
   type D10Snapshot,
 } from "./domain/nextCentroControlloDomain";
 import {
@@ -18,8 +20,22 @@ import {
   setPreCollaudo,
   setPrenotazioneCollaudo,
 } from "./nextScadenzeCollaudiWriter";
-
-type ScadenzeMode = "tutte" | "urgenti";
+import {
+  evaluateScadenzaManutenzione,
+  readKmCorrentiByTarga,
+  readNextManutenzioniScadenzeSnapshot,
+  type NextManutenzioneScadenzaItem,
+  type NextManutenzioneScadenzaRecord,
+  type NextManutenzioniScadenzeSnapshot,
+  type NextScadenzaComponente,
+  type NextScadenzaStato,
+  type ScadenzaBase,
+} from "./domain/nextManutenzioniScadenzeDomain";
+import {
+  deleteScadenzaManutenzione,
+  saveScadenzaManutenzione,
+} from "./nextManutenzioniScadenzeWriter";
+import "./next-scadenze.css";
 
 type FeedbackState = {
   tone: "warning" | "danger" | "success";
@@ -137,33 +153,6 @@ function getPreCollaudoLavori(preCollaudo: D10PreCollaudo | null): string {
   return String((preCollaudo as PreCollaudoWithLavori | null)?.lavoriPrevisti ?? "").trim();
 }
 
-function getRevisionStatusLabel(item: D10RevisionItem): string {
-  if (item.giorni === null) return "Revisione";
-  if (item.giorni < 0) return "Scaduta";
-  if (item.giorni <= 30) return "In scadenza";
-  return "Revisione";
-}
-
-function getRevisionStatusTone(item: D10RevisionItem): "neutral" | "warning" | "danger" {
-  if (item.giorni === null) return "neutral";
-  if (item.giorni < 0) return "danger";
-  if (item.giorni <= 30) return "warning";
-  return "neutral";
-}
-
-function isUrgentRevision(item: D10RevisionItem): boolean {
-  return item.giorni !== null && item.giorni <= 30 && item.prenotazioneCollaudo?.completata !== true;
-}
-
-function sortRevisionItems(items: D10RevisionItem[]): D10RevisionItem[] {
-  return [...items].sort((left, right) => {
-    if (left.giorni === null && right.giorni === null) return 0;
-    if (left.giorni === null) return 1;
-    if (right.giorni === null) return -1;
-    return left.giorni - right.giorni;
-  });
-}
-
 function buildPrenotazioneForm(
   item: D10RevisionItem,
   variant: "create" | "edit",
@@ -218,19 +207,10 @@ function buildDeletePrenotazioneOperation(
   };
 }
 
-function readModeFromSearch(search: string): ScadenzeMode {
-  const value = new URLSearchParams(search).get("mode");
-  return value === "urgenti" ? "urgenti" : "tutte";
-}
-
 function readTargaFromSearch(search: string): string {
   const raw = new URLSearchParams(search).get("targa");
   if (!raw) return "";
   return raw.trim().toUpperCase();
-}
-
-function normalizeTargaForCompare(value: string | null | undefined): string {
-  return String(value ?? "").trim().toUpperCase();
 }
 
 function filterOfficine(items: NextOfficinaReadOnlyItem[], query: string): NextOfficinaReadOnlyItem[] {
@@ -251,11 +231,136 @@ function formatOfficinaMeta(item: NextOfficinaReadOnlyItem): string {
   return [item.citta, item.telefono].filter(Boolean).join(" - ");
 }
 
+// ————————————————————————————————————————————————————————————————
+// Scadenze per settore (collaudi + manutenzioni): helper di presentazione
+// ————————————————————————————————————————————————————————————————
+type ScadenzaCategoria = "cronotachigrafo" | "tagliandi" | "estintore" | "collaudi";
+
+const SCADENZE_CATEGORIE: { key: ScadenzaCategoria; label: string; icon: string }[] = [
+  { key: "cronotachigrafo", label: "Cronotachigrafo", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { key: "tagliandi", label: "Tagliandi", icon: '<path d="M14 7l3 3M3 21l3-1 9-9-2-2-9 9z"/><path d="M15 5l4 4"/>' },
+  { key: "estintore", label: "Estintore", icon: '<path d="M9 4h4v3H9zM10 7v13a2 2 0 0 0 4 0V7M15 6l3-1"/>' },
+  { key: "collaudi", label: "Collaudi", icon: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>' },
+];
+
+function categoriaDiTipo(tipo: string): ScadenzaCategoria {
+  if (tipo === "cronotachigrafo") return "cronotachigrafo";
+  if (tipo === "estintore") return "estintore";
+  return "tagliandi"; // tagliando_mezzo, tagliando_compressore, altro
+}
+
+const STATO_SEVERITA: Record<NextScadenzaStato, number> = {
+  scaduta: 4,
+  in_scadenza: 3,
+  ok: 2,
+  valore_non_disponibile: 1,
+  data_mancante: 0,
+};
+
+function pillClassForStato(stato: NextScadenzaStato): string {
+  if (stato === "scaduta") return "pill pill-danger";
+  if (stato === "in_scadenza") return "pill pill-warn";
+  if (stato === "ok") return "pill pill-ok";
+  return "pill pill-neutral";
+}
+
+function pillLabelForStato(stato: NextScadenzaStato): string {
+  const labels: Record<NextScadenzaStato, string> = {
+    scaduta: "Scaduta",
+    in_scadenza: "In scadenza",
+    ok: "OK",
+    data_mancante: "Dati mancanti",
+    valore_non_disponibile: "Da verificare",
+  };
+  return labels[stato];
+}
+
+// Stato di un collaudo (revisione) coerente col mockup, SENZA toccare la logica del dominio.
+function statoCollaudo(item: D10RevisionItem): NextScadenzaStato {
+  if (item.giorni === null) return "data_mancante";
+  if (item.giorni < 0) return "scaduta";
+  if (item.giorni <= 30) return "in_scadenza";
+  return "ok";
+}
+
+function formatNumIt(value: number | null | undefined): string {
+  return value == null ? "—" : Number(value).toLocaleString("it-IT");
+}
+
+// Testo descrittivo di una componente manutenzione (replica fedele del mockup).
+function formatComponenteTesto(componente: NextScadenzaComponente): string {
+  if (componente.base === "tempo") {
+    return componente.prossimaData
+      ? `${toDisplay(componente.prossimaData)} · ${formatGiorniLabel(componente.giorni)}`
+      : "data non impostata";
+  }
+  if (componente.base === "km") {
+    if (componente.stato === "data_mancante") return "km non impostati";
+    if (componente.stato === "valore_non_disponibile") return "km corrente sconosciuto";
+    const residuo = componente.residuo ?? 0;
+    return `${formatNumIt(componente.prossimoValore)} km · ${
+      residuo < 0 ? "oltre di " + formatNumIt(-residuo) : "residuo " + formatNumIt(residuo)
+    } km`;
+  }
+  if (componente.stato === "data_mancante") return "ore non impostate";
+  return `${formatNumIt(componente.prossimoValore)} h · ore correnti non disponibili`;
+}
+
+// Stato del form "nuova/modifica scadenza" (il menu regola).
+type ManutFormState = {
+  editingId: string | null;
+  targa: string;
+  tipo: string;
+  label: string;
+  base: ScadenzaBase[];
+  intervalloMesi: string;
+  ultimaEsecuzioneData: string;
+  prossimaScadenzaDataManuale: string;
+  intervalloKm: string;
+  ultimaEsecuzioneKm: string;
+  prossimaScadenzaKmManuale: string;
+  intervalloOre: string;
+  ultimaEsecuzioneOre: string;
+  note: string;
+};
+
+const TIPI_SCADENZA: { value: string; label: string }[] = [
+  { value: "cronotachigrafo", label: "Cronotachigrafo" },
+  { value: "tagliando_mezzo", label: "Tagliando mezzo" },
+  { value: "tagliando_compressore", label: "Tagliando compressore" },
+  { value: "estintore", label: "Estintore" },
+  { value: "altro", label: "Altro…" },
+];
+
+function emptyManutForm(): ManutFormState {
+  return {
+    editingId: null,
+    targa: "",
+    tipo: "cronotachigrafo",
+    label: "Cronotachigrafo",
+    base: ["tempo"],
+    intervalloMesi: "",
+    ultimaEsecuzioneData: "",
+    prossimaScadenzaDataManuale: "",
+    intervalloKm: "",
+    ultimaEsecuzioneKm: "",
+    prossimaScadenzaKmManuale: "",
+    intervalloOre: "",
+    ultimaEsecuzioneOre: "",
+    note: "",
+  };
+}
+
+function numOrNull(value: string): number | null {
+  const trimmed = value.trim().replace(",", ".");
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function NextScadenzeCollaudiPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const mode = readModeFromSearch(location.search);
-  const targaFilter = readTargaFromSearch(location.search);
   const operationPanelRef = useRef<HTMLElement | null>(null);
 
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
@@ -266,11 +371,28 @@ export default function NextScadenzeCollaudiPage() {
   const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
   const [officineOpen, setOfficineOpen] = useState(false);
 
+  // Manutenzioni in scadenza (Fase A) + km correnti per targa.
+  const [manutSnapshot, setManutSnapshot] = useState<NextManutenzioniScadenzeSnapshot | null>(null);
+  const [kmByTarga, setKmByTarga] = useState<Map<string, number>>(new Map());
+  // Filtri della nuova vista: settore, riquadro KPI, ricerca targa.
+  const [filtroSettore, setFiltroSettore] = useState<"tutte" | ScadenzaCategoria>("tutte");
+  const [kpiFiltro, setKpiFiltro] = useState<{ ambito: "collaudo" | "manutenzione"; stato: NextScadenzaStato } | null>(null);
+  const [queryTarga, setQueryTarga] = useState<string>(() => readTargaFromSearch(location.search));
+  // Modal "nuova/modifica scadenza" (il menu regola).
+  const [manutForm, setManutForm] = useState<ManutFormState | null>(null);
+  const [manutSubmitting, setManutSubmitting] = useState(false);
+
   const loadSnapshot = async () => {
     setLoading(true);
     try {
-      const nextSnapshot = await readNextCentroControlloSnapshot(Date.now());
+      const [nextSnapshot, manut, km] = await Promise.all([
+        readNextCentroControlloSnapshot(Date.now()),
+        readNextManutenzioniScadenzeSnapshot(Date.now()),
+        readKmCorrentiByTarga(),
+      ]);
       setSnapshot(nextSnapshot);
+      setManutSnapshot(manut);
+      setKmByTarga(km);
     } catch {
       setSnapshot(null);
     } finally {
@@ -282,9 +404,15 @@ export default function NextScadenzeCollaudiPage() {
     let active = true;
     void (async () => {
       try {
-        const nextSnapshot = await readNextCentroControlloSnapshot(Date.now());
+        const [nextSnapshot, manut, km] = await Promise.all([
+          readNextCentroControlloSnapshot(Date.now()),
+          readNextManutenzioniScadenzeSnapshot(Date.now()),
+          readKmCorrentiByTarga(),
+        ]);
         if (!active) return;
         setSnapshot(nextSnapshot);
+        setManutSnapshot(manut);
+        setKmByTarga(km);
       } catch {
         if (!active) return;
         setSnapshot(null);
@@ -330,58 +458,10 @@ export default function NextScadenzeCollaudiPage() {
     });
   }, [operation]);
 
-  const rows = useMemo(() => {
-    const source: D10RevisionItem[] = snapshot?.revisioni ?? [];
-    const byMode: D10RevisionItem[] =
-      mode === "urgenti" ? source.filter(isUrgentRevision) : source;
-    const byTarga: D10RevisionItem[] = targaFilter
-      ? byMode.filter(
-          (item: D10RevisionItem) =>
-            normalizeTargaForCompare(item.targa) === targaFilter,
-        )
-      : byMode;
-    return sortRevisionItems(byTarga);
-  }, [mode, snapshot, targaFilter]);
-
   const filteredOfficine = useMemo(() => {
     if (!operation || operation.kind !== "pre-collaudo") return [];
     return filterOfficine(officine, operation.form.officina);
   }, [officine, operation]);
-
-  const counters = snapshot?.counters ?? null;
-  const subtitle = targaFilter
-    ? `Filtro mezzo ${targaFilter}${mode === "urgenti" ? " - solo urgenti" : ""}`
-    : mode === "urgenti"
-      ? "Solo revisioni urgenti non completate"
-      : "Vista completa ordinata per scadenza";
-
-  const clearTargaFilter = () => {
-    const params = new URLSearchParams(location.search);
-    params.delete("targa");
-    navigate(
-      {
-        pathname: location.pathname,
-        search: params.toString() ? `?${params.toString()}` : "",
-      },
-      { replace: true },
-    );
-  };
-
-  const setMode = (nextMode: ScadenzeMode) => {
-    const params = new URLSearchParams(location.search);
-    if (nextMode === "urgenti") {
-      params.set("mode", "urgenti");
-    } else {
-      params.delete("mode");
-    }
-    navigate(
-      {
-        pathname: location.pathname,
-        search: params.toString() ? `?${params.toString()}` : "",
-      },
-      { replace: true },
-    );
-  };
 
   const openOperation = (nextOperation: Operation) => {
     setOperation(nextOperation);
@@ -546,6 +626,98 @@ export default function NextScadenzeCollaudiPage() {
       showValidationError(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // ————— Modal "nuova/modifica scadenza" (menu regola) —————
+  const openNuovaManut = () => {
+    const form = emptyManutForm();
+    if (queryTarga) form.targa = queryTarga;
+    setManutForm(form);
+  };
+
+  const openModificaManut = (item: NextManutenzioneScadenzaItem) => {
+    const record = item.record;
+    setManutForm({
+      editingId: record.id,
+      targa: record.targa,
+      tipo: TIPI_SCADENZA.some((entry) => entry.value === record.tipo) ? record.tipo : "altro",
+      label: record.label,
+      base: record.base.length ? [...record.base] : ["tempo"],
+      intervalloMesi: record.intervalloMesi != null ? String(record.intervalloMesi) : "",
+      ultimaEsecuzioneData: record.ultimaEsecuzioneData ? toDisplay(record.ultimaEsecuzioneData) : "",
+      prossimaScadenzaDataManuale: record.prossimaScadenzaDataManuale ? toDisplay(record.prossimaScadenzaDataManuale) : "",
+      intervalloKm: record.intervalloKm != null ? String(record.intervalloKm) : "",
+      ultimaEsecuzioneKm: record.ultimaEsecuzioneKm != null ? String(record.ultimaEsecuzioneKm) : "",
+      prossimaScadenzaKmManuale: record.prossimaScadenzaKmManuale != null ? String(record.prossimaScadenzaKmManuale) : "",
+      intervalloOre: record.intervalloOre != null ? String(record.intervalloOre) : "",
+      ultimaEsecuzioneOre: record.ultimaEsecuzioneOre != null ? String(record.ultimaEsecuzioneOre) : "",
+      note: record.note ?? "",
+    });
+  };
+
+  const closeManut = () => setManutForm(null);
+
+  const patchManut = (patch: Partial<ManutFormState>) =>
+    setManutForm((current) => (current ? { ...current, ...patch } : current));
+
+  const toggleBaseManut = (base: ScadenzaBase) =>
+    setManutForm((current) => {
+      if (!current) return current;
+      const has = current.base.includes(base);
+      const next = has ? current.base.filter((entry) => entry !== base) : [...current.base, base];
+      return { ...current, base: next };
+    });
+
+  const handleManutTipoChange = (tipo: string) => {
+    const found = TIPI_SCADENZA.find((entry) => entry.value === tipo);
+    patchManut({ tipo, label: tipo === "altro" ? "" : found?.label ?? "" });
+  };
+
+  const salvaManut = async () => {
+    if (!manutForm) return;
+    if (manutForm.base.length === 0) {
+      showValidationError("Seleziona almeno una base (tempo, km o ore).");
+      return;
+    }
+    setManutSubmitting(true);
+    try {
+      await saveScadenzaManutenzione({
+        id: manutForm.editingId,
+        targa: manutForm.targa,
+        tipo: manutForm.tipo,
+        label: manutForm.label,
+        base: manutForm.base,
+        intervalloMesi: numOrNull(manutForm.intervalloMesi),
+        ultimaEsecuzioneData: manutForm.ultimaEsecuzioneData || null,
+        prossimaScadenzaDataManuale: manutForm.prossimaScadenzaDataManuale || null,
+        intervalloKm: numOrNull(manutForm.intervalloKm),
+        ultimaEsecuzioneKm: numOrNull(manutForm.ultimaEsecuzioneKm),
+        prossimaScadenzaKmManuale: numOrNull(manutForm.prossimaScadenzaKmManuale),
+        intervalloOre: numOrNull(manutForm.intervalloOre),
+        ultimaEsecuzioneOre: numOrNull(manutForm.ultimaEsecuzioneOre),
+        note: manutForm.note || null,
+      });
+      setManutForm(null);
+      await loadSnapshot();
+      showSuccess("Scadenza salvata.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore durante il salvataggio.";
+      showValidationError(message);
+    } finally {
+      setManutSubmitting(false);
+    }
+  };
+
+  const eliminaManut = async (item: NextManutenzioneScadenzaItem) => {
+    if (!window.confirm(`Eliminare la scadenza "${item.label}" di ${item.targa}?`)) return;
+    try {
+      await deleteScadenzaManutenzione(item.id);
+      await loadSnapshot();
+      showSuccess("Scadenza eliminata.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore durante l'eliminazione.";
+      showValidationError(message);
     }
   };
 
@@ -905,197 +1077,634 @@ export default function NextScadenzeCollaudiPage() {
     );
   };
 
-  return (
-    <main className="next-shell__scadenze-page">
-      <header className="next-shell__scadenze-page-head">
-        <div>
-          <h1 className="next-shell__scadenze-page-title">Scadenze collaudi</h1>
-          <div className="next-shell__scadenze-page-subtitle">{subtitle}</div>
-        </div>
-        <div className="next-shell__scadenze-mode-switch" role="tablist" aria-label="Filtro scadenze">
-          {targaFilter ? (
-            <button
-              type="button"
-              className="next-shell__scadenze-mode-tab"
-              onClick={clearTargaFilter}
-              title={`Rimuovi filtro mezzo ${targaFilter}`}
-            >
-              {targaFilter} ×
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "tutte"}
-            className={`next-shell__scadenze-mode-tab${
-              mode === "tutte" ? " next-shell__scadenze-mode-tab--active" : ""
-            }`}
-            onClick={() => setMode("tutte")}
-          >
-            Tutte
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "urgenti"}
-            className={`next-shell__scadenze-mode-tab${
-              mode === "urgenti" ? " next-shell__scadenze-mode-tab--active" : ""
-            }`}
-            onClick={() => setMode("urgenti")}
-          >
-            Urgenti
-          </button>
-        </div>
-      </header>
+  // ————— Costruzione voci unificate (collaudi + manutenzioni) —————
+  const revisioni: D10RevisionItem[] = snapshot?.revisioni ?? [];
+  const manutItems: NextManutenzioneScadenzaItem[] = manutSnapshot?.items ?? [];
+  const normTarga = (value: string | null | undefined): string =>
+    String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 
-      {!operation && feedback ? renderFeedback() : null}
+  // Mappe per mini-dossier e ricerca per autista (dati reali già nello snapshot).
+  const mezzi: D10MezzoItem[] = snapshot?.mezzi ?? [];
+  const sessioni: D10SessionItem[] = snapshot?.sessioni ?? [];
+  const mezzoByTarga = new Map<string, D10MezzoItem>();
+  mezzi.forEach((mezzo) => {
+    if (mezzo.targa) mezzoByTarga.set(normTarga(mezzo.targa), mezzo);
+  });
+  const sessioneByTarga = new Map<string, D10SessionItem>();
+  sessioni.forEach((sessione) => {
+    if (sessione.targaMotrice) sessioneByTarga.set(normTarga(sessione.targaMotrice), sessione);
+    if (sessione.targaRimorchio) sessioneByTarga.set(normTarga(sessione.targaRimorchio), sessione);
+  });
 
-      <div className="next-shell__scadenze-stats">
-        <div className="next-shell__scadenze-stat next-shell__scadenze-stat--danger">
-          <span className="next-shell__scadenze-stat-label">Scadute</span>
-          <span className="next-shell__scadenze-stat-value">
-            {counters?.revisioniScadute ?? "-"}
-          </span>
-        </div>
-        <div className="next-shell__scadenze-stat next-shell__scadenze-stat--warning">
-          <span className="next-shell__scadenze-stat-label">In scadenza</span>
-          <span className="next-shell__scadenze-stat-value">
-            {counters?.revisioniInScadenza ?? "-"}
-          </span>
-        </div>
-      </div>
+  // Una targa è "trovata" se la query è contenuta nella targa oppure nel nome/badge
+  // dell'autista che ha quel mezzo in sessione adesso.
+  const matchTargaOrAutista = (targa: string): boolean => {
+    if (normTarga(targa).includes(qNorm)) return true;
+    const qUp = queryTarga.trim().toUpperCase();
+    if (!qUp) return false;
+    const sessione = sessioneByTarga.get(normTarga(targa));
+    const autista = (sessione?.nomeAutista ?? "").toUpperCase();
+    const badge = (sessione?.badgeAutista ?? "").toUpperCase();
+    return autista.includes(qUp) || badge.includes(qUp);
+  };
 
-      <div className="next-shell__scadenze-list">
-        {loading ? (
-          <div className="next-shell__scadenze-empty">Caricamento scadenze...</div>
-        ) : rows.length === 0 ? (
-          <div className="next-shell__scadenze-empty">
-            {targaFilter
-              ? `Nessuna scadenza revisione per il mezzo ${targaFilter}`
-              : mode === "urgenti"
-                ? "Nessuna revisione urgente da mostrare"
-                : "Nessuna scadenza revisione disponibile"}
+  // Targa con mini-dossier al passaggio del mouse (foto, categoria, sessione attiva).
+  const renderTarga = (targa: string | null) => {
+    const key = normTarga(targa);
+    const mezzo = mezzoByTarga.get(key) ?? null;
+    const sessione = sessioneByTarga.get(key) ?? null;
+    const mezzoLabel = [mezzo?.marca, mezzo?.modello].filter(Boolean).join(" ");
+    return (
+      <div className="tgwrap">
+        <div className="tg" onClick={() => targa && navigate(buildNextDossierPath(targa))}>
+          {targa || "—"}
+        </div>
+        {targa && (mezzo || sessione) ? (
+          <div className="tg-dossier" role="tooltip">
+            {mezzo?.fotoUrl ? (
+              <div className="tg-photo">
+                <img src={mezzo.fotoUrl} alt={targa} loading="lazy" />
+              </div>
+            ) : (
+              <div className="tg-photo tg-photo--empty">nessuna foto</div>
+            )}
+            <div className="tg-info">
+              <div className="tg-title">{targa}</div>
+              {mezzo?.categoria ? (
+                <div className="tg-row">Categoria: <b>{mezzo.categoria}</b></div>
+              ) : null}
+              {mezzoLabel ? <div className="tg-row">{mezzoLabel}</div> : null}
+              {sessione?.nomeAutista ? (
+                <div className="tg-row">
+                  In sessione: <b>{sessione.nomeAutista}</b>
+                  {sessione.badgeAutista ? ` (${sessione.badgeAutista})` : ""}
+                </div>
+              ) : (
+                <div className="tg-row tg-muted">Nessuna sessione attiva</div>
+              )}
+              {sessione?.statoSessione ? <div className="tg-row tg-muted">{sessione.statoSessione}</div> : null}
+            </div>
           </div>
-        ) : (
-          rows.map((item) => {
-            const mezzoLabel = [item.marca, item.modello].filter(Boolean).join(" ");
-            const prenotazione = item.prenotazioneCollaudo;
-            const preCollaudo = item.preCollaudo;
-            const prenCompletata = prenotazione?.completata === true;
-            const hasPreCollaudo = Boolean(preCollaudo);
-            const canOperate = Boolean(item.targa);
-            const tone = getRevisionStatusTone(item);
-            const isActive = operation?.item.id === item.id;
+        ) : null}
+      </div>
+    );
+  };
 
-            return (
-              <article
-                key={item.id}
-                className={`next-shell__scadenze-row next-shell__scadenze-row--${tone}${
-                  isActive ? " next-shell__scadenze-row--active" : ""
-                }`}
-              >
-                <div className="next-shell__scadenze-row-top">
-                  <div className="next-shell__scadenze-row-main">
-                    {item.targa ? (
-                      <button
-                        type="button"
-                        className="next-shell__scadenze-targa"
-                        onClick={() => navigate(buildNextDossierPath(item.targa || ""))}
-                      >
-                        {item.targa}
-                      </button>
-                    ) : (
-                      <div className="next-shell__scadenze-targa">-</div>
-                    )}
-                    <div className="next-shell__scadenze-mezzo">
-                      {mezzoLabel || "Mezzo non indicato"}
-                    </div>
-                  </div>
-                  <span
-                    className={`next-shell__scadenze-status-pill next-shell__scadenze-status-pill--${tone}`}
-                  >
-                    {getRevisionStatusLabel(item)}
-                  </span>
-                </div>
+  const targheDisponibili = Array.from(
+    new Set(revisioni.map((item) => item.targa).filter((targa): targa is string => Boolean(targa))),
+  ).sort((left, right) => left.localeCompare(right, "it"));
 
-                <div className="next-shell__scadenze-meta-grid">
-                  <span className="next-shell__scadenze-meta-label">Scadenza</span>
+  type Voce =
+    | { kind: "collaudo"; categoria: ScadenzaCategoria; targa: string; stato: NextScadenzaStato; sev: number; sort: number; collaudo: D10RevisionItem }
+    | { kind: "manutenzione"; categoria: ScadenzaCategoria; targa: string; stato: NextScadenzaStato; sev: number; sort: number; manut: NextManutenzioneScadenzaItem };
+
+  const vociCollaudo: Voce[] = revisioni.map((item) => {
+    // Coerente col dominio (nextCentroControlloDomain.ts:1310): un collaudo già
+    // completato non è scaduto/in scadenza, anche se la data legacy non è aggiornata.
+    const stato: NextScadenzaStato = item.prenotazioneCollaudo?.completata === true ? "ok" : statoCollaudo(item);
+    return { kind: "collaudo", categoria: "collaudi", targa: item.targa ?? "", stato, sev: STATO_SEVERITA[stato], sort: item.giorni ?? 1_000_000, collaudo: item };
+  });
+  const vociManut: Voce[] = manutItems.map((item) => ({
+    kind: "manutenzione",
+    categoria: categoriaDiTipo(item.tipo),
+    targa: item.targa,
+    stato: item.stato,
+    sev: STATO_SEVERITA[item.stato],
+    sort: item.giorniMin ?? 1_000_000,
+    manut: item,
+  }));
+  const tutteVoci = [...vociManut, ...vociCollaudo];
+
+  const colScadute = vociCollaudo.filter((v) => v.stato === "scaduta").length;
+  const colProx = vociCollaudo.filter((v) => v.stato === "in_scadenza").length;
+  const manScadute = vociManut.filter((v) => v.stato === "scaduta").length;
+  const manProx = vociManut.filter((v) => v.stato === "in_scadenza").length;
+
+  const visVoci = kpiFiltro
+    ? tutteVoci.filter((v) => v.kind === kpiFiltro.ambito && v.stato === kpiFiltro.stato)
+    : tutteVoci;
+  const qNorm = normTarga(queryTarga);
+
+  const toggleKpi = (ambito: "collaudo" | "manutenzione", stato: NextScadenzaStato) => {
+    setKpiFiltro((current) => (current && current.ambito === ambito && current.stato === stato ? null : { ambito, stato }));
+    setFiltroSettore("tutte");
+  };
+  const selezionaSettore = (key: "tutte" | ScadenzaCategoria) => {
+    setFiltroSettore(key);
+    setKpiFiltro(null);
+  };
+
+  const catCount = (key: ScadenzaCategoria) => visVoci.filter((v) => v.categoria === key).length;
+  const ordina = (voci: Voce[]) => [...voci].sort((a, b) => b.sev - a.sev || a.sort - b.sort);
+
+  const categoryIcon = (icon: string) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} dangerouslySetInnerHTML={{ __html: icon }} />
+  );
+
+  const renderRigaCollaudo = (item: D10RevisionItem) => {
+    const prenotazione = item.prenotazioneCollaudo;
+    const preCollaudo = item.preCollaudo;
+    const prenCompletata = prenotazione?.completata === true;
+    const stato: NextScadenzaStato = prenCompletata ? "ok" : statoCollaudo(item);
+    const mezzoLabel = [item.marca, item.modello].filter(Boolean).join(" ");
+    const hasPreCollaudo = Boolean(preCollaudo);
+    const canOperate = Boolean(item.targa);
+    return (
+      <Fragment key={item.id}>
+        <div className="row">
+          {renderTarga(item.targa)}
+          <div>
+            <div className="l1">
+              Collaudo{" "}
+              <span className={prenCompletata ? "pill pill-ok" : pillClassForStato(stato)}>
+                {prenCompletata ? "Completato" : pillLabelForStato(stato)}
+              </span>
+              {mezzoLabel ? <span className="chip">{mezzoLabel}</span> : null}
+            </div>
+            <div className="l2">
+              {prenCompletata ? (
+                <span className="pill pill-neutral">{formatPrenotazioneSummary(prenotazione)}</span>
+              ) : (
+                <>
                   <span>{formatDateLabel(item.scadenzaTs)}</span>
-                  <span className="next-shell__scadenze-meta-label">Delta</span>
-                  <span className={`next-shell__scadenze-delta next-shell__scadenze-delta--${tone}`}>
-                    {formatGiorniLabel(item.giorni)}
-                  </span>
-                  <span className="next-shell__scadenze-meta-label">Prenotazione</span>
-                  <span
-                    className={`next-shell__scadenze-meta-value next-shell__scadenze-meta-value--wide${
-                      prenotazione ? "" : " next-shell__scadenze-meta-value--muted"
-                    }`}
-                  >
-                    {formatPrenotazioneSummary(prenotazione)}
-                  </span>
-                  <span className="next-shell__scadenze-meta-label">Pre-collaudo</span>
-                  <span
-                    className={`next-shell__scadenze-meta-value next-shell__scadenze-meta-value--wide${
-                      preCollaudo ? "" : " next-shell__scadenze-meta-value--muted"
-                    }`}
-                  >
-                    {formatPreCollaudoSummary(preCollaudo)}
-                  </span>
-                </div>
-
-                {canOperate ? (
-                  <div className="next-shell__scadenze-actions">
-                    {!prenCompletata ? (
-                      <button
-                        type="button"
-                        className="next-shell__scadenze-action next-shell__scadenze-action--primary"
-                        onClick={() => openOperation(buildRevisioneForm(item))}
-                      >
-                        Segna revisione fatta
-                      </button>
-                    ) : null}
-                    {prenotazione && !prenCompletata ? (
-                      <>
-                        <button
-                          type="button"
-                          className="next-shell__scadenze-action"
-                          onClick={() => openOperation(buildPrenotazioneForm(item, "edit"))}
-                        >
-                          Modifica prenotazione
-                        </button>
-                        <button
-                          type="button"
-                          className="next-shell__scadenze-action next-shell__scadenze-action--danger"
-                          onClick={() => openOperation(buildDeletePrenotazioneOperation(item, prenotazione))}
-                        >
-                          Cancella
-                        </button>
-                      </>
-                    ) : !prenotazione ? (
-                      <button
-                        type="button"
-                        className="next-shell__scadenze-action"
-                        onClick={() => openOperation(buildPrenotazioneForm(item, "create"))}
-                      >
-                        Prenota collaudo
-                      </button>
-                    ) : null}
+                  <span>· {formatGiorniLabel(item.giorni)}</span>
+                  {prenotazione ? (
+                    <span className="pill pill-neutral">{formatPrenotazioneSummary(prenotazione)}</span>
+                  ) : (
+                    <span className="chip">non prenotato</span>
+                  )}
+                </>
+              )}
+              {preCollaudo ? <span className="chip">pre-collaudo {formatPreCollaudoSummary(preCollaudo)}</span> : null}
+            </div>
+          </div>
+          <div className="acts">
+            {canOperate ? (
+              <>
+                {!prenCompletata ? (
+                  <button type="button" className="btn primary" onClick={() => openOperation(buildRevisioneForm(item))}>
+                    Collaudo fatto
+                  </button>
+                ) : null}
+                {prenotazione && !prenCompletata ? (
+                  <>
+                    <button type="button" className="btn" onClick={() => openOperation(buildPrenotazioneForm(item, "edit"))}>
+                      Modifica prenotazione
+                    </button>
                     <button
                       type="button"
-                      className="next-shell__scadenze-action"
-                      onClick={() => openOperation(buildPreCollaudoForm(item, hasPreCollaudo ? "edit" : "create"))}
+                      className="btn danger"
+                      onClick={() => openOperation(buildDeletePrenotazioneOperation(item, prenotazione))}
                     >
-                      Pre-collaudo
+                      Cancella
                     </button>
-                  </div>
+                  </>
+                ) : !prenotazione ? (
+                  <button type="button" className="btn" onClick={() => openOperation(buildPrenotazioneForm(item, "create"))}>
+                    Prenota collaudo
+                  </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => openOperation(buildPreCollaudoForm(item, hasPreCollaudo ? "edit" : "create"))}
+                >
+                  Pre-collaudo
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+        {renderOperationPanel(item.id)}
+      </Fragment>
+    );
+  };
 
-                {renderOperationPanel(item.id)}
-              </article>
-            );
-          })
-        )}
+  const renderRigaManut = (item: NextManutenzioneScadenzaItem) => (
+    <div className="row" key={item.id}>
+      {renderTarga(item.targa)}
+      <div>
+        <div className="l1">
+          {item.label} <span className={pillClassForStato(item.stato)}>{pillLabelForStato(item.stato)}</span>
+        </div>
+        <div className="l2">
+          {item.base.map((base) => (
+            <span className="chip" key={base}>
+              {base}
+            </span>
+          ))}
+          {item.componenti.map((componente, index) => (
+            <span key={index}>{formatComponenteTesto(componente)}</span>
+          ))}
+          {item.note ? <span>· {item.note}</span> : null}
+        </div>
       </div>
-    </main>
+      <div className="acts">
+        <button type="button" className="btn" onClick={() => openModificaManut(item)}>
+          Modifica
+        </button>
+        <button type="button" className="btn" onClick={() => openModificaManut(item)}>
+          Segna eseguita
+        </button>
+        <button type="button" className="btn danger" onClick={() => void eliminaManut(item)}>
+          Elimina
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderVoce = (voce: Voce) =>
+    voce.kind === "collaudo" ? renderRigaCollaudo(voce.collaudo) : renderRigaManut(voce.manut);
+
+  const cats = filtroSettore === "tutte" ? SCADENZE_CATEGORIE : SCADENZE_CATEGORIE.filter((c) => c.key === filtroSettore);
+
+  // Anteprima stato nel modal regola.
+  let previewItem: NextManutenzioneScadenzaItem | null = null;
+  if (manutForm && manutForm.base.length) {
+    const previewRecord: NextManutenzioneScadenzaRecord = {
+      id: manutForm.editingId ?? "preview",
+      targa: manutForm.targa,
+      tipo: manutForm.tipo,
+      label: manutForm.label || "Scadenza",
+      base: manutForm.base,
+      intervalloMesi: numOrNull(manutForm.intervalloMesi),
+      ultimaEsecuzioneData: manutForm.ultimaEsecuzioneData || null,
+      prossimaScadenzaDataManuale: manutForm.prossimaScadenzaDataManuale || null,
+      intervalloKm: numOrNull(manutForm.intervalloKm),
+      ultimaEsecuzioneKm: numOrNull(manutForm.ultimaEsecuzioneKm),
+      prossimaScadenzaKmManuale: numOrNull(manutForm.prossimaScadenzaKmManuale),
+      intervalloOre: numOrNull(manutForm.intervalloOre),
+      ultimaEsecuzioneOre: numOrNull(manutForm.ultimaEsecuzioneOre),
+      note: manutForm.note || null,
+      attiva: true,
+    };
+    const km = kmByTarga.get(normTarga(manutForm.targa)) ?? null;
+    previewItem = evaluateScadenzaManutenzione(previewRecord, { kmAttuali: km, oreAttuali: null }, Date.now());
+  }
+  const baseAttiva = (base: ScadenzaBase) => Boolean(manutForm?.base.includes(base));
+  const targheModal =
+    manutForm && manutForm.targa && !targheDisponibili.includes(manutForm.targa)
+      ? [manutForm.targa, ...targheDisponibili]
+      : targheDisponibili;
+
+  return (
+    <div className="scd">
+      <div className="pagehead">
+        <div>
+          <h1>Scadenze</h1>
+          <div className="crumb">
+            Flotta · Scadenze · per settore — oggi <b>{toDisplay(Date.now())}</b>
+          </div>
+        </div>
+        <div className="right">
+          <button type="button" className="btn primary" onClick={openNuovaManut}>
+            + Nuova scadenza
+          </button>
+        </div>
+      </div>
+
+      <div className="kpis">
+        <div
+          className={`kpi dng${kpiFiltro?.ambito === "collaudo" && kpiFiltro?.stato === "scaduta" ? " sel" : ""}`}
+          onClick={() => toggleKpi("collaudo", "scaduta")}
+          title="Filtra: collaudi scaduti"
+        >
+          <div className="k">Collaudi scaduti</div>
+          <div className="v">{colScadute}</div>
+        </div>
+        <div
+          className={`kpi wrn${kpiFiltro?.ambito === "collaudo" && kpiFiltro?.stato === "in_scadenza" ? " sel" : ""}`}
+          onClick={() => toggleKpi("collaudo", "in_scadenza")}
+          title="Filtra: collaudi in scadenza"
+        >
+          <div className="k">Collaudi in scadenza</div>
+          <div className="v">{colProx}</div>
+        </div>
+        <div
+          className={`kpi dng${kpiFiltro?.ambito === "manutenzione" && kpiFiltro?.stato === "scaduta" ? " sel" : ""}`}
+          onClick={() => toggleKpi("manutenzione", "scaduta")}
+          title="Filtra: manutenzioni scadute"
+        >
+          <div className="k">Manutenzioni scadute</div>
+          <div className="v">{manScadute}</div>
+        </div>
+        <div
+          className={`kpi wrn${kpiFiltro?.ambito === "manutenzione" && kpiFiltro?.stato === "in_scadenza" ? " sel" : ""}`}
+          onClick={() => toggleKpi("manutenzione", "in_scadenza")}
+          title="Filtra: manutenzioni in scadenza"
+        >
+          <div className="k">Manutenzioni in scadenza</div>
+          <div className="v">{manProx}</div>
+        </div>
+      </div>
+
+      <div className="toolbar">
+        <div className="tabbar">
+          <button type="button" className={`tab${filtroSettore === "tutte" ? " active" : ""}`} onClick={() => selezionaSettore("tutte")}>
+            Tutte <span className="n">{visVoci.length}</span>
+          </button>
+          {SCADENZE_CATEGORIE.map((cat) => (
+            <button
+              key={cat.key}
+              type="button"
+              className={`tab${filtroSettore === cat.key ? " active" : ""}`}
+              onClick={() => selezionaSettore(cat.key)}
+            >
+              {cat.label} <span className="n">{catCount(cat.key)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4-4" />
+          </svg>
+          <input
+            placeholder="Cerca per targa o autista…"
+            value={queryTarga}
+            onChange={(event) => setQueryTarga(event.target.value)}
+          />
+          {queryTarga ? (
+            <button type="button" className="clr" onClick={() => setQueryTarga("")} title="Pulisci">
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {feedback ? renderFeedback() : null}
+
+      {loading ? (
+        <div className="card">
+          <div className="empty">Caricamento scadenze…</div>
+        </div>
+      ) : qNorm ? (
+        (() => {
+          const targhe = Array.from(new Set(visVoci.map((v) => v.targa).filter((targa) => targa && matchTargaOrAutista(targa)))).sort();
+          if (!targhe.length) {
+            return (
+              <div className="card">
+                <div className="empty">Nessun mezzo trovato per "{queryTarga}".</div>
+              </div>
+            );
+          }
+          return targhe.map((targa) => {
+            const rev = revisioni.find((item) => normTarga(item.targa) === normTarga(targa));
+            const mezzoLabel = rev ? [rev.marca, rev.modello].filter(Boolean).join(" ") : "";
+            const km = kmByTarga.get(normTarga(targa)) ?? null;
+            const vTarga = visVoci.filter((v) => normTarga(v.targa) === normTarga(targa));
+            return (
+              <div className="card" key={targa}>
+                <div className="dossier-h">
+                  <div className="tgbig">{targa}</div>
+                  <div className="info">
+                    <b>{mezzoLabel || "Mezzo"}</b>
+                    <span>Riepilogo scadenze del mezzo</span>
+                  </div>
+                  <div className="km">
+                    <b>{km != null ? `${formatNumIt(km)} km` : "—"}</b>
+                    <span>km corrente</span>
+                  </div>
+                </div>
+                {SCADENZE_CATEGORIE.map((cat) => {
+                  const vs = ordina(vTarga.filter((v) => v.categoria === cat.key));
+                  return (
+                    <Fragment key={cat.key}>
+                      <div className="seclabel">
+                        <span className="ico" style={{ background: "none", color: "var(--accent)" }}>
+                          {categoryIcon(cat.icon)}
+                        </span>
+                        {cat.label}
+                        <span className="ln" />
+                      </div>
+                      {vs.length ? (
+                        vs.map(renderVoce)
+                      ) : (
+                        <div className="empty">Nessuna scadenza registrata in questo settore.</div>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </div>
+            );
+          });
+        })()
+      ) : (
+        cats.map((cat) => {
+          const voci = ordina(visVoci.filter((v) => v.categoria === cat.key));
+          return (
+            <div className="card" key={cat.key}>
+              <div className="card-h">
+                <h2>
+                  <span className="ico">{categoryIcon(cat.icon)}</span> {cat.label}
+                </h2>
+                <span className="count">{voci.length}</span>
+              </div>
+              {voci.length ? voci.map(renderVoce) : <div className="empty">Nessuna voce in questo settore.</div>}
+            </div>
+          );
+        })
+      )}
+
+      <div className="note">
+        Le scadenze sono calcolate con soglia 30 giorni per le date e residuo 1.000 km per i km; le scadenze a ore senza
+        contaore mostrano "ore non disponibili". I collaudi riusano il calcolo e i flussi esistenti.
+      </div>
+
+      {manutForm ? (
+        <div className="scd-backdrop open" onClick={(event) => event.target === event.currentTarget && closeManut()}>
+          <div className="modal">
+            <div className="modal-h">
+              <h3>{manutForm.editingId ? "Modifica scadenza" : "Nuova scadenza di manutenzione"}</h3>
+              <button type="button" className="x" onClick={closeManut}>
+                ×
+              </button>
+            </div>
+            <div className="modal-b">
+              <div className="grid2">
+                <div className="field">
+                  <label>Tipo / settore</label>
+                  <select value={manutForm.tipo} onChange={(event) => handleManutTipoChange(event.target.value)}>
+                    {TIPI_SCADENZA.map((entry) => (
+                      <option key={entry.value} value={entry.value}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Mezzo (targa)</label>
+                  <input
+                    list="scd-targhe-list"
+                    value={manutForm.targa}
+                    onChange={(event) => patchManut({ targa: event.target.value })}
+                    placeholder="Digita parte della targa…"
+                    autoComplete="off"
+                  />
+                  <datalist id="scd-targhe-list">
+                    {targheModal.map((targa) => (
+                      <option key={targa} value={targa} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="field full">
+                  <label>Etichetta mostrata</label>
+                  <input value={manutForm.label} onChange={(event) => patchManut({ label: event.target.value })} />
+                </div>
+              </div>
+
+              <div className="field full" style={{ marginTop: 14 }}>
+                <label>Su cosa si basa la scadenza</label>
+                <div className="bases">
+                  <label>
+                    <input type="checkbox" checked={baseAttiva("tempo")} onChange={() => toggleBaseManut("tempo")} /> A tempo
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={baseAttiva("km")} onChange={() => toggleBaseManut("km")} /> A km
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={baseAttiva("ore")} onChange={() => toggleBaseManut("ore")} /> A ore
+                  </label>
+                </div>
+                <div className="help">Puoi selezionarne più di una: vale la più critica.</div>
+              </div>
+
+              {baseAttiva("tempo") ? (
+                <div className="subgrid">
+                  <h4>A tempo</h4>
+                  <div className="grid2">
+                    <div className="field">
+                      <label>Intervallo (mesi)</label>
+                      <input
+                        type="number"
+                        placeholder="es. 24"
+                        value={manutForm.intervalloMesi}
+                        onChange={(event) => patchManut({ intervalloMesi: event.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Ultima esecuzione (data)</label>
+                      <input
+                        type="text"
+                        placeholder="gg/mm/aaaa"
+                        value={manutForm.ultimaEsecuzioneData}
+                        onChange={(event) => patchManut({ ultimaEsecuzioneData: event.target.value })}
+                      />
+                    </div>
+                    <div className="field full">
+                      <label>Oppure prossima scadenza a mano (data)</label>
+                      <input
+                        type="text"
+                        placeholder="gg/mm/aaaa — prevale sul calcolo"
+                        value={manutForm.prossimaScadenzaDataManuale}
+                        onChange={(event) => patchManut({ prossimaScadenzaDataManuale: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {baseAttiva("km") ? (
+                <div className="subgrid">
+                  <h4>A km</h4>
+                  <div className="grid2">
+                    <div className="field">
+                      <label>Intervallo (km)</label>
+                      <input
+                        type="number"
+                        placeholder="es. 50000"
+                        value={manutForm.intervalloKm}
+                        onChange={(event) => patchManut({ intervalloKm: event.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Km all'ultima esecuzione</label>
+                      <input
+                        type="number"
+                        placeholder="es. 120000"
+                        value={manutForm.ultimaEsecuzioneKm}
+                        onChange={(event) => patchManut({ ultimaEsecuzioneKm: event.target.value })}
+                      />
+                    </div>
+                    <div className="field full">
+                      <label>Oppure prossimo km a mano</label>
+                      <input
+                        type="number"
+                        placeholder="prevale sul calcolo"
+                        value={manutForm.prossimaScadenzaKmManuale}
+                        onChange={(event) => patchManut({ prossimaScadenzaKmManuale: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {baseAttiva("ore") ? (
+                <div className="subgrid">
+                  <h4>A ore</h4>
+                  <div className="grid2">
+                    <div className="field">
+                      <label>Intervallo (ore)</label>
+                      <input
+                        type="number"
+                        placeholder="es. 500"
+                        value={manutForm.intervalloOre}
+                        onChange={(event) => patchManut({ intervalloOre: event.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Ore all'ultima esecuzione</label>
+                      <input
+                        type="number"
+                        placeholder="es. 1200"
+                        value={manutForm.ultimaEsecuzioneOre}
+                        onChange={(event) => patchManut({ ultimaEsecuzioneOre: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="help">
+                    In Fase 1 non c'è un contaore corrente affidabile: le scadenze a sole ore mostrano "ore non
+                    disponibili".
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="field full" style={{ marginTop: 14 }}>
+                <label>Note</label>
+                <textarea
+                  rows={2}
+                  placeholder="facoltative"
+                  value={manutForm.note}
+                  onChange={(event) => patchManut({ note: event.target.value })}
+                />
+              </div>
+
+              <div className="preview">
+                {previewItem ? (
+                  <>
+                    Anteprima: <span className={pillClassForStato(previewItem.stato)}>{pillLabelForStato(previewItem.stato)}</span>
+                    {previewItem.componenti.map((componente, index) => (
+                      <span key={index}>
+                        <span className="chip">{componente.base}</span> {formatComponenteTesto(componente)}
+                      </span>
+                    ))}
+                  </>
+                ) : (
+                  "Seleziona almeno una base."
+                )}
+              </div>
+            </div>
+            <div className="modal-f">
+              <button type="button" className="btn" onClick={closeManut} disabled={manutSubmitting}>
+                Annulla
+              </button>
+              <button type="button" className="btn primary" onClick={() => void salvaManut()} disabled={manutSubmitting}>
+                {manutSubmitting ? "Salvataggio…" : "Salva scadenza"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

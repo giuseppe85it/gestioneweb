@@ -141,7 +141,7 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     items: [
       {
         id: "scadenze",
-        label: "Scadenze Collaudi",
+        label: "Scadenze",
         path: "/next/scadenze-collaudi",
       },
       { id: "dossier", label: "Dossier mezzo", path: NEXT_DOSSIER_LISTA_PATH },
