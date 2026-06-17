@@ -9,7 +9,6 @@ import {
   buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
-import NextHomeSegnalazioniModal from "./components/NextHomeSegnalazioniModal";
 import {
   readNextCentroControlloSnapshot,
   type D10AssetLocationItem,
@@ -446,7 +445,6 @@ export default function NextHomePage() {
   const [fleetSaving, setFleetSaving] = useState(false);
   const [motriciExpanded, setMotriciExpanded] = useState(false);
   const [rimorchiExpanded, setRimorchiExpanded] = useState(false);
-  const [segnalazioniModalOpen, setSegnalazioniModalOpen] = useState(false);
 
   const loadSnapshot = useCallback(
     async (isActive: () => boolean = () => true) => {
@@ -790,7 +788,7 @@ export default function NextHomePage() {
               key={card.label}
               type="button"
               className="next-home__stat-card next-home__stat-card--button"
-              onClick={() => setSegnalazioniModalOpen(true)}
+              onClick={() => navigate("/next/autisti-admin?module=segnalazioni")}
             >
               <div className="next-home__stat-label">{card.label}</div>
               <div className="next-home__stat-value">{card.value}</div>
@@ -943,14 +941,6 @@ export default function NextHomePage() {
         </article>
       </section>
 
-      <NextHomeSegnalazioniModal
-        open={segnalazioniModalOpen}
-        segnalazioni={centroSnapshot?.segnalazioniOperative ?? []}
-        onClose={() => setSegnalazioniModalOpen(false)}
-        onChanged={async () => {
-          await loadSnapshot();
-        }}
-      />
     </main>
   );
 }

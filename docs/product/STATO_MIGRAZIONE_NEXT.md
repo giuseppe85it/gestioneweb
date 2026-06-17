@@ -1,5 +1,19 @@
 # STATO MIGRAZIONE NEXT
 
+## 2026-06-17 - Home NEXT Segnalazioni come ingresso ad Autisti Admin
+
+La card `Segnalazioni` della Home NEXT `/next` non apre piu un modale Home duplicato.
+
+- Al click naviga a `/next/autisti-admin?module=segnalazioni`.
+- `AutistiAdmin` legge il parametro `module` e, se valido, apre subito il modulo reale del Centro rettifica.
+- Le azioni `Modifica`, menu `...`, `Crea lavoro`, PDF ed elimina restano quelle gia presenti in Autisti Admin.
+- Rimossi `NextHomeSegnalazioniModal`, `nextHomeSegnalazioneAdminWriter` e il relativo test dedicato.
+- Rimossa dalla barrier l'apertura nata solo per il modale Home (`NEXT_HOME_SEGNALAZIONI_ADMIN_WRITE_SCOPE`) e le autorizzazioni `/next` collegate a modifica/elimina/crea lavoro da quel modale.
+- I conteggi Home restano invariati e continuano a usare il criterio operativo condiviso `5 da gestire`.
+- Nessuna nuova scrittura aperta; modifica legacy limitata alla lettura del parametro URL in `src/autistiInbox/AutistiAdmin.tsx`.
+
+Stato: **HOME NEXT PARZIALE, SEGNALAZIONI INGRESSO DIRETTO A CENTRO RETTIFICA REALE**.
+
 ## 2026-06-17 - Segnalazioni operative allineate a Manutenzioni
 
 Le superfici operative NEXT leggono ora le segnalazioni con lo stesso criterio della lista `Segnalazioni aperte` di `/next/manutenzioni`.

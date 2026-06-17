@@ -115,12 +115,6 @@ const MANUTENZIONI_SCADENZE_WRITE_SCOPE = "manutenzioni_scadenze_write_scope";
 const NEXT_HOME_LUOGO_MEZZO_ALLOWED_WRITE_PATH = "/next";
 const NEXT_HOME_LUOGO_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>(["@storico_eventi_operativi"]);
 export const NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE = "next_home_luogo_mezzo_write_scope";
-const NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_WRITE_PATH = "/next";
-const NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_STORAGE_KEYS = new Set<string>([
-  "@segnalazioni_autisti_tmp",
-]);
-export const NEXT_HOME_SEGNALAZIONI_ADMIN_WRITE_SCOPE =
-  "next_home_segnalazioni_admin_write_scope";
 const RIFORNIMENTI_ALLOWED_WRITE_PATH = "/next/centro-controllo";
 const RIFORNIMENTI_ALLOWED_STORAGE_KEYS = new Set<string>(["@rifornimenti_autisti_tmp"]);
 const RIFORNIMENTI_ALLOWED_FIRESTORE_DOC_PATHS = new Set<string>(["storage/@rifornimenti"]);
@@ -149,7 +143,6 @@ const DELETE_MEZZO_ALLOWED_STORAGE_KEYS = new Set<string>([
 ]);
 const DELETE_MEZZO_WRITE_SCOPE = "centro_controllo_delete_mezzo_write";
 const MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS = [
-  "/next",
   "/next/centro-controllo",
   "/next/autisti-admin",
   "/next/autisti-inbox",
@@ -196,7 +189,7 @@ const GRUPPO_SEGNALAZIONI_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@segnalazioni_autisti_tmp",
 ]);
 const GRUPPO_SEGNALAZIONI_WRITE_SCOPE = "next_gruppo_segnalazioni_write_scope";
-const NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS = ["/next", "/next/manutenzioni"] as const;
+const NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
 const NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@segnalazioni_autisti_tmp",
   "@manutenzioni",
@@ -310,10 +303,7 @@ function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
 
 function isAllowedManutenzioneDaFareCreateWritePath(pathname: string): boolean {
   return MANUTENZIONE_DAFARE_CREATE_ALLOWED_WRITE_PATHS.some(
-    (entry) =>
-      entry === NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_WRITE_PATH
-        ? pathname === entry
-        : pathname === entry || pathname.startsWith(`${entry}/`),
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
 
@@ -337,10 +327,7 @@ function isAllowedGruppoSegnalazioniWritePath(pathname: string): boolean {
 
 function isAllowedNextSegnalazioneDeleteWritePath(pathname: string): boolean {
   return NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS.some(
-    (entry) =>
-      entry === NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_WRITE_PATH
-        ? pathname === entry
-        : pathname === entry || pathname.startsWith(`${entry}/`),
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
 
@@ -559,8 +546,7 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE
     | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE
-    | typeof NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE
-    | typeof NEXT_HOME_SEGNALAZIONI_ADMIN_WRITE_SCOPE,
+    | typeof NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -810,14 +796,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return NEXT_HOME_LUOGO_MEZZO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
-  }
-
-  if (
-    pathname === NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_WRITE_PATH &&
-    hasCloneWriteScopedAllowance(NEXT_HOME_SEGNALAZIONI_ADMIN_WRITE_SCOPE) &&
-    kind === "storageSync.setItemSync"
-  ) {
-    return NEXT_HOME_SEGNALAZIONI_ADMIN_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

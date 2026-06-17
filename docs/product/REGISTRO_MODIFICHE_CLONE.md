@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-17 1048
+
+DATA: `2026-06-17`
+TITOLO: `Home NEXT ingresso Segnalazioni Autisti Admin`
+FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/autistiInbox/AutistiAdmin.tsx`, `src/next/next-home.css`, `src/utils/cloneWriteBarrier.ts`, `src/next/components/NextHomeSegnalazioniModal.tsx`, `src/next/writers/nextHomeSegnalazioneAdminWriter.ts`
+COSA: La card `Segnalazioni` della Home non apre piu un modale duplicato: naviga a `/next/autisti-admin?module=segnalazioni`, dove Autisti Admin apre subito il modulo reale. Rimossi modale/writer/test Home e aperture barrier dedicate.
+ESITO: `FATTO`
+NOTE: Lint NEXT/barrier OK, test delete segnalazione 3/3 OK, build canonica OK, verifica browser su `/next` e `/next/autisti-admin?module=segnalazioni` OK. Lint diretto su `AutistiAdmin.tsx` resta KO per baseline legacy preesistente `no-explicit-any`.
+
 ## 2026-06-16 2115
 
 DATA: `2026-06-16`

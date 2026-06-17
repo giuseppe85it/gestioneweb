@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./AutistiAdmin.css";
 
 import {
@@ -86,6 +86,21 @@ type TabKey =
   | "gomme"
   | "attrezzature"
   | "storico_cambio";
+
+const QUICK_MODULES = new Set<TabKey>([
+  "rifornimenti",
+  "segnalazioni",
+  "controlli",
+  "gomme",
+  "attrezzature",
+  "storico_cambio",
+]);
+
+function parseQuickModule(value: string | null): TabKey | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return QUICK_MODULES.has(normalized as TabKey) ? (normalized as TabKey) : null;
+}
 
 function isAutistiModuloId(value: unknown): value is AutistiModuloId {
   return AUTISTI_MODULI.some((modulo) => modulo.id === value);
@@ -221,7 +236,12 @@ function normalizeMezzi(raw: any): any[] {
 
 export default function AutistiAdmin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const hideInternalNav = isCloneRuntime();
+  const quickModule = useMemo(
+    () => parseQuickModule(new URLSearchParams(location.search).get("module")),
+    [location.search],
+  );
 
   const [tab, setTab] = useState<TabKey>("rifornimenti");
   const [moduleOpen, setModuleOpen] = useState(false);
@@ -235,6 +255,12 @@ export default function AutistiAdmin() {
     const t = window.setInterval(() => setNowTs(Date.now()), 30_000);
     return () => window.clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!quickModule) return;
+    setTab(quickModule);
+    setModuleOpen(true);
+  }, [quickModule]);
 
   const formatDateInputValue = (value: Date) => {
     const year = value.getFullYear();
