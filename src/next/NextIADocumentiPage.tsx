@@ -407,13 +407,18 @@ export default function NextIADocumentiPage() {
   }, [items, filtroAttivo, localDaVerificareIds, searchQuery]);
 
   const perFornitore = useMemo<SupplierGroup[]>(() => {
+    // Nel filtro "Libretti" i documenti si raggruppano per TARGA (non per fornitore)
+    // e si ordinano per targa: ogni mezzo ha la sua sezione libretto, in ordine.
+    const raggruppaPerTarga = filtroAttivo === "libretti";
     const grouped = new Map<string, NextIADocumentiArchiveItem[]>();
 
     for (const item of itemsFiltrati) {
-      const supplier = buildSupplierLabel(item);
-      const group = grouped.get(supplier) ?? [];
+      const key = raggruppaPerTarga
+        ? normalizeText(item.targa) || "Senza targa"
+        : buildSupplierLabel(item);
+      const group = grouped.get(key) ?? [];
       group.push(item);
-      grouped.set(supplier, group);
+      grouped.set(key, group);
     }
 
     return Array.from(grouped.entries())
@@ -423,6 +428,13 @@ export default function NextIADocumentiPage() {
         total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
       }))
       .sort((left, right) => {
+        if (raggruppaPerTarga) {
+          return left.supplier.localeCompare(right.supplier, "it", {
+            numeric: true,
+            sensitivity: "base",
+          });
+        }
+
         if (right.total !== left.total) {
           return right.total - left.total;
         }
@@ -431,7 +443,7 @@ export default function NextIADocumentiPage() {
           sensitivity: "base",
         });
       });
-  }, [itemsFiltrati]);
+  }, [itemsFiltrati, filtroAttivo]);
 
   useEffect(() => {
     if (perFornitore.length === 0) {
@@ -640,9 +652,11 @@ export default function NextIADocumentiPage() {
                 <span className="doc-costi-stat">
                   <b>{group.items.length}</b> doc
                 </span>
-                <span className="doc-costi-fornitore-total">
-                  Totale {formatMoneyCompact(group.total)}
-                </span>
+                {filtroAttivo === "libretti" ? null : (
+                  <span className="doc-costi-fornitore-total">
+                    Totale {formatMoneyCompact(group.total)}
+                  </span>
+                )}
               </button>
 
               {isOpen ? (
