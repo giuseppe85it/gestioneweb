@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-18 2049
+
+DATA: `2026-06-18`
+TITOLO: `Modale gomme manutenzioni NEXT`
+FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/components/NextModalGomme.tsx`, `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextGommeSelectionReadOnly.ts`
+COSA: `Nel form /next/manutenzioni la selezione gomme usa il modale visuale clone-safe equivalente all'app autisti, in inserimento, modifica e completamento. Il record @manutenzioni salva anche la nuova shape additiva gommeSelezione, usata dal dettaglio tecnico.`
+ESITO: `FATTO`
+NOTE: `Verifiche: tsc, test mirati, lint mirato e build canonica.`
+
 ## 2026-06-17 1520
 
 DATA: `2026-06-17`

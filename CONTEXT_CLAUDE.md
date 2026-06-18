@@ -54,6 +54,7 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
+- Ultimo task completato: modale gomme clone-safe in `/next/manutenzioni` il `2026-06-18`. Il form `Nuova / Modifica` apre lo stesso flusso visuale di selezione gomme dell'app autisti per gomme ordinarie e straordinarie, anche in modifica; la modale `Eseguita` permette la selezione prima del completamento. Il record `@manutenzioni` conserva ora la shape additiva `gommeSelezione` (`modalita`, `asseId`, `asseLabel`, `numeroGomme`, `gommeIds`, `marca`, `km`, `categoria`, `selezioneGommeV2`) senza rinominare i campi esistenti. Il dettaglio tecnico usa l'evento ufficiale collegato se presente, poi la selezione puntuale salvata, poi il fallback per asse. Madre legacy non modificata.
 - Ultimo task completato: export PDF locale per `/next/scadenze-collaudi` il `2026-06-17`. La pagina aggiunge pannello `Anteprima PDF` con filtro categoria (`Tutte`, `Cronotachigrafo`, `Tagliandi`, `Estintore`, `Collaudi`) applicato alla vista filtrata corrente; quando il filtro PDF e' `Tutte`, le righe sono divise in tabelle separate per categoria, senza intestazioni orfane a fondo pagina. Il PDF usa stile aziendale con sfondo crema, header beige, logo `/logo.png`, footer standard e builder isolato `src/next/nextScadenzePdf.ts`; non modifica `src/utils/pdfEngine.ts`, `src/utils/pdfPreview.ts`, `src/components/PdfPreviewModal.tsx` o `src/utils/cloneWriteBarrier.ts`. Verifiche: lint mirato OK, vitest mirato OK, build canonica OK, render PNG pagine 1-2 OK.
 - Ultimo task completato: rimossa dalla sidebar NEXT la voce `Segnalazioni` che puntava a `/next/autisti-inbox/segnalazioni`. L'ingresso operativo alle segnalazioni resta la card `Segnalazioni` della Home, che apre `/next/autisti-admin?module=segnalazioni` e quindi il modulo reale del Centro rettifica. Route e componenti legacy/clone non cancellati.
 - Ultimo task completato: Home NEXT `/next` non mantiene piu un modale Segnalazioni duplicato. La card `Segnalazioni` resta nei contatori alti ma al click naviga direttamente a `/next/autisti-admin?module=segnalazioni`; `AutistiAdmin` legge il parametro `module` e apre subito il modulo reale `Segnalazioni` del Centro rettifica, con gli stessi `Modifica`, menu `...`, crea lavoro, PDF ed elimina gia presenti. Rimossi componente/writer/test del modale Home custom e lo scope barrier `NEXT_HOME_SEGNALAZIONI_ADMIN_WRITE_SCOPE`; nessuna nuova scrittura aperta.
@@ -253,10 +254,6 @@
 - Lingua UI: italiana.
 - La madre resta la sorgente di verita della UI; il clone replica la superficie ma non deve aprire side effect business.
 - Il clone rileva il runtime tramite path `/next` e blocca fetch mutanti noti (`/api/*`, cloudfunctions write-heavy, extraction libretto).
-
-### Documentazione pronta
-- `docs/fonti-pronte/` raccoglie copie aggiornate delle fonti chiave da usare nelle nuove chat.
-- Se un file sorgente gia mirrorato viene aggiornato, la sua copia in `docs/fonti-pronte/` va aggiornata nello stesso task.
 
 ### Storage path verificati
 - `materiali/<materialId>-<timestamp>.<ext>`

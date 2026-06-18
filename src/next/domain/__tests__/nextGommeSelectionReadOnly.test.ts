@@ -152,6 +152,63 @@ describe("resolveNextGommeMaintenanceSelectionReadOnly", () => {
     expect(result.asseIds).toEqual(["asse2"]);
   });
 
+  it("usa la selezione puntuale salvata sulla manutenzione prima del fallback per asse", () => {
+    const result = resolveNextGommeMaintenanceSelectionReadOnly({
+      activeTarga: "TI123456",
+      maintenance: {
+        targa: "TI123456",
+        assiCoinvolti: ["posteriore"],
+        gommeSelezione: {
+          asseId: "asse1",
+          asseLabel: "1 asse",
+          gommeIds: ["motrice2assi-destra-asse1-1"],
+          selezioneGommeV2: {
+            versione: 2,
+            asseId: "asse1",
+            ruote: [
+              {
+                id: "motrice2assi-destra-asse1-1",
+                lato: "destra",
+                posizione: 1,
+              },
+            ],
+          },
+        },
+      },
+      officialEvents: [],
+    });
+
+    expect(result.fonte).toBe("manutenzione");
+    expect(result.precisione).toBe("ruote_esatte_v2");
+    expect(result.asseIds).toEqual(["asse1"]);
+    expect(result.ruote).toHaveLength(1);
+  });
+
+  it("mantiene la precedenza dell'evento ufficiale collegato rispetto alla selezione manutenzione", () => {
+    const result = resolveNextGommeMaintenanceSelectionReadOnly({
+      activeTarga: "TI123456",
+      maintenance: {
+        targa: "TI123456",
+        chiusuraDi: "gomme_evento",
+        chiusuraRefId: "evento-1",
+        assiCoinvolti: ["posteriore"],
+        gommeSelezione: {
+          asseId: "asse1",
+          gommeIds: ["motrice2assi-destra-asse1-1"],
+          selezioneGommeV2: {
+            versione: 2,
+            asseId: "asse1",
+            ruote: [{ id: "motrice2assi-destra-asse1-1", lato: "destra", posizione: 1 }],
+          },
+        },
+      },
+      officialEvents: [officialEvent],
+    });
+
+    expect(result.fonte).toBe("evento_collegato");
+    expect(result.asseIds).toEqual(["asse2"]);
+  });
+
   it("ignora un evento della stessa targa ma non collegato", () => {
     const result = resolveNextGommeMaintenanceSelectionReadOnly({
       activeTarga: "TI123456",

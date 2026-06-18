@@ -15,6 +15,7 @@ import {
   saveNextManutenzioneBusinessRecord,
   type NextManutenzioneGommeInterventoTipo,
   type NextManutenzioneGommePerAsseRecord,
+  type NextManutenzioneGommeSelezioneRecord,
   type NextManutenzioneGommeStraordinarioRecord,
   type NextManutenzioneOrigineTipo,
   type NextManutenzioneOrigineRecord,
@@ -100,6 +101,9 @@ import {
   type NextManutenzioneScadenzaItem,
 } from "./domain/nextManutenzioniScadenzeDomain";
 import { saveScadenzaManutenzione } from "./nextManutenzioniScadenzeWriter";
+import NextModalGomme, {
+  type NextCambioGommeData,
+} from "./components/NextModalGomme";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
@@ -1201,6 +1205,44 @@ function buildGommeStraordinarioPayload(args: {
   };
 }
 
+function buildGommeSelezioneRecord(data: NextCambioGommeData): NextManutenzioneGommeSelezioneRecord {
+  return {
+    modalita: data.modalita,
+    asseId: data.asseId,
+    asseLabel: data.asseLabel,
+    numeroGomme: data.numeroGomme,
+    gommeIds: data.gommeIds,
+    marca: normalizeFreeText(data.marca) || null,
+    km: normalizeFreeText(data.km) || null,
+    categoria: normalizeFreeText(data.categoria ?? "") || null,
+    selezioneGommeV2: data.selezioneGommeV2,
+  };
+}
+
+function toModalGommeData(
+  selection: NextManutenzioneGommeSelezioneRecord | null,
+  fallback: {
+    targa: string;
+    categoria: string | null;
+    km: string;
+    modalita: "ordinario" | "straordinario";
+  },
+): NextCambioGommeData | null {
+  if (!selection) return null;
+  return {
+    targa: fallback.targa,
+    categoria: selection.categoria ?? fallback.categoria ?? undefined,
+    modalita: selection.modalita,
+    asseId: selection.asseId,
+    asseLabel: selection.asseLabel,
+    numeroGomme: selection.numeroGomme,
+    gommeIds: selection.gommeIds,
+    marca: selection.marca ?? "",
+    km: selection.km ?? fallback.km,
+    selezioneGommeV2: selection.selezioneGommeV2,
+  };
+}
+
 function buildPdfDescrizione(item: NextManutenzioniLegacyDatasetRecord) {
   if (item.gommeInterventoTipo === "straordinario") {
     const motivo = item.gommeStraordinario?.motivo || "Evento gomme straordinario";
@@ -1446,6 +1488,9 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioMotivo, setGommeStraordinarioMotivo] = useState("");
   const [gommeStraordinarioAsseId, setGommeStraordinarioAsseId] = useState<AsseCoinvoltoId | "">("");
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
+  const [gommeSelezioneDraft, setGommeSelezioneDraft] =
+    useState<NextManutenzioneGommeSelezioneRecord | null>(null);
+  const [gommeModalOpen, setGommeModalOpen] = useState(false);
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   // Fase B: scadenze del mezzo, per collegare un'esecuzione alla scadenza.
@@ -2445,6 +2490,8 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioMotivo("");
     setGommeStraordinarioAsseId("");
     setGommeStraordinarioQuantita("");
+    setGommeSelezioneDraft(null);
+    setGommeModalOpen(false);
     setQuantitaTemp("");
     setEditingId(null);
     setCompletionRecordId(null);
@@ -2518,11 +2565,15 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioQuantita(
       item.gommeStraordinario?.quantita != null ? String(item.gommeStraordinario.quantita) : "",
     );
+    setGommeSelezioneDraft(item.gommeSelezione ?? null);
   }
 
   function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
     loadEditState(item);
     setView("form");
+    if (isUiSubtypeGomme(deriveUiSubtype(item))) {
+      setGommeModalOpen(true);
+    }
     setNotice("Modifica caricata dal dataset reale.");
   }
 
@@ -2673,6 +2724,9 @@ export default function NextManutenzioniPage() {
   }
 
   function handleUiSubtypeChange(nextSubtype: InterventoUiSubtype) {
+    if (isUiSubtypeGomme(nextSubtype)) {
+      setTipo("mezzo");
+    }
     setUiSubtype(nextSubtype);
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
       setDescrizione("TAGLIANDO - ");
@@ -2685,14 +2739,40 @@ export default function NextManutenzioniPage() {
       setGommeStraordinarioAsseId("");
       setGommeStraordinarioQuantita("");
     }
+    if (!isUiSubtypeGomme(nextSubtype)) {
+      setGommeSelezioneDraft(null);
+      setGommeModalOpen(false);
+      return;
+    }
+    setGommeModalOpen(true);
   }
 
-  function toggleAsseCoinvolto(asseId: AsseCoinvoltoId) {
-    setAssiCoinvolti((current) =>
-      current.includes(asseId)
-        ? current.filter((entry) => entry !== asseId)
-        : [...current, asseId],
-    );
+  function handleConfirmGommeSelection(data: NextCambioGommeData) {
+    const selection = buildGommeSelezioneRecord(data);
+    const selectedAsse = normalizeNextAssiCoinvolti(data.asseId ? [data.asseId] : [])[0] ?? "";
+    setGommeSelezioneDraft(selection);
+    if (data.km) {
+      setKm(data.km);
+      if (completionModalRecord) {
+        setCompletionDraftKm(data.km);
+      }
+    }
+
+    if (data.modalita === "ordinario") {
+      setUiSubtype("gomme");
+      setAssiCoinvolti(selectedAsse ? [selectedAsse] : []);
+      setGommeStraordinarioMotivo("");
+      setGommeStraordinarioAsseId("");
+      setGommeStraordinarioQuantita("");
+    } else {
+      setUiSubtype("gomme-straordinario");
+      setAssiCoinvolti([]);
+      setGommeStraordinarioAsseId(selectedAsse);
+      setGommeStraordinarioQuantita(String(data.numeroGomme));
+      setGommeStraordinarioMotivo((current) => current || "gomma singola");
+    }
+
+    setGommeModalOpen(false);
   }
 
   async function handleSave(overrides: CompletionSaveOverrides = {}) {
@@ -2753,6 +2833,11 @@ export default function NextManutenzioniPage() {
       if (!confirmed) return;
     }
 
+    if ((isCompletionSave || !createAsDaFare) && isUiSubtypeGomme(uiSubtype) && !gommeSelezioneDraft) {
+      window.alert("Per salvare una manutenzione gomme eseguita devi confermare la selezione gomme dal modale.");
+      return;
+    }
+
     if (!isCompletionSave && !createAsDaFare && isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
       window.alert("Per il cambio gomme ordinario devi selezionare almeno un asse.");
       return;
@@ -2800,6 +2885,7 @@ export default function NextManutenzioniPage() {
             : "ordinario"
           : null,
         gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
+        gommeSelezione: isUiSubtypeGomme(uiSubtype) ? gommeSelezioneDraft : null,
         ...(sourceRecord
           ? {
               // Per le manutenzioni ESEGUITE la data di esecuzione deve seguire
@@ -5159,9 +5245,22 @@ export default function NextManutenzioniPage() {
               <div className="man2-assi-section">
                 <div
                   className="man2-section-title"
-                  title="Aggiorna lo stato gomme ordinario del mezzo asse per asse."
+                  title="Apri lo stesso modale gomme usato dall'app autisti per evitare errori di selezione."
                 >
-                  Cambio gomme ordinario per asse
+                  Cambio gomme ordinario
+                </div>
+                <button
+                  type="button"
+                  className="man2-btn man2-btn--primary"
+                  onClick={() => setGommeModalOpen(true)}
+                  disabled={!activeTarga || !categoriaTecnica}
+                >
+                  Seleziona gomme
+                </button>
+                <div className="man2-assi-empty" style={{ marginTop: 8 }}>
+                  {gommeSelezioneDraft
+                    ? `${gommeSelezioneDraft.numeroGomme} gomme selezionate - ${gommeSelezioneDraft.asseLabel ?? "asse non indicato"}${gommeSelezioneDraft.marca ? ` - ${gommeSelezioneDraft.marca}` : ""}`
+                    : "Apri il modale per scegliere asse e gomme coinvolte."}
                 </div>
                 {assiDisponibili.length > 0 ? (
                   <>
@@ -5173,8 +5272,8 @@ export default function NextManutenzioniPage() {
                             key={asse.id}
                             type="button"
                             className={`man2-assi-chip${isActive ? " is-active" : ""}`}
-                            onClick={() => toggleAsseCoinvolto(asse.id)}
-                            title={`Seleziona ${asse.label} per il cambio gomme ordinario.`}
+                            onClick={() => setGommeModalOpen(true)}
+                            title={`Apri il modale gomme per modificare ${asse.label}.`}
                             aria-label={`Asse ${asse.label}, ${asse.wheelsCount} gomme`}
                           >
                             <span>{asse.label}</span>
@@ -5234,9 +5333,22 @@ export default function NextManutenzioniPage() {
               <div className="man2-assi-section man2-assi-section--straordinario">
                 <div
                   className="man2-section-title"
-                  title="Registra un evento gomme puntuale senza aggiornare lo stato ordinario per asse."
+                  title="Registra un evento gomme puntuale usando il modale di selezione gomme."
                 >
                   Evento gomme straordinario
+                </div>
+                <button
+                  type="button"
+                  className="man2-btn man2-btn--primary"
+                  onClick={() => setGommeModalOpen(true)}
+                  disabled={!activeTarga || !categoriaTecnica}
+                >
+                  Seleziona gomme
+                </button>
+                <div className="man2-assi-empty" style={{ marginTop: 8 }}>
+                  {gommeSelezioneDraft
+                    ? `${gommeSelezioneDraft.numeroGomme} gomme selezionate - ${gommeSelezioneDraft.asseLabel ?? "asse non indicato"}${gommeSelezioneDraft.marca ? ` - ${gommeSelezioneDraft.marca}` : ""}`
+                    : "Apri il modale per scegliere le gomme puntuali dell'evento."}
                 </div>
                 <div className="man2-field-row3 man2-field-row3--gomme-straordinarie">
                   <div className="man2-field">
@@ -6397,6 +6509,24 @@ export default function NextManutenzioniPage() {
                   />
                 </div>
               ) : null}
+              {isStructuredGommeInterventoTipo(completionModalRecord.gommeInterventoTipo) ? (
+                <div className="man2-field">
+                  <label className="man2-field__label">Selezione gomme</label>
+                  <button
+                    type="button"
+                    className="man2-btn"
+                    onClick={() => setGommeModalOpen(true)}
+                    disabled={!completionCategoriaTecnica}
+                  >
+                    Seleziona gomme
+                  </button>
+                  <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+                    {gommeSelezioneDraft
+                      ? `${gommeSelezioneDraft.numeroGomme} gomme - ${gommeSelezioneDraft.asseLabel ?? "asse non indicato"}`
+                      : "Richiesta per confermare l'esecuzione gomme."}
+                  </small>
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -6575,6 +6705,24 @@ export default function NextManutenzioniPage() {
       ) : null}
       {renderOrigineModal()}
       {renderPdfDeleteModal()}
+      {gommeModalOpen ? (
+        <NextModalGomme
+          key={`${completionModalRecord?.id ?? "form"}:${gommeSelezioneDraft?.asseId ?? "nuova"}:${gommeSelezioneDraft?.numeroGomme ?? 0}`}
+          open={gommeModalOpen}
+          targa={completionModalRecord?.targa ?? activeTarga}
+          categoria={completionCategoriaTecnica ?? categoriaTecnica}
+          kmIniziale={completionModalRecord ? completionDraftKm : km}
+          defaultModalita={isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario"}
+          initialData={toModalGommeData(gommeSelezioneDraft, {
+            targa: completionModalRecord?.targa ?? activeTarga,
+            categoria: completionCategoriaTecnica ?? categoriaTecnica,
+            km: completionModalRecord ? completionDraftKm : km,
+            modalita: isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario",
+          })}
+          onClose={() => setGommeModalOpen(false)}
+          onConfirm={handleConfirmGommeSelection}
+        />
+      ) : null}
     </div>
   );
 }

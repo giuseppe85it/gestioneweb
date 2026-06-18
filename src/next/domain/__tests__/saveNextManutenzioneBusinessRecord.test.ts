@@ -207,4 +207,52 @@ describe("saveNextManutenzioneBusinessRecord — fix duplicazione (PROMPT 41)", 
     expect(storico[0].gruppoManutenzioneId).toBe("G-MAN-1");
     expect(storico[0].descrizione).toBe("Cambio gomme - nota aggiornata");
   });
+
+  it("salva la selezione puntuale gomme in modo additivo", async () => {
+    seed([]);
+    const saved = (await saveNextManutenzioneBusinessRecord({
+      ...basePayload,
+      stato: "eseguita",
+      assiCoinvolti: ["asse1"],
+      gommePerAsse: [{ asseId: "asse1", dataCambio: "2026-05-08", kmCambio: 383482 }],
+      gommeInterventoTipo: "ordinario",
+      gommeSelezione: {
+        modalita: "ordinario",
+        asseId: "asse1",
+        asseLabel: "1 asse",
+        numeroGomme: 4,
+        gommeIds: [
+          "motrice2assi-destra-asse1-1",
+          "motrice2assi-destra-asse1-2",
+          "motrice2assi-sinistra-asse1-1",
+          "motrice2assi-sinistra-asse1-2",
+        ],
+        marca: "MICHELIN",
+        km: "383482",
+        categoria: "Motrice 2 assi",
+        selezioneGommeV2: {
+          versione: 2,
+          asseId: "asse1",
+          ruote: [
+            { id: "motrice2assi-destra-asse1-1", lato: "destra", posizione: 1 },
+            { id: "motrice2assi-sinistra-asse1-1", lato: "sinistra", posizione: 1 },
+          ],
+        },
+      },
+    })) as RawRecord;
+
+    const storico = readStorico();
+    expect(storico).toHaveLength(1);
+    expect(saved.gommeSelezione).toMatchObject({
+      modalita: "ordinario",
+      asseId: "asse1",
+      numeroGomme: 4,
+      marca: "MICHELIN",
+    });
+    expect((saved.gommeSelezione as RawRecord).selezioneGommeV2).toMatchObject({
+      versione: 2,
+      asseId: "asse1",
+    });
+    expectNoUndefinedValues(storico[0]);
+  });
 });

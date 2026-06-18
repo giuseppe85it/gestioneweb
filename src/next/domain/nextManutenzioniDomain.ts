@@ -99,6 +99,7 @@ export type NextMaintenanceHistoryItem = {
   gommePerAsse: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
+  gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   isCambioGommeDerived: boolean;
   stato: NextManutenzioneStato;
   dataProgrammata: string | null;
@@ -169,12 +170,13 @@ export type NextManutenzioniLegacyDatasetRecord = {
   chiusuraRefId?: string | null;
   chiusuraData?: number | null;
   gruppoManutenzioneId?: string | null;
-  fornitore?: string;
+  fornitore?: string | null;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord;
+  gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   sourceDocumentId?: string | null;
   importo?: number | null;
   sourceDocumentFileUrl?: string | null;
@@ -210,6 +212,30 @@ export type NextManutenzioneGommeStraordinarioRecord = {
   asseId: AsseCoinvoltoId | null;
   quantita: number | null;
   motivo: string | null;
+};
+
+export type NextManutenzioneGommeSelezioneRuotaRecord = {
+  id: string;
+  lato: "destra" | "sinistra";
+  posizione: number;
+};
+
+export type NextManutenzioneGommeSelezioneV2Record = {
+  versione: 2;
+  asseId: string;
+  ruote: NextManutenzioneGommeSelezioneRuotaRecord[];
+};
+
+export type NextManutenzioneGommeSelezioneRecord = {
+  modalita: NextManutenzioneGommeInterventoTipo;
+  asseId: string | null;
+  asseLabel: string | null;
+  numeroGomme: number;
+  gommeIds: string[];
+  marca: string | null;
+  km: string | null;
+  categoria: string | null;
+  selezioneGommeV2: NextManutenzioneGommeSelezioneV2Record | null;
 };
 
 const VALID_ASSI_COINVOLTI = new Set<AsseCoinvoltoId>([
@@ -263,6 +289,7 @@ export type NextManutenzioneBusinessSavePayload = {
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord | null;
+  gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   sourceDocumentId?: string | null;
   importo?: number | null;
 };
@@ -356,6 +383,60 @@ function sanitizeGommeStraordinario(
     asseId,
     quantita,
     motivo,
+  };
+}
+
+function sanitizeGommeSelezioneV2(value: unknown): NextManutenzioneGommeSelezioneV2Record | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as RawRecord;
+  if (raw.versione !== 2) return null;
+  const asseId = normalizeOptionalText(raw.asseId);
+  if (!asseId || !Array.isArray(raw.ruote)) return null;
+
+  const ruote: NextManutenzioneGommeSelezioneRuotaRecord[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.ruote) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const wheel = entry as RawRecord;
+    const id = normalizeOptionalText(wheel.id);
+    const lato = wheel.lato === "destra" || wheel.lato === "sinistra" ? wheel.lato : null;
+    const posizione = normalizeNumber(wheel.posizione);
+    if (!id || !lato || posizione === null || !Number.isInteger(posizione) || posizione < 0) return null;
+    const key = `${lato}:${id}:${posizione}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    ruote.push({ id, lato, posizione });
+  }
+
+  if (ruote.length === 0) return null;
+  return { versione: 2, asseId, ruote };
+}
+
+function sanitizeGommeSelezione(value: unknown): NextManutenzioneGommeSelezioneRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as RawRecord;
+  const modalita = sanitizeGommeInterventoTipo(raw.modalita);
+  const numeroGomme = normalizeNumber(raw.numeroGomme);
+  const gommeIds = Array.isArray(raw.gommeIds)
+    ? raw.gommeIds
+        .map((item) => normalizeOptionalText(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
+
+  if (!modalita || numeroGomme === null || numeroGomme <= 0 || gommeIds.length === 0) {
+    return null;
+  }
+
+  return {
+    modalita,
+    asseId: normalizeOptionalText(raw.asseId),
+    asseLabel: normalizeOptionalText(raw.asseLabel),
+    numeroGomme,
+    gommeIds,
+    marca: normalizeOptionalText(raw.marca),
+    km: normalizeOptionalText(raw.km),
+    categoria: normalizeOptionalText(raw.categoria),
+    selezioneGommeV2: sanitizeGommeSelezioneV2(raw.selezioneGommeV2),
   };
 }
 
@@ -637,6 +718,7 @@ function toLegacyDatasetRecord(
   const kmCambio = normalizeNumber(raw.km);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, data, kmCambio);
   const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
+  const gommeSelezione = sanitizeGommeSelezione(raw.gommeSelezione);
   const gommeInterventoTipo = resolveGommeInterventoTipo({
     explicitTipo: raw.gommeInterventoTipo,
     descrizione,
@@ -704,6 +786,7 @@ function toLegacyDatasetRecord(
     importo: normalizeNumber(raw.importo),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario ? { gommeStraordinario } : {}),
+    ...(gommeSelezione ? { gommeSelezione } : {}),
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
     ...(normalizeOptionalText(raw.sourceDocumentId) != null
@@ -754,6 +837,7 @@ function toHistoryItem(
   const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, dataRaw, km);
   const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
+  const gommeSelezione = sanitizeGommeSelezione(raw.gommeSelezione);
   const gommeInterventoTipo = resolveGommeInterventoTipo({
     explicitTipo: raw.gommeInterventoTipo,
     descrizione,
@@ -792,6 +876,7 @@ function toHistoryItem(
     gommePerAsse,
     gommeInterventoTipo,
     gommeStraordinario,
+    gommeSelezione,
     isCambioGommeDerived: isGomme,
     stato,
     dataProgrammata: normalizeOptionalText(raw.dataProgrammata),
@@ -1048,6 +1133,7 @@ function sanitizeBusinessRecord(
   const data = normalizeOptionalText(payload.data) ?? "";
   const gommePerAsseSanitized = sanitizeGommePerAsse(payload.gommePerAsse, data, km);
   const gommeStraordinario = sanitizeGommeStraordinario(payload.gommeStraordinario);
+  const gommeSelezione = sanitizeGommeSelezione(payload.gommeSelezione);
   const gommeInterventoTipo = resolveGommeInterventoTipo({
     explicitTipo: payload.gommeInterventoTipo,
     descrizione: normalizeOptionalText(payload.descrizione),
@@ -1099,11 +1185,14 @@ function sanitizeBusinessRecord(
   const noteEsecuzione = hasOwnField(payloadRaw, "noteEsecuzione")
     ? normalizeOptionalText(payload.noteEsecuzione)
     : undefined;
+  const fornitore = hasOwnField(payloadRaw, "fornitore")
+    ? normalizeOptionalText(payload.fornitore)
+    : undefined;
   return {
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
     tipo: payload.tipo,
-    fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
+    ...(fornitore !== undefined ? { fornitore } : {}),
     km,
     ore: payload.tipo === "compressore" || payload.tipo === "attrezzature" ? normalizeNumber(payload.ore) : null,
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
@@ -1125,6 +1214,7 @@ function sanitizeBusinessRecord(
     importo: typeof payload.importo === "number" ? payload.importo : null,
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
+    ...(gommeSelezione && gommeInterventoTipo ? { gommeSelezione } : {}),
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
     ...(payload.sourceDocumentId != null ? { sourceDocumentId: payload.sourceDocumentId } : {}),

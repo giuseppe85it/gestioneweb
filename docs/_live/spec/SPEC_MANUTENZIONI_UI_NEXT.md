@@ -14,6 +14,14 @@ Redesign UI del modulo Manutenzioni NEXT (`src/next/NextManutenzioniPage.tsx`).
 - Il campo e' scritto solo dal writer dei gruppi manutenzioni per creare, aggiungere o rimuovere manutenzioni `daFare` della stessa targa; non modifica descrizione, origini, legami, urgenza o date.
 - Nel tab `Da fare`, i gruppi sono blocchi dentro `Manutenzioni operative`; `programmata` non e' raggruppabile. Completamento/eliminazione fanno uscire i record dal gruppo solo per derivazione della lista, senza azzerare il campo.
 
+### Addendum 2026-06-18 - Selezione gomme visuale
+
+- Il form `/next/manutenzioni` usa un modale clone-safe equivalente al selettore gomme dell'app autisti per gli interventi `gomme` e `gomme-straordinario`.
+- Il modale si apre in inserimento quando viene scelto un sottotipo gomme, in modifica quando il record e' una manutenzione gomme, e nella modale `Eseguita` per completare una manutenzione gomme.
+- La shape `storage/@manutenzioni` ammette il campo additivo `gommeSelezione`, con `modalita`, `asseId`, `asseLabel`, `numeroGomme`, `gommeIds`, `marca`, `km`, `categoria`, `selezioneGommeV2`.
+- `gommeSelezione` non sostituisce `assiCoinvolti`, `gommePerAsse`, `gommeInterventoTipo` o `gommeStraordinario`: li affianca per conservare la selezione puntuale e alimentare il dettaglio tecnico.
+- Il dettaglio gomme mantiene la precedenza dell'evento ufficiale collegato; in assenza di evento usa `gommeSelezione`, poi il fallback strutturale per asse.
+
 Problema attuale: la card sinistra fissa (`mx-header-grid` + `ms-layout` a due colonne `1.56fr / 1fr`)
 occupa troppo spazio orizzontale e rende il contenuto utile troppo stretto.
 

@@ -744,7 +744,9 @@ function GommeMaintenanceTechnicalView({
           {resolution.fonte === "evento_collegato"
             ? "Evento gomme ufficiale collegato"
             : resolution.fonte === "manutenzione"
-              ? "Assi registrati nella manutenzione"
+              ? resolution.precisione === "ruote_esatte_v2"
+                ? "Selezione gomme registrata"
+                : "Assi registrati nella manutenzione"
               : "Posizione non rappresentabile"}
         </strong>
         <span>{resolution.messaggio}</span>
@@ -932,6 +934,16 @@ export default function NextMappaStoricoPage({
           assiCoinvolti: selectedRecord?.assiCoinvolti ?? [],
           gommePerAsse: selectedRecord?.gommePerAsse ?? [],
           gommeStraordinario: selectedRecord?.gommeStraordinario ?? null,
+          gommeSelezione: selectedRecord?.gommeSelezione
+            ? {
+                asseId: selectedRecord.gommeSelezione.asseId,
+                asseLabel: selectedRecord.gommeSelezione.asseLabel,
+                gommeIds: selectedRecord.gommeSelezione.gommeIds,
+                descrizione: selectedRecord.descrizione,
+                interventoTipo: selectedRecord.gommeSelezione.modalita,
+                selezioneGommeV2: selectedRecord.gommeSelezione.selezioneGommeV2,
+              }
+            : null,
         },
         officialEvents: officialGommeEvents,
       }),

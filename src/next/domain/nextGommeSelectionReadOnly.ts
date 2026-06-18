@@ -67,6 +67,7 @@ export type NextGommeMaintenanceSelectionInput = {
     assiCoinvolti?: string[] | null;
     gommePerAsse?: Array<{ asseId?: string | null }> | null;
     gommeStraordinario?: { asseId?: string | null } | null;
+    gommeSelezione?: NextGommeSelectionInput | null;
   };
   officialEvents: Array<
     NextOfficialGommeEventCandidate &
@@ -287,6 +288,17 @@ export function resolveNextGommeMaintenanceSelectionReadOnly(
         ...resolveNextGommeSelectionReadOnly(linkedEvent),
         fonte: "evento_collegato",
         eventoCollegatoId: linkedEvent.sourceRecordId,
+      };
+    }
+  }
+
+  if (sameActiveVehicle && input.maintenance.gommeSelezione) {
+    const resolvedSelection = resolveNextGommeSelectionReadOnly(input.maintenance.gommeSelezione);
+    if (resolvedSelection.precisione !== "non_rappresentabile") {
+      return {
+        ...resolvedSelection,
+        fonte: "manutenzione",
+        eventoCollegatoId: null,
       };
     }
   }
