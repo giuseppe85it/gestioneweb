@@ -11,7 +11,6 @@ import ChatIaPage from "./next/chat-ia/ChatIaPage";
 import ChatIaToolUsePage from "./next/chat-ia/ChatIaToolUsePage";
 import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
-import NextIACoperturaLibrettiPage from "./next/NextIACoperturaLibrettiPage";
 import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
 import NextCisternaPage from "./next/NextCisternaPage";
 import NextCisternaIAPage from "./next/NextCisternaIAPage";
@@ -589,14 +588,6 @@ function App() {
           element={
             <NextRoleGuard areaId="ia">
               <NextIADocumentiPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/copertura-libretti"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextIACoperturaLibrettiPage />
             </NextRoleGuard>
           }
         />

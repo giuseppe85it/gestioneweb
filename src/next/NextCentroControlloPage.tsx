@@ -34,7 +34,6 @@ import {
   NEXT_CISTERNA_SCHEDE_TEST_PATH,
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_GESTIONE_OPERATIVA_PATH,
-  NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
@@ -62,7 +61,6 @@ function resolveCloneSafeRoute(path: string): string | null {
   if (path === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
   if (path === "/autisti" || path.startsWith("/autisti/")) return `/next${path}`;
   if (path === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
-  if (path === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
   if (path === "/libretti-export") return NEXT_LIBRETTI_EXPORT_PATH;
   if (path === "/centro-controllo") return NEXT_CENTRO_CONTROLLO_PATH;
   if (path === "/gestione-operativa") return NEXT_GESTIONE_OPERATIVA_PATH;

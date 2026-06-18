@@ -6,7 +6,6 @@ import {
   NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
   NEXT_MAGAZZINO_PATH,
-  NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_MANUTENZIONI_PATH,
@@ -186,11 +185,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     title: "IA",
     items: [
       { id: "ia-documenti", label: "Documenti", path: NEXT_IA_DOCUMENTI_PATH },
-      {
-        id: "ia-copertura-libretti",
-        label: "Copertura libretti",
-        path: NEXT_IA_COPERTURA_LIBRETTI_PATH,
-      },
       { id: "libretti-export", label: "Export libretti", path: NEXT_LIBRETTI_EXPORT_PATH },
     ],
   },
@@ -735,7 +729,6 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     routePath: NEXT_IA_DOCUMENTI_PATH,
     relatedPaths: [
       NEXT_IA_DOCUMENTI_PATH,
-      NEXT_IA_COPERTURA_LIBRETTI_PATH,
       NEXT_LIBRETTI_EXPORT_PATH,
     ],
     navLabel: "Intelligenza Artificiale",
