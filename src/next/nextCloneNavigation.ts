@@ -17,7 +17,6 @@ import {
   NEXT_HOME_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
-  NEXT_IA_LIBRETTO_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_MATERIALI_CONSEGNATI_PATH,
@@ -82,7 +81,6 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
   if (normalizedPath === "/lavori-eseguiti") return NEXT_MANUTENZIONI_PATH;
   if (normalizedPath === "/mezzi") return NEXT_MEZZI_PATH;
   if (normalizedPath === "/dossiermezzi") return NEXT_DOSSIER_LISTA_PATH;
-  if (normalizedPath === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
   if (normalizedPath === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
   if (normalizedPath === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
   if (normalizedPath === "/libretti-export") return NEXT_LIBRETTI_EXPORT_PATH;

@@ -10,7 +10,6 @@ import NextScadenzeCollaudiPage from "./next/NextScadenzeCollaudiPage";
 import ChatIaPage from "./next/chat-ia/ChatIaPage";
 import ChatIaToolUsePage from "./next/chat-ia/ChatIaToolUsePage";
 import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
-import NextIALibrettoPage from "./next/NextIALibrettoPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
 import NextIACoperturaLibrettiPage from "./next/NextIACoperturaLibrettiPage";
 import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
@@ -585,14 +584,6 @@ function App() {
           element={<RichiestaAttrezzatureAll />}
         />
         <Route path="autisti-inbox/gomme" element={<AutistiGommeAll />} />
-        <Route
-          path="ia/libretto"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextIALibrettoPage />
-            </NextRoleGuard>
-          }
-        />
         <Route
           path="ia/documenti"
           element={

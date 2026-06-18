@@ -36,7 +36,6 @@ import {
   NEXT_GESTIONE_OPERATIVA_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
-  NEXT_IA_LIBRETTO_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_MANUTENZIONI_PATH,
@@ -62,7 +61,6 @@ function resolveCloneSafeRoute(path: string): string | null {
   }
   if (path === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
   if (path === "/autisti" || path.startsWith("/autisti/")) return `/next${path}`;
-  if (path === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
   if (path === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
   if (path === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
   if (path === "/libretti-export") return NEXT_LIBRETTI_EXPORT_PATH;
@@ -258,7 +256,6 @@ const QUICK_LINKS_NAV_DOSSIER_MEZZI = buildQuickLinks([
 
 const QUICK_LINKS_NAV_IA = buildQuickLinks([
   { to: "/ia", label: "IA" },
-  { to: "/ia/libretto", label: "IA Libretto" },
   { to: "/ia/documenti", label: "IA Documenti" },
 ]);
 

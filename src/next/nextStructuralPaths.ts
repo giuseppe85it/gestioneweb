@@ -21,7 +21,6 @@ export const NEXT_DOSSIER_LISTA_PATH = "/next/dossiermezzi";
 export const NEXT_DOSSIER_PREFIX = "/next/dossier";
 export const NEXT_MEZZI_DOSSIER_LEGACY_PATH = "/next/mezzi-dossier";
 export const NEXT_ANALISI_ECONOMICA_PREFIX = "/next/analisi-economica";
-export const NEXT_IA_LIBRETTO_PATH = "/next/ia/libretto";
 export const NEXT_IA_DOCUMENTI_PATH = "/next/ia/documenti";
 export const NEXT_IA_COPERTURA_LIBRETTI_PATH = "/next/ia/copertura-libretti";
 export const NEXT_LIBRETTI_EXPORT_PATH = "/next/libretti-export";

@@ -8,7 +8,6 @@ import {
   NEXT_MAGAZZINO_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
-  NEXT_IA_LIBRETTO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
@@ -186,7 +185,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "ia",
     title: "IA",
     items: [
-      { id: "ia-libretto", label: "Libretto", path: NEXT_IA_LIBRETTO_PATH },
       { id: "ia-documenti", label: "Documenti", path: NEXT_IA_DOCUMENTI_PATH },
       {
         id: "ia-copertura-libretti",
@@ -734,9 +732,8 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
   },
   "ia": {
     id: "ia",
-    routePath: NEXT_IA_LIBRETTO_PATH,
+    routePath: NEXT_IA_DOCUMENTI_PATH,
     relatedPaths: [
-      NEXT_IA_LIBRETTO_PATH,
       NEXT_IA_DOCUMENTI_PATH,
       NEXT_IA_COPERTURA_LIBRETTI_PATH,
       NEXT_LIBRETTI_EXPORT_PATH,
