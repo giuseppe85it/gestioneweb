@@ -3,7 +3,7 @@
 // sessione/assegnazione corrente e l'anagrafica del collega.
 // Sola lettura: tutti i reader sono clone-safe, nessuna scrittura.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -159,6 +159,18 @@ const TABS: Array<{ id: "tutti" | EventKind; label: string }> = [
   { id: "rifornimento", label: "Rifornimenti" },
   { id: "gomme", label: "Gomme" },
 ];
+
+function Card({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+  return (
+    <section className="card">
+      <div className="card__head">
+        <h2 className="card__title">{title}</h2>
+        {typeof count === "number" ? <span className="card__count">{count}</span> : null}
+      </div>
+      <div className="card__body">{children}</div>
+    </section>
+  );
+}
 
 function NextSchedaAutistaPage() {
   const { badge: rawParam } = useParams<{ badge: string }>();
@@ -443,182 +455,142 @@ function NextSchedaAutistaPage() {
 
   return (
     <div className="next-scheda">
-      <button type="button" className="next-scheda__back" onClick={() => navigate(-1)}>
-        ← Indietro
-      </button>
+      <div className="next-scheda__inner">
+        <button type="button" className="next-scheda__back" onClick={() => navigate(-1)}>
+          ← Indietro
+        </button>
 
-      {status === "loading" ? (
-        <div className="next-scheda__loading">Carico la scheda dell'autista…</div>
-      ) : null}
-
-      {status === "error" ? (
-        <div className="next-scheda__error">
-          Impossibile leggere i dati dell'autista. Riprova più tardi.
-        </div>
-      ) : null}
-
-      {status === "notfound" ? (
-        <div className="next-scheda__error">Nessun autista trovato per “{rawParam}”.</div>
-      ) : null}
-
-      {status === "ready" && data ? (
-        <>
-          <div className="next-scheda__header">
-            <div className="next-scheda__header-left">
-              <img
-                src="/logo.png"
-                alt="Gestione e Manutenzione"
-                className="next-scheda__header-logo"
-              />
-              <div className="next-scheda__header-main">
-                <div className="next-scheda__eyebrow">Scheda autista</div>
-                <h1 className="next-scheda__title">{data.nome}</h1>
-                <div className="next-scheda__subtitle">
-                  {[data.badge ? `Badge ${data.badge}` : null, data.codice ? `Cod. ${data.codice}` : null]
-                    .filter(Boolean)
-                    .join(" · ") || "Anagrafica colleghi"}
-                </div>
-              </div>
-            </div>
+        {status === "loading" ? (
+          <div className="next-scheda__state">Carico la scheda dell'autista…</div>
+        ) : null}
+        {status === "error" ? (
+          <div className="next-scheda__state next-scheda__state--error">
+            Impossibile leggere i dati dell'autista. Riprova più tardi.
           </div>
+        ) : null}
+        {status === "notfound" ? (
+          <div className="next-scheda__state next-scheda__state--error">
+            Nessun autista trovato per “{rawParam}”.
+          </div>
+        ) : null}
 
-          <section className="next-scheda__section">
-            <div className="next-scheda__section-head">
-              <h2 className="next-scheda__section-title">Anagrafica e stato</h2>
-            </div>
-            <div className="next-scheda__meta-grid">
-              {data.telefono ? (
-                <div className="next-scheda__meta-item">
-                  <span className="next-scheda__meta-label">Telefono</span>
-                  <span className="next-scheda__meta-value">{data.telefono}</span>
+        {status === "ready" && data ? (
+          <>
+            <div className="hero">
+              <img className="hero__logo" src="/logo.png" alt="Gestione e Manutenzione" />
+              <div className="hero__main">
+                <div className="hero__eyebrow">Scheda autista</div>
+                <h1 className="hero__title">{data.nome}</h1>
+                <div className="hero__chips">
+                  {data.badge ? <span className="chip">badge {data.badge}</span> : null}
+                  {data.codice ? <span className="chip">cod. {data.codice}</span> : null}
+                  {data.operationalStatus.label ? (
+                    <span className="chip accent">{data.operationalStatus.label}</span>
+                  ) : null}
                 </div>
-              ) : null}
-              <div className="next-scheda__meta-item">
-                <span className="next-scheda__meta-label">Schede carburante</span>
-                <span className="next-scheda__meta-value">{data.schedeCarburante}</span>
-              </div>
-              <div className="next-scheda__meta-item">
-                <span className="next-scheda__meta-label">Stato operativo</span>
-                <span className="next-scheda__meta-value">{data.operationalStatus.label}</span>
               </div>
             </div>
-          </section>
 
-          <section className="next-scheda__section">
-            <div className="next-scheda__section-head">
-              <h2 className="next-scheda__section-title">Assegnazione corrente</h2>
+            <div className="kpis">
+              <div className="kpi k-warn"><div className="kpi__num">{counts.segnalazione}</div><div className="kpi__lbl">Segnalazioni</div></div>
+              <div className="kpi k-info"><div className="kpi__num">{counts.controllo}</div><div className="kpi__lbl">Controlli</div></div>
+              <div className="kpi k-neutral"><div className="kpi__num">{counts.richiesta}</div><div className="kpi__lbl">Richieste</div></div>
+              <div className="kpi k-ok"><div className="kpi__num">{counts.tutti}</div><div className="kpi__lbl">Attività totali</div></div>
             </div>
-            {data.assignment ? (
-              <div className="next-scheda__list">
-                <div className="next-scheda__row">
-                  <div className="next-scheda__row-main">
-                    <div className="next-scheda__row-title">
+
+            <div className="grid">
+              <Card title="Anagrafica">
+                <div className="kv"><div className="kv__key"><span className="kv__name">Telefono</span></div><div className="kv__val"><span className="kv__strong">{data.telefono || "—"}</span></div></div>
+                <div className="kv"><div className="kv__key"><span className="kv__name">Codice</span></div><div className="kv__val"><span className="kv__strong">{data.codice || "—"}</span></div></div>
+                <div className="kv"><div className="kv__key"><span className="kv__name">Schede carburante</span></div><div className="kv__val"><span className="kv__strong">{data.schedeCarburante}</span></div></div>
+              </Card>
+
+              <Card title="Assegnazione attuale">
+                {data.assignment ? (
+                  <div className="kv current">
+                    <div className="kv__key">
                       {data.assignment.targaMotrice ? (
-                        <button
-                          type="button"
-                          className="next-scheda__plate"
-                          onClick={() => goToMezzo(data.assignment!.targaMotrice as string)}
-                        >
+                        <button type="button" className="plate kv__name" onClick={() => goToMezzo(data.assignment!.targaMotrice as string)}>
                           {data.assignment.targaMotrice}
                         </button>
                       ) : (
-                        "Motrice non indicata"
+                        <span className="kv__name">Motrice non indicata</span>
                       )}
                       {data.assignment.targaRimorchio ? (
-                        <>
-                          {" + "}
-                          <button
-                            type="button"
-                            className="next-scheda__plate"
-                            onClick={() => goToMezzo(data.assignment!.targaRimorchio as string)}
-                          >
-                            {data.assignment.targaRimorchio}
-                          </button>
-                        </>
+                        <button type="button" className="plate kv__sub" onClick={() => goToMezzo(data.assignment!.targaRimorchio as string)}>
+                          + {data.assignment.targaRimorchio}
+                        </button>
                       ) : null}
                     </div>
-                    {data.assignment.sessionStatus ? (
-                      <div className="next-scheda__row-detail">{data.assignment.sessionStatus}</div>
-                    ) : null}
+                    <div className="kv__val">
+                      <span className="badge ok">in uso</span>
+                      <span className="kv__meta">dal {toDisplay(data.assignment.timestamp) || "—"}</span>
+                    </div>
                   </div>
-                  <div className="next-scheda__row-aside">
-                    <span className="next-scheda__time">
-                      {toDisplay(data.assignment.timestamp) || "—"}
-                    </span>
-                  </div>
+                ) : (
+                  <div className="empty">Nessuna assegnazione mezzo certificata.</div>
+                )}
+              </Card>
+
+              <Card title="Riepilogo attività">
+                <div className="kv"><div className="kv__key"><span className="kv__name">Segnalazioni</span></div><div className="kv__val"><span className="kv__strong">{counts.segnalazione}</span></div></div>
+                <div className="kv"><div className="kv__key"><span className="kv__name">Controlli mezzo</span></div><div className="kv__val"><span className="kv__strong">{counts.controllo}</span></div></div>
+                <div className="kv"><div className="kv__key"><span className="kv__name">Richieste attrezzatura</span></div><div className="kv__val"><span className="kv__strong">{counts.richiesta}</span></div></div>
+                {counts.evento > 0 ? (<div className="kv"><div className="kv__key"><span className="kv__name">Cambi mezzo / log</span></div><div className="kv__val"><span className="kv__strong">{counts.evento}</span></div></div>) : null}
+                {counts.rifornimento > 0 ? (<div className="kv"><div className="kv__key"><span className="kv__name">Rifornimenti</span></div><div className="kv__val"><span className="kv__strong">{counts.rifornimento}</span></div></div>) : null}
+                {counts.gomme > 0 ? (<div className="kv"><div className="kv__key"><span className="kv__name">Gomme</span></div><div className="kv__val"><span className="kv__strong">{counts.gomme}</span></div></div>) : null}
+              </Card>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <Card title="Attività recenti" count={visibleEvents.length}>
+                <div className="tabs">
+                  {TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={activeTab === tab.id ? "tab active" : "tab"}
+                      onClick={() => setActiveTab(tab.id)}
+                    >
+                      {tab.label}
+                      <span className="tab__count">{counts[tab.id]}</span>
+                    </button>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="next-scheda__empty">Nessuna assegnazione mezzo certificata.</div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <div className="next-scheda__section-head">
-              <h2 className="next-scheda__section-title">Attività</h2>
-            </div>
-            <div className="next-scheda__tabs">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={
-                    activeTab === tab.id
-                      ? "next-scheda__tab next-scheda__tab--active"
-                      : "next-scheda__tab"
-                  }
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                  <span className="next-scheda__tab-count">{counts[tab.id]}</span>
-                </button>
-              ))}
-            </div>
-
-            {visibleEvents.length === 0 ? (
-              <div className="next-scheda__empty">Nessuna attività registrata.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {visibleEvents.map((event) => (
-                  <div key={event.id} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">{event.title}</div>
-                      {event.detail ? (
-                        <div className="next-scheda__row-detail">{event.detail}</div>
-                      ) : null}
-                      <div className="next-scheda__row-meta">
-                        <span>{event.kindLabel}</span>
-                        {event.targa ? (
-                          <button
-                            type="button"
-                            className="next-scheda__plate"
-                            onClick={() => goToMezzo(event.targa as string)}
-                          >
-                            {event.targa}
-                          </button>
-                        ) : null}
-                        {event.match === "WEAK" ? (
-                          <span className="next-scheda__weak" title="Collegato per nome, badge assente">
-                            match debole
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      {event.toneLabel ? (
-                        <span className={`next-scheda__badge next-scheda__badge--${event.tone}`}>
-                          {event.toneLabel}
+                {visibleEvents.length === 0 ? (
+                  <div className="empty">Nessuna attività registrata.</div>
+                ) : (
+                  <>
+                    {visibleEvents.slice(0, 30).map((event) => (
+                      <div className="act-row" key={event.id}>
+                        <span className={`act-kind ${event.kind}`}>{event.kindLabel}</span>
+                        <span className="act-desc">
+                          <strong>{event.title}</strong>
+                          {event.detail ? <> — <span>{event.detail}</span></> : null}
                         </span>
-                      ) : null}
-                      <span className="next-scheda__time">{toDisplay(event.rawDate) || "—"}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      ) : null}
+                        <span className="act-meta">
+                          {event.targa ? (
+                            <>
+                              <button type="button" className="plate" onClick={() => goToMezzo(event.targa as string)}>
+                                {event.targa}
+                              </button>
+                              {" · "}
+                            </>
+                          ) : null}
+                          {toDisplay(event.rawDate) || "—"}
+                        </span>
+                      </div>
+                    ))}
+                    {visibleEvents.length > 30 ? (
+                      <div className="empty">+{visibleEvents.length - 30} altre attività</div>
+                    ) : null}
+                  </>
+                )}
+              </Card>
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

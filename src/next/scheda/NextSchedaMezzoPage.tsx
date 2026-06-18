@@ -1,10 +1,8 @@
-// Scheda mezzo NEXT — riepilogo completo di tutto ciò che è legato a una targa.
-// Riusa la lettura aggregata del dossier (readNextDossierMezzoCompositeSnapshot
-// + buildNextDossierMezzoLegacyView) e aggiunge scadenze e segnalazioni/controlli
-// del mezzo (non inclusi nel composite). Rimanda al dossier completo per i dettagli.
+// Scheda mezzo NEXT — layout a griglia di card (riproduce 1:1 il mockup approvato).
+// La lettura dati riusa i reader del dossier + scadenze + segnalazioni/controlli + conduzione.
 // Sola lettura: nessuna scrittura, nessun timestamp generato da click.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -34,32 +32,64 @@ import { toDisplay } from "../helpers/dateUnica";
 import "./next-scheda.css";
 
 type LoadStatus = "loading" | "ready" | "notfound" | "error";
-type Tone = "ok" | "warning" | "danger" | "info" | "idle";
 
-type ConduzionePeriodo = {
-  nome: string;
-  badge: string | null;
-  start: number;
-  end: number | null;
-};
+type ConduzionePeriodo = { nome: string; badge: string | null; start: number; end: number | null };
 
 type SchedaMezzoExtra = {
   scadenze: NextManutenzioneScadenzaItem[];
   eventi: NextMezzoSegnalazioniControlliTimelineItem[];
-  segnalazioniTotali: number;
-  controlliKo: number;
   conduzione: ConduzionePeriodo[];
 };
 
-// Ricostruisce la sequenza di conducenti del mezzo dagli assignment ordinati
-// per tempo: ogni periodo va dall'inizio dell'autista all'inizio del successivo.
-function buildConduzione(
-  assignments: NextAutistiCanonicalAssignment[],
-): ConduzionePeriodo[] {
+const SCADENZA_SEVERITA: Record<NextScadenzaStato, number> = {
+  scaduta: 4,
+  in_scadenza: 3,
+  ok: 2,
+  valore_non_disponibile: 1,
+  data_mancante: 0,
+};
+
+function num(n: number | null | undefined): string {
+  return typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("it-IT") : "—";
+}
+
+function urgencyTone(urgenza: string | null | undefined): "danger" | "warning" | "idle" {
+  const value = (urgenza ?? "").toLowerCase();
+  if (value.includes("alt") || value.includes("urgen")) return "danger";
+  if (value.includes("med")) return "warning";
+  return "idle";
+}
+
+function scadenzaBadge(item: NextManutenzioneScadenzaItem): { tone: string; label: string } {
+  switch (item.stato) {
+    case "scaduta":
+      return { tone: "danger", label: "scaduta" };
+    case "in_scadenza":
+      return { tone: "warning", label: "in scadenza" };
+    case "ok":
+      return { tone: "ok", label: "ok" };
+    default:
+      return { tone: "idle", label: "dato mancante" };
+  }
+}
+
+function giorniLabel(giorni: number | null): string {
+  if (giorni === null) return "";
+  if (giorni < 0) return `scaduta da ${Math.abs(giorni)} gg`;
+  if (giorni === 0) return "scade oggi";
+  return `tra ${giorni} gg`;
+}
+
+function formatImporto(importo: number | undefined, valuta: string): string | null {
+  if (typeof importo !== "number" || !Number.isFinite(importo)) return null;
+  const suffix = valuta && valuta !== "UNKNOWN" ? ` ${valuta}` : "";
+  return `${importo.toLocaleString("it-IT")}${suffix}`;
+}
+
+function buildConduzione(assignments: NextAutistiCanonicalAssignment[]): ConduzionePeriodo[] {
   const withTs = assignments
     .filter((entry) => typeof entry.timestamp === "number" && (entry.timestamp as number) > 0)
     .sort((left, right) => (left.timestamp as number) - (right.timestamp as number));
-
   const periods: ConduzionePeriodo[] = [];
   let lastKey = "";
   for (const entry of withTs) {
@@ -79,66 +109,15 @@ function buildConduzione(
   return periods;
 }
 
-const SCADENZA_SEVERITA: Record<NextScadenzaStato, number> = {
-  scaduta: 4,
-  in_scadenza: 3,
-  ok: 2,
-  valore_non_disponibile: 1,
-  data_mancante: 0,
-};
-
-function urgencyTone(urgenza: string | null | undefined): "danger" | "warning" | "idle" {
-  const value = (urgenza ?? "").toLowerCase();
-  if (value.includes("alt") || value.includes("urgen")) return "danger";
-  if (value.includes("med")) return "warning";
-  return "idle";
-}
-
-function scadenzaBadge(item: NextManutenzioneScadenzaItem): { tone: Tone; label: string } {
-  switch (item.stato) {
-    case "scaduta":
-      return { tone: "danger", label: "scaduta" };
-    case "in_scadenza":
-      return { tone: "warning", label: "in scadenza" };
-    case "ok":
-      return { tone: "ok", label: "ok" };
-    default:
-      return { tone: "idle", label: "dato mancante" };
-  }
-}
-
-function giorniLabel(giorni: number | null): string {
-  if (giorni === null) return "data non disponibile";
-  if (giorni < 0) return `scaduta da ${Math.abs(giorni)} gg`;
-  if (giorni === 0) return "scade oggi";
-  return `tra ${giorni} gg`;
-}
-
-function formatImporto(importo: number | undefined, valuta: string): string | null {
-  if (typeof importo !== "number" || !Number.isFinite(importo)) return null;
-  const suffix = valuta && valuta !== "UNKNOWN" ? ` ${valuta}` : "";
-  return `${importo.toLocaleString("it-IT")}${suffix}`;
-}
-
-function MetaItem({ label, value }: { label: string; value: string | null | undefined }) {
-  const text = (value ?? "").toString().trim();
-  if (!text) return null;
+function Card({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <div className="next-scheda__meta-item">
-      <span className="next-scheda__meta-label">{label}</span>
-      <span className="next-scheda__meta-value">{text}</span>
-    </div>
-  );
-}
-
-function SectionHead({ title, count }: { title: string; count?: number }) {
-  return (
-    <div className="next-scheda__section-head">
-      <h2 className="next-scheda__section-title">{title}</h2>
-      {typeof count === "number" ? (
-        <span className="next-scheda__section-link">{count}</span>
-      ) : null}
-    </div>
+    <section className="card">
+      <div className="card__head">
+        <h2 className="card__title">{title}</h2>
+        {typeof count === "number" ? <span className="card__count">{count}</span> : null}
+      </div>
+      <div className="card__body">{children}</div>
+    </section>
   );
 }
 
@@ -173,9 +152,6 @@ function NextSchedaMezzoPage() {
 
         const builtView = buildNextDossierMezzoLegacyView(composite);
         const targaNorm = normalizeScadenzaTarga(builtView.mezzo?.targa ?? rawTarga ?? "");
-        const conduzione = buildConduzione(
-          findNextAutistiAssignmentsByTarga(autistiSnap, builtView.mezzo?.targa ?? rawTarga ?? ""),
-        );
         const scadenze = scadenzeSnap.items
           .filter((item) => item.attiva && normalizeScadenzaTarga(item.targa) === targaNorm)
           .sort(
@@ -183,15 +159,12 @@ function NextSchedaMezzoPage() {
               SCADENZA_SEVERITA[right.stato] - SCADENZA_SEVERITA[left.stato] ||
               (left.giorniMin ?? 99999) - (right.giorniMin ?? 99999),
           );
+        const conduzione = buildConduzione(
+          findNextAutistiAssignmentsByTarga(autistiSnap, builtView.mezzo?.targa ?? rawTarga ?? ""),
+        );
 
         setView(builtView);
-        setExtra({
-          scadenze,
-          eventi: segnControlli.timelineItems,
-          segnalazioniTotali: segnControlli.counts.segnalazioniTotali,
-          controlliKo: segnControlli.counts.controlliKo,
-          conduzione,
-        });
+        setExtra({ scadenze, eventi: segnControlli.timelineItems, conduzione });
         setStatus("ready");
       } catch {
         if (!alive) return;
@@ -218,466 +191,341 @@ function NextSchedaMezzoPage() {
   }, [view]);
 
   const role = getNextRoleFromSearch(location.search);
-  const dossierPath = view
-    ? buildNextPathWithRole(buildNextDossierPath(view.mezzo?.targa ?? rawTarga ?? ""), role)
-    : "#";
 
-  const scadenzeCritiche = extra
-    ? extra.scadenze.filter((item) => item.stato === "scaduta" || item.stato === "in_scadenza").length
-    : 0;
+  const back = (
+    <button type="button" className="next-scheda__back" onClick={() => navigate(-1)}>
+      ← Indietro
+    </button>
+  );
 
-  const conduzione = extra?.conduzione ?? [];
-  const conducenteAttuale = conduzione.length > 0 ? conduzione[conduzione.length - 1] : null;
-  const conducentePrecedente = conduzione.length >= 2 ? conduzione[conduzione.length - 2] : null;
-  const conduzioneStorica = conduzione.length > 2 ? conduzione.slice(0, -2).reverse() : [];
+  if (status !== "ready" || !view || !extra) {
+    return (
+      <div className="next-scheda">
+        <div className="next-scheda__inner">
+          {back}
+          {status === "loading" ? (
+            <div className="next-scheda__state">Carico la scheda del mezzo…</div>
+          ) : null}
+          {status === "error" ? (
+            <div className="next-scheda__state next-scheda__state--error">
+              Impossibile leggere i dati del mezzo. Riprova più tardi.
+            </div>
+          ) : null}
+          {status === "notfound" ? (
+            <div className="next-scheda__state next-scheda__state--error">
+              Nessun mezzo trovato per la targa “{rawTarga}”.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const m = view.mezzo;
+  const cond = extra.conduzione;
+  const attuale = cond.length > 0 ? cond[cond.length - 1] : null;
+  const precedenti = cond.slice(0, -1).reverse();
+  const scadCrit = extra.scadenze.filter(
+    (s) => s.stato === "scaduta" || s.stato === "in_scadenza",
+  ).length;
+  const dossierPath = buildNextPathWithRole(buildNextDossierPath(m?.targa ?? rawTarga ?? ""), role);
+
+  // ---- card (distribuite nelle 3 colonne; quelle senza dati non vengono mostrate) ----
+  const colSx: ReactNode[] = [];
+  const colCx: ReactNode[] = [];
+  const colDx: ReactNode[] = [];
+
+  // Colonna SX
+  colSx.push(
+    <Card key="identita" title="Identità">
+      <div className="kv">
+        <div className="kv__key"><span className="kv__name">Proprietario</span></div>
+        <div className="kv__val"><span className="kv__strong">{m?.proprietario || "—"}</span></div>
+      </div>
+      <div className="kv">
+        <div className="kv__key"><span className="kv__name">Autista abituale</span></div>
+        <div className="kv__val"><span className="kv__strong">{m?.autistaNome || "—"}</span></div>
+      </div>
+      <div className="kv">
+        <div className="kv__key"><span className="kv__name">Scadenza revisione</span></div>
+        <div className="kv__val">
+          <span className="kv__strong">
+            {m?.dataScadenzaRevisione ? toDisplay(m.dataScadenzaRevisione) || m.dataScadenzaRevisione : "—"}
+          </span>
+        </div>
+      </div>
+    </Card>,
+  );
+
+  if (m?.manutenzioneProgrammata) {
+    colSx.push(
+      <Card key="manut" title="Manutenzione programmata">
+        <div className="kv">
+          <div className="kv__key"><span className="kv__name">Contratto / Officina</span></div>
+          <div className="kv__val"><span className="kv__strong">{m.manutenzioneContratto || "—"}</span></div>
+        </div>
+        <div className="kv">
+          <div className="kv__key"><span className="kv__name">Periodo</span></div>
+          <div className="kv__val">
+            <span className="kv__strong">
+              {m.manutenzioneDataInizio ? toDisplay(m.manutenzioneDataInizio) || m.manutenzioneDataInizio : "—"} –{" "}
+              {m.manutenzioneDataFine ? toDisplay(m.manutenzioneDataFine) || m.manutenzioneDataFine : "—"}
+            </span>
+          </div>
+        </div>
+        <div className="kv">
+          <div className="kv__key"><span className="kv__name">Km massimi</span></div>
+          <div className="kv__val"><span className="kv__strong">{m.manutenzioneKmMax || "—"}</span></div>
+        </div>
+      </Card>,
+    );
+  }
+
+  if (rifornimentiSorted.length > 0) {
+    colSx.push(
+      <Card key="rifornimenti" title="Ultimi rifornimenti" count={view.rifornimenti.length}>
+        {rifornimentiSorted.slice(0, 6).map((r) => (
+          <div className="kv" key={r.id}>
+            <div className="kv__key">
+              <span className="kv__name">
+                {typeof r.litri === "number" ? `${r.litri} L` : "Rifornimento"}
+                {r.tipo ? ` · ${r.tipo}` : ""}
+              </span>
+              {r.autistaNome ? <span className="kv__sub">{r.autistaNome}</span> : null}
+            </div>
+            <div className="kv__val">
+              <span className="kv__strong">{toDisplay(r.data) || "—"}</span>
+              {typeof r.km === "number" ? <span className="kv__meta">{num(r.km)} km</span> : null}
+            </div>
+          </div>
+        ))}
+      </Card>,
+    );
+  }
+
+  if (view.documentiCosti.length > 0) {
+    colSx.push(
+      <Card key="documenti" title="Documenti e costi" count={view.documentiCosti.length}>
+        {view.documentiCosti.slice(0, 6).map((d) => {
+          const importo = formatImporto(d.importo, d.valuta);
+          return (
+            <div className="kv" key={d.id}>
+              <div className="kv__key">
+                <span className="kv__name">
+                  {d.descrizione || (d.tipo === "FATTURA" ? "Fattura" : "Preventivo")}
+                </span>
+                <span className="kv__sub">
+                  {(d.tipo === "FATTURA" ? "Fattura" : "Preventivo") + (d.fornitoreLabel ? ` · ${d.fornitoreLabel}` : "")}
+                </span>
+              </div>
+              <div className="kv__val">
+                <span className="kv__strong">{toDisplay(d.data) || "—"}</span>
+                {importo ? <span className="kv__meta">{importo}</span> : null}
+              </div>
+            </div>
+          );
+        })}
+      </Card>,
+    );
+  }
+
+  // Colonna CENTRO
+  colCx.push(
+    <Card key="conduzione" title="Conduzione mezzo">
+      {attuale ? (
+        <>
+          <div className="kv current">
+            <div className="kv__key">
+              <span className="kv__name">{attuale.nome}</span>
+              <span className="kv__sub">badge {attuale.badge || "—"}</span>
+            </div>
+            <div className="kv__val">
+              <span className="badge ok">in uso</span>
+              <span className="kv__meta">dal {toDisplay(attuale.start) || "—"}</span>
+            </div>
+          </div>
+          {precedenti.map((p, i) => (
+            <div className="kv" key={`${p.nome}:${p.start}:${i}`}>
+              <div className="kv__key">
+                <span className="kv__name">{p.nome}</span>
+                <span className="kv__sub">badge {p.badge || "—"}</span>
+              </div>
+              <div className="kv__val">
+                <span className="kv__strong">
+                  {toDisplay(p.start) || "—"} – {toDisplay(p.end) || "—"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div className="empty">
+          Nessuna assegnazione conducente tracciata.
+          {m?.autistaNome ? ` Autista abituale: ${m.autistaNome}.` : ""}
+        </div>
+      )}
+    </Card>,
+  );
+
+  if (view.lavoriDaEseguire.length > 0) {
+    colCx.push(
+      <Card key="lavoriDaFare" title="Lavori da eseguire" count={view.lavoriDaEseguire.length}>
+        {view.lavoriDaEseguire.slice(0, 6).map((l: NextDossierLegacyWorkItem) => {
+          const tone = urgencyTone(l.urgenza);
+          return (
+            <div className="kv" key={l.id}>
+              <div className="kv__key">
+                <span className="kv__name">{l.descrizione || "Lavoro senza descrizione"}</span>
+                {l.segnalatoDa ? <span className="kv__sub">segnalato da {l.segnalatoDa}</span> : null}
+              </div>
+              <div className="kv__val">
+                {l.urgenza ? <span className={`badge ${tone}`}>{l.urgenza}</span> : null}
+                <span className="kv__meta">{toDisplay(l.dataInserimento) || "—"}</span>
+              </div>
+            </div>
+          );
+        })}
+      </Card>,
+    );
+  }
+
+  if (view.movimentiMateriali.length > 0) {
+    colCx.push(
+      <Card key="materiali" title="Materiali consegnati" count={view.movimentiMateriali.length}>
+        {view.movimentiMateriali.slice(0, 6).map((mov) => (
+          <div className="kv" key={mov.id}>
+            <div className="kv__key">
+              <span className="kv__name">{mov.materialeLabel || mov.descrizione || "Materiale"}</span>
+              {mov.fornitoreLabel ? <span className="kv__sub">{mov.fornitoreLabel}</span> : null}
+            </div>
+            <div className="kv__val">
+              <span className="kv__strong">{toDisplay(mov.data) || "—"}</span>
+              {typeof mov.quantita === "number" ? (
+                <span className="kv__meta">{num(mov.quantita)} {mov.unita || "pz"}</span>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </Card>,
+    );
+  }
+
+  // Colonna DX
+  colDx.push(
+    <Card key="scadenze" title="Scadenze" count={extra.scadenze.length}>
+      {extra.scadenze.length === 0 ? (
+        <div className="empty">Nessuna scadenza configurata.</div>
+      ) : (
+        extra.scadenze.map((s) => {
+          const badge = scadenzaBadge(s);
+          const prossima = s.componenti.find((c) => c.base === "tempo")?.prossimaData;
+          const gcls = badge.tone === "danger" ? "bad" : badge.tone === "warning" ? "warn" : "";
+          return (
+            <div className="kv" key={s.id}>
+              <div className="kv__key">
+                <span className="kv__name">{s.label || s.tipo}</span>
+                {prossima ? <span className="kv__sub">prossima {toDisplay(prossima)}</span> : null}
+              </div>
+              <div className="kv__val">
+                <span className={`badge ${badge.tone}`}>{badge.label}</span>
+                {s.giorniMin !== null ? <span className={`kv__meta ${gcls}`}>{giorniLabel(s.giorniMin)}</span> : null}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </Card>,
+  );
+
+  if (view.lavoriEseguiti.length > 0) {
+    colDx.push(
+      <Card key="lavoriEseguiti" title="Lavori eseguiti" count={view.lavoriEseguiti.length}>
+        {view.lavoriEseguiti.slice(0, 6).map((l: NextDossierLegacyWorkItem) => (
+          <div className="kv" key={l.id}>
+            <div className="kv__key">
+              <span className="kv__name">{(l.descrizione || "Lavoro").replace(/\n+/g, " ")}</span>
+              {l.chiHaEseguito ? <span className="kv__sub">eseguito da {l.chiHaEseguito}</span> : null}
+            </div>
+            <div className="kv__val">
+              <span className="kv__strong">{toDisplay(l.dataEsecuzione ?? l.dataInserimento) || "—"}</span>
+            </div>
+          </div>
+        ))}
+      </Card>,
+    );
+  }
+
+  if (view.gommePerAsse.length > 0) {
+    colDx.push(
+      <Card key="gomme" title="Gomme per asse" count={view.gommePerAsse.length}>
+        {view.gommePerAsse.map((asse) => (
+          <div className="kv" key={asse.asseId}>
+            <div className="kv__key"><span className="kv__name">{asse.asseLabel}</span></div>
+            <div className="kv__val">
+              <span className="kv__strong">{asse.dataCambio ? toDisplay(asse.dataCambio) : "—"}</span>
+              {asse.kmPercorsi !== null ? <span className="kv__meta">{num(asse.kmPercorsi)} km</span> : null}
+            </div>
+          </div>
+        ))}
+      </Card>,
+    );
+  }
+
+  if (extra.eventi.length > 0) {
+    colDx.push(
+      <Card key="eventi" title="Segnalazioni e controlli" count={extra.eventi.length}>
+        {extra.eventi.slice(0, 8).map((e) => (
+          <div className="kv" key={e.id}>
+            <div className="kv__key">
+              <span className="kv__name">{e.title}</span>
+              {e.subtitle ? <span className="kv__sub">{e.subtitle}</span> : null}
+            </div>
+            <div className="kv__val">
+              <span className="kv__strong">{toDisplay(e.timestamp ?? e.data) || "—"}</span>
+              <span className="kv__meta">{e.source === "controllo" ? "Controllo" : "Segnalazione"}</span>
+            </div>
+          </div>
+        ))}
+      </Card>,
+    );
+  }
 
   return (
     <div className="next-scheda">
-      <button type="button" className="next-scheda__back" onClick={() => navigate(-1)}>
-        ← Indietro
-      </button>
+      <div className="next-scheda__inner">
+        {back}
 
-      {status === "loading" ? (
-        <div className="next-scheda__loading">Carico la scheda del mezzo…</div>
-      ) : null}
-
-      {status === "error" ? (
-        <div className="next-scheda__error">
-          Impossibile leggere i dati del mezzo. Riprova più tardi.
-        </div>
-      ) : null}
-
-      {status === "notfound" ? (
-        <div className="next-scheda__error">
-          Nessun mezzo trovato per la targa “{rawTarga}”.
-        </div>
-      ) : null}
-
-      {status === "ready" && view && extra ? (
-        <>
-          <div className="next-scheda__header">
-            <div className="next-scheda__header-left">
-              <img
-                src="/logo.png"
-                alt="Gestione e Manutenzione"
-                className="next-scheda__header-logo"
-              />
-              <div className="next-scheda__header-main">
-                <div className="next-scheda__eyebrow">Scheda mezzo</div>
-                <h1 className="next-scheda__title next-scheda__title--plate">
-                  {view.mezzo?.targa ?? rawTarga}
-                </h1>
-                <div className="next-scheda__subtitle">
-                  {[view.mezzo?.categoria, view.mezzo?.marcaModello]
-                    .map((part) => (part ?? "").trim())
-                    .filter(Boolean)
-                    .join(" · ") || "Mezzo"}
-                </div>
-                {view.mezzo?.manutenzioneProgrammata ? (
-                  <div className="next-scheda__tags">
-                    <span className="next-scheda__badge next-scheda__badge--info">
-                      Manutenzione programmata
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <div className="next-scheda__actions">
-              <a className="next-scheda__btn next-scheda__btn--primary" href={dossierPath}>
-                Apri dossier completo
-              </a>
+        <div className="hero">
+          <img className="hero__logo" src="/logo.png" alt="Gestione e Manutenzione" />
+          <div className="hero__main">
+            <div className="hero__eyebrow">Scheda mezzo</div>
+            <h1 className="hero__title plate">{m?.targa ?? rawTarga}</h1>
+            <div className="hero__chips">
+              {m?.categoria ? <span className="chip">{m.categoria}</span> : null}
+              {m?.marcaModello ? <span className="chip">{m.marcaModello}</span> : null}
+              {m?.anno ? <span className="chip">anno {m.anno}</span> : null}
+              {m?.manutenzioneProgrammata ? (
+                <span className="chip accent">Manutenzione programmata</span>
+              ) : null}
             </div>
           </div>
+          <a className="hero__cta" href={dossierPath}>Apri dossier completo</a>
+        </div>
 
-          <div className="next-scheda__stats">
-            <div className="next-scheda__stat">
-              <div className="next-scheda__stat-value">{view.lavoriDaEseguire.length}</div>
-              <div className="next-scheda__stat-label">Lavori da eseguire</div>
-            </div>
-            <div className="next-scheda__stat">
-              <div className="next-scheda__stat-value">{scadenzeCritiche}</div>
-              <div className="next-scheda__stat-label">Scadenze critiche</div>
-            </div>
-            <div className="next-scheda__stat">
-              <div className="next-scheda__stat-value">{view.rifornimenti.length}</div>
-              <div className="next-scheda__stat-label">Rifornimenti</div>
-            </div>
-            <div className="next-scheda__stat">
-              <div className="next-scheda__stat-value">{view.documentiCosti.length}</div>
-              <div className="next-scheda__stat-label">Documenti / costi</div>
-            </div>
-          </div>
+        <div className="kpis">
+          <div className="kpi k-info"><div className="kpi__num">{num(kmAttuali)}</div><div className="kpi__lbl">Km attuali</div></div>
+          <div className="kpi k-neutral"><div className="kpi__num">{cond.length}</div><div className="kpi__lbl">Conduttori</div></div>
+          <div className={`kpi ${scadCrit ? "k-bad" : "k-ok"}`}><div className="kpi__num">{scadCrit}</div><div className="kpi__lbl">Scadenze critiche</div></div>
+          <div className="kpi k-info"><div className="kpi__num">{extra.eventi.length}</div><div className="kpi__lbl">Segnal./controlli</div></div>
+          <div className="kpi k-neutral"><div className="kpi__num">{view.rifornimenti.length}</div><div className="kpi__lbl">Rifornimenti</div></div>
+        </div>
 
-          <section className="next-scheda__section">
-            <SectionHead title="Conduzione mezzo" />
-            {conducenteAttuale ? (
-              <div className="next-scheda__kv-list">
-                <div className="next-scheda__kv next-scheda__kv--current">
-                  <div className="next-scheda__kv-key">
-                    <span className="next-scheda__kv-name">{conducenteAttuale.nome}</span>
-                    {conducenteAttuale.badge ? (
-                      <span className="next-scheda__kv-sub">badge {conducenteAttuale.badge}</span>
-                    ) : null}
-                  </div>
-                  <div className="next-scheda__kv-val">
-                    <span className="next-scheda__badge next-scheda__badge--ok">in uso</span>
-                    <span className="next-scheda__kv-meta">
-                      dal {toDisplay(conducenteAttuale.start) || "—"}
-                    </span>
-                  </div>
-                </div>
-
-                {conducentePrecedente ? (
-                  <div className="next-scheda__kv">
-                    <div className="next-scheda__kv-key">
-                      <span className="next-scheda__kv-name">{conducentePrecedente.nome}</span>
-                      <span className="next-scheda__kv-sub">conducente precedente</span>
-                    </div>
-                    <div className="next-scheda__kv-val">
-                      <span className="next-scheda__kv-strong">
-                        {toDisplay(conducentePrecedente.start) || "—"} –{" "}
-                        {toDisplay(conducentePrecedente.end) || "—"}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="next-scheda__kv">
-                    <div className="next-scheda__kv-key">
-                      <span className="next-scheda__kv-name">Nessun conducente precedente</span>
-                    </div>
-                  </div>
-                )}
-
-                {conduzioneStorica.map((periodo, index) => (
-                  <div
-                    key={`${periodo.nome}:${periodo.start}:${index}`}
-                    className="next-scheda__kv"
-                  >
-                    <div className="next-scheda__kv-key">
-                      <span className="next-scheda__kv-name">{periodo.nome}</span>
-                    </div>
-                    <div className="next-scheda__kv-val">
-                      <span className="next-scheda__kv-strong">
-                        {toDisplay(periodo.start) || "—"}
-                        {periodo.end ? ` – ${toDisplay(periodo.end)}` : ""}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="next-scheda__empty">
-                Nessuna assegnazione conducente tracciata.
-                {view.mezzo?.autistaNome ? ` Autista abituale: ${view.mezzo.autistaNome}.` : ""}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Anagrafica" />
-            <div className="next-scheda__meta-grid">
-              <MetaItem label="Categoria" value={view.mezzo?.categoria} />
-              <MetaItem label="Marca / Modello" value={view.mezzo?.marcaModello} />
-              <MetaItem label="Anno" value={view.mezzo?.anno} />
-              <MetaItem label="Autista assegnato" value={view.mezzo?.autistaNome} />
-              <MetaItem label="Proprietario" value={view.mezzo?.proprietario} />
-              <MetaItem
-                label="Scadenza revisione"
-                value={
-                  view.mezzo?.dataScadenzaRevisione
-                    ? toDisplay(view.mezzo.dataScadenzaRevisione) || view.mezzo.dataScadenzaRevisione
-                    : null
-                }
-              />
-              <MetaItem
-                label="Km attuali"
-                value={kmAttuali !== null ? kmAttuali.toLocaleString("it-IT") : null}
-              />
-            </div>
-          </section>
-
-          {view.mezzo?.manutenzioneProgrammata ? (
-            <section className="next-scheda__section">
-              <SectionHead title="Manutenzione programmata" />
-              <div className="next-scheda__meta-grid">
-                <MetaItem label="Contratto / Officina" value={view.mezzo.manutenzioneContratto} />
-                <MetaItem
-                  label="Dal"
-                  value={
-                    view.mezzo.manutenzioneDataInizio
-                      ? toDisplay(view.mezzo.manutenzioneDataInizio) ||
-                        view.mezzo.manutenzioneDataInizio
-                      : null
-                  }
-                />
-                <MetaItem
-                  label="Al"
-                  value={
-                    view.mezzo.manutenzioneDataFine
-                      ? toDisplay(view.mezzo.manutenzioneDataFine) || view.mezzo.manutenzioneDataFine
-                      : null
-                  }
-                />
-                <MetaItem label="Km massimi" value={view.mezzo.manutenzioneKmMax} />
-              </div>
-            </section>
-          ) : null}
-
-          <section className="next-scheda__section">
-            <SectionHead title="Scadenze" count={extra.scadenze.length} />
-            {extra.scadenze.length === 0 ? (
-              <div className="next-scheda__empty">Nessuna scadenza configurata.</div>
-            ) : (
-              <div className="next-scheda__kv-list">
-                {extra.scadenze.map((scadenza) => {
-                  const badge = scadenzaBadge(scadenza);
-                  const prossima = scadenza.componenti.find((c) => c.base === "tempo")?.prossimaData;
-                  return (
-                    <div key={scadenza.id} className="next-scheda__kv">
-                      <div className="next-scheda__kv-key">
-                        <span className="next-scheda__kv-name">
-                          {scadenza.label || scadenza.tipo}
-                        </span>
-                        {prossima ? (
-                          <span className="next-scheda__kv-sub">prossima {toDisplay(prossima)}</span>
-                        ) : null}
-                      </div>
-                      <div className="next-scheda__kv-val next-scheda__kv-val--badge">
-                        <span className={`next-scheda__badge next-scheda__badge--${badge.tone}`}>
-                          {badge.label}
-                        </span>
-                        {scadenza.giorniMin !== null ? (
-                          <span className={`next-scheda__kv-meta next-scheda__kv-meta--${badge.tone}`}>
-                            {giorniLabel(scadenza.giorniMin)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Segnalazioni e controlli" count={extra.eventi.length} />
-            {extra.eventi.length === 0 ? (
-              <div className="next-scheda__empty">Nessuna segnalazione o controllo per questo mezzo.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {extra.eventi.slice(0, 8).map((evento) => (
-                  <div key={evento.id} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">{evento.title}</div>
-                      {evento.subtitle || evento.detail ? (
-                        <div className="next-scheda__row-detail">
-                          {evento.subtitle || evento.detail}
-                        </div>
-                      ) : null}
-                      <div className="next-scheda__row-meta">
-                        <span>{evento.source === "controllo" ? "Controllo" : "Segnalazione"}</span>
-                      </div>
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      <span className="next-scheda__time">
-                        {toDisplay(evento.timestamp ?? evento.data) || "—"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Lavori da eseguire" count={view.lavoriDaEseguire.length} />
-            {view.lavoriDaEseguire.length === 0 ? (
-              <div className="next-scheda__empty">Nessun lavoro in coda.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {view.lavoriDaEseguire.slice(0, 6).map((lavoro: NextDossierLegacyWorkItem) => {
-                  const tone = urgencyTone(lavoro.urgenza);
-                  return (
-                    <div key={lavoro.id} className="next-scheda__row">
-                      <div className="next-scheda__row-main">
-                        <div className="next-scheda__row-title">
-                          {lavoro.descrizione || "Lavoro senza descrizione"}
-                        </div>
-                        {lavoro.segnalatoDa ? (
-                          <div className="next-scheda__row-detail">
-                            Segnalato da {lavoro.segnalatoDa}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="next-scheda__row-aside">
-                        {lavoro.urgenza ? (
-                          <span className={`next-scheda__badge next-scheda__badge--${tone}`}>
-                            {lavoro.urgenza}
-                          </span>
-                        ) : null}
-                        <span className="next-scheda__time">
-                          {toDisplay(lavoro.dataInserimento) || "—"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Lavori eseguiti" count={view.lavoriEseguiti.length} />
-            {view.lavoriEseguiti.length === 0 ? (
-              <div className="next-scheda__empty">Nessun lavoro eseguito registrato.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {view.lavoriEseguiti.slice(0, 6).map((lavoro: NextDossierLegacyWorkItem) => (
-                  <div key={lavoro.id} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">
-                        {lavoro.descrizione || "Lavoro senza descrizione"}
-                      </div>
-                      {lavoro.chiHaEseguito ? (
-                        <div className="next-scheda__row-detail">
-                          Eseguito da {lavoro.chiHaEseguito}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      <span className="next-scheda__time">
-                        {toDisplay(lavoro.dataEsecuzione ?? lavoro.dataInserimento) || "—"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Gomme per asse" count={view.gommePerAsse.length} />
-            {view.gommePerAsse.length === 0 ? (
-              <div className="next-scheda__empty">Nessun dato gomme per asse.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {view.gommePerAsse.map((asse) => (
-                  <div key={asse.asseId} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">{asse.asseLabel}</div>
-                      <div className="next-scheda__row-meta">
-                        {asse.kmPercorsi !== null ? (
-                          <span>{asse.kmPercorsi.toLocaleString("it-IT")} km percorsi</span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      <span className="next-scheda__time">
-                        {asse.dataCambio ? `cambio ${toDisplay(asse.dataCambio)}` : "—"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Materiali consegnati" count={view.movimentiMateriali.length} />
-            {view.movimentiMateriali.length === 0 ? (
-              <div className="next-scheda__empty">Nessun materiale consegnato a questo mezzo.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {view.movimentiMateriali.slice(0, 6).map((mov) => (
-                  <div key={mov.id} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">
-                        {mov.materialeLabel || mov.descrizione || "Materiale"}
-                      </div>
-                      <div className="next-scheda__row-meta">
-                        {typeof mov.quantita === "number" ? (
-                          <span>
-                            {mov.quantita.toLocaleString("it-IT")} {mov.unita || "pz"}
-                          </span>
-                        ) : null}
-                        {mov.fornitoreLabel ? <span>{mov.fornitoreLabel}</span> : null}
-                      </div>
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      <span className="next-scheda__time">{toDisplay(mov.data) || "—"}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Ultimi rifornimenti" count={view.rifornimenti.length} />
-            {rifornimentiSorted.length === 0 ? (
-              <div className="next-scheda__empty">Nessun rifornimento registrato.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {rifornimentiSorted.slice(0, 6).map((rifornimento) => (
-                  <div key={rifornimento.id} className="next-scheda__row">
-                    <div className="next-scheda__row-main">
-                      <div className="next-scheda__row-title">
-                        {typeof rifornimento.litri === "number"
-                          ? `${rifornimento.litri} L`
-                          : "Rifornimento"}
-                        {rifornimento.tipo ? ` · ${rifornimento.tipo}` : ""}
-                      </div>
-                      <div className="next-scheda__row-meta">
-                        {typeof rifornimento.km === "number" ? (
-                          <span>{rifornimento.km.toLocaleString("it-IT")} km</span>
-                        ) : null}
-                        {rifornimento.autistaNome ? <span>{rifornimento.autistaNome}</span> : null}
-                      </div>
-                    </div>
-                    <div className="next-scheda__row-aside">
-                      <span className="next-scheda__time">
-                        {toDisplay(rifornimento.data) || "—"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="next-scheda__section">
-            <SectionHead title="Documenti e costi" count={view.documentiCosti.length} />
-            {view.documentiCosti.length === 0 ? (
-              <div className="next-scheda__empty">Nessun documento o costo registrato.</div>
-            ) : (
-              <div className="next-scheda__list">
-                {view.documentiCosti.slice(0, 6).map((doc) => {
-                  const importo = formatImporto(doc.importo, doc.valuta);
-                  return (
-                    <div key={doc.id} className="next-scheda__row">
-                      <div className="next-scheda__row-main">
-                        <div className="next-scheda__row-title">
-                          {doc.descrizione || (doc.tipo === "FATTURA" ? "Fattura" : "Preventivo")}
-                        </div>
-                        <div className="next-scheda__row-meta">
-                          <span>{doc.tipo === "FATTURA" ? "Fattura" : "Preventivo"}</span>
-                          {doc.fornitoreLabel ? <span>{doc.fornitoreLabel}</span> : null}
-                        </div>
-                      </div>
-                      <div className="next-scheda__row-aside">
-                        {importo ? (
-                          <span className="next-scheda__badge next-scheda__badge--info">{importo}</span>
-                        ) : null}
-                        <span className="next-scheda__time">{toDisplay(doc.data) || "—"}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </>
-      ) : null}
+        <div className="cols">
+          <div className="col">{colSx}</div>
+          <div className="col">{colCx}</div>
+          <div className="col">{colDx}</div>
+        </div>
+      </div>
     </div>
   );
 }
