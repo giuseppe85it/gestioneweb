@@ -28,6 +28,9 @@ import NextOrdiniInAttesaPage from "./next/NextOrdiniInAttesaPage";
 import NextOrdiniArrivatiPage from "./next/NextOrdiniArrivatiPage";
 import NextDettaglioOrdinePage from "./next/NextDettaglioOrdinePage";
 import NextShell from "./next/NextShell";
+import NextAutistiEventoModal from "./next/components/NextAutistiEventoModal";
+import { createManutenzioneDaFareFromEvento } from "./next/writers/nextManutenzioneDaFareCreateWriter";
+import type { HomeEvent } from "./utils/homeEvents";
 import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
 import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
@@ -139,6 +142,36 @@ const nextAutistiInboxCloneConfig = {
   buildCambioMezzoPath: (day: Date) =>
     `/next/autisti-inbox/cambio-mezzo?day=${formatAutistiInboxDay(day)}`,
 };
+
+// In "autisti in box" (clone NEXT) usiamo il modal NEXT che crea una vera
+// Manutenzione Next in @manutenzioni (writer createManutenzioneDaFareFromEvento),
+// invece del modal legacy che scriveva un Lavoro in @lavori (invisibile alle
+// Manutenzioni Next). onAfterGommeImport ricarica gli eventi della inbox dopo
+// la creazione, cosi la riga riflette subito lo stato "presa in carico".
+function NextAutistiInboxEventoModal({
+  event,
+  onClose,
+  onAfterGommeImport,
+}: {
+  event: HomeEvent | null;
+  onClose: () => void;
+  onAfterGommeImport?: () => void | Promise<void>;
+}) {
+  return (
+    <NextAutistiEventoModal
+      event={event}
+      onClose={onClose}
+      onAfterGommeImport={onAfterGommeImport}
+      onCreateManutenzioneDaFare={async (input) => {
+        const result = await createManutenzioneDaFareFromEvento(input);
+        if (result.ok && onAfterGommeImport) {
+          await onAfterGommeImport();
+        }
+        return result;
+      }}
+    />
+  );
+}
 
 function NextAnagraficheAliasRedirect({
   to,
@@ -536,7 +569,12 @@ function App() {
         />
         <Route
           path="autisti-inbox"
-          element={<AutistiInboxHome cloneConfig={nextAutistiInboxCloneConfig} />}
+          element={
+            <AutistiInboxHome
+              cloneConfig={nextAutistiInboxCloneConfig}
+              eventModalComponent={NextAutistiInboxEventoModal}
+            />
+          }
         />
         <Route path="autisti-inbox/cambio-mezzo" element={<CambioMezzoInbox />} />
         <Route path="autisti-inbox/controlli" element={<AutistiControlliAll />} />

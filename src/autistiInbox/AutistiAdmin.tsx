@@ -32,6 +32,10 @@ import CollapsibleGroup from "./components/CollapsibleGroup";
 import ActionMenu, { type ActionItem } from "./components/ActionMenu";
 import SchemaRow, { SchemaHead } from "./components/SchemaRow";
 import NextOrariCartellinoPage from "../next/NextOrariCartellinoPage";
+import {
+  createManutenzioneDaFareFromSegnalazione,
+  createManutenzioneDaFareFromControllo,
+} from "../next/writers/nextManutenzioneDaFareCreateWriter";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -238,6 +242,7 @@ export default function AutistiAdmin() {
   const navigate = useNavigate();
   const location = useLocation();
   const hideInternalNav = isCloneRuntime();
+  const isClone = hideInternalNav;
   const quickModule = useMemo(
     () => parseQuickModule(new URLSearchParams(location.search).get("module")),
     [location.search],
@@ -1809,6 +1814,52 @@ export default function AutistiAdmin() {
     setControlliRaw(updated);
   }
 
+  // In modalita clone (NEXT) il pulsante crea una Manutenzione Next (in @manutenzioni),
+  // cosi compare nelle Manutenzioni Next. Nel legacy resta il comportamento "Crea lavoro" (@lavori).
+  async function handleCreaDaSegnalazione(record: any) {
+    if (!isCloneRuntime()) {
+      await createLavoroFromSegnalazione(record);
+      return;
+    }
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questa segnalazione.");
+      return;
+    }
+    if (!window.confirm("Creare una manutenzione da questa segnalazione?")) return;
+    const res = await createManutenzioneDaFareFromSegnalazione(record);
+    if (!res.ok) {
+      window.alert(res.error ?? "Errore creazione manutenzione.");
+      return;
+    }
+    const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
+    const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [];
+    setSegnalazioniRaw(list);
+    window.alert("Manutenzione creata.");
+  }
+
+  async function handleCreaDaControllo(record: any) {
+    if (!isCloneRuntime()) {
+      await createLavoroFromControllo(record);
+      return;
+    }
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Manutenzione gia creata per questo controllo.");
+      return;
+    }
+    if (!window.confirm("Creare una manutenzione da questo controllo?")) return;
+    const res = await createManutenzioneDaFareFromControllo(record);
+    if (!res.ok) {
+      window.alert(res.error ?? "Errore creazione manutenzione.");
+      return;
+    }
+    const raw = (await getItemSync(KEY_CONTROLLI)) || [];
+    const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [];
+    setControlliRaw(list);
+    window.alert("Manutenzione creata.");
+  }
+
   async function updateGommeRecord(recordId: string, patch: any) {
     if (!recordId) return;
     const raw = (await getItemSync(KEY_GOMME_TMP)) || [];
@@ -2653,7 +2704,7 @@ export default function AutistiAdmin() {
       const hasLinked = hasLinkedLavoro(r);
       const acts: ActionItem[] = [
         { label: "Anteprima PDF", onClick: () => { void openSegnalazionePdfPreview(r, fotoList); } },
-        { label: "Crea lavoro", disabled: hasLinked, onClick: () => createLavoroFromSegnalazione(r) },
+        { label: isClone ? "Crea manutenzione" : "Crea lavoro", disabled: hasLinked, onClick: () => handleCreaDaSegnalazione(r) },
         { label: "Elimina", danger: true, separatorBefore: true, onClick: () => deleteSegnalazione(r) },
       ];
       return (
@@ -2747,7 +2798,7 @@ export default function AutistiAdmin() {
       const hasLinked = hasLinkedLavoro(r);
       const acts: ActionItem[] = [
         { label: "Anteprima PDF", onClick: () => { void openControlloPdfPreview(r); } },
-        { label: "Crea lavoro", disabled: hasLinked, onClick: () => createLavoroFromControllo(r) },
+        { label: isClone ? "Crea manutenzione" : "Crea lavoro", disabled: hasLinked, onClick: () => handleCreaDaControllo(r) },
       ];
       const mezzoParts: string[] = [];
       if (target !== "RIMORCHIO") mezzoParts.push(`M: ${String(targaCamion)}`);
@@ -3685,9 +3736,9 @@ export default function AutistiAdmin() {
                         type="button"
                         className="edit"
                         disabled={hasLinked}
-                        onClick={() => createLavoroFromSegnalazione(r)}
+                        onClick={() => handleCreaDaSegnalazione(r)}
                       >
-                        CREA LAVORO
+                        {isClone ? "CREA MANUTENZIONE" : "CREA LAVORO"}
                       </button>
                       <button
                         type="button"
@@ -3811,9 +3862,9 @@ export default function AutistiAdmin() {
                           type="button"
                           className="edit"
                           disabled={hasLinked}
-                          onClick={() => createLavoroFromControllo(r)}
+                          onClick={() => handleCreaDaControllo(r)}
                         >
-                          CREA LAVORO
+                          {isClone ? "CREA MANUTENZIONE" : "CREA LAVORO"}
                         </button>
                       </div>
                     </div>
