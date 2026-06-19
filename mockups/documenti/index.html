@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Documenti e costi + Export libretti (mockup navigabile)</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f8fafc; --line:#e6e8ee;
+    --ink:#1e293b; --ink2:#334155; --muted:#64748b; --faint:#94a3b8;
+    --accent:#4f46e5; --accent-soft:#eef2ff; --accent-ink:#4338ca;
+    --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7;
+    --danger:#dc2626; --danger-bg:#fee2e2; --info:#0369a1; --info-bg:#e0f2fe;
+    --mag:#7c3aed; --mag-bg:#f3e8ff;
+    --shadow:0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius:14px; --radius-sm:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh}
+  .shell{display:flex;min-height:100vh}
+
+  .side{width:248px;background:#0f172a;color:#cbd5e1;padding:20px 14px;flex:0 0 auto;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px;border-bottom:1px solid #1e293b;margin-bottom:14px}
+  .brand .mk{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+  .brand b{color:#fff;font-size:15px}
+  .brand span{display:block;font-size:11px;color:var(--faint)}
+  .nav-sep{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin:16px 12px 8px}
+  .nav-i{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:600;color:#cbd5e1;cursor:pointer;margin-bottom:3px}
+  .nav-i:hover{background:#1e293b;color:#fff}
+  .nav-i.active{background:var(--accent);color:#fff}
+  .nav-i svg{width:18px;height:18px;flex:0 0 auto}
+
+  .main{flex:1;min-width:0;padding:22px clamp(14px,2.5vw,30px) 50px}
+  .pagehead{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .pagehead h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .pagehead .crumb{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}
+  .pagehead .stats{margin-left:auto;display:flex;gap:18px}
+  .pagehead .stats .s{font-size:12px;color:var(--muted);font-weight:700;text-align:right}
+  .pagehead .stats .s b{display:block;font-size:18px;color:var(--ink);font-weight:800;letter-spacing:-.3px}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px}
+  .pad{padding:16px}
+
+  .pill{font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:7px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;letter-spacing:.2px}
+  .pill-fattura{background:var(--danger-bg);color:var(--danger)}
+  .pill-preventivo{background:var(--info-bg);color:var(--info)}
+  .pill-ddt{background:var(--warn-bg);color:var(--warn)}
+  .pill-libretto{background:var(--accent-soft);color:var(--accent-ink)}
+  .pill-mag{background:var(--mag-bg);color:var(--mag)}
+  .pill-ok{background:var(--ok-bg);color:var(--ok)}
+  .pill-neutral{background:#eef1f6;color:var(--ink2)}
+  .pill-off-sm{background:#ecfccb;color:#3f6212;font-size:9.5px;padding:2px 6px}
+  .pill-frn-sm{background:#e0f2fe;color:#0369a1;font-size:9.5px;padding:2px 6px}
+  .gtag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:#eef1f6;color:var(--muted);margin-left:4px;vertical-align:middle}
+  .gtag-off{background:#ecfccb;color:#3f6212}
+  .gtag-mag{background:var(--mag-bg);color:var(--mag)}
+  .gtag-lib{background:var(--accent-soft);color:var(--accent-ink)}
+  .gtag-frn{background:#e0f2fe;color:#0369a1}
+
+  /* TABELLA */
+  .dtable{width:100%;border-collapse:collapse;font-size:13px}
+  .dtable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800;padding:11px 12px;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--surface)}
+  .dtable th.right,.dtable td.right{text-align:right}
+  .dtable th.mid,.dtable td.mid{text-align:center}
+  .dtable td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;color:var(--ink2)}
+  .dtable tbody tr.doc{cursor:pointer}
+  .dtable tbody tr.doc:hover td{background:var(--surface-2)}
+  .dtable .grp td{background:linear-gradient(90deg,var(--accent-soft),transparent);font-weight:800;font-size:12.5px;color:var(--accent-ink);border-top:1px solid var(--line)}
+  .dtable .grp .gtot{float:right;color:var(--ink2)}
+  .tglink{font-weight:800;color:var(--accent-ink);text-decoration:none;border-bottom:1px dashed var(--accent);cursor:pointer}
+  .tglink:hover{color:var(--accent)}
+  /* mini-dossier su hover targa (come nella home) */
+  .tgwrap{position:relative;display:inline-block}
+  .tgwrap .minidoss{position:absolute;left:0;top:calc(100% + 6px);z-index:40;display:none;width:260px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.22);overflow:hidden}
+  .tgwrap:hover .minidoss{display:block}
+  .md-photo{height:92px;background:linear-gradient(135deg,#e2e8f0,#cbd5e1);display:grid;place-items:center;color:#64748b;font-weight:700;font-size:12px}
+  .md-body{padding:10px 12px}
+  .md-title{font-weight:800;font-size:14px;margin-bottom:6px;color:var(--ink)}
+  .md-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:12px;border-bottom:1px dashed var(--line)}
+  .md-row:last-child{border-bottom:none}
+  .md-row span{color:var(--muted);font-weight:600}
+  .md-row strong{font-weight:800;color:var(--ink);text-align:right}
+  .md-row .on{color:var(--ok)}
+  .descc{font-weight:700;color:var(--ink)}
+  .numc{color:var(--muted);font-weight:700}
+  .datac{color:var(--muted);font-weight:700;white-space:nowrap}
+  .totc{font-weight:800;white-space:nowrap;color:var(--ink)}
+  .totc.none{color:var(--faint);font-weight:700}
+  .vflag{font-size:10px;font-weight:800;color:var(--danger);background:var(--danger-bg);padding:2px 6px;border-radius:6px;cursor:pointer;margin-left:6px}
+
+  /* menu 3 puntini */
+  .kebab{position:relative;display:inline-block}
+  .kb-btn{border:1px solid var(--line);background:var(--surface);color:var(--ink2);width:32px;height:30px;border-radius:8px;cursor:pointer;font-size:17px;line-height:1;font-weight:900}
+  .kb-btn:hover{background:var(--surface-2);border-color:#cbd2dd}
+  .kb-menu{position:absolute;right:0;top:34px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.18);min-width:188px;z-index:20;overflow:hidden;padding:5px}
+  .kb-menu button{display:flex;align-items:center;gap:9px;width:100%;border:none;background:none;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--ink2);padding:9px 10px;border-radius:8px;cursor:pointer}
+  .kb-menu button:hover{background:var(--surface-2)}
+  .kb-menu button.danger{color:var(--danger)}
+  .kb-menu button.danger:hover{background:var(--danger-bg)}
+  .kb-menu .ic{width:16px;text-align:center}
+  .kb-menu .sep{height:1px;background:var(--line);margin:4px 2px}
+
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink2);font-weight:700;font-size:12px;padding:7px 11px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:var(--surface-2);border-color:#cbd2dd}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-ink)}
+  .btn.primary:disabled{opacity:.45;cursor:default}
+  .btn.ghost{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+
+  .tabbar{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);padding:5px;border-radius:12px}
+  .tab{border:none;background:none;color:var(--muted);font-weight:700;font-size:13px;padding:9px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:var(--surface);color:var(--accent-ink);box-shadow:var(--shadow)}
+  .tab .n{font-size:10.5px;font-weight:800;background:#eef1f6;color:var(--muted);padding:1px 7px;border-radius:999px}
+  .tab.active .n{background:var(--accent-soft);color:var(--accent-ink)}
+
+  .search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;min-width:250px;margin-left:auto}
+  .search input{border:none;outline:none;font:inherit;font-weight:600;flex:1;color:var(--ink)}
+  .search svg{width:16px;height:16px;color:var(--faint)}
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+
+  /* LIBRETTI / EXPORT */
+  .lib-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .lib-bar .ttl{font-size:14px;font-weight:800}
+  .lib-bar .sub{font-size:12px;color:var(--faint);font-weight:700}
+  .cat-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 2px 8px;display:flex;align-items:center;gap:8px}
+  .cat-h .ln{flex:1;height:1px;background:var(--line)}
+  .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .lib{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);padding:12px;display:flex;flex-direction:column;gap:9px;position:relative}
+  .lib.sel{border-color:var(--accent);background:var(--accent-soft)}
+  .lib.pick{cursor:pointer}
+  .lib .thumb{height:96px;border-radius:8px;background:linear-gradient(135deg,#e2e8f0,#cbd5e1);display:grid;place-items:center;color:#64748b;font-weight:800;font-size:12px;border:1px solid var(--line)}
+  .lib .ft{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .lib .ft b{font-size:14px;font-weight:800}
+  .lib .lbl{font-size:11px;color:var(--muted);font-weight:700}
+  .lib .ck{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:6px;border:2px solid var(--line);background:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;color:#fff}
+  .lib.sel .ck{background:var(--accent);border-color:var(--accent)}
+
+  .empty{padding:16px;text-align:center;color:var(--faint);font-weight:600;font-size:12.5px;border:1px dashed var(--line);border-radius:var(--radius-sm)}
+  .note{font-size:12px;color:var(--faint);text-align:center;margin-top:24px;font-weight:600;line-height:1.6}
+
+  .backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .backdrop.open{display:flex}
+  .modal{background:var(--surface);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(620px,100%);max-height:92vh;overflow:auto}
+  .modal-h{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+  .modal-h h3{margin:0;font-size:15.5px;font-weight:800}
+  .modal-h .x{margin-left:auto;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-b{padding:18px 20px}
+  .mrow{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px dashed var(--line)}
+  .mrow:last-child{border-bottom:none}
+  .mrow .lab{font-size:12px;font-weight:700;color:var(--muted)}
+  .mrow .val{font-size:13.5px;font-weight:700;text-align:right}
+  .preview-doc{margin-top:14px;height:160px;border-radius:10px;background:linear-gradient(135deg,#e2e8f0,#cbd5e1);display:grid;place-items:center;color:#64748b;font-weight:800;border:1px solid var(--line)}
+  /* anteprima libretto (finto documento) */
+  .libpreview{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px 18px;box-shadow:inset 0 0 0 4px #f1f5f9}
+  .lp-head{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--line);padding-bottom:9px;margin-bottom:12px}
+  .lp-head b{font-size:12px;font-weight:800;letter-spacing:.5px;color:var(--mag);text-transform:uppercase}
+  .lp-head span{font-size:10px;font-weight:800;color:var(--faint)}
+  .lp-targa{font-size:22px;font-weight:800;color:var(--ink);margin-bottom:14px}
+  .lp-lines{display:grid;gap:10px}
+  .lp-l{height:11px;border-radius:6px;background:linear-gradient(90deg,#e2e8f0,#f1f5f9)}
+  .lp-l.w80{width:80%} .lp-l.w60{width:60%} .lp-l.w70{width:70%} .lp-l.w45{width:45%}
+  .lp-foot{margin-top:14px;font-size:11px;color:var(--faint);font-weight:700;display:flex;gap:8px;align-items:center}
+  .modal-f{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--line);flex-wrap:wrap}
+
+  @media(max-width:1000px){.side{display:none}.dtable thead{display:none}.search{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><div class="mk">GW</div><div><b>GestioneWeb</b><span>NEXT</span></div></div>
+    <div class="nav-sep">Intelligenza Artificiale</div>
+    <div class="nav-i active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Documenti e costi</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg> Archivista</div>
+    <div class="nav-sep">Flotta</div>
+    <div class="nav-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="15" height="11" rx="2"/><path d="M16 9h4l3 3v5h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg> Dossier mezzo</div>
+  </aside>
+
+  <main class="main">
+    <div class="pagehead">
+      <div>
+        <h1>Documenti e costi</h1>
+        <div class="crumb">IA · Archivio documenti — mezzi e magazzino</div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabbar" id="tabbar"></div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input id="q" placeholder="Cerca fornitore, targa, importo" oninput="render()">
+      </div>
+    </div>
+
+    <div id="content"></div>
+
+    <div class="note">
+      Mockup statico · dati inventati · nessuna connessione reale.<br>
+      Fedele al modulo reale: 6 filtri (Tutti/Fatture/DDT/Preventivi/Da verificare/Libretti), 7 colonne, raggruppamento con totali, distinzione <b>mezzo</b> (targa→dossier) vs <b>magazzino</b> via sorgente. <b>Proposte di redesign</b> (da portare anche nel codice): <b>Officine dall'anagrafica @officine</b> e <b>Fornitori dall'anagrafica @fornitori</b> — entità con id (officinaId / fornitoreId), non testo libero; i conteggi "officine" e "fornitori" contano le entità vere dell'anagrafica. <u>NB onesto (verificato nel codice)</u>: oggi il modulo reale Documenti collega <b>sia</b> officine <b>sia</b> fornitori SOLO come testo del campo "fornitore" (nessun officinaId/fornitoreId, nessun import di @officine/@fornitori) e manca pure un autocomplete fornitori (esiste solo quello officine) → il collegamento all'anagrafica è un miglioramento da implementare. Altre aggiunte: identificazione <b>Magazzino</b> al posto della targa; azioni reali (PDF / Riapri review / Modifica valuta / Da verificare / Elimina) nel <b>menu ⋮</b>. I Libretti hanno il tasto <b>Export</b> (selezione → PDF unico per categoria).
+    </div>
+  </main>
+</div>
+
+<!-- MODALE DETTAGLIO -->
+<div class="backdrop" id="bd" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-h"><h3 id="m-title">Dettaglio documento</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b" id="m-body"></div>
+    <div class="modal-f" id="m-foot"></div>
+  </div>
+</div>
+
+<script>
+  // ——— Dati di esempio (inventati, struttura come il modulo reale) ———
+  // sorgente: "mezzo" (@documenti_mezzi) | "magazzino" (@documenti_magazzino)
+  const MEZZI = [
+    { targa:"TI298409", cat:"Trattore stradale",        libretto:true,  rotto:false, autista:"Marco Ferrari",  sess:{on:true,  drv:"Luca Bianchi",  badge:"A12", stato:"In viaggio"} },
+    { targa:"TI233827", cat:"Trattore stradale",        libretto:true,  rotto:false, autista:"Giuseppe Conti", sess:{on:false} },
+    { targa:"TI315407", cat:"Trattore stradale",        libretto:true,  rotto:false, autista:"Andrea Riva",    sess:{on:true,  drv:"Andrea Riva",   badge:"A07", stato:"In carico"} },
+    { targa:"TI282780", cat:"Semirimorchio asse fisso", libretto:true,  rotto:false, autista:"—",              sess:{on:false} },
+    { targa:"TI136914", cat:"Semirimorchio asse fisso", libretto:true,  rotto:false, autista:"—",              sess:{on:false} },
+    { targa:"TI113417", cat:"Trattore stradale",        libretto:true,  rotto:true,  autista:"Paolo Greco",    sess:{on:true,  drv:"Paolo Greco",   badge:"A03", stato:"In sosta"} },
+  ];
+
+  // ——— Anagrafica officine (@officine): le officine sono ENTITÀ anagrafiche, non testo libero ———
+  const OFFICINE = [
+    { id:"of1", nome:"Officina Rossi Srl", citta:"Lugano" },
+    { id:"of2", nome:"Euromecc SA",        citta:"Bellinzona" },
+    { id:"of3", nome:"Garage Alpina Sagl", citta:"Biasca" }, // in anagrafica, ancora senza documenti
+  ];
+  const offById = Object.fromEntries(OFFICINE.map(o=>[o.id,o]));
+
+  // ——— Anagrafica fornitori (@fornitori): anche i fornitori sono ENTITÀ anagrafiche (simmetrica a @officine) ———
+  const FORNITORI = [
+    { id:"fr1", nome:"Wurth Italia",     codice:"WUR" },
+    { id:"fr2", nome:"Ferramenta Conti", codice:"FER" },
+    { id:"fr3", nome:"Ricambi Brembo",   codice:"BRE" },
+    { id:"fr4", nome:"Tecnodiesel Sagl", codice:"TEC" }, // in anagrafica, ancora senza documenti
+  ];
+  const frnById = Object.fromEntries(FORNITORI.map(f=>[f.id,f]));
+
+  // officinaId → @officine, fornitoreId → @fornitori (entrambe ENTITÀ anagrafiche). Il testo "fornitore" resta solo come fallback.
+  const DOCS = [
+    { id:"d1", src:"mezzo",     tipo:"fattura",   data:"2026-06-10", numero:"2026/214", targa:"TI298409", officinaId:"of1", fornitore:null, descr:"Tagliando + filtri", importo:840.00, cur:"EUR", verif:false, file:true },
+    { id:"d2", src:"mezzo",     tipo:"fattura",   data:"2026-05-28", numero:"2026/198", targa:"TI233827", officinaId:"of1", fornitore:null, descr:"Sostituzione pompa acqua", importo:1250.50, cur:"EUR", verif:false, file:true },
+    { id:"d3", src:"mezzo",     tipo:"preventivo",data:"2026-06-02", numero:"PRV-77",   targa:"TI315407", officinaId:"of2", fornitore:null, descr:"Sostituzione mozzo ventola", importo:2100.00, cur:"CHF", verif:false, file:true },
+    { id:"d4", src:"mezzo",     tipo:"ddt",       data:"2026-06-09", numero:"DDT-1042", targa:"TI298409", officinaId:null, fornitoreId:"fr3", fornitore:null, descr:"Pastiglie + dischi", importo:320.00, cur:"EUR", verif:false, file:true },
+    { id:"m1", src:"magazzino", tipo:"fattura",   data:"2026-06-05", numero:"2026/77",  targa:"", officinaId:null, fornitoreId:"fr1", fornitore:null, descr:"Materiale di consumo · viteria e fascette", importo:415.90, cur:"EUR", verif:false, file:true },
+    { id:"m2", src:"magazzino", tipo:"fattura",   data:"2026-05-20", numero:"FT-3391",  targa:"", officinaId:null, fornitoreId:"fr1", fornitore:null, descr:"Filtri olio 20 pz + guanti", importo:268.40, cur:"EUR", verif:true,  file:true },
+    { id:"m3", src:"magazzino", tipo:"ddt",       data:"2026-06-12", numero:"DDT-558",  targa:"", officinaId:null, fornitoreId:"fr2", fornitore:null, descr:"Bulloneria assortita", importo:null, cur:"UNKNOWN", verif:false, file:false },
+    { id:"l1", src:"mezzo", tipo:"libretto", data:"2024-03-02", numero:"—", targa:"TI136914", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+    { id:"l2", src:"mezzo", tipo:"libretto", data:"2023-11-20", numero:"—", targa:"TI298409", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+    { id:"l3", src:"mezzo", tipo:"libretto", data:"2025-01-09", numero:"—", targa:"TI233827", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+    { id:"l4", src:"mezzo", tipo:"libretto", data:"2024-07-14", numero:"—", targa:"TI315407", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+    { id:"l5", src:"mezzo", tipo:"libretto", data:"2022-08-01", numero:"—", targa:"TI282780", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+    { id:"l6", src:"mezzo", tipo:"libretto", data:"2017-10-17", numero:"—", targa:"TI113417", officinaId:null, fornitore:"", descr:"Libretto di circolazione", importo:null, cur:"EUR", verif:false, file:true },
+  ];
+
+  const FILTRI = [
+    { key:"tutti", label:"Tutti" }, { key:"fatture", label:"Fatture" }, { key:"ddt", label:"DDT" },
+    { key:"preventivi", label:"Preventivi" }, { key:"da_verificare", label:"Da verificare" }, { key:"libretti", label:"Libretti" },
+  ];
+  const TIPO_PILL = { fattura:"pill-fattura", preventivo:"pill-preventivo", ddt:"pill-ddt", libretto:"pill-libretto" };
+  const TIPO_LAB  = { fattura:"FATTURA", preventivo:"PREVENTIVO", ddt:"DDT", libretto:"LIBRETTO" };
+
+  let FILTRO = "tutti";
+  let EXPORT_MODE = false, OPENMENU = null;
+  const SEL = {};
+  const docById = Object.fromEntries(DOCS.map(d=>[d.id,d]));
+  function nomeForn(d){
+    if(d.officinaId) return offById[d.officinaId]?.nome || "Officina";
+    if(d.fornitoreId) return frnById[d.fornitoreId]?.nome || "Fornitore";
+    if(d.fornitore) return d.fornitore;
+    if(d.tipo==="libretto") return "Libretti di circolazione";
+    return d.src==="magazzino" ? "Magazzino — senza fornitore" : "Senza fornitore";
+  }
+
+  function fmtData(s){ const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m? m[3]+"/"+m[2]+"/"+m[1] : (s||"—"); }
+  function fmtEur(v,cur){ if(v==null) return "—"; const c=(cur==="CHF")?"CHF":"EUR"; return Number(v).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+" "+c; }
+  function fmtCompact(v){ return Number(v||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+" EUR"; }
+  function norm(t){ return String(t||"").toUpperCase().replace(/\s+/g,''); }
+  function matchSearch(d,q){ if(!q) return true; const n=norm(q); return [nomeForn(d),d.targa,String(d.importo||"")].some(x=>norm(x).includes(n)); }
+
+  function isReview(d){ return d.verif || d.cur==="UNKNOWN"; }
+  function docsFiltrati(q){
+    return DOCS.filter(d=>{
+      if(FILTRO==="fatture") return d.tipo==="fattura";
+      if(FILTRO==="ddt") return d.tipo==="ddt";
+      if(FILTRO==="preventivi") return d.tipo==="preventivo";
+      if(FILTRO==="libretti") return d.tipo==="libretto";
+      if(FILTRO==="da_verificare") return isReview(d);
+      return true;
+    }).filter(d=>matchSearch(d,q));
+  }
+
+  // mini-dossier che appare in hover sulla targa (come nella home)
+  function miniDoss(m){
+    const sess = (m.sess && m.sess.on) ? `<strong class="on">${m.sess.drv} (${m.sess.badge})</strong>` : `<strong>no</strong>`;
+    return `<div class="minidoss" role="tooltip">
+      <div class="md-photo">Foto mezzo</div>
+      <div class="md-body">
+        <div class="md-title">${m.targa}</div>
+        <div class="md-row"><span>Categoria</span><strong>${m.cat}</strong></div>
+        <div class="md-row"><span>Autista abituale</span><strong>${m.autista||"Non indicato"}</strong></div>
+        <div class="md-row"><span>Sessione attiva</span>${sess}</div>
+        ${(m.sess && m.sess.on && m.sess.stato)?`<div class="md-row"><span>Stato</span><strong>${m.sess.stato}</strong></div>`:''}
+      </div>
+    </div>`;
+  }
+  // colonna ORIGINE: targa (mezzo) con mini-dossier in hover, oppure badge "Magazzino"
+  function cellaOrigine(d){
+    if(d.src==="magazzino") return `<span class="pill pill-mag">📦 Magazzino</span>`;
+    if(!d.targa) return '—';
+    const m = MEZZI.find(x=>x.targa===d.targa);
+    return `<span class="tgwrap"><a class="tglink" onclick="event.stopPropagation()" title="Vai al dossier mezzo">${d.targa}</a>${m?miniDoss(m):''}</span>`;
+  }
+  function cellaTotale(d){
+    if(d.cur==="UNKNOWN") return `<span class="totc none">—</span><span class="vflag" onclick="event.stopPropagation()">valuta?</span>`;
+    return `<span class="totc ${d.importo==null?'none':''}">${d.importo!=null?fmtEur(d.importo,d.cur):'—'}</span>`;
+  }
+  function menu(d){
+    const open = OPENMENU===d.id;
+    const voci = [
+      `<button onclick="act(event,'pdf','${d.id}')" ${d.file?'':'disabled style=opacity:.45'}><span class="ic">📄</span> Apri PDF</button>`,
+      `<button onclick="act(event,'modifica','${d.id}')"><span class="ic">✏️</span> Modifica valuta</button>`,
+      `<button onclick="act(event,'review','${d.id}')"><span class="ic">↻</span> Riapri review</button>`,
+      `<button onclick="act(event,'verif','${d.id}')"><span class="ic">${isReview(d)?'☑':'☐'}</span> Da verificare</button>`,
+    ];
+    if(FILTRO==="libretti") voci.push('<div class="sep"></div>', `<button class="danger" onclick="act(event,'del','${d.id}')"><span class="ic">🗑</span> Elimina</button>`);
+    return `<div class="kebab">
+      <button class="kb-btn" onclick="toggleMenu(event,'${d.id}')">⋮</button>
+      ${open?`<div class="kb-menu" onclick="event.stopPropagation()">${voci.join('')}</div>`:''}
+    </div>`;
+  }
+
+  function vistaTabella(docs){
+    const g = new Map();
+    docs.forEach(d=>{ const k=nomeForn(d); (g.get(k)||g.set(k,[]).get(k)).push(d); });
+    const groups = [...g.entries()].map(([forn,items])=>({forn,items,off:!!items[0].officinaId,frn:!!items[0].fornitoreId,lib:items[0].tipo==="libretto",tot:items.reduce((s,x)=>s+(x.importo||0),0)}))
+      .sort((a,b)=> b.tot-a.tot || a.forn.localeCompare(b.forn,'it'));
+    const body = groups.map(gr=>{
+      const tag = gr.off ? '<span class="gtag gtag-off">🔧 Officina · anagrafica</span>'
+                : gr.frn ? '<span class="gtag gtag-frn">🏢 Fornitore · anagrafica</span>'
+                : gr.lib ? '<span class="gtag gtag-lib">📋 Libretto</span>'
+                : '<span class="gtag">Senza fornitore</span>';
+      return `<tr class="grp"><td colspan="7">${gr.forn} ${tag} · ${gr.items.length} doc<span class="gtot">${gr.tot? 'Totale '+fmtCompact(gr.tot):''}</span></td></tr>` +
+      gr.items.map(d=>`<tr class="doc" onclick="openDoc('${d.id}')">
+        <td>${cellaOrigine(d)}</td>
+        <td><span class="pill ${TIPO_PILL[d.tipo]}">${TIPO_LAB[d.tipo]}</span></td>
+        <td class="datac">${fmtData(d.data)}</td>
+        <td class="numc">${d.numero}</td>
+        <td class="descc">${d.descr}</td>
+        <td class="right">${cellaTotale(d)}</td>
+        <td class="mid">${menu(d)}</td>
+      </tr>`).join('');
+    }).join('');
+    return `<div class="card" style="overflow:visible">
+      <table class="dtable">
+        <thead><tr>
+          <th>Origine</th><th>Tipo doc.</th><th>Data</th><th>N. doc.</th><th>Cosa e' stato fatto</th><th class="right">EUR</th><th class="mid">Azioni</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // ——— LIBRETTI + Export ———
+  function toggleExport(){ EXPORT_MODE=!EXPORT_MODE; OPENMENU=null; render(); }
+  function toggleSel(id){ SEL[id]=!SEL[id]; render(); }
+  function selAllLib(on){ DOCS.filter(d=>d.tipo==="libretto").forEach(d=>{ SEL[d.id]=on; }); render(); }
+  function catOf(targa){ const m=MEZZI.find(x=>x.targa===targa); return m? m.cat : "Altro"; }
+
+  function vistaLibretti(q){
+    const libs = DOCS.filter(d=>d.tipo==="libretto").filter(d=>matchSearch(d,q));
+    const selCount = libs.filter(l=>SEL[l.id]).length;
+    const bar = EXPORT_MODE
+      ? `<div class="lib-bar">
+          <button class="btn" onclick="selAllLib(true)">Seleziona tutti</button>
+          <button class="btn" onclick="selAllLib(false)">Deseleziona</button>
+          <span class="pill ${selCount?'pill-accent':'pill-neutral'}" style="margin-left:auto">${selCount} selezionati</span>
+          <button class="btn primary" ${selCount?'':'disabled'} onclick="anteprimaExport()">Anteprima PDF (${selCount})</button>
+          <button class="btn" onclick="toggleExport()">Annulla</button>
+        </div>`
+      : `<div class="lib-bar">
+          <div class="ttl">Libretti per categoria</div><span class="sub">${libs.length} con libretto</span>
+          <button class="btn ghost" style="margin-left:auto" onclick="toggleExport()">⤓ Export</button>
+        </div>`;
+    // raggruppa per categoria mezzo
+    const g = new Map();
+    libs.forEach(l=>{ const k=catOf(l.targa); (g.get(k)||g.set(k,[]).get(k)).push(l); });
+    const cats = [...g.keys()].sort();
+    const grid = cats.map(c=>`<div class="cat-h">${c.toUpperCase()}<span class="ln"></span></div>
+      <div class="lib-grid">
+      ${g.get(c).sort((a,b)=>a.targa.localeCompare(b.targa,'it',{numeric:true})).map(l=>{ const on=!!SEL[l.id]; return `<div class="lib ${EXPORT_MODE?'pick':''} ${on?'sel':''}" ${EXPORT_MODE?`onclick="toggleSel('${l.id}')"`:''}>
+        ${EXPORT_MODE?`<div class="ck">${on?'✓':''}</div>`:''}
+        <div class="thumb">Libretto</div>
+        <div class="ft"><b>${l.targa}</b><span class="pill pill-ok">✓ Libretto</span></div>
+        <div class="lbl">${catOf(l.targa)}</div>
+        ${EXPORT_MODE?'':`<button class="btn" onclick="event.stopPropagation();openDoc('${l.id}')">Apri</button>`}
+      </div>`; }).join('')}
+      </div>`).join('');
+    return `<div class="card pad" style="overflow:visible">${bar}${libs.length?grid:'<div class="empty">Nessun libretto.</div>'}</div>`;
+  }
+
+  function anteprimaExport(){
+    const sel = DOCS.filter(d=>d.tipo==="libretto" && SEL[d.id]);
+    if(!sel.length) return;
+    document.getElementById('m-title').textContent = "Anteprima PDF libretti ("+sel.length+" targhe)";
+    document.getElementById('m-body').innerHTML =
+      '<div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:10px">PDF unico: copertina + una pagina per targa, libretti raggruppati per targa.</div>' +
+      sel.map(l=>`<div class="mrow"><span class="lab">${l.targa}</span><span class="val">${catOf(l.targa)} · libretto</span></div>`).join('') +
+      '<div class="preview-doc">PDF libretti · '+sel.length+' pagine</div>';
+    document.getElementById('m-foot').innerHTML =
+      '<button class="btn" onclick="closeModal()">Chiudi</button>'+
+      '<button class="btn">⬇ Scarica</button>'+
+      '<button class="btn">Copia link</button>'+
+      '<button class="btn primary">Condividi · WhatsApp</button>';
+    document.getElementById('bd').classList.add('open');
+  }
+
+  // ——— azioni menu ———
+  function toggleMenu(ev,id){ ev.stopPropagation(); OPENMENU = (OPENMENU===id?null:id); render(); }
+  function act(ev,type,id){ ev.stopPropagation(); OPENMENU=null; const d=docById[id];
+    if(type==='pdf'){ if(d.file) alert('(mock) Apri PDF originale di '+(d.targa||d.fornitore)); }
+    else if(type==='modifica'){ alert('(mock) Modifica valuta — EUR / CHF'); }
+    else if(type==='review'){ alert("(mock) Riapri review nell'Archivista IA"); }
+    else if(type==='verif'){ d.verif=!d.verif; }
+    else if(type==='del'){ if(confirm('Eliminare questo libretto?')){ const i=DOCS.findIndex(x=>x.id===id); if(i>=0) DOCS.splice(i,1); } }
+    render();
+  }
+  document.addEventListener('click', ()=>{ if(OPENMENU!==null){ OPENMENU=null; render(); } });
+
+  // ——— render ———
+  function render(){
+    const q = document.getElementById('q').value.trim();
+    const all = DOCS.filter(d=>matchSearch(d,q));
+    const filt = docsFiltrati(q);
+    let statsHtml;
+    if(FILTRO==="libretti"){
+      statsHtml = `<div class="s"><b>${filt.length}</b> libretti</div>`;
+    } else {
+      const officine = new Set(filt.filter(d=>d.officinaId).map(d=>d.officinaId));
+      const fornitori = new Set(filt.filter(d=>d.fornitoreId).map(d=>d.fornitoreId));
+      statsHtml = `<div class="s"><b>${filt.length}</b> doc</div><div class="s"><b>${officine.size}</b> officine</div><div class="s"><b>${fornitori.size}</b> fornitori</div>`;
+    }
+    document.getElementById('stats').innerHTML = statsHtml;
+
+    const counts = { tutti:DOCS.length, fatture:DOCS.filter(d=>d.tipo==="fattura").length, ddt:DOCS.filter(d=>d.tipo==="ddt").length, preventivi:DOCS.filter(d=>d.tipo==="preventivo").length, da_verificare:DOCS.filter(isReview).length, libretti:DOCS.filter(d=>d.tipo==="libretto").length };
+    document.getElementById('tabbar').innerHTML = FILTRI.map(f=>`<button class="tab ${FILTRO===f.key?'active':''}" onclick="setFiltro('${f.key}')">${f.label} <span class="n">${counts[f.key]}</span></button>`).join('');
+
+    const content = document.getElementById('content');
+    if(FILTRO==="libretti"){ content.innerHTML = vistaLibretti(q); return; }
+    const docs = docsFiltrati(q);
+    content.innerHTML = docs.length? vistaTabella(docs) : '<div class="card pad"><div class="empty">Nessun documento per questo filtro.</div></div>';
+  }
+  function setFiltro(f){ FILTRO=f; OPENMENU=null; if(f!=="libretti") EXPORT_MODE=false; render(); }
+
+  function openDoc(id){
+    const d = docById[id]; if(!d) return;
+    document.getElementById('m-title').textContent = TIPO_LAB[d.tipo]+" · "+(d.tipo==="libretto"?d.targa:nomeForn(d))+" · "+(d.numero&&d.numero!=="—"?d.numero:"Numero non disponibile");
+    const origine = d.src==="magazzino" ? "Magazzino" : (d.targa||"—");
+    const fornVal = d.officinaId ? `${offById[d.officinaId]?.nome||"—"} <span class="pill pill-off-sm">da anagrafica</span>`
+                  : d.fornitoreId ? `${frnById[d.fornitoreId]?.nome||"—"} <span class="pill pill-frn-sm">da anagrafica</span>`
+                  : (d.fornitore||"—");
+    const rows = [
+      [d.officinaId?"Officina":"Fornitore", fornVal],
+      ["Data", fmtData(d.data)],
+      ["Numero", d.numero],
+      ["Origine", origine],
+      ["Importo", d.importo!=null?fmtEur(d.importo,d.cur):"—"],
+      ["Valuta", d.cur==="UNKNOWN"?'<span class="vflag">da verificare</span>':d.cur],
+    ];
+    const anteprima = d.tipo==='libretto'
+      ? `<div class="libpreview">
+           <div class="lp-head"><b>Libretto di circolazione</b><span>ANTEPRIMA</span></div>
+           <div class="lp-targa">${d.targa}</div>
+           <div class="lp-lines"><div class="lp-l w80"></div><div class="lp-l w60"></div><div class="lp-l w70"></div><div class="lp-l w45"></div><div class="lp-l w70"></div><div class="lp-l w60"></div></div>
+           <div class="lp-foot">📄 anteprima del file · usa "Apri PDF originale" per il documento completo</div>
+         </div>`
+      : `<div class="preview-doc">Anteprima documento</div>`;
+    document.getElementById('m-body').innerHTML =
+      rows.map(r=>`<div class="mrow"><span class="lab">${r[0]}</span><span class="val">${r[1]}</span></div>`).join('') + anteprima;
+    document.getElementById('m-foot').innerHTML =
+      '<button class="btn" onclick="closeModal()">Chiudi</button>'+
+      `<button class="btn" ${d.file?'':'disabled style=opacity:.45'}>Apri PDF originale</button>`+
+      `<button class="btn ${isReview(d)?'ghost':''}">Da verificare</button>`+
+      '<button class="btn">Riapri review</button>';
+    document.getElementById('bd').classList.add('open');
+  }
+  function closeModal(){ document.getElementById('bd').classList.remove('open'); }
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+  render();
+</script>
+</body>
+</html>
