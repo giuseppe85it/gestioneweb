@@ -46,6 +46,14 @@ import {
   saveScadenzaManutenzione,
 } from "./nextManutenzioniScadenzeWriter";
 import {
+  readScadenzeCategorie,
+  type ScadenzaCategoriaRecord,
+} from "./domain/nextScadenzeCategorieDomain";
+import {
+  deleteScadenzaCategoria,
+  saveScadenzaCategoria,
+} from "./nextScadenzeCategorieWriter";
+import {
   filterScadenzePdfRows,
   generateScadenzePdfBlob,
   type ScadenzePdfCategoryFilter,
@@ -463,18 +471,25 @@ export default function NextScadenzeCollaudiPage() {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("scadenze-flotta.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF scadenze");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  // Anagrafica categorie personalizzate (catalogo di nomi riusabili nel modulo).
+  const [categorieAnagrafica, setCategorieAnagrafica] = useState<ScadenzaCategoriaRecord[]>([]);
+  const [gestioneCategorieOpen, setGestioneCategorieOpen] = useState(false);
+  const [nuovaCategoriaNome, setNuovaCategoriaNome] = useState("");
+  const [categoriaSubmitting, setCategoriaSubmitting] = useState(false);
 
   const loadSnapshot = async () => {
     setLoading(true);
     try {
-      const [nextSnapshot, manut, km] = await Promise.all([
+      const [nextSnapshot, manut, km, categorie] = await Promise.all([
         readNextCentroControlloSnapshot(Date.now()),
         readNextManutenzioniScadenzeSnapshot(Date.now()),
         readKmCorrentiByTarga(),
+        readScadenzeCategorie(),
       ]);
       setSnapshot(nextSnapshot);
       setManutSnapshot(manut);
       setKmByTarga(km);
+      setCategorieAnagrafica(categorie);
     } catch {
       setSnapshot(null);
     } finally {
@@ -486,15 +501,17 @@ export default function NextScadenzeCollaudiPage() {
     let active = true;
     void (async () => {
       try {
-        const [nextSnapshot, manut, km] = await Promise.all([
+        const [nextSnapshot, manut, km, categorie] = await Promise.all([
           readNextCentroControlloSnapshot(Date.now()),
           readNextManutenzioniScadenzeSnapshot(Date.now()),
           readKmCorrentiByTarga(),
+          readScadenzeCategorie(),
         ]);
         if (!active) return;
         setSnapshot(nextSnapshot);
         setManutSnapshot(manut);
         setKmByTarga(km);
+        setCategorieAnagrafica(categorie);
       } catch {
         if (!active) return;
         setSnapshot(null);
@@ -757,9 +774,48 @@ export default function NextScadenzeCollaudiPage() {
       return { ...current, base: next };
     });
 
-  const handleManutTipoChange = (tipo: string) => {
-    const found = TIPI_SCADENZA.find((entry) => entry.value === tipo);
-    patchManut({ tipo, label: tipo === "altro" ? "" : found?.label ?? "" });
+  const handleManutTipoChange = (value: string) => {
+    // Categoria scelta dall'anagrafica: salvata come "altro" + nome della categoria.
+    if (value.startsWith("cat:")) {
+      patchManut({ tipo: "altro", label: value.slice(4) });
+      return;
+    }
+    const found = TIPI_SCADENZA.find((entry) => entry.value === value);
+    patchManut({ tipo: value, label: value === "altro" ? "" : found?.label ?? "" });
+  };
+
+  // ————— Anagrafica categorie (catalogo nomi riusabili) —————
+  const ricaricaCategorie = async () => {
+    try {
+      setCategorieAnagrafica(await readScadenzeCategorie());
+    } catch {
+      /* mantiene l'elenco corrente */
+    }
+  };
+  const aggiungiCategoria = async () => {
+    const nome = nuovaCategoriaNome.trim();
+    if (!nome) return;
+    setCategoriaSubmitting(true);
+    try {
+      await saveScadenzaCategoria(nome);
+      setNuovaCategoriaNome("");
+      await ricaricaCategorie();
+    } catch (error) {
+      showValidationError(error instanceof Error ? error.message : "Errore durante il salvataggio della categoria.");
+    } finally {
+      setCategoriaSubmitting(false);
+    }
+  };
+  const eliminaCategoria = async (categoria: ScadenzaCategoriaRecord) => {
+    if (!window.confirm(`Eliminare la categoria "${categoria.nome}" dall'anagrafica? Le scadenze esistenti non vengono toccate.`)) {
+      return;
+    }
+    try {
+      await deleteScadenzaCategoria(categoria.id);
+      await ricaricaCategorie();
+    } catch (error) {
+      showValidationError(error instanceof Error ? error.message : "Errore durante l'eliminazione della categoria.");
+    }
   };
 
   const salvaManut = async () => {
@@ -1726,6 +1782,14 @@ export default function NextScadenzeCollaudiPage() {
     manutForm && manutForm.targa && !targheDisponibili.includes(manutForm.targa)
       ? [manutForm.targa, ...targheDisponibili]
       : targheDisponibili;
+  // Valore del select Tipo: se la scadenza usa una categoria dell'anagrafica, mostra quella.
+  const tipoSelectValue = !manutForm
+    ? "altro"
+    : manutForm.tipo !== "altro"
+      ? manutForm.tipo
+      : categorieAnagrafica.some((categoria) => categoria.nome === manutForm.label)
+        ? `cat:${manutForm.label}`
+        : "altro";
 
   return (
     <div className="scd">
@@ -1737,6 +1801,9 @@ export default function NextScadenzeCollaudiPage() {
           </div>
         </div>
         <div className="right">
+          <button type="button" className="btn" onClick={() => setGestioneCategorieOpen(true)}>
+            Gestisci categorie
+          </button>
           <button type="button" className="btn" onClick={openPdfPanel}>
             Anteprima PDF
           </button>
@@ -1937,6 +2004,71 @@ export default function NextScadenzeCollaudiPage() {
         contaore mostrano "ore non disponibili". I collaudi riusano il calcolo e i flussi esistenti.
       </div>
 
+      {gestioneCategorieOpen ? (
+        <div
+          className="scd-backdrop open"
+          onClick={(event) => event.target === event.currentTarget && setGestioneCategorieOpen(false)}
+        >
+          <div className="modal">
+            <div className="modal-h">
+              <h3>Gestisci categorie</h3>
+              <button type="button" className="x" onClick={() => setGestioneCategorieOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-b">
+              <div className="field full">
+                <label>Nuova categoria</label>
+                <div className="cat-add">
+                  <input
+                    value={nuovaCategoriaNome}
+                    onChange={(event) => setNuovaCategoriaNome(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void aggiungiCategoria();
+                    }}
+                    placeholder="es. Bombole gas, Idroguida…"
+                  />
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => void aggiungiCategoria()}
+                    disabled={categoriaSubmitting}
+                  >
+                    Aggiungi
+                  </button>
+                </div>
+                <div className="help">
+                  Le categorie definite qui sono selezionabili nel modulo "Nuova scadenza". Compaiono in pagina,
+                  home e PDF quando hanno almeno una scadenza.
+                </div>
+              </div>
+
+              <div className="cat-list-wrap">
+                {categorieAnagrafica.length === 0 ? (
+                  <div className="empty">Nessuna categoria personalizzata. Aggiungine una qui sopra.</div>
+                ) : (
+                  <ul className="cat-list">
+                    {categorieAnagrafica.map((categoria) => (
+                      <li key={categoria.id} className="cat-item">
+                        <span>{categoria.nome}</span>
+                        <button type="button" className="btn danger" onClick={() => void eliminaCategoria(categoria)}>
+                          Elimina
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <div className="modal-f">
+              <button type="button" className="btn" onClick={() => setGestioneCategorieOpen(false)}>
+                Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {manutForm ? (
         <div className="scd-backdrop open" onClick={(event) => event.target === event.currentTarget && closeManut()}>
           <div className="modal">
@@ -1950,12 +2082,22 @@ export default function NextScadenzeCollaudiPage() {
               <div className="grid2">
                 <div className="field">
                   <label>Tipo / settore</label>
-                  <select value={manutForm.tipo} onChange={(event) => handleManutTipoChange(event.target.value)}>
-                    {TIPI_SCADENZA.map((entry) => (
+                  <select value={tipoSelectValue} onChange={(event) => handleManutTipoChange(event.target.value)}>
+                    {TIPI_SCADENZA.filter((entry) => entry.value !== "altro").map((entry) => (
                       <option key={entry.value} value={entry.value}>
                         {entry.label}
                       </option>
                     ))}
+                    {categorieAnagrafica.length > 0 ? (
+                      <optgroup label="Le tue categorie">
+                        {categorieAnagrafica.map((categoria) => (
+                          <option key={categoria.id} value={`cat:${categoria.nome}`}>
+                            {categoria.nome}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    <option value="altro">Altro (nome libero)…</option>
                   </select>
                 </div>
                 <div className="field">
