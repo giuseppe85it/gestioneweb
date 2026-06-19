@@ -141,18 +141,18 @@ function buildHomeAlertBanner(
   }
 
   const { counters } = snapshot;
-  const cat = manutCounters?.perCategoria ?? null;
+  const settori = manutCounters?.perSettore ?? [];
 
-  // Scadenze divise per settore: collaudi + cronotachigrafo / tagliandi / estintore.
+  // Scadenze divise per settore: collaudi + settori di manutenzione (anche personalizzati).
   const rows: { label: string; detail: string }[] = [];
   const pushRow = (label: string, scadute: number, inScadenza: number) => {
     const detail = buildSettoreDetail(scadute, inScadenza);
     if (detail) rows.push({ label, detail });
   };
   pushRow("Collaudi", counters.revisioniScadute, counters.revisioniInScadenza);
-  pushRow("Cronotachigrafo", cat?.cronotachigrafo.scadute ?? 0, cat?.cronotachigrafo.inScadenza ?? 0);
-  pushRow("Tagliandi", cat?.tagliandi.scadute ?? 0, cat?.tagliandi.inScadenza ?? 0);
-  pushRow("Estintore", cat?.estintore.scadute ?? 0, cat?.estintore.inScadenza ?? 0);
+  for (const settore of settori) {
+    pushRow(settore.label, settore.scadute, settore.inScadenza);
+  }
 
   if (rows.length > 0) {
     return {

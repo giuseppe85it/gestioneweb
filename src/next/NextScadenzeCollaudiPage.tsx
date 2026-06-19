@@ -33,6 +33,7 @@ import {
   evaluateScadenzaManutenzione,
   readKmCorrentiByTarga,
   readNextManutenzioniScadenzeSnapshot,
+  settoreScadenza,
   type NextManutenzioneScadenzaItem,
   type NextManutenzioneScadenzaRecord,
   type NextManutenzioniScadenzeSnapshot,
@@ -45,7 +46,6 @@ import {
   saveScadenzaManutenzione,
 } from "./nextManutenzioniScadenzeWriter";
 import {
-  SCADENZE_PDF_CATEGORY_OPTIONS,
   filterScadenzePdfRows,
   generateScadenzePdfBlob,
   type ScadenzePdfCategoryFilter,
@@ -250,19 +250,39 @@ function formatOfficinaMeta(item: NextOfficinaReadOnlyItem): string {
 // ————————————————————————————————————————————————————————————————
 // Scadenze per settore (collaudi + manutenzioni): helper di presentazione
 // ————————————————————————————————————————————————————————————————
-type ScadenzaCategoria = "cronotachigrafo" | "tagliandi" | "estintore" | "collaudi";
+// Settore di una scadenza nella pagina: i 4 predefiniti (collaudi + manutenzioni) e i
+// personalizzati (key "custom:..."). Ogni voce porta con sé il proprio settore.
+type SettorePagina = { key: string; label: string; icon: string };
 
-const SCADENZE_CATEGORIE: { key: ScadenzaCategoria; label: string; icon: string }[] = [
-  { key: "cronotachigrafo", label: "Cronotachigrafo", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-  { key: "tagliandi", label: "Tagliandi", icon: '<path d="M14 7l3 3M3 21l3-1 9-9-2-2-9 9z"/><path d="M15 5l4 4"/>' },
-  { key: "estintore", label: "Estintore", icon: '<path d="M9 4h4v3H9zM10 7v13a2 2 0 0 0 4 0V7M15 6l3-1"/>' },
-  { key: "collaudi", label: "Collaudi", icon: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>' },
-];
+const SETTORE_COLLAUDI_KEY = "collaudi";
+const ICONA_CRONOTACHIGRAFO = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+const ICONA_TAGLIANDI = '<path d="M14 7l3 3M3 21l3-1 9-9-2-2-9 9z"/><path d="M15 5l4 4"/>';
+const ICONA_ESTINTORE = '<path d="M9 4h4v3H9zM10 7v13a2 2 0 0 0 4 0V7M15 6l3-1"/>';
+const ICONA_COLLAUDI = '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>';
+const ICONA_SETTORE_GENERICA =
+  '<path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L3 13V3h10l7.59 7.59a2 2 0 0 1 0 2.82z"/><circle cx="7.5" cy="7.5" r="1.5"/>';
 
-function categoriaDiTipo(tipo: string): ScadenzaCategoria {
-  if (tipo === "cronotachigrafo") return "cronotachigrafo";
-  if (tipo === "estintore") return "estintore";
-  return "tagliandi"; // tagliando_mezzo, tagliando_compressore, altro
+function iconaSettore(key: string): string {
+  if (key === "cronotachigrafo") return ICONA_CRONOTACHIGRAFO;
+  if (key === "tagliandi") return ICONA_TAGLIANDI;
+  if (key === "estintore") return ICONA_ESTINTORE;
+  if (key === SETTORE_COLLAUDI_KEY) return ICONA_COLLAUDI;
+  return ICONA_SETTORE_GENERICA;
+}
+
+// Ordine dei settori nella pagina: predefiniti di manutenzione, poi i personalizzati, poi i collaudi.
+function ordinePaginaSettore(key: string): number {
+  if (key === "cronotachigrafo") return 0;
+  if (key === "tagliandi") return 1;
+  if (key === "estintore") return 2;
+  if (key === SETTORE_COLLAUDI_KEY) return 9;
+  return 5;
+}
+
+// Settore di una voce: collaudi è fisso; le manutenzioni derivano il settore dal tipo/label.
+function settoreDiManutenzione(tipo: string, label: string): SettorePagina {
+  const settore = settoreScadenza(tipo, label);
+  return { key: settore.key, label: settore.label, icon: iconaSettore(settore.key) };
 }
 
 const STATO_SEVERITA: Record<NextScadenzaStato, number> = {
@@ -419,7 +439,7 @@ export default function NextScadenzeCollaudiPage() {
   const [manutSnapshot, setManutSnapshot] = useState<NextManutenzioniScadenzeSnapshot | null>(null);
   const [kmByTarga, setKmByTarga] = useState<Map<string, number>>(new Map());
   // Filtri della nuova vista: settore, riquadro KPI, ricerca targa.
-  const [filtroSettore, setFiltroSettore] = useState<"tutte" | ScadenzaCategoria>("tutte");
+  const [filtroSettore, setFiltroSettore] = useState<string>("tutte");
   const [kpiFiltro, setKpiFiltro] = useState<{ ambito: "collaudo" | "manutenzione"; stato: NextScadenzaStato } | null>(null);
   const [queryTarga, setQueryTarga] = useState<string>(() => readTargaFromSearch(location.search));
   // Modal "nuova/modifica scadenza" (il menu regola).
@@ -1279,18 +1299,19 @@ export default function NextScadenzeCollaudiPage() {
   ).sort((left, right) => left.localeCompare(right, "it"));
 
   type Voce =
-    | { kind: "collaudo"; categoria: ScadenzaCategoria; targa: string; stato: NextScadenzaStato; sev: number; sort: number; collaudo: D10RevisionItem }
-    | { kind: "manutenzione"; categoria: ScadenzaCategoria; targa: string; stato: NextScadenzaStato; sev: number; sort: number; manut: NextManutenzioneScadenzaItem };
+    | { kind: "collaudo"; settore: SettorePagina; targa: string; stato: NextScadenzaStato; sev: number; sort: number; collaudo: D10RevisionItem }
+    | { kind: "manutenzione"; settore: SettorePagina; targa: string; stato: NextScadenzaStato; sev: number; sort: number; manut: NextManutenzioneScadenzaItem };
 
+  const settoreCollaudi: SettorePagina = { key: SETTORE_COLLAUDI_KEY, label: "Collaudi", icon: ICONA_COLLAUDI };
   const vociCollaudo: Voce[] = revisioni.map((item) => {
     // Coerente col dominio (nextCentroControlloDomain.ts:1310): un collaudo già
     // completato non è scaduto/in scadenza, anche se la data legacy non è aggiornata.
     const stato: NextScadenzaStato = item.prenotazioneCollaudo?.completata === true ? "ok" : statoCollaudo(item);
-    return { kind: "collaudo", categoria: "collaudi", targa: item.targa ?? "", stato, sev: STATO_SEVERITA[stato], sort: item.giorni ?? 1_000_000, collaudo: item };
+    return { kind: "collaudo", settore: settoreCollaudi, targa: item.targa ?? "", stato, sev: STATO_SEVERITA[stato], sort: item.giorni ?? 1_000_000, collaudo: item };
   });
   const vociManut: Voce[] = manutItems.map((item) => ({
     kind: "manutenzione",
-    categoria: categoriaDiTipo(item.tipo),
+    settore: settoreDiManutenzione(item.tipo, item.label),
     targa: item.targa,
     stato: item.stato,
     sev: STATO_SEVERITA[item.stato],
@@ -1298,6 +1319,17 @@ export default function NextScadenzeCollaudiPage() {
     manut: item,
   }));
   const tutteVoci = [...vociManut, ...vociCollaudo];
+
+  // Settori presenti nei dati (per tab, sezioni, select PDF), ordinati.
+  const settoriPresenti: SettorePagina[] = (() => {
+    const map = new Map<string, SettorePagina>();
+    for (const voce of tutteVoci) {
+      if (!map.has(voce.settore.key)) map.set(voce.settore.key, voce.settore);
+    }
+    return [...map.values()].sort(
+      (a, b) => ordinePaginaSettore(a.key) - ordinePaginaSettore(b.key) || a.label.localeCompare(b.label, "it"),
+    );
+  })();
 
   const colScadute = vociCollaudo.filter((v) => v.stato === "scaduta").length;
   const colProx = vociCollaudo.filter((v) => v.stato === "in_scadenza").length;
@@ -1313,16 +1345,19 @@ export default function NextScadenzeCollaudiPage() {
     setKpiFiltro((current) => (current && current.ambito === ambito && current.stato === stato ? null : { ambito, stato }));
     setFiltroSettore("tutte");
   };
-  const selezionaSettore = (key: "tutte" | ScadenzaCategoria) => {
+  const selezionaSettore = (key: string) => {
     setFiltroSettore(key);
     setKpiFiltro(null);
   };
 
-  const catCount = (key: ScadenzaCategoria) => visVoci.filter((v) => v.categoria === key).length;
+  const catCount = (key: string) => visVoci.filter((v) => v.settore.key === key).length;
   const ordina = (voci: Voce[]) => [...voci].sort((a, b) => b.sev - a.sev || a.sort - b.sort);
 
-  const getCategoriaLabel = (key: ScadenzePdfCategoryFilter): string =>
-    SCADENZE_PDF_CATEGORY_OPTIONS.find((option) => option.value === key)?.label ?? "Tutte";
+  // Label di un settore/filtro PDF (incluse le categorie personalizzate presenti).
+  const getCategoriaLabel = (key: string): string => {
+    if (key === "tutte") return "Tutte";
+    return settoriPresenti.find((settore) => settore.key === key)?.label ?? key;
+  };
 
   const getMezzoSessioneLabels = (targa: string) => {
     const key = normTarga(targa);
@@ -1347,8 +1382,8 @@ export default function NextScadenzeCollaudiPage() {
       const labels = getMezzoSessioneLabels(targa);
       return {
         id: `collaudo-${item.id}`,
-        categoria: "collaudi",
-        categoriaLabel: "Collaudi",
+        categoria: voce.settore.key,
+        categoriaLabel: voce.settore.label,
         targa,
         mezzoLabel: mezzoLabel || labels.mezzoLabel,
         autistaLabel: item.autistaNome ?? labels.autistaLabel,
@@ -1370,12 +1405,11 @@ export default function NextScadenzeCollaudiPage() {
     }
 
     const item = voce.manut;
-    const categoria = categoriaDiTipo(item.tipo);
     const labels = getMezzoSessioneLabels(item.targa);
     return {
       id: `manutenzione-${item.id}`,
-      categoria,
-      categoriaLabel: getCategoriaLabel(categoria),
+      categoria: voce.settore.key,
+      categoriaLabel: voce.settore.label,
       targa: item.targa,
       mezzoLabel: labels.mezzoLabel,
       autistaLabel: labels.autistaLabel,
@@ -1643,7 +1677,7 @@ export default function NextScadenzeCollaudiPage() {
     </div>
   );
 
-  const cats = filtroSettore === "tutte" ? SCADENZE_CATEGORIE : SCADENZE_CATEGORIE.filter((c) => c.key === filtroSettore);
+  const cats = filtroSettore === "tutte" ? settoriPresenti : settoriPresenti.filter((c) => c.key === filtroSettore);
 
   // Anteprima stato nel modal regola.
   let previewItem: NextManutenzioneScadenzaItem | null = null;
@@ -1752,7 +1786,7 @@ export default function NextScadenzeCollaudiPage() {
           <button type="button" className={`tab${filtroSettore === "tutte" ? " active" : ""}`} onClick={() => selezionaSettore("tutte")}>
             Tutte <span className="n">{visVoci.length}</span>
           </button>
-          {SCADENZE_CATEGORIE.map((cat) => (
+          {settoriPresenti.map((cat) => (
             <button
               key={cat.key}
               type="button"
@@ -1795,9 +1829,10 @@ export default function NextScadenzeCollaudiPage() {
               value={pdfCategoria}
               onChange={(event) => setPdfCategoria(event.target.value as ScadenzePdfCategoryFilter)}
             >
-              {SCADENZE_PDF_CATEGORY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              <option value="tutte">Tutte</option>
+              {settoriPresenti.map((settore) => (
+                <option key={settore.key} value={settore.key}>
+                  {settore.label}
                 </option>
               ))}
             </select>
@@ -1847,8 +1882,8 @@ export default function NextScadenzeCollaudiPage() {
                     <span>km corrente</span>
                   </div>
                 </div>
-                {SCADENZE_CATEGORIE.map((cat) => {
-                  const vs = ordina(vTarga.filter((v) => v.categoria === cat.key));
+                {settoriPresenti.map((cat) => {
+                  const vs = ordina(vTarga.filter((v) => v.settore.key === cat.key));
                   return (
                     <Fragment key={cat.key}>
                       <div className="seclabel">
@@ -1875,7 +1910,7 @@ export default function NextScadenzeCollaudiPage() {
         })()
       ) : (
         cats.map((cat) => {
-          const voci = ordina(visVoci.filter((v) => v.categoria === cat.key));
+          const voci = ordina(visVoci.filter((v) => v.settore.key === cat.key));
           return (
             <div className="card" key={cat.key}>
               <div className="card-h">

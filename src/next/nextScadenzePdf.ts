@@ -1,11 +1,8 @@
 import type { RowInput } from "jspdf-autotable";
 
-export type ScadenzePdfCategoryFilter =
-  | "tutte"
-  | "cronotachigrafo"
-  | "tagliandi"
-  | "estintore"
-  | "collaudi";
+// "tutte" = nessun filtro; altrimenti la key di un settore: i predefiniti
+// (cronotachigrafo / tagliandi / estintore / collaudi) o un personalizzato ("custom:...").
+export type ScadenzePdfCategoryFilter = string;
 
 export type ScadenzePdfStatus =
   | "ok"
@@ -16,7 +13,7 @@ export type ScadenzePdfStatus =
 
 export type ScadenzePdfRow = {
   id: string;
-  categoria: Exclude<ScadenzePdfCategoryFilter, "tutte">;
+  categoria: string;
   categoriaLabel: string;
   targa: string;
   mezzoLabel: string;
@@ -87,8 +84,28 @@ function cleanText(value: unknown, fallback = "-"): string {
   return text || fallback;
 }
 
-function categoryLabel(categoria: ScadenzePdfCategoryFilter): string {
-  return SCADENZE_PDF_CATEGORY_OPTIONS.find((option) => option.value === categoria)?.label ?? "Tutte";
+function categoryLabel(categoria: ScadenzePdfCategoryFilter, rows?: ScadenzePdfRow[]): string {
+  if (categoria === "tutte") return "Tutte";
+  const fixed = SCADENZE_PDF_CATEGORY_OPTIONS.find((option) => option.value === categoria)?.label;
+  if (fixed) return fixed;
+  // Settore personalizzato: la label vera è nelle righe (categoriaLabel).
+  return rows?.find((row) => row.categoria === categoria)?.categoriaLabel ?? categoria;
+}
+
+// Settori presenti nelle righe, ordinati: predefiniti nell'ordine canonico, poi i custom (alfabetico).
+const SETTORI_PDF_ORDINE = ["cronotachigrafo", "tagliandi", "estintore", "collaudi"];
+function orderedCategoriesFromRows(rows: ScadenzePdfRow[]): { value: string; label: string }[] {
+  const labelByValue = new Map<string, string>();
+  for (const row of rows) {
+    if (!labelByValue.has(row.categoria)) labelByValue.set(row.categoria, row.categoriaLabel);
+  }
+  const rank = (key: string) => {
+    const index = SETTORI_PDF_ORDINE.indexOf(key);
+    return index >= 0 ? index : 100;
+  };
+  return [...labelByValue.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((left, right) => rank(left.value) - rank(right.value) || left.label.localeCompare(right.label, "it"));
 }
 
 function todayFilePart(): string {
@@ -156,8 +173,11 @@ export function summarizeScadenzePdfRows(rows: ScadenzePdfRow[]) {
   );
 }
 
-export function buildScadenzePdfFileName(categoria: ScadenzePdfCategoryFilter): string {
-  const suffix = categoria === "tutte" ? "flotta" : categoryLabel(categoria);
+export function buildScadenzePdfFileName(
+  categoria: ScadenzePdfCategoryFilter,
+  rows?: ScadenzePdfRow[],
+): string {
+  const suffix = categoria === "tutte" ? "flotta" : categoryLabel(categoria, rows);
   return `${sanitizeFileName(`scadenze-${suffix}-${todayFilePart()}`)}.pdf`;
 }
 
@@ -222,8 +242,7 @@ function buildScadenzePdfTable(rows: ScadenzePdfRow[], categoria: ScadenzePdfCat
     return { body, rowByBodyIndex };
   }
 
-  for (const option of SCADENZE_PDF_CATEGORY_OPTIONS) {
-    if (option.value === "tutte") continue;
+  for (const option of orderedCategoriesFromRows(rows)) {
     const categoryRows = rows.filter((row) => row.categoria === option.value);
     if (categoryRows.length === 0) continue;
     body.push(buildCategorySeparatorRow(option.label, categoryRows.length));
@@ -245,11 +264,10 @@ function buildScadenzePdfTableGroups(rows: ScadenzePdfRow[], categoria: Scadenze
   }
 
   if (categoria !== "tutte") {
-    return [{ label: categoryLabel(categoria), ...buildDataRows(rows) }];
+    return [{ label: categoryLabel(categoria, rows), ...buildDataRows(rows) }];
   }
 
-  return SCADENZE_PDF_CATEGORY_OPTIONS.flatMap((option) => {
-    if (option.value === "tutte") return [];
+  return orderedCategoriesFromRows(rows).flatMap((option) => {
     const categoryRows = rows.filter((row) => row.categoria === option.value);
     if (categoryRows.length === 0) return [];
     return [{ label: `${option.label} (${categoryRows.length})`, ...buildDataRows(categoryRows) }];
@@ -266,7 +284,7 @@ export function buildScadenzePdfTableBody(
 function drawScadenzePdfHeader(
   doc: import("jspdf").default,
   logoBase64: string | null,
-  args: { title: string; generatedAtLabel: string; categoria: ScadenzePdfCategoryFilter },
+  args: { title: string; generatedAtLabel: string; categoriaLabel: string },
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -302,7 +320,7 @@ function drawScadenzePdfHeader(
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(`Categoria: ${categoryLabel(args.categoria)}`, pageWidth - PDF_MARGIN_X, 24, { align: "right" });
+  doc.text(`Categoria: ${args.categoriaLabel}`, pageWidth - PDF_MARGIN_X, 24, { align: "right" });
 
   return PDF_HEADER_HEIGHT + 8;
 }
@@ -414,7 +432,8 @@ export async function generateScadenzePdfBlob(input: ScadenzePdfInput): Promise<
   const doc = new JsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const docWithTable = doc as typeof doc & { lastAutoTable?: { finalY?: number } };
   const title = "Scadenze flotta";
-  const fileName = buildScadenzePdfFileName(input.categoria);
+  const categoriaLabelText = categoryLabel(input.categoria, input.rows);
+  const fileName = buildScadenzePdfFileName(input.categoria, input.rows);
 
   const firstTableY = drawScadenzePdfHeader(doc, logoBase64, {
     title,
@@ -430,7 +449,7 @@ export async function generateScadenzePdfBlob(input: ScadenzePdfInput): Promise<
     currentY = drawScadenzePdfHeader(doc, logoBase64, {
       title,
       generatedAtLabel: input.generatedAtLabel,
-      categoria: input.categoria,
+      categoriaLabel: categoriaLabelText,
     });
   };
 
@@ -480,7 +499,7 @@ export async function generateScadenzePdfBlob(input: ScadenzePdfInput): Promise<
           drawScadenzePdfHeader(doc, logoBase64, {
             title,
             generatedAtLabel: input.generatedAtLabel,
-            categoria: input.categoria,
+            categoriaLabel: categoriaLabelText,
           });
         }
       },

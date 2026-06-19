@@ -31,15 +31,31 @@ export const SOGLIA_ORE_RESIDUO = 50;
 
 export type ScadenzaBase = "tempo" | "km" | "ore";
 
-// Settore della scadenza (per i riepiloghi: card home, filtri pagina).
-export type ScadenzaCategoria = "cronotachigrafo" | "tagliandi" | "estintore" | "altro";
-export const SCADENZA_CATEGORIE: ScadenzaCategoria[] = ["cronotachigrafo", "tagliandi", "estintore", "altro"];
+// Settore di visualizzazione di una scadenza. I tipi predefiniti hanno un settore
+// fisso; per "altro" (o tipi sconosciuti) il settore è dato dal NOME (label), così
+// ogni nome personalizzato diventa una categoria a sé (card home, filtri pagina, PDF).
+export type ScadenzaSettore = { key: string; label: string };
 
-export function categoriaScadenza(tipo: string): ScadenzaCategoria {
-  if (tipo === "cronotachigrafo") return "cronotachigrafo";
-  if (tipo === "estintore") return "estintore";
-  if (tipo === "tagliando_mezzo" || tipo === "tagliando_compressore") return "tagliandi";
-  return "altro";
+export const SETTORE_CRONOTACHIGRAFO = "cronotachigrafo";
+export const SETTORE_TAGLIANDI = "tagliandi";
+export const SETTORE_ESTINTORE = "estintore";
+
+export function settoreScadenza(tipo: string, label: string): ScadenzaSettore {
+  if (tipo === "cronotachigrafo") return { key: SETTORE_CRONOTACHIGRAFO, label: "Cronotachigrafo" };
+  if (tipo === "estintore") return { key: SETTORE_ESTINTORE, label: "Estintore" };
+  if (tipo === "tagliando_mezzo" || tipo === "tagliando_compressore") {
+    return { key: SETTORE_TAGLIANDI, label: "Tagliandi" };
+  }
+  const nome = (label ?? "").trim() || "Altro";
+  return { key: `custom:${nome.toLocaleLowerCase("it")}`, label: nome };
+}
+
+// Ordine dei settori di manutenzione: prima i 3 predefiniti, poi i personalizzati.
+export function ordineSettore(key: string): number {
+  if (key === SETTORE_CRONOTACHIGRAFO) return 0;
+  if (key === SETTORE_TAGLIANDI) return 1;
+  if (key === SETTORE_ESTINTORE) return 2;
+  return 3;
 }
 
 export type NextScadenzaStato =
@@ -116,8 +132,8 @@ export type NextManutenzioniScadenzeSnapshot = {
     totali: number; // record attivi
     scadute: number;
     inScadenza: number;
-    // Ripartizione per settore (scadute / in scadenza), per la card home "Scadenze".
-    perCategoria: Record<ScadenzaCategoria, { scadute: number; inScadenza: number }>;
+    // Ripartizione per settore (anche personalizzati), ordinata, per la card home "Scadenze".
+    perSettore: { key: string; label: string; scadute: number; inScadenza: number }[];
   };
 };
 
@@ -431,14 +447,23 @@ export async function readNextManutenzioniScadenzeSnapshot(
   });
 
   const attivi = items.filter((item) => item.attiva);
-  const perCategoria = {} as Record<ScadenzaCategoria, { scadute: number; inScadenza: number }>;
-  for (const categoria of SCADENZA_CATEGORIE) {
-    const ofCat = attivi.filter((item) => categoriaScadenza(item.tipo) === categoria);
-    perCategoria[categoria] = {
-      scadute: ofCat.filter((item) => item.stato === "scaduta").length,
-      inScadenza: ofCat.filter((item) => item.stato === "in_scadenza").length,
+  const settoriMap = new Map<string, { key: string; label: string; scadute: number; inScadenza: number }>();
+  for (const item of attivi) {
+    const settore = settoreScadenza(item.tipo, item.label);
+    const entry = settoriMap.get(settore.key) ?? {
+      key: settore.key,
+      label: settore.label,
+      scadute: 0,
+      inScadenza: 0,
     };
+    if (item.stato === "scaduta") entry.scadute += 1;
+    else if (item.stato === "in_scadenza") entry.inScadenza += 1;
+    settoriMap.set(settore.key, entry);
   }
+  const perSettore = [...settoriMap.values()].sort(
+    (left, right) =>
+      ordineSettore(left.key) - ordineSettore(right.key) || left.label.localeCompare(right.label, "it"),
+  );
   return {
     sourceKey: MANUTENZIONI_SCADENZE_KEY,
     items,
@@ -446,7 +471,7 @@ export async function readNextManutenzioniScadenzeSnapshot(
       totali: attivi.length,
       scadute: attivi.filter((item) => item.stato === "scaduta").length,
       inScadenza: attivi.filter((item) => item.stato === "in_scadenza").length,
-      perCategoria,
+      perSettore,
     },
   };
 }

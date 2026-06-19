@@ -340,6 +340,6 @@ describe("readNextManutenzioniScadenzeSnapshot", () => {
     const snapshot = await readNextManutenzioniScadenzeSnapshot(NOW);
     expect(snapshot.items).toHaveLength(0);
     expect(snapshot.counters).toMatchObject({ totali: 0, scadute: 0, inScadenza: 0 });
-    expect(snapshot.counters.perCategoria.cronotachigrafo).toEqual({ scadute: 0, inScadenza: 0 });
+    expect(snapshot.counters.perSettore).toEqual([]);
   });
 });
