@@ -408,6 +408,61 @@ export async function upsertListinoFromPreventivoManuale(
   await setDoc(listinoRef, sanitizeUndefinedToNull({ voci: next }), { merge: true });
 }
 
+export type UpdateListinoVoceInput = {
+  id: string;
+  articoloCanonico: string;
+  codiceArticolo: string | null;
+  unita: string;
+  valuta: Valuta;
+  prezzoAttuale: number;
+  note: string | null;
+};
+
+// Modifica diretta di una voce di listino esistente (dalla tab "Listino prezzi").
+// Aggiorna solo i campi editabili; se cambia il prezzo ricalcola trend e prezzo precedente.
+export async function updateNextListinoVoce(input: UpdateListinoVoceInput): Promise<void> {
+  const listinoRef = doc(collection(db, STORAGE_COLLECTION), LISTINO_DOC_ID);
+  const listinoSnap = await getDoc(listinoRef);
+  const current: ListinoVoce[] = listinoSnap.exists()
+    ? Array.isArray(listinoSnap.data()?.voci)
+      ? ((listinoSnap.data()?.voci as ListinoVoce[]) || [])
+      : []
+    : [];
+
+  const idx = current.findIndex((voce) => voce.id === input.id);
+  if (idx < 0) {
+    throw new Error("Voce di listino non trovata.");
+  }
+
+  const prev = current[idx];
+  const now = Date.now();
+  const prezzoChanged =
+    Number.isFinite(input.prezzoAttuale) && input.prezzoAttuale !== prev.prezzoAttuale;
+  const trendData = prezzoChanged ? computeTrend(input.prezzoAttuale, prev.prezzoAttuale) : null;
+
+  const next = [...current];
+  next[idx] = {
+    ...prev,
+    articoloCanonico: normalizeArticoloCanonico(input.articoloCanonico),
+    codiceArticolo: (input.codiceArticolo || "").trim() || undefined,
+    unita: normalizeUnita(input.unita),
+    valuta: input.valuta,
+    note: (input.note || "").trim() || undefined,
+    prezzoAttuale: Number.isFinite(input.prezzoAttuale) ? input.prezzoAttuale : prev.prezzoAttuale,
+    ...(prezzoChanged && trendData
+      ? {
+          prezzoPrecedente: prev.prezzoAttuale,
+          trend: trendData.trend,
+          deltaAbs: trendData.deltaAbs,
+          deltaPct: trendData.deltaPct,
+        }
+      : {}),
+    updatedAt: now,
+  };
+
+  await setDoc(listinoRef, sanitizeUndefinedToNull({ voci: next }), { merge: true });
+}
+
 export async function saveAndUpsert(params: SaveAndUpsertParams): Promise<void> {
   const preventivo = await saveNextPreventivoManuale({
     testata: params.testata,

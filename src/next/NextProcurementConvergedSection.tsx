@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
+import { updateNextListinoVoce, type Valuta } from "./nextPreventivoManualeWriter";
 import NextPreventivoIaModal from "./NextPreventivoIaModal";
 import NextPreventivoManualeModal from "./NextPreventivoManualeModal";
 import type {
@@ -313,6 +314,63 @@ export default function NextProcurementConvergedSection({
   const [listinoMenuId, setListinoMenuId] = useState<string | null>(null);
   const [listinoMenuPosition, setListinoMenuPosition] = useState<MenuPosition | null>(null);
   const [editingListinoItem, setEditingListinoItem] = useState<NextProcurementListinoItem | null>(null);
+  const [listinoForm, setListinoForm] = useState({
+    descrizione: "",
+    codiceArticolo: "",
+    unita: "",
+    valuta: "CHF" as Valuta,
+    prezzo: "",
+    note: "",
+  });
+  const [salvandoListino, setSalvandoListino] = useState(false);
+
+  useEffect(() => {
+    if (!editingListinoItem) return;
+    setListinoForm({
+      descrizione: editingListinoItem.articoloCanonico || "",
+      codiceArticolo: editingListinoItem.codiceArticolo || "",
+      unita: editingListinoItem.unita || "",
+      valuta: editingListinoItem.valuta === "EUR" ? "EUR" : "CHF",
+      prezzo: editingListinoItem.prezzoAttuale !== null ? String(editingListinoItem.prezzoAttuale) : "",
+      note: editingListinoItem.note || "",
+    });
+  }, [editingListinoItem]);
+
+  const salvaListinoVoce = async () => {
+    if (!editingListinoItem) return;
+    const descrizione = listinoForm.descrizione.trim();
+    if (!descrizione) {
+      window.alert("Inserisci la descrizione dell'articolo.");
+      return;
+    }
+    const prezzoNum = Number(String(listinoForm.prezzo).replace(",", ".").trim());
+    if (!Number.isFinite(prezzoNum)) {
+      window.alert("Prezzo non valido.");
+      return;
+    }
+    setSalvandoListino(true);
+    try {
+      await updateNextListinoVoce({
+        id: editingListinoItem.id,
+        articoloCanonico: descrizione,
+        codiceArticolo: listinoForm.codiceArticolo.trim() || null,
+        unita: listinoForm.unita,
+        valuta: listinoForm.valuta === "EUR" ? "EUR" : "CHF",
+        prezzoAttuale: prezzoNum,
+        note: listinoForm.note.trim() || null,
+      });
+      setEditingListinoItem(null);
+      if (onPreventivoSaved) {
+        await onPreventivoSaved();
+      }
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "Errore durante il salvataggio della voce di listino.",
+      );
+    } finally {
+      setSalvandoListino(false);
+    }
+  };
 
   const preventiviSupplierOptions = useMemo(() => {
     if (!snapshot) return [];
@@ -447,7 +505,7 @@ export default function NextProcurementConvergedSection({
     <section className="acq-content"><div className="acq-tab-panel"><div className="acq-listino-shell">
       <div className="acq-listino-filters"><label className="acq-prev-field"><span>Fornitore</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">Tutti</option>{listinoSupplierOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label className="acq-prev-field"><span>Valuta</span><select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}><option value="">Tutte</option><option value="CHF">CHF</option><option value="EUR">EUR</option></select></label><label className="acq-prev-field"><span>Cerca</span><input type="text" value={searchQuery} onChange={(event) => onSearchQueryChange(event.target.value)} placeholder="Articolo o codice" /></label></div>
       <div className="acq-prev-table-wrap"><table className="acq-prev-table"><thead><tr><th>Fornitore</th><th>Articolo</th><th>Unita</th><th>Valuta</th><th>Prezzo</th><th>Trend</th><th>Preventivo</th><th>Data</th><th>Azioni</th></tr></thead><tbody>{filteredListino.length === 0 ? <tr><td colSpan={9}>{snapshot.listino.length === 0 ? "Listino vuoto." : "Nessuna voce con questi filtri."}</td></tr> : filteredListino.map((item) => { const hasDocument = hasAnyDocument(item); return <tr key={item.id}><td>{renderSafeText(item.supplierName)}</td><td>{renderSafeText(item.articoloCanonico)}</td><td>{renderSafeText(item.unita)}</td><td>{renderSafeText(item.valuta)}</td><td>{item.prezzoAttuale !== null ? item.prezzoAttuale.toFixed(2) : "-"}</td><td><span className={`acq-pill ${formatTrendClassName(item.trend)}`}>{formatTrendLabel(item.trend)}</span></td><td>{item.fonteNumeroPreventivo ? `N. ${renderSafeText(item.fonteNumeroPreventivo)}` : "-"}</td><td>{formatProcurementDateLabel(item.fonteDataPreventivo || item.updatedAtLabel)}</td><td><div className="acq-prev-list-actions acq-prev-list-actions--compact"><button type="button" className="acq-btn acq-btn--primary" onClick={() => openFirstDocument(item)} disabled={!hasDocument} title={hasDocument ? "Apri documento" : "Nessun documento collegato"}>APRI DOCUMENTO</button><div className="acq-kebab" data-menu-root="listino"><button type="button" className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon" aria-label="Altre azioni" onClick={(event) => { if (listinoMenuId === item.id) { setListinoMenuId(null); setListinoMenuPosition(null); return; } const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect(); setListinoMenuId(item.id); setListinoMenuPosition(buildMenuPosition(rect, 210, 180)); }}>...</button>{listinoMenuId === item.id && listinoMenuPosition ? <div className={`acq-kebab-menu acq-kebab-menu--fixed${listinoMenuPosition.openUp ? " is-up" : ""}`} style={{ top: `${listinoMenuPosition.top}px`, left: `${listinoMenuPosition.left}px` }}><button type="button" className="acq-kebab-item" onClick={() => { openFirstDocument(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>Apri documento</button><button type="button" className="acq-kebab-item" onClick={() => { setEditingListinoItem(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>{LABELS_IT.menu.edit}</button><button type="button" className="acq-kebab-item acq-kebab-item--danger" onClick={() => { window.alert("Clone read-only: eliminazione voce listino non disponibile."); setListinoMenuId(null); setListinoMenuPosition(null); }}>{LABELS_IT.menu.delete}</button></div> : null}</div></div></td></tr>; })}</tbody></table></div>
-      {editingListinoItem ? <div className="acq-modal-backdrop" role="dialog" aria-modal="true" aria-label="Modifica voce listino" onClick={(event) => { if (event.target === event.currentTarget) setEditingListinoItem(null); }}><div className="acq-modal-card acq-listino-edit-modal"><div className="acq-link-foto-head"><div><h4>Modifica voce listino</h4><p className="acq-prev-draft-meta">{editingListinoItem.supplierName}</p></div><button type="button" className="acq-btn acq-btn--small" onClick={() => setEditingListinoItem(null)} aria-label="Chiudi">X</button></div><div className="acq-modal-grid"><label className="acq-prev-field"><span>Descrizione</span><input type="text" defaultValue={editingListinoItem.articoloCanonico} /></label><label className="acq-prev-field"><span>Codice articolo (opzionale)</span><input type="text" defaultValue={editingListinoItem.codiceArticolo || ""} /></label><label className="acq-prev-field"><span>Unita</span><input type="text" defaultValue={editingListinoItem.unita || ""} /></label><label className="acq-prev-field"><span>Valuta</span><select defaultValue={editingListinoItem.valuta || "CHF"}><option value="CHF">CHF</option><option value="EUR">EUR</option></select></label><label className="acq-prev-field"><span>Prezzo</span><input type="text" defaultValue={editingListinoItem.prezzoAttuale !== null ? editingListinoItem.prezzoAttuale.toFixed(2) : ""} /></label><label className="acq-prev-field"><span>Data</span><input type="text" defaultValue={formatProcurementDateLabel(editingListinoItem.fonteDataPreventivo || editingListinoItem.updatedAtLabel || formatTodayLabel())} /></label></div><label className="acq-prev-field"><span>Note</span><textarea defaultValue={editingListinoItem.note || ""} /></label><div className="acq-listino-edit-doc">{hasAnyDocument(editingListinoItem) ? <button type="button" className="acq-btn" onClick={() => openFirstDocument(editingListinoItem)}>APRI DOCUMENTO</button> : <span className="acq-prev-draft-meta">Nessun documento collegato</span>}</div><div className="acq-prev-actions"><button type="button" className="acq-btn" onClick={() => setEditingListinoItem(null)}>Annulla</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => window.alert("Clone read-only: modifica listino non disponibile.")}>Salva</button></div></div></div> : null}
+      {editingListinoItem ? <div className="acq-modal-backdrop" role="dialog" aria-modal="true" aria-label="Modifica voce listino" onClick={(event) => { if (event.target === event.currentTarget) setEditingListinoItem(null); }}><div className="acq-modal-card acq-listino-edit-modal"><div className="acq-link-foto-head"><div><h4>Modifica voce listino</h4><p className="acq-prev-draft-meta">{editingListinoItem.supplierName}</p></div><button type="button" className="acq-btn acq-btn--small" onClick={() => setEditingListinoItem(null)} aria-label="Chiudi">X</button></div><div className="acq-modal-grid"><label className="acq-prev-field"><span>Descrizione</span><input type="text" value={listinoForm.descrizione} onChange={(event) => setListinoForm((prev) => ({ ...prev, descrizione: event.target.value }))} /></label><label className="acq-prev-field"><span>Codice articolo (opzionale)</span><input type="text" value={listinoForm.codiceArticolo} onChange={(event) => setListinoForm((prev) => ({ ...prev, codiceArticolo: event.target.value }))} /></label><label className="acq-prev-field"><span>Unita</span><input type="text" value={listinoForm.unita} onChange={(event) => setListinoForm((prev) => ({ ...prev, unita: event.target.value }))} /></label><label className="acq-prev-field"><span>Valuta</span><select value={listinoForm.valuta} onChange={(event) => setListinoForm((prev) => ({ ...prev, valuta: event.target.value === "EUR" ? "EUR" : "CHF" }))}><option value="CHF">CHF</option><option value="EUR">EUR</option></select></label><label className="acq-prev-field"><span>Prezzo</span><input type="text" inputMode="decimal" value={listinoForm.prezzo} onChange={(event) => setListinoForm((prev) => ({ ...prev, prezzo: event.target.value }))} /></label><label className="acq-prev-field"><span>Data</span><input type="text" readOnly value={formatProcurementDateLabel(editingListinoItem.fonteDataPreventivo || editingListinoItem.updatedAtLabel || formatTodayLabel())} /></label></div><label className="acq-prev-field"><span>Note</span><textarea value={listinoForm.note} onChange={(event) => setListinoForm((prev) => ({ ...prev, note: event.target.value }))} /></label><div className="acq-listino-edit-doc">{hasAnyDocument(editingListinoItem) ? <button type="button" className="acq-btn" onClick={() => openFirstDocument(editingListinoItem)}>APRI DOCUMENTO</button> : <span className="acq-prev-draft-meta">Nessun documento collegato</span>}</div><div className="acq-prev-actions"><button type="button" className="acq-btn" onClick={() => setEditingListinoItem(null)} disabled={salvandoListino}>Annulla</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => void salvaListinoVoce()} disabled={salvandoListino}>{salvandoListino ? "Salvataggio..." : "Salva"}</button></div></div></div> : null}
     </div></div></section>
   );
 }
