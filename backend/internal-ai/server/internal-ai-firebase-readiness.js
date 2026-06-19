@@ -79,7 +79,7 @@ function buildFirestoreCandidateReads() {
       `Solo lettura del documento esatto ${entry.collection}/${entry.docId}, nessuna scansione libera della collection ${entry.collection}.`,
       `Campi futuri ammessi: ${entry.allowedFields.join(", ")}.`,
       `Limite runtime futuro: massimo ${entry.requestLimits.maxDocumentReadsPerRequest} documento Firestore e massimo ${entry.requestLimits.maxReturnedVehicleRecords} record mezzo restituito per richiesta.`,
-      `Nessun fallback su domini fuori boundary: ${entry.forbiddenDomains.join(", ")}.`,
+      `Nessun fallback su domini fuori boundary: ${(entry.forbiddenDomains ?? []).join(", ")}.`,
       "Traceability obbligatoria su dataset, docId, targa richiesta ed esito del read-only.",
     ],
   }));
@@ -98,7 +98,7 @@ function buildStorageCandidateReads() {
       `Path ammesso solo se gia presente nel campo ${entry.sourceField} del documento ${entry.sourceCollection}/${entry.sourceDocId}.`,
       `Operazioni future ammesse: ${entry.allowedOperations.join(", ")}.`,
       `Limite runtime futuro: massimo ${entry.requestLimits.maxObjectReadsPerRequest} oggetto Storage per richiesta.`,
-      `Vietati listAll, scansioni prefix e path arbitrari. Prefix fuori boundary: ${entry.forbiddenPrefixes.join(", ")}.`,
+      `Vietati listAll, scansioni prefix e path arbitrari. Prefix fuori boundary: ${(entry.forbiddenPrefixes ?? []).join(", ")}.`,
       "Traceability obbligatoria su bucket, path richiesto, targa e esito del read-only.",
     ],
   }));

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Archivista — Pannello</title>
+<HTA:APPLICATION
+  ApplicationName="ArchivistaPannello"
+  ID="ArchivistaPannello"
+  Border="thin"
+  Caption="yes"
+  ShowInTaskbar="yes"
+  SingleInstance="yes"
+  Scroll="no"
+  MaximizeButton="no"
+  MinimizeButton="yes"
+  SysMenu="yes"
+  ContextMenu="no" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    margin: 0;
+    padding: 18px 20px;
+    user-select: none;
+  }
+  h1 { font-size: 16px; margin: 0 0 14px; font-weight: 600; letter-spacing: .3px; }
+  .statusrow { margin-bottom: 6px; }
+  .dot { display: inline-block; vertical-align: middle; margin-right: 10px; width: 16px; height: 16px; border-radius: 50%; background: #475569; }
+  .dot.on  { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+  .dot.off { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+  .dot.wait{ background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  #statusText { display: inline-block; vertical-align: middle; font-size: 17px; font-weight: 600; }
+  #autostartText { font-size: 12px; color: #94a3b8; margin: 0 0 16px 26px; }
+  .grid { font-size: 0; }
+  .grid button {
+    display: inline-block; vertical-align: top; width: 48%; margin: 0 1% 10px;
+    border: 0; border-radius: 8px; padding: 12px 8px;
+    font-size: 13px; font-weight: 600; color: #fff; cursor: pointer;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+  }
+  .grid button:hover { filter: brightness(1.12); }
+  .b-stop    { background: #d97706; }
+  .b-restart { background: #2563eb; }
+  .b-off     { background: #b91c1c; }
+  .b-on      { background: #15803d; }
+  #busy { font-size: 12px; color: #fbbf24; height: 16px; margin-top: 12px; }
+  .footer { margin-top: 10px; font-size: 12px; }
+  .footer a { color: #60a5fa; cursor: pointer; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+</style>
+
+<script language="VBScript">
+Dim gScriptDir
+
+Sub Window_OnLoad
+  window.resizeTo 380, 350
+  Dim fso, p
+  Set fso = CreateObject("Scripting.FileSystemObject")
+  p = location.href
+  p = Replace(p, "file:///", "")
+  p = Replace(p, "/", "\")
+  p = Unescape(p)
+  gScriptDir = fso.GetParentFolderName(p)
+  If gScriptDir = "" Then gScriptDir = "c:\progetti\gestioneweb\scripts\archivista"
+  If Not fso.FolderExists(gScriptDir) Then gScriptDir = "c:\progetti\gestioneweb\scripts\archivista"
+  RefreshAll
+  window.setInterval "RefreshBackend", 4000
+End Sub
+
+Function BackendUp()
+  On Error Resume Next
+  Dim http, ok
+  ok = False
+  Set http = CreateObject("MSXML2.XMLHTTP")
+  http.open "GET", "http://127.0.0.1:4310/internal-ai-backend/health", False
+  http.send
+  If Err.Number = 0 Then
+    If http.status > 0 Then ok = True
+  End If
+  On Error GoTo 0
+  BackendUp = ok
+End Function
+
+Function AutostartOn()
+  Dim sh, rc
+  Set sh = CreateObject("WScript.Shell")
+  rc = sh.Run("powershell -NoProfile -Command ""$t=Get-ScheduledTask -TaskName 'Archivista IA' -ErrorAction SilentlyContinue; if($t -and $t.State -ne 'Disabled'){exit 0}else{exit 1}""", 0, True)
+  AutostartOn = (rc = 0)
+End Function
+
+Sub RefreshBackend
+  If BackendUp() Then
+    dot.className = "dot on"
+    statusText.innerText = "ATTIVO"
+  Else
+    dot.className = "dot off"
+    statusText.innerText = "SPENTO"
+  End If
+End Sub
+
+Sub RefreshAll
+  RefreshBackend
+  If AutostartOn() Then
+    autostartText.innerText = "Avvio automatico al login: ATTIVO · porta 4310"
+  Else
+    autostartText.innerText = "Avvio automatico al login: DISATTIVATO"
+  End If
+End Sub
+
+Sub RunScript(fileName, busyMsg)
+  Dim sh, cmd
+  dot.className = "dot wait"
+  busy.innerText = busyMsg
+  Set sh = CreateObject("WScript.Shell")
+  cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & gScriptDir & "\" & fileName & """"
+  sh.Run cmd, 0, True
+  busy.innerText = ""
+  RefreshAll
+End Sub
+
+Sub DoFerma
+  RunScript "archivista-stop.ps1", "Arresto in corso..."
+End Sub
+Sub DoRiavvia
+  RunScript "archivista-restart.ps1", "Riavvio in corso..."
+End Sub
+Sub DoSpegni
+  RunScript "archivista-disable.ps1", "Disattivazione avvio automatico..."
+End Sub
+Sub DoRiattiva
+  RunScript "archivista-enable.ps1", "Riattivazione e avvio..."
+End Sub
+</script>
+</head>
+
+<body>
+  <h1>Archivista — Backend IA</h1>
+
+  <div class="statusrow">
+    <span id="dot" class="dot"></span>
+    <span id="statusText">...</span>
+  </div>
+  <div id="autostartText">&nbsp;</div>
+
+  <div class="grid">
+    <button class="b-stop"    onclick="DoFerma">Ferma</button>
+    <button class="b-restart" onclick="DoRiavvia">Riavvia</button>
+    <button class="b-off"     onclick="DoSpegni">Spegni avvio</button>
+    <button class="b-on"      onclick="DoRiattiva">Riattiva avvio</button>
+  </div>
+
+  <div id="busy">&nbsp;</div>
+  <div class="footer"><a onclick="RefreshAll">Aggiorna stato</a></div>
+</body>
+</html>

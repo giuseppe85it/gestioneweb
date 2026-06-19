@@ -1,7 +1,48 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { NEXT_IA_DOCUMENTI_PATH } from "../nextStructuralPaths";
 import "../internal-ai/internal-ai.css";
+
+const INTERNAL_AI_BACKEND_BASE = "http://127.0.0.1:4310/internal-ai-backend";
+const ARCHIVISTA_SCRIPTS_DIR = "c:\\progetti\\gestioneweb\\scripts\\archivista";
+const ARCHIVISTA_PS_PREFIX = "powershell -NoProfile -ExecutionPolicy Bypass -File";
+
+type BackendStatus = "checking" | "online" | "offline";
+
+type ArchivistaCommand = { id: string; label: string; cmd: string };
+
+const ARCHIVISTA_COMMANDS: ArchivistaCommand[] = [
+  {
+    id: "restart",
+    label: "Riavvia backend",
+    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-restart.ps1"`,
+  },
+  {
+    id: "stop",
+    label: "Ferma backend",
+    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-stop.ps1"`,
+  },
+  {
+    id: "disable",
+    label: "Spegni avvio automatico",
+    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-disable.ps1"`,
+  },
+  {
+    id: "enable",
+    label: "Riattiva avvio automatico",
+    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-enable.ps1"`,
+  },
+];
+
+function getBackendStatusMeta(status: BackendStatus): { cls: string; label: string } {
+  if (status === "online") {
+    return { cls: "is-online", label: "Collegato" };
+  }
+  if (status === "offline") {
+    return { cls: "is-offline", label: "Non collegato" };
+  }
+  return { cls: "is-checking", label: "Verifica…" };
+}
 
 type ArchivistaTipo = "fattura_ddt" | "preventivo" | "documento_mezzo";
 type ArchivistaContesto = "magazzino" | "manutenzione" | "documento_mezzo";
@@ -53,6 +94,59 @@ export default function HomeInternalAiLauncher() {
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState("");
   const ingressiAttivi = useMemo(() => ARCHIVISTA_V1_ACTIONS.length, []);
+
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("checking");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [commandFeedback, setCommandFeedback] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const checkBackend = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+    try {
+      // Qualsiasi risposta HTTP significa che il backend e' vivo e raggiungibile.
+      await fetch(`${INTERNAL_AI_BACKEND_BASE}/health`, { signal: controller.signal });
+      setBackendStatus("online");
+    } catch {
+      setBackendStatus("offline");
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkBackend();
+    const intervalId = window.setInterval(() => {
+      void checkBackend();
+    }, 10000);
+    return () => window.clearInterval(intervalId);
+  }, [checkBackend]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const handleDocClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleDocClick);
+    return () => document.removeEventListener("mousedown", handleDocClick);
+  }, [menuOpen]);
+
+  const copyCommand = useCallback(async (command: ArchivistaCommand) => {
+    setMenuOpen(false);
+    try {
+      await navigator.clipboard.writeText(command.cmd);
+      setCommandFeedback(`Comando "${command.label}" copiato: incollalo in PowerShell e premi Invio.`);
+    } catch {
+      setCommandFeedback(`Copia non riuscita. Comando da incollare: ${command.cmd}`);
+    }
+    window.setTimeout(() => setCommandFeedback(null), 7000);
+  }, []);
+
+  const statusMeta = getBackendStatusMeta(backendStatus);
 
   const handlePromptSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -128,17 +222,73 @@ export default function HomeInternalAiLauncher() {
         <section className="home-ia-launcher__panel home-ia-launcher__panel--archivista">
           <div className="home-ia-launcher__section-head">
             <div className="home-ia-launcher__title-wrap">
-              <span className="home-ia-launcher__status-dot" aria-hidden="true" />
+              <span
+                className={`home-ia-launcher__status-dot ${statusMeta.cls}`}
+                title={`Archivista ${statusMeta.label}`}
+              />
               <div>
                 <p className="home-ia-launcher__eyebrow">IA 2</p>
                 <strong className="home-ia-launcher__title">Archivista documenti</strong>
               </div>
             </div>
-            <span className="home-ia-launcher__status-pill is-archivista">Flusso guidato</span>
+            <div className="home-ia-launcher__head-right">
+              <span className={`home-ia-launcher__conn-pill ${statusMeta.cls}`}>
+                {statusMeta.label}
+              </span>
+              <div className="home-ia-launcher__menu" ref={menuRef}>
+                <button
+                  type="button"
+                  className="home-ia-launcher__menu-btn"
+                  onClick={() => setMenuOpen((open) => !open)}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  aria-label="Comandi Archivista"
+                >
+                  ⋮
+                </button>
+                {menuOpen && (
+                  <div className="home-ia-launcher__menu-pop" role="menu">
+                    <p className="home-ia-launcher__menu-hint">Comandi da incollare in PowerShell</p>
+                    {ARCHIVISTA_COMMANDS.map((command) => (
+                      <button
+                        key={command.id}
+                        type="button"
+                        role="menuitem"
+                        className="home-ia-launcher__menu-item"
+                        onClick={() => {
+                          void copyCommand(command);
+                        }}
+                      >
+                        {command.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="home-ia-launcher__menu-item is-refresh"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void checkBackend();
+                      }}
+                    >
+                      Aggiorna stato
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
+          {commandFeedback && (
+            <p className="home-ia-launcher__cmd-feedback" role="status">
+              {commandFeedback}
+            </p>
+          )}
+
           <p className="home-ia-launcher__intro">
-            Prima scegli il tipo e il contesto. Poi carichi il file. Questa area non e una chat.
+            {backendStatus === "offline"
+              ? "Archivista non collegato: parte da solo al prossimo accesso a Windows, oppure usa il menu ⋮ per riavviarlo. Prima scegli il tipo e il contesto, poi carichi il file."
+              : "Prima scegli il tipo e il contesto. Poi carichi il file. Questa area non e una chat."}
           </p>
 
           <div className="home-ia-launcher__quick-grid">
