@@ -22,6 +22,18 @@ Redesign UI del modulo Manutenzioni NEXT (`src/next/NextManutenzioniPage.tsx`).
 - `gommeSelezione` non sostituisce `assiCoinvolti`, `gommePerAsse`, `gommeInterventoTipo` o `gommeStraordinario`: li affianca per conservare la selezione puntuale e alimentare il dettaglio tecnico.
 - Il dettaglio gomme mantiene la precedenza dell'evento ufficiale collegato; in assenza di evento usa `gommeSelezione`, poi il fallback strutturale per asse.
 
+### Addendum 2026-06-19 - UI modale gomme guidata
+
+- Il solo modale NEXT `src/next/components/NextModalGomme.tsx` usa una UI visuale compatta: foto laterale tecnica con slot cliccabili, vista dall'alto e riepilogo intervento. Il percorso guidato laterale e' stato rimosso per dare priorita alla lettura su schermi portatili.
+- Su desktop e portatili la foto tecnica e la vista dall'alto sono affiancate nello stesso pannello, senza sfondo a griglia e senza tagli verticali; lo stack verticale resta solo come fallback responsive.
+- La madre e l'app autisti non sono modificate: `src/pages/ModalGomme.tsx` e `src/autisti/*` restano fuori perimetro.
+- La modalita `ordinario` seleziona sempre l'asse completo su entrambi i lati `SX + DX`; la modalita `straordinario` resta puntuale sulle singole gomme.
+- In modalita `ordinario` possono essere selezionati piu assi nello stesso intervento: ogni asse aggiunto alimenta `assiCoinvolti` e `gommePerAsse`; quando la selezione puntuale non e rappresentabile come singolo asse V2, il dettaglio tecnico usa il fallback strutturale multi-asse.
+- La vista dall'alto e la foto laterale derivano dalla configurazione e dalle coordinate gia esistenti (`wheelGeom`) per adattarsi alle categorie disponibili: motrici, trattore, biga, pianale, vasca, centina e semirimorchio.
+- La conferma del modale aggiorna anche il campo descrizione del form con un blocco `CAMBIO GOMME`, sostituendo un blocco generato precedente senza duplicarlo.
+- La shape additiva `gommeSelezione` conserva anche `assiIds` e `assiLabels` quando la selezione ordinaria riguarda piu assi. Il dettaglio tecnico usa questi campi prima del fallback e, per i record gia salvati senza campi multi-asse, ricostruisce gli assi dai `gommeIds`.
+- Nel dettaglio manutenzione gomme ordinaria, le card `Quantita` e `Motivo` derivano da `gommeSelezione.numeroGomme` e dalla modalita ordinaria, evitando il valore `non indicato` quando la selezione modale e' confermata.
+
 Problema attuale: la card sinistra fissa (`mx-header-grid` + `ms-layout` a due colonne `1.56fr / 1fr`)
 occupa troppo spazio orizzontale e rende il contenuto utile troppo stretto.
 

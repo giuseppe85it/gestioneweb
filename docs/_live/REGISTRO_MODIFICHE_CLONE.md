@@ -1,5 +1,41 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-19 1905
+
+DATA: `2026-06-19`
+TITOLO: `Dettaglio gomme multi-asse NEXT`
+FILE TOCCATI: `src/next/domain/nextGommeSelectionReadOnly.ts`, `src/next/domain/nextManutenzioniDomain.ts`, `src/next/NextMappaStoricoPage.tsx`, `src/next/NextManutenzioniPage.tsx`
+COSA: `Il dettaglio gomme NEXT ora legge tutti gli assi della selezione ordinaria multi-asse, anche per record gia salvati ricostruendo dagli id gomme. La scheda mostra quantita gomme e motivo ordinario invece di non indicato.`
+ESITO: `FATTO`
+NOTE: `Verifiche: tsc, test mirati gomme/manutenzioni, lint mirato e build canonica.`
+
+## 2026-06-19 1841
+
+DATA: `2026-06-19`
+TITOLO: `Affinamento modale gomme NEXT`
+FILE TOCCATI: `src/next/components/NextModalGomme.tsx`, `src/next/components/next-modal-gomme.css`, `src/next/NextManutenzioniPage.tsx`
+COSA: `Rimosso il percorso guidato dal modale gomme NEXT; su desktop/portatile foto tecnica e vista dall'alto sono affiancate, senza sfondo a griglia e senza tagli della vista tecnica. La conferma del modale precompila/aggiorna la descrizione intervento con il riepilogo cambio gomme.`
+ESITO: `FATTO`
+NOTE: `I file docs/_live/STATO_ATTUALE_PROGETTO.md e docs/_live/STATO_MIGRAZIONE_NEXT.md non sono presenti e non sono stati creati.`
+
+## 2026-06-19 1456
+
+DATA: `2026-06-19`
+TITOLO: `Fix multi-asse gomme NEXT`
+FILE TOCCATI: `src/next/components/NextModalGomme.tsx`, `src/next/NextManutenzioniPage.tsx`
+COSA: `Nel modale gomme NEXT la modalita ordinaria consente ora piu assi completi SX+DX senza sostituire la selezione precedente. Il salvataggio usa fallback espliciti da contesto e record sorgente per targa, descrizione e data quando si salva da dettaglio/completamento.`
+ESITO: `FATTO`
+NOTE: `Verifiche: tsc, lint mirato, test mirati gomme/manutenzioni e build canonica.`
+
+## 2026-06-19 0850
+
+DATA: `2026-06-19`
+TITOLO: `Restyling modale gomme NEXT`
+FILE TOCCATI: `src/next/components/NextModalGomme.tsx`, `src/next/components/next-modal-gomme.css`
+COSA: `Sostituita solo la UI del modale gomme manutenzioni NEXT con layout guidato, foto laterale tecnica, vista dall'alto e slot gomme. Ordinario per asse seleziona sempre SX+DX; straordinario resta puntuale. App autisti e madre non toccate.`
+ESITO: `FATTO`
+NOTE: `Verifiche: tsc, lint mirato, test mirati gomme/manutenzioni e build canonica.`
+
 ## 2026-06-18 2049
 
 DATA: `2026-06-18`

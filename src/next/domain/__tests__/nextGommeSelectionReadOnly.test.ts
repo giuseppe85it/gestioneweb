@@ -184,6 +184,71 @@ describe("resolveNextGommeMaintenanceSelectionReadOnly", () => {
     expect(result.ruote).toHaveLength(1);
   });
 
+  it("usa tutti gli assi espliciti della selezione gomme manutenzione", () => {
+    const result = resolveNextGommeMaintenanceSelectionReadOnly({
+      activeTarga: "TI123456",
+      maintenance: {
+        targa: "TI123456",
+        assiCoinvolti: ["anteriore"],
+        gommeSelezione: {
+          asseId: null,
+          asseLabel: "Piu assi",
+          assiIds: ["anteriore", "posteriore"],
+          assiLabels: ["Anteriore", "Posteriore"],
+          gommeIds: [
+            "trattore-destra-anteriore-0",
+            "trattore-sinistra-anteriore-0",
+            "trattore-destra-posteriore-1",
+            "trattore-destra-posteriore-2",
+            "trattore-sinistra-posteriore-1",
+            "trattore-sinistra-posteriore-2",
+          ],
+          interventoTipo: "ordinario",
+        },
+      },
+      officialEvents: [],
+    });
+
+    expect(result.fonte).toBe("manutenzione");
+    expect(result.precisione).toBe("asse_completo");
+    expect(result.asseIds).toEqual(["anteriore", "posteriore"]);
+    expect(
+      isNextGommeTechnicalWheelSelected({
+        resolution: result,
+        lato: "sinistra",
+        wheelId: "qualunque",
+        axisId: "posteriore",
+      }),
+    ).toBe(true);
+  });
+
+  it("ricostruisce tutti gli assi ordinari dai gommeIds per i record gia salvati", () => {
+    const result = resolveNextGommeMaintenanceSelectionReadOnly({
+      activeTarga: "TI123456",
+      maintenance: {
+        targa: "TI123456",
+        assiCoinvolti: ["anteriore"],
+        gommeSelezione: {
+          asseId: null,
+          asseLabel: "Piu assi",
+          gommeIds: [
+            "trattore-destra-anteriore-0",
+            "trattore-sinistra-anteriore-0",
+            "trattore-destra-posteriore-1",
+            "trattore-destra-posteriore-2",
+            "trattore-sinistra-posteriore-1",
+            "trattore-sinistra-posteriore-2",
+          ],
+          interventoTipo: "ordinario",
+        },
+      },
+      officialEvents: [],
+    });
+
+    expect(result.fonte).toBe("manutenzione");
+    expect(result.asseIds).toEqual(["anteriore", "posteriore"]);
+  });
+
   it("mantiene la precedenza dell'evento ufficiale collegato rispetto alla selezione manutenzione", () => {
     const result = resolveNextGommeMaintenanceSelectionReadOnly({
       activeTarga: "TI123456",

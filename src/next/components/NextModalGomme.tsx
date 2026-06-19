@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import TruckGommeSvg from "../../components/TruckGommeSvg";
 import { wheelGeom, type WheelPoint } from "../../components/wheels";
 import "./next-modal-gomme.css";
 
@@ -24,6 +23,8 @@ export interface NextCambioGommeData {
   modalita: NextModalitaCambioGomme;
   asseId: string | null;
   asseLabel: string | null;
+  assiIds?: string[];
+  assiLabels?: string[];
   numeroGomme: number;
   gommeIds: string[];
   marca: string;
@@ -63,6 +64,8 @@ type TruckWheelGeom = {
   lato: NextGommeSelectionSide;
   posizione: number;
 };
+
+type SideKey = "dx" | "sx";
 
 function buildConfig(categoria?: string | null): ConfigGomme {
   const cat = (categoria || "").toLowerCase();
@@ -150,16 +153,13 @@ function resolveWheelGeomKey(categoria?: string | null): WheelGeomKey | undefine
   if (cat.includes("motrice 3")) return "motrice3assi";
   if (cat.includes("motrice 2")) return "motrice2assi";
   if (cat.includes("biga")) return "biga";
+  if (cat.includes("pianale")) return "pianale";
+  if (cat.includes("vasca")) return "vasca";
+  if (cat.includes("centina")) return "centina";
+  if (cat.includes("porta silo container")) return "semirimorchioSterzante";
+  if (cat.includes("semirimorchio") && cat.includes("sterz")) return "semirimorchioSterzante";
   if (cat.includes("semirimorchio")) return "semirimorchioFissi";
-  if (
-    cat.includes("rimorchio") ||
-    cat.includes("porta silo container") ||
-    cat.includes("pianale") ||
-    cat.includes("centina") ||
-    cat.includes("vasca")
-  ) {
-    return "semirimorchioFissi";
-  }
+  if (cat.includes("rimorchio")) return "semirimorchioFissi";
   return undefined;
 }
 
@@ -206,12 +206,57 @@ function buildSelectionForAxis(axisId: string, wheels: TruckWheelGeom[]): string
   return wheels.filter((wheel) => wheel.axisId === axisId).map((wheel) => wheel.id);
 }
 
+function uniqueAxisIdsFromWheelIds(wheelIds: string[], wheels: TruckWheelGeom[]): string[] {
+  const byId = new Map(wheels.map((wheel) => [wheel.id, wheel] as const));
+  return Array.from(
+    new Set(
+      wheelIds
+        .map((id) => byId.get(id)?.axisId ?? null)
+        .filter((axisId): axisId is string => Boolean(axisId)),
+    ),
+  );
+}
+
 function normalizeInitialIds(initialData: NextCambioGommeData | null | undefined): string[] {
   if (!initialData) return [];
   if (initialData.selezioneGommeV2?.ruote?.length) {
     return initialData.selezioneGommeV2.ruote.map((wheel) => wheel.id);
   }
   return initialData.gommeIds ?? [];
+}
+
+function initialSideFromIds(ids: string[]): SideKey {
+  return ids.some((id) => id.includes("-sinistra-")) ? "sx" : "dx";
+}
+
+function sideLabel(lato: NextGommeSelectionSide): string {
+  return lato === "sinistra" ? "Sinistro" : "Destro";
+}
+
+function sideShortLabel(lato: NextGommeSelectionSide): string {
+  return lato === "sinistra" ? "SX" : "DX";
+}
+
+function sideFromKey(side: SideKey): NextGommeSelectionSide {
+  return side === "sx" ? "sinistra" : "destra";
+}
+
+function wheelOrderLabel(wheel: TruckWheelGeom, allWheels: TruckWheelGeom[]): string {
+  const sameAxisSide = allWheels
+    .filter((entry) => entry.axisId === wheel.axisId && entry.lato === wheel.lato)
+    .sort((a, b) => a.posizione - b.posizione);
+  if (sameAxisSide.length <= 1) return sideShortLabel(wheel.lato);
+  const index = sameAxisSide.findIndex((entry) => entry.id === wheel.id);
+  if (index === 0) return "Est";
+  if (index === 1) return "Int";
+  return String(index + 1);
+}
+
+function describeWheel(wheel: TruckWheelGeom, config: ConfigGomme, allWheels: TruckWheelGeom[]): string {
+  const axisLabel = config.assi.find((asse) => asse.id === wheel.axisId)?.label ?? "Asse";
+  const sameAxisSide = allWheels.filter((entry) => entry.axisId === wheel.axisId && entry.lato === wheel.lato);
+  const order = sameAxisSide.length > 1 ? `${wheelOrderLabel(wheel, allWheels)} ` : "";
+  return `${axisLabel} ${order}${sideShortLabel(wheel.lato)}`.trim();
 }
 
 export default function NextModalGomme({
@@ -226,10 +271,6 @@ export default function NextModalGomme({
 }: NextModalGommeProps) {
   const config = useMemo(() => buildConfig(categoria), [categoria]);
   const geomKey = useMemo(() => resolveWheelGeomKey(categoria), [categoria]);
-  const isRimorchio = useMemo(
-    () => config.tipoLabel.toLowerCase().includes("rimorchio"),
-    [config.tipoLabel],
-  );
 
   const allWheels = useMemo(() => {
     if (!geomKey) return { dx: [] as TruckWheelGeom[], sx: [] as TruckWheelGeom[], all: [] as TruckWheelGeom[] };
@@ -252,40 +293,87 @@ export default function NextModalGomme({
   );
   const [marca, setMarca] = useState(initialData?.marca ?? "");
   const [km, setKm] = useState(initialData?.km || kmIniziale || "");
-  const [lato, setLato] = useState<"dx" | "sx">("dx");
-
-  const wheelsSvg = lato === "dx" ? allWheels.dx : allWheels.sx;
-  const backgroundImage = useMemo(() => {
-    if (!geomKey) return "";
-    const entry = wheelGeom[geomKey];
-    const imageName = lato === "dx" ? entry.imageDX : entry.imageSX;
-    return imageName && !imageName.startsWith("/") ? `/gomme/${imageName}` : imageName || "";
-  }, [geomKey, lato]);
+  const [lato, setLato] = useState<SideKey>(initialSideFromIds(initialSelectedIds));
 
   if (!open) return null;
 
-  const handleSelectAxis = (axisId: string) => {
-    setSelectedAxisId(axisId);
-    if (modalita === "ordinario") {
-      setSelectedWheelIds(buildSelectionForAxis(axisId, allWheels.all));
+  const entry = geomKey ? wheelGeom[geomKey] : null;
+  const wheelsSvg = lato === "dx" ? allWheels.dx : allWheels.sx;
+  const backgroundImage = entry
+    ? `/gomme/${lato === "dx" ? entry.imageDX : entry.imageSX}`
+    : "";
+  const selectedWheelSet = new Set(selectedWheelIds);
+  const numeroGomme = selectedWheelIds.length;
+  const selectedAxisIds = uniqueAxisIdsFromWheelIds(selectedWheelIds, allWheels.all);
+  const effectiveSelectedAxisId =
+    selectedAxisId && selectedAxisIds.includes(selectedAxisId)
+      ? selectedAxisId
+      : selectedAxisIds[0] ?? selectedAxisId ?? null;
+  const axis = effectiveSelectedAxisId ? config.assi.find((item) => item.id === effectiveSelectedAxisId) ?? null : null;
+  const selectedAxes = selectedAxisIds
+    .map((axisId) => config.assi.find((item) => item.id === axisId) ?? null)
+    .filter((item): item is AsseConfig => Boolean(item));
+  const wheelsById = new Map(allWheels.all.map((wheel) => [wheel.id, wheel] as const));
+  const selectedWheels = selectedWheelIds
+    .map((id) => wheelsById.get(id))
+    .filter((wheel): wheel is TruckWheelGeom => Boolean(wheel));
+  const selectedSingleWheel = selectedWheels.length === 1 ? selectedWheels[0] : null;
+  const positionLabel =
+    modalita === "ordinario"
+      ? selectedAxes.length > 1
+        ? `${selectedAxes.map((entry) => entry.label).join(", ")} completi SX + DX`
+        : axis
+          ? `${axis.label} completo SX + DX`
+          : "-"
+      : selectedSingleWheel
+        ? describeWheel(selectedSingleWheel, config, allWheels.all)
+        : selectedWheels.length > 1
+          ? "Gomme singole"
+          : "-";
+  const modeLabel = modalita === "ordinario" ? "Ordinario per asse" : "Straordinario";
+  const sideLabelCurrent = sideLabel(sideFromKey(lato));
+  const hasInitialRecord = Boolean(initialData);
+
+  const setOrdinaryMode = () => {
+    const axisId = selectedAxisIds[0] ?? selectedAxisId ?? config.assi[0]?.id ?? null;
+    setModalita("ordinario");
+    if (axisId) {
+      setSelectedAxisId(axisId);
+      const axisIds = selectedAxisIds.length > 0 ? selectedAxisIds : [axisId];
+      setSelectedWheelIds(axisIds.flatMap((entry) => buildSelectionForAxis(entry, allWheels.all)));
     }
   };
 
+  const setExtraMode = () => {
+    setModalita("straordinario");
+    setSelectedWheelIds([]);
+  };
+
   const handleToggleWheel = (wheelId: string) => {
-    if (modalita === "ordinario") return;
+    const wheel = wheelsById.get(wheelId);
+    if (!wheel) return;
+    setSelectedAxisId(wheel.axisId);
+    setLato(wheel.lato === "sinistra" ? "sx" : "dx");
+    if (modalita === "ordinario") {
+      const axisWheelIds = buildSelectionForAxis(wheel.axisId, allWheels.all);
+      const axisAlreadyComplete = axisWheelIds.every((id) => selectedWheelSet.has(id));
+      setSelectedWheelIds((current) => {
+        if (axisAlreadyComplete) {
+          return current.filter((id) => !axisWheelIds.includes(id));
+        }
+        return Array.from(new Set([...current, ...axisWheelIds]));
+      });
+      return;
+    }
     setSelectedWheelIds((current) =>
       current.includes(wheelId)
-        ? current.filter((entry) => entry !== wheelId)
+        ? current.filter((entryId) => entryId !== wheelId)
         : [...current, wheelId],
     );
   };
 
-  const selectedWheelSet = new Set(selectedWheelIds);
-  const numeroGomme = selectedWheelIds.length;
-
   const buildSelectionV2 = (): NextGommeSelectionV2 | null => {
-    if (!selectedAxisId || selectedWheelIds.length === 0) return null;
-    const wheelsById = new Map(allWheels.all.map((wheel) => [wheel.id, wheel] as const));
+    if (!effectiveSelectedAxisId || selectedWheelIds.length === 0 || selectedAxisIds.length !== 1) return null;
     const ruote = selectedWheelIds
       .map((id) => wheelsById.get(id))
       .filter((wheel): wheel is TruckWheelGeom => Boolean(wheel))
@@ -297,20 +385,21 @@ export default function NextModalGomme({
     if (ruote.length !== selectedWheelIds.length) return null;
     return {
       versione: 2,
-      asseId: selectedAxisId,
+      asseId: effectiveSelectedAxisId,
       ruote,
     };
   };
 
   const handleConfirm = () => {
     if (!numeroGomme) return;
-    const axis = selectedAxisId ? config.assi.find((entry) => entry.id === selectedAxisId) ?? null : null;
     onConfirm({
       targa,
       categoria: categoria ?? undefined,
       modalita,
-      asseId: selectedAxisId,
-      asseLabel: axis?.label ?? null,
+      asseId: selectedAxisIds.length === 1 ? selectedAxisIds[0] : null,
+      asseLabel: selectedAxes.length === 1 ? selectedAxes[0].label : selectedAxes.length > 1 ? "Piu assi" : null,
+      assiIds: selectedAxisIds,
+      assiLabels: selectedAxes.map((entry) => entry.label),
       numeroGomme,
       gommeIds: selectedWheelIds,
       marca: marca.trim(),
@@ -319,171 +408,240 @@ export default function NextModalGomme({
     });
   };
 
-  const titolo =
-    config.tipoLabel && config.tipoLabel !== "Mezzo"
-      ? `Gestione gomme - ${config.tipoLabel}`
-      : "Gestione gomme";
+  const axisGridColumns = `70px repeat(${Math.max(1, config.assi.length)}, minmax(0, 1fr))`;
 
   return (
-    <div className="next-modal-gomme mg-overlay">
+    <div className="next-modal-gomme mg-overlay" role="dialog" aria-modal="true" aria-label="Selezione gomme">
       <div className="mg-modal">
-        <div className="mg-header">
+        <header className="mg-header">
           <div>
-            <div className="mg-subtitle">Targa</div>
-            <div className="mg-targa">{targa}</div>
+            <div className="mg-subtitle">Manutenzione gomme</div>
+            <h2 className="mg-header-title">Selezione gomme manutenzione</h2>
+            <div className="mg-meta-row">
+              <span className="mg-meta mg-meta-real">{targa}</span>
+              <span className="mg-meta">{config.tipoLabel}</span>
+              {categoria ? <span className="mg-meta">{categoria}</span> : null}
+              <span className={`mg-meta ${modalita === "straordinario" ? "mg-meta-extra" : "mg-meta-ordinary"}`}>
+                {modeLabel}
+              </span>
+            </div>
+            <div className="mg-top-mode" role="group" aria-label="Tipo intervento gomme">
+              <button
+                type="button"
+                className={`mg-top-mode-btn${modalita === "ordinario" ? " active ordinary" : ""}`}
+                onClick={setOrdinaryMode}
+              >
+                Ordinario per asse
+              </button>
+              <button
+                type="button"
+                className={`mg-top-mode-btn${modalita === "straordinario" ? " active extra" : ""}`}
+                onClick={setExtraMode}
+              >
+                Straordinario
+              </button>
+              <span className="mg-mode-helper">
+                {modalita === "ordinario"
+                  ? "Ordinario: seleziona l'asse completo SX + DX"
+                  : "Straordinario: scegli una o più gomme puntuali"}
+              </span>
+            </div>
           </div>
-          <div className="mg-header-title">{titolo}</div>
           <button type="button" className="mg-close-btn" onClick={onClose} aria-label="Chiudi selezione gomme">
-            x
+            X
           </button>
-        </div>
+        </header>
 
         <div className="mg-body">
-          <div className="mg-row mg-mode-row">
-            <label className="mg-radio">
-              <input
-                type="radio"
-                value="ordinario"
-                checked={modalita === "ordinario"}
-                onChange={() => {
-                  const axisId = selectedAxisId ?? config.assi[0]?.id ?? null;
-                  setModalita("ordinario");
-                  if (axisId) {
-                    setSelectedAxisId(axisId);
-                    setSelectedWheelIds(buildSelectionForAxis(axisId, allWheels.all));
-                  }
-                }}
-              />
-              <span>Cambio ordinario (asse completo)</span>
-            </label>
-            <label className="mg-radio">
-              <input
-                type="radio"
-                value="straordinario"
-                checked={modalita === "straordinario"}
-                onChange={() => {
-                  setModalita("straordinario");
-                  setSelectedWheelIds([]);
-                }}
-              />
-              <span>Straordinario (foratura / singola gomma)</span>
-            </label>
-          </div>
-
-          {modalita === "straordinario" ? (
-            <div className="mg-row mg-side-row">
-              <button
-                type="button"
-                className={`mg-side-btn${lato === "dx" ? " mg-side-btn-active" : ""}`}
-                onClick={() => setLato("dx")}
-              >
-                Lato destro
-              </button>
-              <button
-                type="button"
-                className={`mg-side-btn${lato === "sx" ? " mg-side-btn-active" : ""}`}
-                onClick={() => setLato("sx")}
-              >
-                Lato sinistro
-              </button>
-            </div>
-          ) : null}
-
-          <div className="mg-main">
-            <div className="mg-svg-wrapper">
-              <TruckGommeSvg
-                isRimorchio={isRimorchio}
-                backgroundImage={backgroundImage}
-                wheels={wheelsSvg}
-                selectedWheelIds={selectedWheelIds}
-                selectedAxisId={selectedAxisId}
-                modalita={modalita}
-                onToggleWheel={handleToggleWheel}
-                calibraActive={false}
-                draggingWheelId={null}
-                onWheelPointerDown={() => undefined}
-                svgRef={{ current: null }}
-              />
-
-              <div className="mg-axis-list">
-                {config.assi.map((asse) => {
-                  const wheelsForAxis = wheelsSvg.filter((wheel) => wheel.axisId === asse.id);
-                  const anySelected =
-                    modalita === "ordinario"
-                      ? selectedAxisId === asse.id
-                      : wheelsForAxis.some((wheel) => selectedWheelSet.has(wheel.id));
-
-                  return (
-                    <button
-                      key={asse.id}
-                      type="button"
-                      className={`mg-axis-item${anySelected ? " mg-axis-item-active" : ""}`}
-                      onClick={() => handleSelectAxis(asse.id)}
-                    >
-                      <span className="mg-axis-label">{asse.label}</span>
-                      <span className="mg-axis-wheels">
-                        {wheelsForAxis.map((wheel) => (
-                          <span
-                            key={wheel.id}
-                            className={`mg-axis-dot${selectedWheelSet.has(wheel.id) ? " mg-axis-dot-active" : ""}`}
-                          />
-                        ))}
-                      </span>
-                    </button>
-                  );
-                })}
+          <section className="mg-map-panel">
+            <div className="mg-map-head">
+              <div>
+                <strong>Foto tecnica con slot selezionabili</strong>
+                <small>
+                  {modalita === "ordinario"
+                    ? "Asse completo visibile nella vista dall'alto su SX + DX"
+                    : `Lato ${sideLabelCurrent.toLowerCase()} - selezione puntuale`}
+                </small>
+              </div>
+              <div className="mg-side-switch" role="group" aria-label="Lato mezzo">
+                <button
+                  type="button"
+                  className={lato === "dx" ? "active" : ""}
+                  onClick={() => setLato("dx")}
+                >
+                  Destro
+                </button>
+                <button
+                  type="button"
+                  className={lato === "sx" ? "active" : ""}
+                  onClick={() => setLato("sx")}
+                >
+                  Sinistro
+                </button>
               </div>
             </div>
 
-            <div className="mg-panel">
-              <div className="mg-field">
-                <label className="mg-label">Asse selezionato</label>
-                <div className="mg-value">
-                  {selectedAxisId ? config.assi.find((asse) => asse.id === selectedAxisId)?.label || "-" : "-"}
+            <div className="mg-photo-stage">
+              <div className="mg-photo-card">
+                {backgroundImage ? (
+                  <svg className="mg-vehicle-svg" viewBox="0 0 360 180" aria-label={`Schema gomme ${sideLabelCurrent}`}>
+                    <image
+                      className="mg-vehicle-image"
+                      href={backgroundImage}
+                      x="0"
+                      y="0"
+                      width="360"
+                      height="180"
+                      preserveAspectRatio="xMidYMid meet"
+                    />
+                    {wheelsSvg.map((wheel) => {
+                      const selected = selectedWheelSet.has(wheel.id);
+                      return (
+                        <g
+                          key={wheel.id}
+                          className={`mg-side-wheel${selected ? " selected" : ""}`}
+                          onClick={() => handleToggleWheel(wheel.id)}
+                        >
+                          <circle className="mg-side-wheel-ring" cx={wheel.x} cy={wheel.y} r="8.5" />
+                          <circle className="mg-side-wheel-hit" cx={wheel.x} cy={wheel.y} r="18" />
+                          <text className="mg-side-wheel-label" x={wheel.x} y={wheel.y - 13}>
+                            {describeWheel(wheel, config, allWheels.all)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                ) : (
+                  <div className="mg-unavailable">Schema gomme non disponibile per questa categoria.</div>
+                )}
+              </div>
+
+              <div className="mg-top-card">
+                <div className="mg-top-head">
+                  <strong>Vista dall'alto</strong>
+                  <span>{config.assi.map((asse) => `${asse.wheelsCount} ${asse.label.toLowerCase()}`).join(" - ")}</span>
+                </div>
+                <div className="mg-top-vehicle" style={{ gridTemplateColumns: axisGridColumns }}>
+                  <div className="mg-top-cab">Cabina</div>
+                  {config.assi.map((asse) => {
+                    const sxWheels = allWheels.sx.filter((wheel) => wheel.axisId === asse.id);
+                    const dxWheels = allWheels.dx.filter((wheel) => wheel.axisId === asse.id);
+                    return (
+                      <div key={asse.id} className="mg-top-axle">
+                        <div className={`mg-top-wheel-row top${sxWheels.length > 1 ? " twins" : ""}`}>
+                          {sxWheels.map((wheel) => {
+                            const sideMatches = lato === "sx";
+                            return (
+                              <button
+                                key={wheel.id}
+                                type="button"
+                                className={`mg-top-wheel${selectedWheelSet.has(wheel.id) ? " selected" : ""}${
+                                  modalita !== "ordinario" && !sideMatches ? " side-muted" : ""
+                                }`}
+                                onClick={() => handleToggleWheel(wheel.id)}
+                              >
+                                <span>{wheelOrderLabel(wheel, allWheels.all)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="mg-top-axle-line" />
+                        <div className={`mg-top-wheel-row bottom${dxWheels.length > 1 ? " twins" : ""}`}>
+                          {dxWheels.map((wheel) => {
+                            const sideMatches = lato === "dx";
+                            return (
+                              <button
+                                key={wheel.id}
+                                type="button"
+                                className={`mg-top-wheel${selectedWheelSet.has(wheel.id) ? " selected" : ""}${
+                                  modalita !== "ordinario" && !sideMatches ? " side-muted" : ""
+                                }`}
+                                onClick={() => handleToggleWheel(wheel.id)}
+                              >
+                                <span>{wheelOrderLabel(wheel, allWheels.all)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="mg-top-axle-label">{asse.label}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="mg-field">
-                <label className="mg-label">Numero gomme cambiate</label>
-                <div className="mg-value">{numeroGomme || "-"}</div>
-              </div>
+            </div>
+          </section>
 
-              <div className="mg-field">
-                <label className="mg-label">Marca gomme</label>
+          <aside className="mg-detail-panel">
+            <div className="mg-detail-head">
+              <span>{hasInitialRecord ? "Record manutenzione" : "Nuova selezione"}</span>
+              <strong>{positionLabel}</strong>
+              <small>Riepilogo intervento</small>
+            </div>
+            <div className="mg-fields">
+              <label>
+                Asse / posizione
+                <input value={positionLabel} readOnly />
+              </label>
+              <label>
+                Numero gomme cambiate
+                <input value={numeroGomme || ""} readOnly />
+              </label>
+              <label>
+                Marca gomme
                 <input
-                  className="mg-input"
                   value={marca}
                   onChange={(event) => setMarca(event.target.value)}
                   placeholder="Es. MICHELIN X MULTI..."
                 />
-              </div>
-
-              <div className="mg-field">
-                <label className="mg-label">Km mezzo</label>
+              </label>
+              <label>
+                Km mezzo
                 <input
-                  className="mg-input"
                   value={km}
                   onChange={(event) => setKm(event.target.value)}
                   placeholder="Es. 325000"
                   inputMode="numeric"
                 />
+              </label>
+            </div>
+            <div className="mg-receipt">
+              <div className="mg-receipt-row">
+                <span>Modalità</span>
+                <strong>{modeLabel}</strong>
               </div>
-
-              <div className="mg-hint">
-                La selezione viene salvata sulla manutenzione e usata nel dettaglio tecnico gomme.
+              <div className="mg-receipt-row">
+                <span>Lato</span>
+                <strong>{modalita === "ordinario" ? "SX + DX" : sideLabelCurrent}</strong>
+              </div>
+              <div className="mg-tags">
+                {selectedAxes.length > 0
+                  ? selectedAxes.map((entry) => (
+                      <span key={entry.id} className="mg-tag">
+                        {entry.label}
+                      </span>
+                    ))
+                  : axis
+                    ? <span className="mg-tag">{axis.label}</span>
+                    : null}
+                <span className={`mg-tag ${modalita === "straordinario" ? "amber" : ""}`}>
+                  {modalita === "ordinario" ? "Asse completo" : "Puntuale"}
+                </span>
+                <span className="mg-tag">{numeroGomme} gomme</span>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
 
-        <div className="mg-footer">
+        <footer className="mg-footer">
           <button type="button" className="mg-btn ghost" onClick={onClose}>
             Annulla
           </button>
           <button type="button" className="mg-btn primary" onClick={handleConfirm} disabled={!numeroGomme}>
             Conferma cambio gomme
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );

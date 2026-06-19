@@ -1210,6 +1210,8 @@ function buildGommeSelezioneRecord(data: NextCambioGommeData): NextManutenzioneG
     modalita: data.modalita,
     asseId: data.asseId,
     asseLabel: data.asseLabel,
+    assiIds: data.assiIds ?? [],
+    assiLabels: data.assiLabels ?? [],
     numeroGomme: data.numeroGomme,
     gommeIds: data.gommeIds,
     marca: normalizeFreeText(data.marca) || null,
@@ -1235,6 +1237,8 @@ function toModalGommeData(
     modalita: selection.modalita,
     asseId: selection.asseId,
     asseLabel: selection.asseLabel,
+    assiIds: selection.assiIds,
+    assiLabels: selection.assiLabels,
     numeroGomme: selection.numeroGomme,
     gommeIds: selection.gommeIds,
     marca: selection.marca ?? "",
@@ -2747,10 +2751,50 @@ export default function NextManutenzioniPage() {
     setGommeModalOpen(true);
   }
 
+  function buildDescrizioneGommeFromSelection(data: NextCambioGommeData): string {
+    const modalitaLabel = data.modalita === "ordinario" ? "ORDINARIO PER ASSE" : "STRAORDINARIO";
+    const positionLabel =
+      data.assiLabels && data.assiLabels.length > 0
+        ? data.assiLabels.join(", ")
+        : data.asseLabel ?? "Gomme singole";
+    const lines = [
+      `CAMBIO GOMME - ${modalitaLabel}`,
+      data.modalita === "ordinario" ? `Assi: ${positionLabel}` : `Posizione: ${positionLabel}`,
+      `Gomme cambiate: ${data.numeroGomme}`,
+      data.marca.trim() ? `Marca: ${data.marca.trim()}` : null,
+      data.km.trim() ? `Km mezzo: ${data.km.trim()}` : null,
+    ];
+    return lines.filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  function replaceGeneratedGommeDescription(current: string, generated: string): string {
+    const normalized = current.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return generated;
+
+    const lines = normalized.split("\n");
+    const start = lines.findIndex((line) => line.trim().startsWith("CAMBIO GOMME - "));
+    if (start < 0) return `${normalized}\n\n${generated}`;
+
+    let end = start + 1;
+    while (end < lines.length && lines[end].trim()) {
+      end += 1;
+    }
+
+    const before = lines.slice(0, start).join("\n").trim();
+    const after = lines.slice(end).join("\n").trim();
+    return [before, generated, after].filter(Boolean).join("\n\n");
+  }
+
   function handleConfirmGommeSelection(data: NextCambioGommeData) {
     const selection = buildGommeSelezioneRecord(data);
-    const selectedAsse = normalizeNextAssiCoinvolti(data.asseId ? [data.asseId] : [])[0] ?? "";
+    const selectedAssi = normalizeNextAssiCoinvolti(
+      data.assiIds?.length ? data.assiIds : data.asseId ? [data.asseId] : [],
+    );
+    const selectedAsse = selectedAssi[0] ?? "";
     setGommeSelezioneDraft(selection);
+    setDescrizione((current) =>
+      replaceGeneratedGommeDescription(current, buildDescrizioneGommeFromSelection(data)),
+    );
     if (data.km) {
       setKm(data.km);
       if (completionModalRecord) {
@@ -2760,7 +2804,7 @@ export default function NextManutenzioniPage() {
 
     if (data.modalita === "ordinario") {
       setUiSubtype("gomme");
-      setAssiCoinvolti(selectedAsse ? [selectedAsse] : []);
+      setAssiCoinvolti(selectedAssi);
       setGommeStraordinarioMotivo("");
       setGommeStraordinarioAsseId("");
       setGommeStraordinarioQuantita("");
@@ -2776,16 +2820,32 @@ export default function NextManutenzioniPage() {
   }
 
   async function handleSave(overrides: CompletionSaveOverrides = {}) {
-    const normalizedTarga = normalizeText(targa);
-    const normalizedDescrizione = normalizeFreeText(descrizione);
     const sourceRecord = editingId ? storico.find((item) => item.id === editingId) ?? null : null;
     const isCompletionSave = Boolean(completionRecordId && completionRecordId === editingId);
+    const normalizedTarga = normalizeText(
+      targa ||
+        activeTarga ||
+        sourceRecord?.targa ||
+        completionModalRecord?.targa ||
+        selectedDetailRecord?.targa ||
+        "",
+    );
+    const normalizedDescrizione =
+      normalizeFreeText(descrizione) ||
+      normalizeFreeText(sourceRecord?.descrizione ?? "") ||
+      normalizeFreeText(completionModalRecord?.descrizione ?? "") ||
+      normalizeFreeText(selectedDetailRecord?.descrizione ?? "");
     const effectiveFornitore =
       isCompletionSave && overrides.completionFornitore !== undefined ? overrides.completionFornitore : fornitore;
     const effectiveDataInput =
       isCompletionSave && overrides.completionData !== undefined ? overrides.completionData : data;
     const effectiveKmInput = isCompletionSave && overrides.completionKm !== undefined ? overrides.completionKm : km;
-    const normalizedData = toISO(effectiveDataInput) ?? fromUserInput(effectiveDataInput);
+    const normalizedData =
+      toISO(effectiveDataInput) ??
+      fromUserInput(effectiveDataInput) ??
+      toISO(sourceRecord?.data) ??
+      toISO(completionModalRecord?.data) ??
+      toISO(selectedDetailRecord?.data);
     const normalizedImporto = parseImportoInput(importo);
     const isCompletionGomme = isCompletionSave && isStructuredGommeInterventoTipo(sourceRecord?.gommeInterventoTipo);
     const completionRequiresKm =
@@ -2808,8 +2868,18 @@ export default function NextManutenzioniPage() {
         ? "daFare"
         : "eseguita";
 
-    if (!normalizedTarga || !normalizedDescrizione || !normalizedData) {
-      window.alert("Compila almeno TARGA, DESCRIZIONE e DATA nel formato GG/MM/AAAA.");
+    if (!normalizedTarga) {
+      window.alert("Targa manutenzione non disponibile. Seleziona una targa prima di salvare.");
+      return;
+    }
+
+    if (!normalizedDescrizione) {
+      window.alert("Descrizione manutenzione non disponibile. Inserisci una descrizione prima di salvare.");
+      return;
+    }
+
+    if (!normalizedData) {
+      window.alert("Data manutenzione non disponibile o non valida. Inserisci la data nel formato GG/MM/AAAA.");
       return;
     }
 

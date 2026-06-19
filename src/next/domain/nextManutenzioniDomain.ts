@@ -230,6 +230,8 @@ export type NextManutenzioneGommeSelezioneRecord = {
   modalita: NextManutenzioneGommeInterventoTipo;
   asseId: string | null;
   asseLabel: string | null;
+  assiIds: string[];
+  assiLabels: string[];
   numeroGomme: number;
   gommeIds: string[];
   marca: string | null;
@@ -431,6 +433,12 @@ function sanitizeGommeSelezione(value: unknown): NextManutenzioneGommeSelezioneR
     modalita,
     asseId: normalizeOptionalText(raw.asseId),
     asseLabel: normalizeOptionalText(raw.asseLabel),
+    assiIds: sanitizeAssiCoinvolti(raw.assiIds),
+    assiLabels: Array.isArray(raw.assiLabels)
+      ? raw.assiLabels
+          .map((item) => normalizeOptionalText(item))
+          .filter((item): item is string => Boolean(item))
+      : [],
     numeroGomme,
     gommeIds,
     marca: normalizeOptionalText(raw.marca),

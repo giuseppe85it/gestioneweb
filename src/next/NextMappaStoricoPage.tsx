@@ -419,6 +419,34 @@ function formatGommeTipoLabel(record: SelectedMaintenance | ManutenzioneLegacy):
   return "GOMME";
 }
 
+function formatGommeMotivoLabel(record: SelectedMaintenance | ManutenzioneLegacy): string {
+  const motivoStraordinario = record.gommeStraordinario?.motivo?.trim();
+  if (motivoStraordinario) return motivoStraordinario;
+  if (record.gommeInterventoTipo === "ordinario" || record.gommeSelezione?.modalita === "ordinario") {
+    return "Cambio gomme ordinario per asse";
+  }
+  if (record.gommeInterventoTipo === "straordinario" || record.gommeSelezione?.modalita === "straordinario") {
+    return "Cambio gomme straordinario";
+  }
+  return "non indicato";
+}
+
+function formatGommeQuantitaLabel(record: SelectedMaintenance | ManutenzioneLegacy): string {
+  const numeroGomme = record.gommeSelezione?.numeroGomme;
+  if (typeof numeroGomme === "number" && Number.isFinite(numeroGomme) && numeroGomme > 0) {
+    return `${formatNumberOptional(numeroGomme)} gomme`;
+  }
+  const quantitaStraordinaria = record.gommeStraordinario?.quantita;
+  if (
+    typeof quantitaStraordinaria === "number" &&
+    Number.isFinite(quantitaStraordinaria) &&
+    quantitaStraordinaria > 0
+  ) {
+    return `${formatNumberOptional(quantitaStraordinaria)} gomme`;
+  }
+  return "non indicata";
+}
+
 function formatGommeOriginLabel(
   record: SelectedMaintenance | ManutenzioneLegacy,
   sourceRecords: RawRecord[],
@@ -938,6 +966,8 @@ export default function NextMappaStoricoPage({
             ? {
                 asseId: selectedRecord.gommeSelezione.asseId,
                 asseLabel: selectedRecord.gommeSelezione.asseLabel,
+                assiIds: selectedRecord.gommeSelezione.assiIds,
+                assiLabels: selectedRecord.gommeSelezione.assiLabels,
                 gommeIds: selectedRecord.gommeSelezione.gommeIds,
                 descrizione: selectedRecord.descrizione,
                 interventoTipo: selectedRecord.gommeSelezione.modalita,
@@ -1637,15 +1667,11 @@ export default function NextMappaStoricoPage({
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">
                                 <span>Motivo</span>
-                                <strong>{selectedRecord.gommeStraordinario?.motivo ?? "non indicato"}</strong>
+                                <strong>{formatGommeMotivoLabel(selectedRecord)}</strong>
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">
                                 <span>Quantita</span>
-                                <strong>
-                                  {selectedRecord.gommeStraordinario?.quantita != null
-                                    ? formatNumberOptional(selectedRecord.gommeStraordinario.quantita)
-                                    : "non indicata"}
-                                </strong>
+                                <strong>{formatGommeQuantitaLabel(selectedRecord)}</strong>
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">
                                 <span>Officina</span>

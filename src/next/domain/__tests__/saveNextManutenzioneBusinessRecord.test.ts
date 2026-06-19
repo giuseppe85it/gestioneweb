@@ -220,6 +220,8 @@ describe("saveNextManutenzioneBusinessRecord — fix duplicazione (PROMPT 41)", 
         modalita: "ordinario",
         asseId: "asse1",
         asseLabel: "1 asse",
+        assiIds: ["asse1"],
+        assiLabels: ["1 asse"],
         numeroGomme: 4,
         gommeIds: [
           "motrice2assi-destra-asse1-1",
@@ -248,6 +250,8 @@ describe("saveNextManutenzioneBusinessRecord — fix duplicazione (PROMPT 41)", 
       asseId: "asse1",
       numeroGomme: 4,
       marca: "MICHELIN",
+      assiIds: ["asse1"],
+      assiLabels: ["1 asse"],
     });
     expect((saved.gommeSelezione as RawRecord).selezioneGommeV2).toMatchObject({
       versione: 2,

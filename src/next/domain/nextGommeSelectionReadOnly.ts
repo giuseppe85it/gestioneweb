@@ -30,6 +30,8 @@ export type NextGommeSelectionResolution = {
 export type NextGommeSelectionInput = {
   asseId?: string | null;
   asseLabel?: string | null;
+  assiIds?: string[] | null;
+  assiLabels?: string[] | null;
   posizione?: string | null;
   gommeIds?: string[] | null;
   evento?: string | null;
@@ -177,6 +179,39 @@ function resolveLegacyWholeAxle(input: NextGommeSelectionInput): string | null {
   return allCoherent ? asseId : null;
 }
 
+function uniqueNormalizedAxisIds(values: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map(normalizeAsseId)
+        .filter((asseId): asseId is string => Boolean(asseId)),
+    ),
+  );
+}
+
+function isOrdinarySelection(input: NextGommeSelectionInput): boolean {
+  const sourceText = [
+    input.interventoTipo,
+    input.evento,
+    input.descrizione,
+    input.asseLabel,
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ");
+  const normalized = normalizeText(sourceText);
+  return normalized.includes("ordinario") || normalized.includes("asse completo") || normalized.includes("piu assi");
+}
+
+function resolveWholeAxesFromSelection(input: NextGommeSelectionInput): string[] {
+  const explicitAxes = uniqueNormalizedAxisIds(input.assiIds ?? []);
+  if (explicitAxes.length > 0) return explicitAxes;
+
+  const inferredFromIds = uniqueNormalizedAxisIds(input.gommeIds ?? []);
+  if (inferredFromIds.length > 1) return inferredFromIds;
+  if (inferredFromIds.length === 1 && isOrdinarySelection(input)) return inferredFromIds;
+  return [];
+}
+
 export function resolveNextGommeSelectionReadOnly(
   input: NextGommeSelectionInput,
 ): NextGommeSelectionResolution {
@@ -189,6 +224,21 @@ export function resolveNextGommeSelectionReadOnly(
       lati: Array.from(new Set(v2.ruote.map((wheel) => wheel.lato))),
       ruote: v2.ruote,
       messaggio: "Posizione certificata a livello di singola ruota.",
+    };
+  }
+
+  const wholeAxes = resolveWholeAxesFromSelection(input);
+  if (wholeAxes.length > 0) {
+    return {
+      precisione: "asse_completo",
+      asseId: wholeAxes[0] ?? null,
+      asseIds: wholeAxes,
+      lati: ["destra", "sinistra"],
+      ruote: [],
+      messaggio:
+        wholeAxes.length === 1
+          ? "Posizione certificata a livello di asse dalla selezione gomme della manutenzione."
+          : "Posizioni certificate a livello di assi dalla selezione gomme della manutenzione.",
     };
   }
 
