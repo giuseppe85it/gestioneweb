@@ -497,6 +497,28 @@ function OrderDetailPanel(props: {
     [workingOrder.materials],
   );
 
+  const riepilogoIva = useMemo(() => {
+    const byValuta: Record<string, number> = {};
+    sortedMaterials.forEach((material) => {
+      const line = computeLineTotal({
+        qty: material.quantita,
+        unitPrice: material.sourceUnitPrice,
+        selectedUom: material.unita,
+        priceUom: material.sourceUnitPriceUnit || material.unita,
+        note: material.note,
+      });
+      if (line.status !== "needs_factor" && line.total !== null && material.sourceCurrency) {
+        byValuta[material.sourceCurrency] = (byValuta[material.sourceCurrency] || 0) + line.total;
+      }
+    });
+    return Object.entries(byValuta).map(([valuta, imponibile]) => ({
+      valuta,
+      imponibile,
+      iva: (imponibile * 8.1) / 100,
+      totale: imponibile * 1.081,
+    }));
+  }, [sortedMaterials]);
+
   const detailSuggestList = useMemo(() => {
     const query = normalizeText(newDesc);
     if (!query) return [];
@@ -761,17 +783,8 @@ function OrderDetailPanel(props: {
     }
   };
 
-  const buildPdfPayload = (mode: "fornitori" | "interno") => ({
-    kind: "table" as const,
-    title:
-      mode === "fornitori"
-        ? `Ordine Fornitore - ${workingOrder.supplierName}`
-        : `Ordine Interno - ${workingOrder.supplierName}`,
-    columns:
-      mode === "fornitori"
-        ? ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note"]
-        : ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note", "totaleRiga"],
-    rows: sortedMaterials.map((material) => {
+  const buildPdfPayload = (mode: "fornitori" | "interno") => {
+    const rows: Record<string, string>[] = sortedMaterials.map((material) => {
       const line = computeLineTotal({
         qty: material.quantita,
         unitPrice: material.sourceUnitPrice,
@@ -794,8 +807,30 @@ function OrderDetailPanel(props: {
               ? `${line.total.toFixed(2)} ${material.sourceCurrency}`
               : "-",
       };
-    }),
-  });
+    });
+
+    // PDF interno: aggiunge il riepilogo imponibile / IVA 8.1% / totale con IVA per valuta.
+    if (mode === "interno" && riepilogoIva.length > 0) {
+      riepilogoIva.forEach((entry) => {
+        rows.push({ descrizione: `IMPONIBILE (${entry.valuta})`, quantita: "", unita: "", stato: "", dataArrivo: "", note: "", totaleRiga: `${entry.imponibile.toFixed(2)} ${entry.valuta}` });
+        rows.push({ descrizione: `IVA 8.1% (${entry.valuta})`, quantita: "", unita: "", stato: "", dataArrivo: "", note: "", totaleRiga: `${entry.iva.toFixed(2)} ${entry.valuta}` });
+        rows.push({ descrizione: `TOTALE CON IVA (${entry.valuta})`, quantita: "", unita: "", stato: "", dataArrivo: "", note: "", totaleRiga: `${entry.totale.toFixed(2)} ${entry.valuta}` });
+      });
+    }
+
+    return {
+      kind: "table" as const,
+      title:
+        mode === "fornitori"
+          ? `Ordine Fornitore - ${workingOrder.supplierName}`
+          : `Ordine Interno - ${workingOrder.supplierName}`,
+      columns:
+        mode === "fornitori"
+          ? ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note"]
+          : ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note", "totaleRiga"],
+      rows,
+    };
+  };
 
   const ensurePdfPreviewReady = async (mode: "fornitori" | "interno") => {
     try {
@@ -1261,6 +1296,21 @@ function OrderDetailPanel(props: {
             </tbody>
           </table>
         </div>
+
+        {riepilogoIva.length > 0 ? (
+          <div
+            className="acq-order-iva-summary"
+            style={{ marginTop: 12, padding: "10px 12px", borderTop: "1px solid rgba(31,36,45,0.12)", display: "grid", gap: 4 }}
+          >
+            {riepilogoIva.map((entry) => (
+              <div key={entry.valuta} style={{ fontSize: 13, lineHeight: 1.5 }}>
+                Imponibile: <strong>{entry.valuta} {entry.imponibile.toFixed(2)}</strong>
+                {" · "}IVA 8.1%: <strong>{entry.valuta} {entry.iva.toFixed(2)}</strong>
+                {" · "}Totale con IVA: <strong>{entry.valuta} {entry.totale.toFixed(2)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <PdfPreviewModal
           open={pdfPreviewOpen}
