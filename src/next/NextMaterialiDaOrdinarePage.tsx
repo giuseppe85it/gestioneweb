@@ -481,6 +481,8 @@ export default function NextMaterialiDaOrdinarePage() {
   const [newMaterialeNota, setNewMaterialeNota] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [savingOrdine, setSavingOrdine] = useState(false);
+  const [ivaRate, setIvaRate] = useState("8.1");
+  const [showIva, setShowIva] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [selectedListinoVoce, setSelectedListinoVoce] =
     useState<NextProcurementListinoItem | null>(null);
@@ -1162,6 +1164,9 @@ export default function NextMaterialiDaOrdinarePage() {
           fotoStoragePath: m.fotoStoragePath ?? null,
         })),
         arrivato: false,
+        ...(showIva && ivaSummary.perValuta.length > 0
+          ? { totaliIva: { ivaRate: ivaSummary.rate, perValuta: ivaSummary.perValuta } }
+          : {}),
       };
 
       const updated = [...existing, nuovoOrdine];
@@ -1309,6 +1314,17 @@ export default function NextMaterialiDaOrdinarePage() {
       totaleStimato: totalsByValuta.CHF + totalsByValuta.EUR + totaleSenzaValuta,
     };
   }, [getMaterialNote, materiali, prezzoSourceByMaterialeId]);
+
+  const ivaSummary = useMemo(() => {
+    const rate = Number(String(ivaRate).replace(",", ".")) || 0;
+    const totalsByValuta = totalsSummary.totalsByValuta as Record<string, number>;
+    const perValuta = totalsSummary.usedValute.map((valuta) => {
+      const imponibile = totalsByValuta[valuta] || 0;
+      const iva = (imponibile * rate) / 100;
+      return { valuta: String(valuta), imponibile, iva, totale: imponibile + iva };
+    });
+    return { rate, perValuta };
+  }, [ivaRate, totalsSummary]);
 
   const canAddMateriale =
     descrizione.trim().length > 0 &&
@@ -1918,6 +1934,39 @@ export default function NextMaterialiDaOrdinarePage() {
                   <span>UDM da verificare</span>
                   <strong>{totalsSummary.udmDaVerificare}</strong>
                 </div>
+              </div>
+              <div className="mdo-sticky-info om-stat-card om-kpiCard" style={{ display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span>Aliquota IVA</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={ivaRate}
+                    onChange={(event) => { setIvaRate(event.target.value); setShowIva(false); }}
+                    style={{ width: 70 }}
+                    aria-label="Aliquota IVA in percentuale"
+                  />
+                  <span>%</span>
+                  <button
+                    type="button"
+                    className="mdo-header-button mdo-header-button--secondary"
+                    onClick={() => setShowIva(true)}
+                    disabled={ivaSummary.perValuta.length === 0}
+                  >
+                    Calcola IVA
+                  </button>
+                </div>
+                {showIva && ivaSummary.perValuta.length > 0 ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {ivaSummary.perValuta.map((entry) => (
+                      <div key={entry.valuta} style={{ fontSize: 13, lineHeight: 1.5 }}>
+                        <div>Imponibile: <strong>{entry.valuta} {entry.imponibile.toFixed(2)}</strong></div>
+                        <div>IVA {ivaSummary.rate}%: <strong>{entry.valuta} {entry.iva.toFixed(2)}</strong></div>
+                        <div>Totale con IVA: <strong>{entry.valuta} {entry.totale.toFixed(2)}</strong></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <label className="acq-order-note om-order-note om-notes">
                 <span>Note ordine (solo bozza/PDF)</span>

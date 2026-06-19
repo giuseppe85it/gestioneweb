@@ -1,6 +1,17 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
-import { updateNextListinoVoce, type Valuta } from "./nextPreventivoManualeWriter";
+import {
+  updateNextListinoVoce,
+  upsertListinoFromPreventivoManuale,
+  type Preventivo,
+  type Valuta,
+} from "./nextPreventivoManualeWriter";
+import {
+  deleteNextPreventivo,
+  deleteNextListinoVoce,
+  cleanPreventiviIaAttachments,
+  attachFotoToPreventivo,
+} from "./nextProcurementWriters";
 import NextPreventivoIaModal from "./NextPreventivoIaModal";
 import NextPreventivoManualeModal from "./NextPreventivoManualeModal";
 import type {
@@ -372,6 +383,133 @@ export default function NextProcurementConvergedSection({
     }
   };
 
+  const refreshProcurement = async () => {
+    if (onPreventivoSaved) {
+      await onPreventivoSaved();
+    }
+  };
+
+  const handleEliminaVoceListino = async (id: string) => {
+    if (!window.confirm("Eliminare questa voce di listino?")) return;
+    try {
+      await deleteNextListinoVoce(id);
+      await refreshProcurement();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Errore durante l'eliminazione.");
+    }
+  };
+
+  const handleEliminaPreventivo = async (id: string) => {
+    if (!window.confirm("Eliminare questo preventivo?")) return;
+    try {
+      await deleteNextPreventivo(id);
+      await refreshProcurement();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Errore durante l'eliminazione.");
+    }
+  };
+
+  const handlePulisciAllegati = async () => {
+    if (!window.confirm("Rimuovere tutti gli allegati IA (immagini) dai preventivi?")) return;
+    try {
+      const puliti = await cleanPreventiviIaAttachments();
+      await refreshProcurement();
+      window.alert(puliti > 0 ? `Allegati rimossi da ${puliti} preventivi.` : "Nessun allegato da rimuovere.");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Errore durante la pulizia.");
+    }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [collegaFotoId, setCollegaFotoId] = useState<string | null>(null);
+  const [editingPreventivoItem, setEditingPreventivoItem] = useState<NextProcurementPreventivoItem | null>(null);
+
+  const itemToPreventivo = (item: NextProcurementPreventivoItem): Preventivo => ({
+    id: item.id,
+    fornitoreId: item.supplierId || "",
+    fornitoreNome: item.supplierName,
+    numeroPreventivo: item.numeroPreventivo,
+    dataPreventivo: item.dataPreventivoTimestamp
+      ? new Date(item.dataPreventivoTimestamp).toISOString().slice(0, 10)
+      : "",
+    pdfUrl: item.pdfUrl,
+    pdfStoragePath: item.pdfStoragePath,
+    ricevutoDaWhatsapp: item.ricevutoDaWhatsapp,
+    ricevutoDaEmail: item.ricevutoDaEmail,
+    imageStoragePaths: item.imageStoragePaths,
+    imageUrls: item.imageUrls,
+    righe: item.rows.map((row) => ({
+      id: row.id,
+      descrizione: row.descrizione,
+      unita: row.unita || "",
+      prezzoUnitario: row.prezzoUnitario ?? 0,
+      note: row.note || undefined,
+    })),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const apriCollegaFoto = (id: string) => {
+    setCollegaFotoId(id);
+    fileInputRef.current?.click();
+  };
+
+  const onFotoSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    const id = collegaFotoId;
+    setCollegaFotoId(null);
+    if (!files.length || !id) return;
+    try {
+      await attachFotoToPreventivo(id, files);
+      await refreshProcurement();
+      window.alert(`${files.length} foto collegate al preventivo.`);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Errore durante il collegamento foto.");
+    }
+  };
+
+  const handleImportaListino = async (item: NextProcurementPreventivoItem) => {
+    const valuta: Valuta = item.currency === "EUR" ? "EUR" : "CHF";
+    const righe = item.rows
+      .filter((row) => row.prezzoUnitario != null)
+      .map((row) => ({
+        id: row.id,
+        descrizione: row.descrizione,
+        unita: row.unita || "",
+        prezzoUnitario: row.prezzoUnitario as number,
+        note: row.note || undefined,
+      }));
+    if (!righe.length) {
+      window.alert("Nessuna riga con prezzo valido da importare nel listino.");
+      return;
+    }
+    const preventivo: Preventivo = {
+      id: item.id,
+      fornitoreId: item.supplierId || "",
+      fornitoreNome: item.supplierName,
+      numeroPreventivo: item.numeroPreventivo,
+      dataPreventivo: item.dataPreventivoLabel || "",
+      pdfUrl: item.pdfUrl,
+      pdfStoragePath: item.pdfStoragePath,
+      imageStoragePaths: item.imageStoragePaths,
+      imageUrls: item.imageUrls,
+      righe,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    try {
+      await upsertListinoFromPreventivoManuale(preventivo, valuta, [], {
+        pdfStoragePath: item.pdfStoragePath,
+        pdfUrl: item.pdfUrl,
+      });
+      await refreshProcurement();
+      window.alert(`${righe.length} righe importate nel listino.`);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Errore durante l'import nel listino.");
+    }
+  };
+
   const preventiviSupplierOptions = useMemo(() => {
     if (!snapshot) return [];
     const map = new Map<string, string>();
@@ -492,10 +630,20 @@ export default function NextProcurementConvergedSection({
         <div className="acq-prev-topbar"><h2>Registro Preventivi</h2><div className="acq-prev-actions"><button type="button" className="acq-btn acq-btn--primary" onClick={() => setShowManualeModal(true)}>PREVENTIVO MANUALE</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => setShowIaModal(true)}>CARICA PREVENTIVO IA</button></div></div>
         {showIaModal ? <NextPreventivoIaModal open={showIaModal} onClose={() => setShowIaModal(false)} onPreventivoSaved={async () => { if (onPreventivoSaved) { await onPreventivoSaved(); } }} /> : null}
         {showManualeModal ? <NextPreventivoManualeModal onClose={() => setShowManualeModal(false)} onSaved={onPreventivoSaved} /> : null}
+        <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(event) => void onFotoSelected(event)} />
+        {editingPreventivoItem ? (
+          <NextPreventivoManualeModal
+            onClose={() => setEditingPreventivoItem(null)}
+            onSaved={onPreventivoSaved}
+            preventivoIniziale={itemToPreventivo(editingPreventivoItem)}
+            valutaIniziale={editingPreventivoItem.currency === "EUR" ? "EUR" : "CHF"}
+          />
+        ) : null}
+
         <div className="acq-prev-card">
-          <div className="acq-prev-groups-head"><h3>Elenco preventivi</h3><div className="acq-prev-groups-tools"><button type="button" className="acq-btn" onClick={() => window.alert("Clone read-only: pulizia allegati IA non disponibile.")}>PULISCI ALLEGATI IA</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = true; }); return next; })}>Apri tutti</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = false; }); return next; })}>Chiudi tutti</button></div></div>
+          <div className="acq-prev-groups-head"><h3>Elenco preventivi</h3><div className="acq-prev-groups-tools"><button type="button" className="acq-btn" onClick={() => void handlePulisciAllegati()}>PULISCI ALLEGATI IA</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = true; }); return next; })}>Apri tutti</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = false; }); return next; })}>Chiudi tutti</button></div></div>
           <div className="acq-prev-groups-filters"><label className="acq-prev-field"><span>Fornitore</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">Tutti</option>{preventiviSupplierOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label className="acq-prev-field"><span>Cerca</span><input type="text" value={searchQuery} onChange={(event) => onSearchQueryChange(event.target.value)} placeholder="Numero, data, fornitore" /></label><label className="acq-prev-filter-check"><input type="checkbox" checked={soloNonImportati} onChange={(event) => setSoloNonImportati(event.target.checked)} />{LABELS_IT.menu.onlyNotImported}</label><button type="button" className="acq-btn" onClick={() => { setSupplierFilter(""); setCurrencyFilter(""); setSoloNonImportati(false); onSearchQueryChange(""); }}>{LABELS_IT.menu.resetFilters}</button></div>
-          {groupedPreventivi.length === 0 ? <div className="acq-prev-empty"><div>{snapshot.preventivi.length === 0 ? "Nessun preventivo registrato." : "Nessun preventivo con questi filtri."}</div>{snapshot.preventivi.length > 0 ? <button type="button" className="acq-btn" onClick={() => { setSupplierFilter(""); setCurrencyFilter(""); setSoloNonImportati(false); onSearchQueryChange(""); }}>{LABELS_IT.menu.resetFilters}</button> : null}</div> : <div className="acq-prev-groups">{groupedPreventivi.map((group) => { const groupOpen = openGroupKeys[group.key] ?? true; const nonImportati = group.items.filter((item) => preventiviStatusById.get(item.id)?.className === "not").length; return <section key={group.key} className="acq-prev-group"><button type="button" className="acq-prev-group-summary" onClick={() => setOpenGroupKeys((prev) => ({ ...prev, [group.key]: !groupOpen }))}><span className={`acq-prev-group-caret${groupOpen ? " is-open" : ""}`}>{groupOpen ? "v" : ">"}</span><span className="acq-prev-group-title">{group.fornitoreNome}</span><span className="acq-prev-group-counters"><span>Preventivi: {group.items.length}</span><span>Non importati: {nonImportati}</span></span></button>{groupOpen ? <div className="acq-prev-table-wrap"><table className="acq-prev-table"><thead><tr><th>Data</th><th>N. preventivo</th><th># righe</th><th>Stato import</th><th>Azioni</th></tr></thead><tbody>{group.items.map((item) => { const status = preventiviStatusById.get(item.id) || { imported: 0, total: 0, label: LABELS_IT.import.zeroRows, className: "neutral" as const }; const canOpenDocument = hasAnyDocument(item); const missingRows = status.total - status.imported; return <tr key={item.id}><td>{formatProcurementDateLabel(item.dataPreventivoLabel)}</td><td><div style={{ display: "grid", gap: 4 }}><span>{item.numeroPreventivo}</span>{renderPreventivoReceiptBadges(item)}</div></td><td>{item.righeCount}</td><td><div className="acq-import-status-wrap"><button type="button" className={`acq-import-status acq-import-status--${status.className}`}>{status.label}</button><span className="acq-import-ratio">{status.imported}/{status.total}</span></div></td><td><div className="acq-prev-list-actions acq-prev-list-actions--compact"><button type="button" className="acq-btn" onClick={() => openFirstDocument(item)} disabled={!canOpenDocument} title={canOpenDocument ? LABELS_IT.menu.openDocument : "Nessun documento collegato"}>APRI DOCUMENTO</button><div className="acq-kebab" data-menu-root="preventivi"><button type="button" className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon" aria-label="Altre azioni" onClick={(event) => { const key = `preventivo:${item.id}`; if (preventiviMenuKey === key) { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); return; } const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect(); setPreventiviMenuKey(key); setPreventiviMenuPosition(buildMenuPosition(rect, 220, 290)); }}>...</button>{preventiviMenuKey === `preventivo:${item.id}` && preventiviMenuPosition ? <div className={`acq-kebab-menu acq-kebab-menu--fixed${preventiviMenuPosition.openUp ? " is-up" : ""}`} style={{ top: `${preventiviMenuPosition.top}px`, left: `${preventiviMenuPosition.left}px` }}><button type="button" className="acq-kebab-item" onClick={() => { openFirstDocument(item); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>Apri documento</button><button type="button" className="acq-kebab-item" onClick={() => { window.alert("Clone read-only: collegamento foto non disponibile."); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>Collega foto</button>{status.total > 0 && status.className !== "full" ? <button type="button" className="acq-kebab-item" onClick={() => { window.alert(status.className === "partial" ? `Clone read-only: import listino da preventivo non disponibile. Mancano ${missingRows} righe.` : "Clone read-only: import listino da preventivo non disponibile."); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>{status.className === "partial" ? "Importa mancanti" : LABELS_IT.menu.import}</button> : null}{status.className === "partial" ? <button type="button" className="acq-kebab-item" onClick={() => { window.alert(`Righe mancanti da verificare: ${missingRows}.`); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>Vedi mancanti</button> : null}<button type="button" className="acq-kebab-item" onClick={() => { window.alert("Clone read-only: dettaglio preventivo non disponibile."); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>{LABELS_IT.menu.open}</button><button type="button" className="acq-kebab-item" onClick={() => { window.alert("Clone read-only: modifica preventivo non disponibile."); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>{LABELS_IT.menu.edit}</button><button type="button" className="acq-kebab-item acq-kebab-item--danger" onClick={() => { window.alert("Clone read-only: eliminazione preventivo non disponibile."); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>{LABELS_IT.menu.delete}</button></div> : null}</div></div></td></tr>; })}</tbody></table></div> : null}</section>; })}</div>}
+          {groupedPreventivi.length === 0 ? <div className="acq-prev-empty"><div>{snapshot.preventivi.length === 0 ? "Nessun preventivo registrato." : "Nessun preventivo con questi filtri."}</div>{snapshot.preventivi.length > 0 ? <button type="button" className="acq-btn" onClick={() => { setSupplierFilter(""); setCurrencyFilter(""); setSoloNonImportati(false); onSearchQueryChange(""); }}>{LABELS_IT.menu.resetFilters}</button> : null}</div> : <div className="acq-prev-groups">{groupedPreventivi.map((group) => { const groupOpen = openGroupKeys[group.key] ?? true; const nonImportati = group.items.filter((item) => preventiviStatusById.get(item.id)?.className === "not").length; return <section key={group.key} className="acq-prev-group"><button type="button" className="acq-prev-group-summary" onClick={() => setOpenGroupKeys((prev) => ({ ...prev, [group.key]: !groupOpen }))}><span className={`acq-prev-group-caret${groupOpen ? " is-open" : ""}`}>{groupOpen ? "v" : ">"}</span><span className="acq-prev-group-title">{group.fornitoreNome}</span><span className="acq-prev-group-counters"><span>Preventivi: {group.items.length}</span><span>Non importati: {nonImportati}</span></span></button>{groupOpen ? <div className="acq-prev-table-wrap"><table className="acq-prev-table"><thead><tr><th>Data</th><th>N. preventivo</th><th># righe</th><th>Stato import</th><th>Azioni</th></tr></thead><tbody>{group.items.map((item) => { const status = preventiviStatusById.get(item.id) || { imported: 0, total: 0, label: LABELS_IT.import.zeroRows, className: "neutral" as const }; const canOpenDocument = hasAnyDocument(item); const missingRows = status.total - status.imported; return <tr key={item.id}><td>{formatProcurementDateLabel(item.dataPreventivoLabel)}</td><td><div style={{ display: "grid", gap: 4 }}><span>{item.numeroPreventivo}</span>{renderPreventivoReceiptBadges(item)}</div></td><td>{item.righeCount}</td><td><div className="acq-import-status-wrap"><button type="button" className={`acq-import-status acq-import-status--${status.className}`}>{status.label}</button><span className="acq-import-ratio">{status.imported}/{status.total}</span></div></td><td><div className="acq-prev-list-actions acq-prev-list-actions--compact"><button type="button" className="acq-btn" onClick={() => openFirstDocument(item)} disabled={!canOpenDocument} title={canOpenDocument ? LABELS_IT.menu.openDocument : "Nessun documento collegato"}>APRI DOCUMENTO</button><div className="acq-kebab" data-menu-root="preventivi"><button type="button" className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon" aria-label="Altre azioni" onClick={(event) => { const key = `preventivo:${item.id}`; if (preventiviMenuKey === key) { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); return; } const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect(); setPreventiviMenuKey(key); setPreventiviMenuPosition(buildMenuPosition(rect, 220, 290)); }}>...</button>{preventiviMenuKey === `preventivo:${item.id}` && preventiviMenuPosition ? <div className={`acq-kebab-menu acq-kebab-menu--fixed${preventiviMenuPosition.openUp ? " is-up" : ""}`} style={{ top: `${preventiviMenuPosition.top}px`, left: `${preventiviMenuPosition.left}px` }}><button type="button" className="acq-kebab-item" onClick={() => { openFirstDocument(item); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>Apri documento</button><button type="button" className="acq-kebab-item" onClick={() => { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); apriCollegaFoto(item.id); }}>Collega foto</button>{status.total > 0 && status.className !== "full" ? <button type="button" className="acq-kebab-item" onClick={() => { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); void handleImportaListino(item); }}>{status.className === "partial" ? "Importa mancanti" : LABELS_IT.menu.import}</button> : null}{status.className === "partial" ? <button type="button" className="acq-kebab-item" onClick={() => { window.alert(`Righe mancanti da verificare: ${missingRows}.`); setPreventiviMenuKey(null); setPreventiviMenuPosition(null); }}>Vedi mancanti</button> : null}<button type="button" className="acq-kebab-item" onClick={() => { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); setEditingPreventivoItem(item); }}>{LABELS_IT.menu.open}</button><button type="button" className="acq-kebab-item" onClick={() => { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); setEditingPreventivoItem(item); }}>{LABELS_IT.menu.edit}</button><button type="button" className="acq-kebab-item acq-kebab-item--danger" onClick={() => { setPreventiviMenuKey(null); setPreventiviMenuPosition(null); void handleEliminaPreventivo(item.id); }}>{LABELS_IT.menu.delete}</button></div> : null}</div></div></td></tr>; })}</tbody></table></div> : null}</section>; })}</div>}
         </div>
       </div></div></section>
     );
@@ -504,7 +652,7 @@ export default function NextProcurementConvergedSection({
   return (
     <section className="acq-content"><div className="acq-tab-panel"><div className="acq-listino-shell">
       <div className="acq-listino-filters"><label className="acq-prev-field"><span>Fornitore</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">Tutti</option>{listinoSupplierOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label className="acq-prev-field"><span>Valuta</span><select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}><option value="">Tutte</option><option value="CHF">CHF</option><option value="EUR">EUR</option></select></label><label className="acq-prev-field"><span>Cerca</span><input type="text" value={searchQuery} onChange={(event) => onSearchQueryChange(event.target.value)} placeholder="Articolo o codice" /></label></div>
-      <div className="acq-prev-table-wrap"><table className="acq-prev-table"><thead><tr><th>Fornitore</th><th>Articolo</th><th>Unita</th><th>Valuta</th><th>Prezzo</th><th>Trend</th><th>Preventivo</th><th>Data</th><th>Azioni</th></tr></thead><tbody>{filteredListino.length === 0 ? <tr><td colSpan={9}>{snapshot.listino.length === 0 ? "Listino vuoto." : "Nessuna voce con questi filtri."}</td></tr> : filteredListino.map((item) => { const hasDocument = hasAnyDocument(item); return <tr key={item.id}><td>{renderSafeText(item.supplierName)}</td><td>{renderSafeText(item.articoloCanonico)}</td><td>{renderSafeText(item.unita)}</td><td>{renderSafeText(item.valuta)}</td><td>{item.prezzoAttuale !== null ? item.prezzoAttuale.toFixed(2) : "-"}</td><td><span className={`acq-pill ${formatTrendClassName(item.trend)}`}>{formatTrendLabel(item.trend)}</span></td><td>{item.fonteNumeroPreventivo ? `N. ${renderSafeText(item.fonteNumeroPreventivo)}` : "-"}</td><td>{formatProcurementDateLabel(item.fonteDataPreventivo || item.updatedAtLabel)}</td><td><div className="acq-prev-list-actions acq-prev-list-actions--compact"><button type="button" className="acq-btn acq-btn--primary" onClick={() => openFirstDocument(item)} disabled={!hasDocument} title={hasDocument ? "Apri documento" : "Nessun documento collegato"}>APRI DOCUMENTO</button><div className="acq-kebab" data-menu-root="listino"><button type="button" className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon" aria-label="Altre azioni" onClick={(event) => { if (listinoMenuId === item.id) { setListinoMenuId(null); setListinoMenuPosition(null); return; } const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect(); setListinoMenuId(item.id); setListinoMenuPosition(buildMenuPosition(rect, 210, 180)); }}>...</button>{listinoMenuId === item.id && listinoMenuPosition ? <div className={`acq-kebab-menu acq-kebab-menu--fixed${listinoMenuPosition.openUp ? " is-up" : ""}`} style={{ top: `${listinoMenuPosition.top}px`, left: `${listinoMenuPosition.left}px` }}><button type="button" className="acq-kebab-item" onClick={() => { openFirstDocument(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>Apri documento</button><button type="button" className="acq-kebab-item" onClick={() => { setEditingListinoItem(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>{LABELS_IT.menu.edit}</button><button type="button" className="acq-kebab-item acq-kebab-item--danger" onClick={() => { window.alert("Clone read-only: eliminazione voce listino non disponibile."); setListinoMenuId(null); setListinoMenuPosition(null); }}>{LABELS_IT.menu.delete}</button></div> : null}</div></div></td></tr>; })}</tbody></table></div>
+      <div className="acq-prev-table-wrap"><table className="acq-prev-table"><thead><tr><th>Fornitore</th><th>Articolo</th><th>Unita</th><th>Valuta</th><th>Prezzo</th><th>Trend</th><th>Preventivo</th><th>Data</th><th>Azioni</th></tr></thead><tbody>{filteredListino.length === 0 ? <tr><td colSpan={9}>{snapshot.listino.length === 0 ? "Listino vuoto." : "Nessuna voce con questi filtri."}</td></tr> : filteredListino.map((item) => { const hasDocument = hasAnyDocument(item); return <tr key={item.id}><td>{renderSafeText(item.supplierName)}</td><td>{renderSafeText(item.articoloCanonico)}</td><td>{renderSafeText(item.unita)}</td><td>{renderSafeText(item.valuta)}</td><td>{item.prezzoAttuale !== null ? item.prezzoAttuale.toFixed(2) : "-"}</td><td><span className={`acq-pill ${formatTrendClassName(item.trend)}`}>{formatTrendLabel(item.trend)}</span></td><td>{item.fonteNumeroPreventivo ? `N. ${renderSafeText(item.fonteNumeroPreventivo)}` : "-"}</td><td>{formatProcurementDateLabel(item.fonteDataPreventivo || item.updatedAtLabel)}</td><td><div className="acq-prev-list-actions acq-prev-list-actions--compact"><button type="button" className="acq-btn acq-btn--primary" onClick={() => openFirstDocument(item)} disabled={!hasDocument} title={hasDocument ? "Apri documento" : "Nessun documento collegato"}>APRI DOCUMENTO</button><div className="acq-kebab" data-menu-root="listino"><button type="button" className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon" aria-label="Altre azioni" onClick={(event) => { if (listinoMenuId === item.id) { setListinoMenuId(null); setListinoMenuPosition(null); return; } const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect(); setListinoMenuId(item.id); setListinoMenuPosition(buildMenuPosition(rect, 210, 180)); }}>...</button>{listinoMenuId === item.id && listinoMenuPosition ? <div className={`acq-kebab-menu acq-kebab-menu--fixed${listinoMenuPosition.openUp ? " is-up" : ""}`} style={{ top: `${listinoMenuPosition.top}px`, left: `${listinoMenuPosition.left}px` }}><button type="button" className="acq-kebab-item" onClick={() => { openFirstDocument(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>Apri documento</button><button type="button" className="acq-kebab-item" onClick={() => { setEditingListinoItem(item); setListinoMenuId(null); setListinoMenuPosition(null); }}>{LABELS_IT.menu.edit}</button><button type="button" className="acq-kebab-item acq-kebab-item--danger" onClick={() => { setListinoMenuId(null); setListinoMenuPosition(null); void handleEliminaVoceListino(item.id); }}>{LABELS_IT.menu.delete}</button></div> : null}</div></div></td></tr>; })}</tbody></table></div>
       {editingListinoItem ? <div className="acq-modal-backdrop" role="dialog" aria-modal="true" aria-label="Modifica voce listino" onClick={(event) => { if (event.target === event.currentTarget) setEditingListinoItem(null); }}><div className="acq-modal-card acq-listino-edit-modal"><div className="acq-link-foto-head"><div><h4>Modifica voce listino</h4><p className="acq-prev-draft-meta">{editingListinoItem.supplierName}</p></div><button type="button" className="acq-btn acq-btn--small" onClick={() => setEditingListinoItem(null)} aria-label="Chiudi">X</button></div><div className="acq-modal-grid"><label className="acq-prev-field"><span>Descrizione</span><input type="text" value={listinoForm.descrizione} onChange={(event) => setListinoForm((prev) => ({ ...prev, descrizione: event.target.value }))} /></label><label className="acq-prev-field"><span>Codice articolo (opzionale)</span><input type="text" value={listinoForm.codiceArticolo} onChange={(event) => setListinoForm((prev) => ({ ...prev, codiceArticolo: event.target.value }))} /></label><label className="acq-prev-field"><span>Unita</span><input type="text" value={listinoForm.unita} onChange={(event) => setListinoForm((prev) => ({ ...prev, unita: event.target.value }))} /></label><label className="acq-prev-field"><span>Valuta</span><select value={listinoForm.valuta} onChange={(event) => setListinoForm((prev) => ({ ...prev, valuta: event.target.value === "EUR" ? "EUR" : "CHF" }))}><option value="CHF">CHF</option><option value="EUR">EUR</option></select></label><label className="acq-prev-field"><span>Prezzo</span><input type="text" inputMode="decimal" value={listinoForm.prezzo} onChange={(event) => setListinoForm((prev) => ({ ...prev, prezzo: event.target.value }))} /></label><label className="acq-prev-field"><span>Data</span><input type="text" readOnly value={formatProcurementDateLabel(editingListinoItem.fonteDataPreventivo || editingListinoItem.updatedAtLabel || formatTodayLabel())} /></label></div><label className="acq-prev-field"><span>Note</span><textarea value={listinoForm.note} onChange={(event) => setListinoForm((prev) => ({ ...prev, note: event.target.value }))} /></label><div className="acq-listino-edit-doc">{hasAnyDocument(editingListinoItem) ? <button type="button" className="acq-btn" onClick={() => openFirstDocument(editingListinoItem)}>APRI DOCUMENTO</button> : <span className="acq-prev-draft-meta">Nessun documento collegato</span>}</div><div className="acq-prev-actions"><button type="button" className="acq-btn" onClick={() => setEditingListinoItem(null)} disabled={salvandoListino}>Annulla</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => void salvaListinoVoce()} disabled={salvandoListino}>{salvandoListino ? "Salvataggio..." : "Salva"}</button></div></div></div> : null}
     </div></div></section>
   );

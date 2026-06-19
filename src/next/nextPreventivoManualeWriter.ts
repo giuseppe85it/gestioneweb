@@ -6,7 +6,7 @@ import { uploadBytes } from "../utils/storageWriteOps";
 
 export type Valuta = "CHF" | "EUR";
 
-type PreventivoRiga = {
+export type PreventivoRiga = {
   id: string;
   descrizione: string;
   unita: string;
@@ -14,7 +14,7 @@ type PreventivoRiga = {
   note?: string;
 };
 
-type Preventivo = {
+export type Preventivo = {
   id: string;
   fornitoreId: string;
   fornitoreNome: string;
@@ -190,7 +190,7 @@ function readFileExtension(file: File): string {
   return "bin";
 }
 
-async function uploadPreventivoManualeFoto(args: {
+export async function uploadPreventivoManualeFoto(args: {
   preventivoId: string;
   foto: File[];
   prefix?: string | null;

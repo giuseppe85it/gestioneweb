@@ -1429,10 +1429,9 @@ export default function NextProcurementReadOnlyPanel({
               <p className="acq-eyebrow">Gestione Acquisti</p>
               <h1 className="acq-title">Acquisti</h1>
               <p className="acq-subtitle">
-                Modulo NEXT di supporto: ordini, arrivi e dettaglio ordine
-                restano navigabili in sola lettura; preventivi sono preview
-                prudenziale, listino solo contesto e il writer stock canonico
-                del dominio resta `/next/magazzino`.
+                Modulo NEXT: ordini, arrivi, preventivi e listino sono gestibili
+                (creazione, modifica ed eliminazione). Lo stock di magazzino resta
+                gestito da `/next/magazzino`.
               </p>
             </div>
           </div>

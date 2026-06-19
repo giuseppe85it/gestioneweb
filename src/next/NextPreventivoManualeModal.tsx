@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { readNextFornitoriSnapshot, type NextFornitoreReadOnlyItem } from "./domain/nextFornitoriDomain";
-import { saveAndUpsert, type Valuta } from "./nextPreventivoManualeWriter";
+import {
+  saveAndUpsert,
+  upsertListinoFromPreventivoManuale,
+  uploadPreventivoManualeFoto,
+  type Preventivo,
+  type Valuta,
+} from "./nextPreventivoManualeWriter";
+import { updateNextPreventivo } from "./nextProcurementWriters";
 
 type PreventivoManualeRowFormState = {
   descrizione: string;
@@ -113,20 +120,43 @@ function fieldStyle(hasError: boolean) {
 export default function NextPreventivoManualeModal({
   onClose,
   onSaved,
+  preventivoIniziale,
+  valutaIniziale,
 }: {
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
+  preventivoIniziale?: Preventivo;
+  valutaIniziale?: Valuta;
 }) {
+  const isEdit = Boolean(preventivoIniziale);
   const [fornitori, setFornitori] = useState<NextFornitoreReadOnlyItem[]>([]);
   const [loadingFornitori, setLoadingFornitori] = useState(true);
   const [fornitoriError, setFornitoriError] = useState<string | null>(null);
-  const [fornitoreId, setFornitoreId] = useState("");
-  const [numeroPreventivo, setNumeroPreventivo] = useState(buildDefaultNumeroPreventivo);
-  const [dataPreventivo, setDataPreventivo] = useState(buildTodayInputValue);
-  const [valuta, setValuta] = useState<Valuta>("CHF");
-  const [ricevutoDaWhatsapp, setRicevutoDaWhatsapp] = useState(false);
-  const [ricevutoDaEmail, setRicevutoDaEmail] = useState(false);
-  const [rows, setRows] = useState<PreventivoManualeRowFormState[]>([buildEmptyRow()]);
+  const [fornitoreId, setFornitoreId] = useState(preventivoIniziale?.fornitoreId ?? "");
+  const [numeroPreventivo, setNumeroPreventivo] = useState(
+    () => preventivoIniziale?.numeroPreventivo ?? buildDefaultNumeroPreventivo(),
+  );
+  const [dataPreventivo, setDataPreventivo] = useState(
+    () => preventivoIniziale?.dataPreventivo || buildTodayInputValue(),
+  );
+  const [valuta, setValuta] = useState<Valuta>(valutaIniziale ?? "CHF");
+  const [ricevutoDaWhatsapp, setRicevutoDaWhatsapp] = useState(
+    Boolean(preventivoIniziale?.ricevutoDaWhatsapp),
+  );
+  const [ricevutoDaEmail, setRicevutoDaEmail] = useState(
+    Boolean(preventivoIniziale?.ricevutoDaEmail),
+  );
+  const [rows, setRows] = useState<PreventivoManualeRowFormState[]>(() =>
+    preventivoIniziale && preventivoIniziale.righe.length
+      ? preventivoIniziale.righe.map((riga) => ({
+          descrizione: riga.descrizione ?? "",
+          codiceArticolo: "",
+          unita: riga.unita ?? "",
+          prezzoUnitario: riga.prezzoUnitario != null ? String(riga.prezzoUnitario) : "",
+          note: riga.note ?? "",
+        }))
+      : [buildEmptyRow()],
+  );
   const [foto, setFoto] = useState<File[]>([]);
   const [validationState, setValidationState] = useState<PreventivoManualeValidationState>(emptyValidationState);
   const [saving, setSaving] = useState(false);
@@ -257,6 +287,63 @@ export default function NextPreventivoManualeModal({
 
     setSaving(true);
     try {
+      if (isEdit && preventivoIniziale) {
+        let nuoveImagePaths: string[] = [];
+        let nuoveImageUrls: string[] = [];
+        if (foto.length > 0) {
+          const uploaded = await uploadPreventivoManualeFoto({
+            preventivoId: preventivoIniziale.id,
+            foto,
+            prefix: "preventivi/manuali/",
+            strict: true,
+          });
+          nuoveImagePaths = uploaded.imageStoragePaths;
+          nuoveImageUrls = uploaded.imageUrls;
+        }
+        const righeEdit = rows.map((row, index) => ({
+          id: preventivoIniziale.righe[index]?.id ?? `${preventivoIniziale.id}-r${index + 1}`,
+          descrizione: row.descrizione.trim(),
+          unita: row.unita.trim(),
+          prezzoUnitario: Number(String(row.prezzoUnitario || "").replace(",", ".")),
+          note: row.note.trim() || undefined,
+        }));
+        const patch: Partial<Preventivo> = {
+          fornitoreId: selectedFornitore.id,
+          fornitoreNome: selectedFornitore.nome,
+          numeroPreventivo: numeroPreventivo.trim(),
+          dataPreventivo,
+          ricevutoDaWhatsapp,
+          ricevutoDaEmail,
+          righe: righeEdit,
+          ...(nuoveImagePaths.length
+            ? {
+                imageStoragePaths: [
+                  ...(preventivoIniziale.imageStoragePaths ?? []),
+                  ...nuoveImagePaths,
+                ],
+                imageUrls: [...(preventivoIniziale.imageUrls ?? []), ...nuoveImageUrls],
+              }
+            : {}),
+        };
+        await updateNextPreventivo(preventivoIniziale.id, patch);
+        const preventivoCompleto: Preventivo = {
+          ...preventivoIniziale,
+          ...patch,
+          id: preventivoIniziale.id,
+        };
+        await upsertListinoFromPreventivoManuale(
+          preventivoCompleto,
+          valuta,
+          rows.map((row) => row.codiceArticolo.trim() || undefined),
+          { pdfStoragePath: preventivoIniziale.pdfStoragePath, pdfUrl: preventivoIniziale.pdfUrl },
+        );
+        setSuccessMessage("Preventivo aggiornato e listino aggiornato");
+        if (onSaved) {
+          await onSaved();
+        }
+        onClose();
+        return;
+      }
       await saveAndUpsert({
         testata: {
           fornitoreId: selectedFornitore.id,
@@ -298,7 +385,7 @@ export default function NextPreventivoManualeModal({
       className="acq-modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Nuovo preventivo manuale"
+      aria-label={isEdit ? "Modifica preventivo" : "Nuovo preventivo manuale"}
       onClick={(event) => {
         if (saving) return;
         if (event.target === event.currentTarget) onClose();
@@ -310,7 +397,7 @@ export default function NextPreventivoManualeModal({
       >
         <div className="acq-link-foto-head">
           <div>
-            <h4>Nuovo preventivo manuale</h4>
+            <h4>{isEdit ? "Modifica preventivo" : "Nuovo preventivo manuale"}</h4>
           </div>
           <button
             type="button"
@@ -606,7 +693,7 @@ export default function NextPreventivoManualeModal({
               Annulla
             </button>
             <button type="submit" className="acq-btn acq-btn--primary" disabled={!canSubmit}>
-              {saving ? "Salvataggio in corso..." : "Salva preventivo"}
+              {saving ? "Salvataggio in corso..." : isEdit ? "Salva modifiche" : "Salva preventivo"}
             </button>
           </div>
         </form>

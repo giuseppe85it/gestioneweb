@@ -20,6 +20,16 @@ export interface Ordine {
   dataOrdine: string;   // "gg mm aaaa"
   materiali: MaterialeOrdine[];
 }
+export interface OrdineTotaliIva {
+  ivaRate: number; // aliquota in percentuale, es. 8.1
+  perValuta: Array<{
+    valuta: string;   // "CHF" | "EUR" | ...
+    imponibile: number;
+    iva: number;
+    totale: number;
+  }>;
+}
+
 export interface Ordine {
   id: string;
   idFornitore: string;
@@ -28,4 +38,5 @@ export interface Ordine {
   materiali: MaterialeOrdine[];
 
   arrivato: boolean;   //  ✅ AGGIUNTO
+  totaliIva?: OrdineTotaliIva; // opzionale: riepilogo IVA calcolato alla conferma ordine
 }
