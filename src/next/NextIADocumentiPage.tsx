@@ -4,6 +4,7 @@ import "./internal-ai/internal-ai.css";
 import { toDisplay } from "./helpers/dateUnica";
 import {
   buildNextDossierPath,
+  NEXT_LIBRETTI_EXPORT_PATH,
 } from "./nextStructuralPaths";
 import {
   deleteNextDocumentoCosto,
@@ -14,6 +15,26 @@ import {
   updateNextDocumentoCurrency,
 } from "./domain/nextDocumentiCostiDomain";
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+import {
+  readNextOfficineSnapshot,
+  type NextOfficinaReadOnlyItem,
+} from "./domain/nextOfficineDomain";
+import {
+  readNextFornitoriSnapshot,
+  type NextFornitoreReadOnlyItem,
+} from "./domain/nextFornitoriDomain";
+import {
+  readNextCentroControlloSnapshot,
+  type D10MezzoItem,
+  type D10SessionItem,
+  type D10Snapshot,
+} from "./domain/nextCentroControlloDomain";
+import {
+  buildAnagraficaMatchIndex,
+  matchFornitoreText,
+  type AnagraficaMatch,
+  type AnagraficaMatchIndex,
+} from "./domain/nextDocumentiAnagraficaMatch";
 
 const NEXT_IA_ARCHIVISTA_PATH = "/next/ia/archivista";
 
@@ -25,8 +46,13 @@ type DocumentiCostiFilter =
   | "da_verificare"
   | "libretti";
 
+type DocumentiGroupKind = "officina" | "fornitore" | "libretto" | "nessuno";
+
 type SupplierGroup = {
-  supplier: string;
+  key: string;
+  groupKind: DocumentiGroupKind;
+  displayName: string;
+  anagraficaNome: string | null;
   items: NextIADocumentiArchiveItem[];
   total: number;
 };
@@ -317,6 +343,29 @@ function sortItems(items: NextIADocumentiArchiveItem[]) {
   });
 }
 
+function buildMezziByTarga(snapshot: D10Snapshot | null): Map<string, D10MezzoItem> {
+  const result = new Map<string, D10MezzoItem>();
+  snapshot?.mezzi.forEach((mezzo) => {
+    if (mezzo.targa) {
+      result.set(mezzo.targa, mezzo);
+    }
+  });
+  return result;
+}
+
+function buildSessioniByTarga(snapshot: D10Snapshot | null): Map<string, D10SessionItem> {
+  const result = new Map<string, D10SessionItem>();
+  snapshot?.sessioni.forEach((sessione) => {
+    if (sessione.targaMotrice) {
+      result.set(sessione.targaMotrice, sessione);
+    }
+    if (sessione.targaRimorchio) {
+      result.set(sessione.targaRimorchio, sessione);
+    }
+  });
+  return result;
+}
+
 export default function NextIADocumentiPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<NextIADocumentiArchiveItem[]>([]);
@@ -331,9 +380,11 @@ export default function NextIADocumentiPage() {
   const [editingCurrencyValue, setEditingCurrencyValue] = useState<NextDocumentiCostiCurrency>("EUR");
   const [savingCurrencyId, setSavingCurrencyId] = useState<string | null>(null);
   const [currencyErrorMessage, setCurrencyErrorMessage] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
+  const [fornitori, setFornitori] = useState<NextFornitoreReadOnlyItem[]>([]);
+  const [centroSnapshot, setCentroSnapshot] = useState<D10Snapshot | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -376,6 +427,55 @@ export default function NextIADocumentiPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadAnagrafiche = async () => {
+      try {
+        const [officineSnapshot, fornitoriSnapshot, centro] = await Promise.all([
+          readNextOfficineSnapshot(),
+          readNextFornitoriSnapshot(),
+          readNextCentroControlloSnapshot(),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setOfficine(officineSnapshot.items);
+        setFornitori(fornitoriSnapshot.items);
+        setCentroSnapshot(centro);
+      } catch {
+        // Abbinamento anagrafica e tooltip mezzo sono opzionali: in caso di errore
+        // i documenti restano "Non in anagrafica" e il tooltip non viene mostrato.
+      }
+    };
+
+    void loadAnagrafiche();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) {
+      return;
+    }
+
+    const closeMenu = () => setOpenMenuId(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
+
+  useEffect(() => {
     if (!modalItem) {
       return;
     }
@@ -389,6 +489,22 @@ export default function NextIADocumentiPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [modalItem]);
+
+  const matchIndex = useMemo<AnagraficaMatchIndex>(
+    () => buildAnagraficaMatchIndex(officine, fornitori),
+    [officine, fornitori],
+  );
+
+  const matchByItemId = useMemo(() => {
+    const map = new Map<string, AnagraficaMatch>();
+    for (const item of items) {
+      map.set(item.id, matchFornitoreText(item.fornitore, matchIndex));
+    }
+    return map;
+  }, [items, matchIndex]);
+
+  const mezziByTarga = useMemo(() => buildMezziByTarga(centroSnapshot), [centroSnapshot]);
+  const sessioniByTarga = useMemo(() => buildSessioniByTarga(centroSnapshot), [centroSnapshot]);
 
   const itemsFiltrati = useMemo(() => {
     return items
@@ -407,29 +523,70 @@ export default function NextIADocumentiPage() {
   }, [items, filtroAttivo, localDaVerificareIds, searchQuery]);
 
   const perFornitore = useMemo<SupplierGroup[]>(() => {
-    // Nel filtro "Libretti" i documenti si raggruppano per TARGA (non per fornitore)
-    // e si ordinano per targa: ogni mezzo ha la sua sezione libretto, in ordine.
+    // Nel filtro "Libretti" i documenti si raggruppano per TARGA (non per fornitore).
+    // Negli altri filtri la chiave è l'ENTITÀ anagrafica abbinata (officina/fornitore),
+    // così grafie diverse dello stesso nome confluiscono nello stesso gruppo; in assenza
+    // di match si raggruppa per testo del campo fornitore.
     const raggruppaPerTarga = filtroAttivo === "libretti";
     const grouped = new Map<string, NextIADocumentiArchiveItem[]>();
 
     for (const item of itemsFiltrati) {
-      const key = raggruppaPerTarga
-        ? normalizeText(item.targa) || "Senza targa"
-        : buildSupplierLabel(item);
+      let key: string;
+      if (raggruppaPerTarga) {
+        key = `targa:${normalizeText(item.targa) || "Senza targa"}`;
+      } else {
+        const match = matchByItemId.get(item.id);
+        if (match?.kind === "officina") {
+          key = `officina:${match.id}`;
+        } else if (match?.kind === "fornitore") {
+          key = `fornitore:${match.id}`;
+        } else {
+          key = `testo:${buildSupplierLabel(item)}`;
+        }
+      }
       const group = grouped.get(key) ?? [];
       group.push(item);
       grouped.set(key, group);
     }
 
     return Array.from(grouped.entries())
-      .map(([supplier, supplierItems]) => ({
-        supplier,
-        items: sortItems(supplierItems),
-        total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
-      }))
+      .map(([key, supplierItems]) => {
+        const first = supplierItems[0];
+        const match = first ? matchByItemId.get(first.id) : undefined;
+        let groupKind: DocumentiGroupKind;
+        let displayName: string;
+        let anagraficaNome: string | null;
+
+        if (raggruppaPerTarga) {
+          groupKind = "libretto";
+          displayName = normalizeText(first?.targa) || "Senza targa";
+          anagraficaNome = null;
+        } else if (match?.kind === "officina") {
+          groupKind = "officina";
+          displayName = match.nome;
+          anagraficaNome = match.nome;
+        } else if (match?.kind === "fornitore") {
+          groupKind = "fornitore";
+          displayName = match.nome;
+          anagraficaNome = match.nome;
+        } else {
+          groupKind = "nessuno";
+          displayName = first ? buildSupplierLabel(first) : "Fornitore non specificato";
+          anagraficaNome = null;
+        }
+
+        return {
+          key,
+          groupKind,
+          displayName,
+          anagraficaNome,
+          items: sortItems(supplierItems),
+          total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+        };
+      })
       .sort((left, right) => {
         if (raggruppaPerTarga) {
-          return left.supplier.localeCompare(right.supplier, "it", {
+          return left.displayName.localeCompare(right.displayName, "it", {
             numeric: true,
             sensitivity: "base",
           });
@@ -439,11 +596,11 @@ export default function NextIADocumentiPage() {
           return right.total - left.total;
         }
 
-        return left.supplier.localeCompare(right.supplier, "it", {
+        return left.displayName.localeCompare(right.displayName, "it", {
           sensitivity: "base",
         });
       });
-  }, [itemsFiltrati, filtroAttivo]);
+  }, [itemsFiltrati, filtroAttivo, matchByItemId]);
 
   useEffect(() => {
     if (perFornitore.length === 0) {
@@ -453,20 +610,31 @@ export default function NextIADocumentiPage() {
     setSezioniAperte((prev) => {
       const next = new Set(prev);
       for (const group of perFornitore) {
-        next.add(group.supplier);
+        next.add(group.key);
       }
       return next;
     });
   }, [perFornitore]);
 
-  const totaleGenerale = useMemo(
-    () => itemsFiltrati.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
-    [itemsFiltrati],
-  );
+  const { nOfficine, nFornitori } = useMemo(() => {
+    const officineIds = new Set<string>();
+    const fornitoriIds = new Set<string>();
+    for (const item of itemsFiltrati) {
+      const match = matchByItemId.get(item.id);
+      if (match?.kind === "officina") {
+        officineIds.add(match.id);
+      } else if (match?.kind === "fornitore") {
+        fornitoriIds.add(match.id);
+      }
+    }
+    return { nOfficine: officineIds.size, nFornitori: fornitoriIds.size };
+  }, [itemsFiltrati, matchByItemId]);
 
   const modalIsMarkedDaVerificare = modalItem
     ? modalItem.daVerificare || localDaVerificareIds.has(modalItem.id)
     : false;
+
+  const modalMatch = modalItem ? matchByItemId.get(modalItem.id) : undefined;
 
   const toggleFornitore = (supplier: string) => {
     setSezioniAperte((prev) => {
@@ -504,15 +672,13 @@ export default function NextIADocumentiPage() {
     event.stopPropagation();
     try {
       setDeletingDocumentId(item.id);
-      setDeleteErrorMessage(null);
       await runWithCloneWriteScopedAllowance(
         "internal_ai_magazzino_inline_magazzino",
         async () => deleteNextDocumentoCosto(mapArchiveItemToLegacyDocument(item)),
       );
       setItems((current) => current.filter((entry) => entry.id !== item.id));
-      setDeleteConfirmId(null);
     } catch (error) {
-      setDeleteErrorMessage(
+      window.alert(
         error instanceof Error ? error.message : "Eliminazione documento non completata.",
       );
     } finally {
@@ -520,20 +686,23 @@ export default function NextIADocumentiPage() {
     }
   };
 
+  const toggleLocalReviewById = (id: string) => {
+    setLocalDaVerificareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handleToggleLocalReview = () => {
     if (!modalItem) {
       return;
     }
-
-    setLocalDaVerificareIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(modalItem.id)) {
-        next.delete(modalItem.id);
-      } else {
-        next.add(modalItem.id);
-      }
-      return next;
-    });
+    toggleLocalReviewById(modalItem.id);
   };
 
   const openCurrencyEditor = (
@@ -582,19 +751,142 @@ export default function NextIADocumentiPage() {
     }
   };
 
+  const renderMiniDossier = (targa: string) => {
+    const mezzo = mezziByTarga.get(targa) ?? null;
+    const sessione = sessioniByTarga.get(targa) ?? null;
+    if (!mezzo && !sessione) {
+      return null;
+    }
+    const sessLabel = sessione
+      ? `${sessione.nomeAutista ?? "Autista non indicato"}${
+          sessione.badgeAutista ? ` (${sessione.badgeAutista})` : ""
+        }`
+      : "no";
+    return (
+      <div className="doc-costi-mini-dossier" role="tooltip">
+        <div className="doc-costi-mini-photo">
+          {mezzo?.fotoUrl ? (
+            <img src={mezzo.fotoUrl} alt={`Foto mezzo ${targa}`} />
+          ) : (
+            <span>Nessuna foto</span>
+          )}
+        </div>
+        <div className="doc-costi-mini-content">
+          <div className="doc-costi-mini-title">{targa}</div>
+          <div className="doc-costi-mini-row">
+            <span>Categoria</span>
+            <strong>{mezzo?.categoria ?? "Non indicata"}</strong>
+          </div>
+          <div className="doc-costi-mini-row">
+            <span>Autista abituale</span>
+            <strong>{mezzo?.autistaNome ?? "Non indicato"}</strong>
+          </div>
+          <div className="doc-costi-mini-row">
+            <span>Sessione attiva</span>
+            <strong>{sessLabel}</strong>
+          </div>
+          {sessione?.statoSessione ? (
+            <div className="doc-costi-mini-row">
+              <span>Stato</span>
+              <strong>{sessione.statoSessione}</strong>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const renderVistaLibretti = () => {
+    const libretti = itemsFiltrati;
+    if (libretti.length === 0) {
+      return (
+        <div className="doc-costi-empty">
+          {searchQuery ? "Nessun libretto corrisponde alla ricerca" : "Nessun libretto trovato"}
+        </div>
+      );
+    }
+
+    const perCategoria = new Map<string, NextIADocumentiArchiveItem[]>();
+    for (const lib of libretti) {
+      const targa = normalizeText(lib.targa);
+      const categoria = mezziByTarga.get(targa)?.categoria || "Altro";
+      const arr = perCategoria.get(categoria) ?? [];
+      arr.push(lib);
+      perCategoria.set(categoria, arr);
+    }
+    const categorie = [...perCategoria.keys()].sort((a, b) => a.localeCompare(b, "it"));
+
+    return (
+      <div className="doc-costi-libretti">
+        <div className="doc-costi-libretti-bar">
+          <span className="doc-costi-libretti-title">Libretti per categoria</span>
+          <span className="doc-costi-libretti-sub">{libretti.length} libretti</span>
+          <button
+            type="button"
+            className="doc-costi-libretti-export"
+            onClick={() => navigate(NEXT_LIBRETTI_EXPORT_PATH)}
+          >
+            ⤓ Export libretti
+          </button>
+        </div>
+
+        {categorie.map((categoria) => (
+          <div key={categoria} className="doc-costi-libretti-cat">
+            <div className="doc-costi-libretti-cat-head">{categoria.toUpperCase()}</div>
+            <div className="doc-costi-libretti-grid">
+              {(perCategoria.get(categoria) ?? [])
+                .slice()
+                .sort((a, b) =>
+                  normalizeText(a.targa).localeCompare(normalizeText(b.targa), "it", {
+                    numeric: true,
+                    sensitivity: "base",
+                  }),
+                )
+                .map((lib) => (
+                  <button
+                    type="button"
+                    key={lib.id}
+                    className="doc-costi-libretto-card"
+                    onClick={() => setModalItem(lib)}
+                  >
+                    <span className="doc-costi-libretto-thumb">Libretto</span>
+                    <span className="doc-costi-libretto-ft">
+                      <strong>{normalizeText(lib.targa) || "—"}</strong>
+                      <span className="doc-costi-libretto-ok">✓ Libretto</span>
+                    </span>
+                    <span className="doc-costi-libretto-catlabel">
+                      {mezziByTarga.get(normalizeText(lib.targa))?.categoria || "Altro"}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <section className="next-page doc-costi-page">
       <header className="doc-costi-header">
         <h1 className="doc-costi-title">Documenti e costi</h1>
-        <span className="doc-costi-stat">
-          <b>{itemsFiltrati.length}</b> doc
-        </span>
-        <span className="doc-costi-stat">
-          <b>{perFornitore.length}</b> fornitori
-        </span>
-        <span className="doc-costi-stat">
-          <b>{formatMoneyCompact(totaleGenerale)}</b>
-        </span>
+        {filtroAttivo === "libretti" ? (
+          <span className="doc-costi-stat">
+            <b>{itemsFiltrati.length}</b> libretti
+          </span>
+        ) : (
+          <>
+            <span className="doc-costi-stat">
+              <b>{itemsFiltrati.length}</b> doc
+            </span>
+            <span className="doc-costi-stat">
+              <b>{nOfficine}</b> officine
+            </span>
+            <span className="doc-costi-stat">
+              <b>{nFornitori}</b> fornitori
+            </span>
+          </>
+        )}
       </header>
 
       <div className="doc-costi-filters">
@@ -622,7 +914,9 @@ export default function NextIADocumentiPage() {
 
       {!loading && errorMessage ? <div className="doc-costi-empty">{errorMessage}</div> : null}
 
-      {!loading && !errorMessage && perFornitore.length === 0 ? (
+      {!loading && !errorMessage && filtroAttivo === "libretti" ? renderVistaLibretti() : null}
+
+      {!loading && !errorMessage && filtroAttivo !== "libretti" && perFornitore.length === 0 ? (
         <div className="doc-costi-empty">
           {filtroAttivo === "tutti" && !searchQuery
             ? "Nessun documento trovato"
@@ -632,15 +926,16 @@ export default function NextIADocumentiPage() {
 
       {!loading &&
         !errorMessage &&
+        filtroAttivo !== "libretti" &&
         perFornitore.map((group) => {
-          const isOpen = sezioniAperte.has(group.supplier);
+          const isOpen = sezioniAperte.has(group.key);
 
           return (
-            <section key={group.supplier} className="doc-costi-fornitore">
+            <section key={group.key} className="doc-costi-fornitore">
               <button
                 type="button"
                 className="doc-costi-fornitore-header"
-                onClick={() => toggleFornitore(group.supplier)}
+                onClick={() => toggleFornitore(group.key)}
               >
                 <span
                   className={`doc-costi-fornitore-chevron ${isOpen ? "is-open" : ""}`}
@@ -648,15 +943,22 @@ export default function NextIADocumentiPage() {
                 >
                   &gt;
                 </span>
-                <span className="doc-costi-fornitore-name">{group.supplier}</span>
+                <span className="doc-costi-fornitore-name">{group.displayName}</span>
+                <span className={`doc-costi-group-badge is-${group.groupKind}`}>
+                  {group.groupKind === "officina"
+                    ? "🔧 Officina · anagrafica"
+                    : group.groupKind === "fornitore"
+                      ? "🏢 Fornitore · anagrafica"
+                      : group.groupKind === "libretto"
+                        ? "📋 Libretto"
+                        : "Non in anagrafica"}
+                </span>
                 <span className="doc-costi-stat">
                   <b>{group.items.length}</b> doc
                 </span>
-                {filtroAttivo === "libretti" ? null : (
-                  <span className="doc-costi-fornitore-total">
-                    Totale {formatMoneyCompact(group.total)}
-                  </span>
-                )}
+                <span className="doc-costi-fornitore-total">
+                  Totale {formatMoneyCompact(group.total)}
+                </span>
               </button>
 
               {isOpen ? (
@@ -664,13 +966,13 @@ export default function NextIADocumentiPage() {
                   <table className="doc-costi-table">
                     <thead>
                       <tr>
+                        <th>Origine</th>
                         <th>Tipo</th>
                         <th>Data</th>
-                        <th>Numero</th>
-                        <th>Targa</th>
-                        <th>Descr.</th>
+                        <th>N. doc.</th>
+                        <th>Descrizione</th>
                         <th className="is-right">EUR</th>
-                        <th>Azioni</th>
+                        <th aria-label="Azioni"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -681,29 +983,36 @@ export default function NextIADocumentiPage() {
                         return (
                           <tr key={item.id} onClick={() => setModalItem(item)}>
                             <td>
+                              {normalizeText(item.targa) ? (
+                                <span className="doc-costi-origine-wrap">
+                                  <a
+                                    href={buildNextDossierPath(normalizeText(item.targa))}
+                                    className="doc-costi-targa"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      navigate(buildNextDossierPath(normalizeText(item.targa)));
+                                    }}
+                                  >
+                                    {normalizeText(item.targa)}
+                                  </a>
+                                  {renderMiniDossier(normalizeText(item.targa))}
+                                </span>
+                              ) : item.sourceKey === "@documenti_magazzino" ? (
+                                <span className="doc-costi-origine-badge is-magazzino">
+                                  📦 Magazzino
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td>
                               <span className={`doc-costi-badge ${getItemBadgeClass(item)}`}>
                                 {getItemKindLabel(item)}
                               </span>
                             </td>
                             <td>{formatDate(item)}</td>
                             <td>{normalizeText(item.numeroDocumento) || "-"}</td>
-                            <td>
-                              {normalizeText(item.targa) ? (
-                                <a
-                                  href={buildNextDossierPath(normalizeText(item.targa))}
-                                  className="doc-costi-targa"
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    navigate(buildNextDossierPath(normalizeText(item.targa)));
-                                  }}
-                                >
-                                  {normalizeText(item.targa)}
-                                </a>
-                              ) : (
-                                "-"
-                              )}
-                            </td>
                             <td>{buildDescription(item)}</td>
                             <td className="doc-costi-importo">
                               {formatMoney(item.totaleDocumento, item.currency)}
@@ -750,90 +1059,87 @@ export default function NextIADocumentiPage() {
                                 >
                                   Valuta da verificare
                                 </button>
-                              ) : (
-                                <>
-                                  {normalizeText(item.currency) &&
-                                  normalizeText(item.currency) !== "EUR" ? (
-                                    <span className="doc-costi-valuta">{item.currency}</span>
-                                  ) : null}
+                              ) : normalizeText(item.currency) &&
+                                normalizeText(item.currency) !== "EUR" ? (
+                                <span className="doc-costi-valuta">{item.currency}</span>
+                              ) : null}
+                            </td>
+                            <td
+                              className="doc-costi-menu-cell"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="doc-costi-menu-trigger"
+                                aria-haspopup="menu"
+                                aria-expanded={openMenuId === item.id}
+                                aria-label="Azioni documento"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setOpenMenuId((current) => (current === item.id ? null : item.id));
+                                }}
+                              >
+                                ⋮
+                              </button>
+                              {openMenuId === item.id ? (
+                                <div
+                                  className="doc-costi-menu"
+                                  role="menu"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
                                   <button
                                     type="button"
-                                    className="doc-costi-btn"
-                                    style={{ marginLeft: 8 }}
-                                    onClick={(event) => openCurrencyEditor(event, item)}
+                                    role="menuitem"
+                                    className="doc-costi-menu-item"
+                                    onClick={(event) => {
+                                      handleOpenPdf(event, item);
+                                      setOpenMenuId(null);
+                                    }}
+                                    disabled={!item.fileUrl}
                                   >
-                                    Modifica
+                                    Apri PDF
                                   </button>
-                                </>
-                              )}
-                            </td>
-                            <td>
-                              <div className="doc-costi-actions">
-                                <button
-                                  type="button"
-                                  className="doc-costi-btn"
-                                  onClick={(event) => handleOpenPdf(event, item)}
-                                  disabled={!item.fileUrl}
-                                >
-                                  PDF
-                                </button>
-                                <button
-                                  type="button"
-                                  className="doc-costi-btn"
-                                  onClick={(event) => handleReopenReview(event, item)}
-                                >
-                                  Riapri review
-                                </button>
-                                {filtroAttivo === "libretti" ? (
-                                  deleteConfirmId === item.id ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="doc-costi-btn"
-                                        onClick={(event) => void handleDeleteDocumento(event, item)}
-                                        disabled={deletingDocumentId === item.id}
-                                      >
-                                        {deletingDocumentId === item.id ? "Elimino..." : "Conferma"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="doc-costi-btn"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setDeleteConfirmId(null);
-                                          setDeleteErrorMessage(null);
-                                        }}
-                                        disabled={deletingDocumentId === item.id}
-                                      >
-                                        Annulla
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="doc-costi-btn"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setDeleteErrorMessage(null);
-                                        setDeleteConfirmId(item.id);
-                                      }}
-                                    >
-                                      Elimina
-                                    </button>
-                                  )
-                                ) : null}
-                              </div>
-                              {filtroAttivo === "libretti" && deleteConfirmId === item.id ? (
-                                <span className="doc-costi-row-flag">Eliminare questo libretto?</span>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="doc-costi-menu-item"
+                                    onClick={(event) => {
+                                      handleReopenReview(event, item);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    Riapri review
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="doc-costi-menu-item"
+                                    onClick={(event) => {
+                                      openCurrencyEditor(event, item);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    Modifica valuta
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="doc-costi-menu-item"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleLocalReviewById(item.id);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    {isMarkedDaVerificare ? "Togli da verificare" : "Da verificare"}
+                                  </button>
+                                </div>
                               ) : null}
                               {isMarkedDaVerificare ? (
                                 <span className="doc-costi-row-flag">Da verificare</span>
                               ) : null}
                               {currencyErrorMessage && editingCurrencyId === item.id ? (
                                 <span className="doc-costi-row-flag">{currencyErrorMessage}</span>
-                              ) : null}
-                              {deleteErrorMessage && deleteConfirmId === item.id ? (
-                                <span className="doc-costi-row-flag">{deleteErrorMessage}</span>
                               ) : null}
                             </td>
                           </tr>
@@ -844,7 +1150,7 @@ export default function NextIADocumentiPage() {
 
                   <div className="doc-costi-section-total">
                     <span className="doc-costi-stat">
-                      Totale {group.supplier}: <b>{formatMoneyCompact(group.total)}</b>
+                      Totale {group.displayName}: <b>{formatMoneyCompact(group.total)}</b>
                     </span>
                   </div>
                 </>
@@ -852,11 +1158,6 @@ export default function NextIADocumentiPage() {
             </section>
           );
         })}
-
-      <footer className="doc-costi-footer">
-        <span className="doc-costi-stat">Totale generale tutti i fornitori</span>
-        <span className="doc-costi-fornitore-total">{formatMoneyCompact(totaleGenerale)}</span>
-      </footer>
 
       <div
         className={`doc-costi-modal-overlay ${modalItem ? "is-open" : ""}`}
@@ -866,8 +1167,11 @@ export default function NextIADocumentiPage() {
           <div className="doc-costi-modal" onClick={(event) => event.stopPropagation()}>
             <div className="doc-costi-modal-header">
               <div className="doc-costi-modal-title">
-                [{getItemKindLabel(modalItem)}] {buildSupplierLabel(modalItem)} -{" "}
-                {normalizeText(modalItem.numeroDocumento) || "Numero non disponibile"}
+                [{getItemKindLabel(modalItem)}]{" "}
+                {modalMatch && modalMatch.kind !== "nessuno"
+                  ? modalMatch.nome
+                  : buildSupplierLabel(modalItem)}{" "}
+                - {normalizeText(modalItem.numeroDocumento) || "Numero non disponibile"}
               </div>
               <button
                 type="button"
@@ -881,8 +1185,19 @@ export default function NextIADocumentiPage() {
             <div className="doc-costi-modal-body">
               <div className="doc-costi-modal-fields">
                 <div className="doc-costi-modal-field">
-                  <span className="doc-costi-modal-field-label">Fornitore</span>
-                  <span className="doc-costi-modal-field-val">{buildSupplierLabel(modalItem)}</span>
+                  <span className="doc-costi-modal-field-label">
+                    {modalMatch?.kind === "officina" ? "Officina" : "Fornitore"}
+                  </span>
+                  <span className="doc-costi-modal-field-val">
+                    {modalMatch && modalMatch.kind !== "nessuno" ? (
+                      <>
+                        {modalMatch.nome}{" "}
+                        <span className="doc-costi-anagrafica-pill">da anagrafica</span>
+                      </>
+                    ) : (
+                      buildSupplierLabel(modalItem)
+                    )}
+                  </span>
                 </div>
                 <div className="doc-costi-modal-field">
                   <span className="doc-costi-modal-field-label">Data</span>
@@ -913,6 +1228,20 @@ export default function NextIADocumentiPage() {
                   </span>
                 </div>
               </div>
+
+              {isLibretto(modalItem) ? (
+                <div className="doc-costi-modal-preview">
+                  {modalItem.fileUrl ? (
+                    <iframe
+                      className="doc-costi-modal-preview-frame"
+                      src={modalItem.fileUrl}
+                      title="Anteprima libretto"
+                    />
+                  ) : (
+                    <p className="doc-costi-modal-empty">Anteprima non disponibile</p>
+                  )}
+                </div>
+              ) : null}
 
               <div className="doc-costi-modal-actions">
                 <button
@@ -949,6 +1278,21 @@ export default function NextIADocumentiPage() {
                 >
                   Riapri review
                 </button>
+                {isLibretto(modalItem) ? (
+                  <button
+                    type="button"
+                    className="doc-costi-modal-btn-secondary"
+                    onClick={(event) => {
+                      if (!window.confirm("Eliminare questo libretto?")) {
+                        return;
+                      }
+                      void handleDeleteDocumento(event, modalItem).then(() => setModalItem(null));
+                    }}
+                    disabled={deletingDocumentId === modalItem.id}
+                  >
+                    {deletingDocumentId === modalItem.id ? "Elimino..." : "Elimina libretto"}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

@@ -5414,6 +5414,350 @@
   }
 }
 
+/* Redesign Documenti — badge anagrafica, origine/tooltip, menu, anteprima libretto */
+.doc-costi-group-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.doc-costi-group-badge.is-officina {
+  background: #eaf3de;
+  color: #3b6d11;
+}
+
+.doc-costi-group-badge.is-fornitore {
+  background: #e6f1fb;
+  color: #185fa5;
+}
+
+.doc-costi-group-badge.is-libretto {
+  background: #ede9fe;
+  color: #5b3ea8;
+}
+
+.doc-costi-group-badge.is-nessuno {
+  background: #f0eee9;
+  color: #6a7280;
+}
+
+.doc-costi-origine-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.doc-costi-origine-badge.is-magazzino {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #f3e9fb;
+  color: #6b3ca3;
+  white-space: nowrap;
+}
+
+.doc-costi-mini-dossier {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  display: none;
+  width: 240px;
+  background: #ffffff;
+  border: 0.5px solid rgba(31, 36, 45, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.doc-costi-origine-wrap:hover .doc-costi-mini-dossier,
+.doc-costi-origine-wrap:focus-within .doc-costi-mini-dossier {
+  display: block;
+}
+
+.doc-costi-mini-photo {
+  height: 88px;
+  background: linear-gradient(135deg, #eef0f3, #d8dde3);
+  display: grid;
+  place-items: center;
+  color: #6a7280;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.doc-costi-mini-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.doc-costi-mini-content {
+  padding: 9px 11px;
+}
+
+.doc-costi-mini-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #202329;
+  margin-bottom: 5px;
+}
+
+.doc-costi-mini-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 11px;
+}
+
+.doc-costi-mini-row span {
+  color: #6a7280;
+}
+
+.doc-costi-mini-row strong {
+  color: #202329;
+  font-weight: 700;
+  text-align: right;
+}
+
+.doc-costi-menu-cell {
+  position: relative;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.doc-costi-menu-trigger {
+  border: 0.5px solid rgba(31, 36, 45, 0.12);
+  background: transparent;
+  color: #516072;
+  width: 28px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.doc-costi-menu-trigger:hover {
+  border-color: #1d9e75;
+  color: #0f6e56;
+}
+
+.doc-costi-menu {
+  position: absolute;
+  right: 16px;
+  top: 32px;
+  z-index: 40;
+  min-width: 176px;
+  background: #ffffff;
+  border: 0.5px solid rgba(31, 36, 45, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+  padding: 5px;
+  text-align: left;
+}
+
+.doc-costi-menu-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #516072;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.doc-costi-menu-item:hover:not(:disabled) {
+  background: #faf8f3;
+  color: #0f6e56;
+}
+
+.doc-costi-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.doc-costi-menu-item.is-danger {
+  color: #b5341f;
+}
+
+.doc-costi-menu-item.is-danger:hover {
+  background: #fbeae6;
+  color: #93281a;
+}
+
+.doc-costi-row-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.doc-costi-anagrafica-pill {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #eaf3de;
+  color: #3b6d11;
+}
+
+.doc-costi-modal-preview {
+  margin-top: 14px;
+  border: 0.5px solid rgba(31, 36, 45, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #faf8f3;
+}
+
+.doc-costi-modal-preview-frame {
+  width: 100%;
+  height: 360px;
+  border: none;
+  display: block;
+}
+
+.doc-costi-modal-empty {
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: #6a7280;
+}
+
+@media (max-width: 720px) {
+  .doc-costi-mini-dossier {
+    display: none !important;
+  }
+}
+
+/* Vista Libretti per categoria (tab Libretti) */
+.doc-costi-libretti {
+  padding: 8px 20px 20px;
+}
+
+.doc-costi-libretti-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.doc-costi-libretti-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #202329;
+}
+
+.doc-costi-libretti-sub {
+  font-size: 12px;
+  color: #6a7280;
+  font-weight: 600;
+}
+
+.doc-costi-libretti-export {
+  margin-left: auto;
+  border: 0.5px solid #1d9e75;
+  background: #e1f5ee;
+  color: #0f6e56;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.doc-costi-libretti-export:hover {
+  background: #d2efe4;
+}
+
+.doc-costi-libretti-cat-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6a7280;
+  margin: 14px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 0.5px solid rgba(31, 36, 45, 0.1);
+}
+
+.doc-costi-libretti-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.doc-costi-libretto-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0.5px solid rgba(31, 36, 45, 0.12);
+  border-radius: 10px;
+  background: #faf8f3;
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.doc-costi-libretto-card:hover {
+  border-color: #1d9e75;
+}
+
+.doc-costi-libretto-thumb {
+  height: 88px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #eef0f3, #d8dde3);
+  display: grid;
+  place-items: center;
+  color: #6a7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.doc-costi-libretto-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.doc-costi-libretto-ft strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: #202329;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.doc-costi-libretto-ok {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #eaf3de;
+  color: #3b6d11;
+  white-space: nowrap;
+}
+
+.doc-costi-libretto-catlabel {
+  font-size: 11px;
+  color: #6a7280;
+  font-weight: 600;
+}
+
 /* 45 - Importa documenti layout approvato */
 .iai-page *,
 .iai-page *::before,
