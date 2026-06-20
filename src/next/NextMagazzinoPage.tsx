@@ -45,6 +45,10 @@ import {
   normalizeNextMagazzinoStockUnitLoose,
   type NextMagazzinoStockUnit,
 } from "./domain/nextMagazzinoStockContract";
+import {
+  caricaRigheInInventario,
+  type RigaCaricoInput,
+} from "./domain/nextMagazzinoStockWriter";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import { parseAnyDate, toDisplay } from "./helpers/dateUnica";
 import "./internal-ai/internal-ai.css";
@@ -88,6 +92,7 @@ type MagazzinoDocumentUiItem = {
   sortTimestamp: number | null;
   totaleDocumento: string | number | null;
   currency: string | null;
+  valutaEreditata?: boolean;
   fileUrl: string | null;
   targa: string | null;
   numeroDocumento: string | null;
@@ -100,6 +105,7 @@ type MagazzinoDocumentSupplierGroup = {
   supplier: string;
   items: MagazzinoDocumentUiItem[];
   total: number;
+  totals: MagazzinoCurrencyTotals;
 };
 
 const MAGAZZINO_DOC_FILTERS: Array<{
@@ -499,7 +505,9 @@ function formatCurrencyAmount(
   currency: string | null | undefined,
 ): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
-  return `${formatNumber(value)} ${normalizeText(currency) || "EUR"}`;
+  const code = normalizeText(currency).toUpperCase();
+  const label = code === "CHF" || code === "EUR" ? code : "EUR";
+  return `${formatNumber(value)} ${label}`;
 }
 
 function formatDocumentAmount(
@@ -1088,13 +1096,52 @@ function parseMagazzinoDocumentAmount(value: string | number | null | undefined)
   return normalizeNumber(value);
 }
 
-function formatMagazzinoDocumentCompactAmount(value: number): string {
+function formatMagazzinoDocumentCompactAmount(
+  value: number,
+  currency: "EUR" | "CHF" = "EUR",
+): string {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
-    currency: "EUR",
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+type MagazzinoCurrencyTotals = { eur: number; chf: number; unknown: number };
+
+// Somma gli importi tenendo separate le valute (CHF/EUR) invece di sommarle
+// tutte sotto "€". Gli importi senza valuta certa finiscono in "unknown".
+function buildMagazzinoCurrencyTotals(
+  items: MagazzinoDocumentUiItem[],
+): MagazzinoCurrencyTotals {
+  const totals: MagazzinoCurrencyTotals = { eur: 0, chf: 0, unknown: 0 };
+  for (const item of items) {
+    const amount = parseMagazzinoDocumentAmount(item.totaleDocumento);
+    if (amount === null) continue;
+    const code = normalizeText(item.currency).toUpperCase();
+    if (code === "CHF") {
+      totals.chf += amount;
+    } else if (code === "EUR") {
+      totals.eur += amount;
+    } else {
+      totals.unknown += amount;
+    }
+  }
+  return totals;
+}
+
+// Mostra i totali per valuta: es. "1.200 CHF + 350 €". Non somma mai valute
+// diverse insieme; gli importi senza valuta certa sono marcati "da verificare".
+function formatMagazzinoCurrencyTotals(totals: MagazzinoCurrencyTotals): string {
+  const parts: string[] = [];
+  if (totals.chf > 0) parts.push(formatMagazzinoDocumentCompactAmount(totals.chf, "CHF"));
+  if (totals.eur > 0) parts.push(formatMagazzinoDocumentCompactAmount(totals.eur, "EUR"));
+  if (totals.unknown > 0) {
+    parts.push(`${formatMagazzinoDocumentCompactAmount(totals.unknown, "EUR")} da verificare`);
+  }
+  if (parts.length === 0) return formatMagazzinoDocumentCompactAmount(0, "EUR");
+  return parts.join(" + ");
 }
 
 function buildMagazzinoDocumentDescription(
@@ -2227,57 +2274,64 @@ export default function NextMagazzinoPage() {
       return;
     }
 
+    const conferma = window.confirm(
+      "Caricare in magazzino questa fattura?\n\nControlla di non aver gia caricato lo stesso articolo dall'arrivo dell'ordine, per non contarlo due volte.",
+    );
+    if (!conferma) return;
+
     setSaving(true);
     setDocumentoImportingId(candidateId);
     try {
-      const targetIndex = findInventarioIndexByDescriptor(items, {
-        inventarioRefId: candidate.inventoryMatchId,
-        stockKey: candidate.stockKey,
+      // Carico canonico condiviso: conferma sinonimi + memoria alias + dedup +
+      // readback, identico al carico dagli arrivi (una sola giacenza).
+      const riga: RigaCaricoInput = {
         descrizione: candidate.descrizione,
         fornitore: candidate.fornitore,
         unita: candidate.unita,
+        quantita: candidate.quantita,
+        sourceLoadKey: candidate.sourceLoadKey,
+        stockKeyHint: candidate.stockKey,
+        inventarioRefId: candidate.inventoryMatchId,
+      };
+      const report = await caricaRigheInInventario({
+        righe: [riga],
+        nowMs: Date.now(),
+        onSimileTrovato: async (info) =>
+          window.confirm(
+            `"${info.descrizioneArrivo}" sembra lo stesso articolo di "${info.candidato.descrizione}" gia in magazzino.\n\nOK = unisci (ricordo l'abbinamento per le prossime volte)\nAnnulla = crea un articolo nuovo`,
+          )
+            ? "unisci"
+            : "nuovo",
       });
-      const nextItems =
-        targetIndex >= 0
-          ? items.map((item, index) => {
-              if (index !== targetIndex) return item;
-              return {
-                ...item,
-                quantita: item.quantita + candidate.quantita!,
-                unita: candidate.unita!,
-                stockKey: candidate.stockKey ?? item.stockKey,
-                fornitore: candidate.fornitore ?? item.fornitore,
-                stockLoadKeys: mergeNextMagazzinoStockLoadKeys(
-                  item.stockLoadKeys,
-                  candidate.sourceLoadKey,
-                ),
-              } satisfies InventarioItem;
-            })
-          : [
-              ...items,
-              {
-                id: generateId(),
-                descrizione: candidate.descrizione,
-                quantita: candidate.quantita,
-                unita: candidate.unita,
-                stockKey: candidate.stockKey,
-                stockLoadKeys: mergeNextMagazzinoStockLoadKeys([], candidate.sourceLoadKey),
-                fornitore: candidate.fornitore ?? null,
-                fotoUrl: null,
-                fotoStoragePath: null,
-              } satisfies InventarioItem,
-            ];
-      const sortedItems = sortInventarioItems(nextItems);
-      await persistInventario(sortedItems);
-      setItems(sortedItems);
-      setNotice(
-        targetIndex >= 0
-          ? "Fattura AdBlue consolidata sulla voce inventario esistente."
-          : "Fattura AdBlue caricata in inventario.",
-      );
+
+      // Il writer scrive @inventario per conto suo: ricarico lo stato locale.
+      const inventarioRaw = await getItemSync(INVENTARIO_KEY);
+      const inventarioBundle = normalizeDatasetBundle(inventarioRaw, normalizeInventarioItem);
+      setItems(inventarioBundle.items);
+      setInventarioRawMap(inventarioBundle.rawMap);
+      setInventarioShape(inventarioBundle.shape);
+
+      const bloccata = report.righe.find((entry) => entry.esito === "bloccato");
+      if (bloccata) {
+        setError(`Fattura non caricata: ${bloccata.motivo ?? "carico non riuscito"}.`);
+      } else if (report.giaCaricati > 0) {
+        setNotice("Questa fattura risulta gia caricata in inventario: nessun aumento stock.");
+      } else if (report.consolidati > 0) {
+        setNotice(
+          report.aliasCreati > 0
+            ? "Fattura consolidata sulla voce esistente (abbinamento articolo memorizzato)."
+            : "Fattura consolidata sulla voce inventario esistente.",
+        );
+      } else {
+        setNotice(
+          report.aliasCreati > 0
+            ? "Fattura caricata in inventario (abbinamento articolo memorizzato)."
+            : "Fattura caricata in inventario.",
+        );
+      }
     } catch (loadError) {
       console.error("Errore carico documento in inventario:", loadError);
-      setError("Errore durante il carico stock della fattura AdBlue.");
+      setError("Errore durante il carico stock della fattura.");
     } finally {
       setSaving(false);
       setDocumentoImportingId(null);
@@ -3018,6 +3072,7 @@ export default function NextMagazzinoPage() {
         sortTimestamp: item.sortTimestamp,
         totaleDocumento: item.totaleDocumento,
         currency: item.currency,
+        valutaEreditata: item.valutaEreditata,
         fileUrl: item.fileUrl,
         targa: item.targa,
         numeroDocumento: item.numeroDocumento,
@@ -3047,6 +3102,7 @@ export default function NextMagazzinoPage() {
       sortTimestamp: item.dataPreventivoTimestamp,
       totaleDocumento: item.totalAmount,
       currency: item.currency,
+      valutaEreditata: item.valutaEreditata,
       fileUrl: item.pdfUrl,
       targa: null,
       numeroDocumento: item.numeroPreventivo,
@@ -3089,6 +3145,7 @@ export default function NextMagazzinoPage() {
           (sum, item) => sum + (parseMagazzinoDocumentAmount(item.totaleDocumento) ?? 0),
           0,
         ),
+        totals: buildMagazzinoCurrencyTotals(supplierItems),
       }))
       .sort((left, right) => {
         if (right.total !== left.total) {
@@ -3101,11 +3158,7 @@ export default function NextMagazzinoPage() {
       });
   }, [docItemsFiltrati]);
   const docTotaleGenerale = useMemo(
-    () =>
-      docItemsFiltrati.reduce(
-        (sum, item) => sum + (parseMagazzinoDocumentAmount(item.totaleDocumento) ?? 0),
-        0,
-      ),
+    () => buildMagazzinoCurrencyTotals(docItemsFiltrati),
     [docItemsFiltrati],
   );
   const docDaVerificareCount = useMemo(
@@ -4070,7 +4123,7 @@ export default function NextMagazzinoPage() {
                   <b>{docPerFornitore.length}</b> fornitori
                 </span>
                 <span className="doc-costi-stat">
-                  <b>{formatMagazzinoDocumentCompactAmount(docTotaleGenerale)}</b>
+                  <b>{formatMagazzinoCurrencyTotals(docTotaleGenerale)}</b>
                 </span>
                 <span className="doc-costi-stat">
                   <b>{docDaVerificareCount}</b> da verificare
@@ -4137,7 +4190,7 @@ export default function NextMagazzinoPage() {
                           <b>{group.items.length}</b> doc
                         </span>
                         <span className="doc-costi-fornitore-total">
-                          Totale {formatMagazzinoDocumentCompactAmount(group.total)}
+                          Totale {formatMagazzinoCurrencyTotals(group.totals)}
                         </span>
                       </button>
 
@@ -4182,9 +4235,12 @@ export default function NextMagazzinoPage() {
                                     <td>{item.descrizione}</td>
                                     <td className="doc-costi-importo">
                                       {formatDocumentAmount(item.totaleDocumento, item.currency)}
-                                      {normalizeText(item.currency) ? (
-                                        <span className="doc-costi-valuta">
-                                          {normalizeText(item.currency)}
+                                      {item.valutaEreditata ? (
+                                        <span
+                                          className="doc-costi-valuta"
+                                          title="Valuta dedotta dalla valuta predefinita del fornitore"
+                                        >
+                                          dedotta
                                         </span>
                                       ) : null}
                                     </td>
@@ -4215,7 +4271,7 @@ export default function NextMagazzinoPage() {
                           <div className="doc-costi-section-total">
                             <span className="doc-costi-stat">Totale {group.supplier}</span>
                             <span className="doc-costi-fornitore-total">
-                              {formatMagazzinoDocumentCompactAmount(group.total)}
+                              {formatMagazzinoCurrencyTotals(group.totals)}
                             </span>
                           </div>
                         </>
@@ -4228,7 +4284,7 @@ export default function NextMagazzinoPage() {
               <footer className="doc-costi-footer">
                 <span className="doc-costi-stat">Totale generale tutti i fornitori</span>
                 <span className="doc-costi-fornitore-total">
-                  {formatMagazzinoDocumentCompactAmount(docTotaleGenerale)}
+                  {formatMagazzinoCurrencyTotals(docTotaleGenerale)}
                 </span>
               </footer>
             </section>

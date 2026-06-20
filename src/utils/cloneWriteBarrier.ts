@@ -4,6 +4,10 @@ const MAGAZZINO_ALLOWED_STORAGE_KEYS = new Set([
   "@inventario",
   "@materialiconsegnati",
   "@cisterne_adblue",
+  // Memoria alias sinonimi (es. "adblue" = "tank ad blue") usata dal carico
+  // stock canonico anche dalle FATTURE del Magazzino. Stesso pattern path-based
+  // di /next/materiali-da-ordinare (arrivi da ordini).
+  "@stock_alias",
 ]);
 const MAGAZZINO_ALLOWED_STORAGE_PATH_PREFIXES = ["inventario/"] as const;
 const MANUTENZIONI_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;

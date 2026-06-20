@@ -3,6 +3,12 @@ import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { readNextInternalAiCloneDocumenti } from "../internal-ai/nextInternalAiCloneState";
 import { readNextProcurementSnapshot } from "./nextProcurementDomain";
+import {
+  loadFornitoreCurrencyMap,
+  inheritCurrencyFromFornitore,
+  VALUTA_EREDITATA_FORNITORE_FLAG,
+  type FornitoreCurrencyMap,
+} from "./nextFornitoreCurrency";
 import { toDisplay } from "../helpers/dateUnica";
 
 const STORAGE_COLLECTION = "storage";
@@ -142,6 +148,9 @@ export type NextDocumentiCostiReadOnlyItem = {
   importo: number | null;
   currency: NextDocumentiCostiCurrency;
   valuta: NextDocumentiCostiCurrency;
+  // true quando la valuta non era esplicita nel documento ed e' stata
+  // dedotta dalla valuta predefinita del fornitore (anagrafica fornitori).
+  valutaEreditata?: boolean;
   fileUrl: string | null;
   sourceCollection: string;
   sourceKey: string;
@@ -461,6 +470,44 @@ function resolveCurrencyFromRecord(record: RawRecord): NextDocumentiCostiCurrenc
     .join(" ");
 
   return detectCurrencyFromText(source);
+}
+
+// ---------------------------------------------------------------------------
+// Eredita valuta dal fornitore (Fase B) — vedi ./nextFornitoreCurrency.ts.
+// I documenti/preventivi senza valuta esplicita (currency === "UNKNOWN")
+// ereditano la valuta predefinita del fornitore. Sola lettura: non riscrive
+// mai i dati salvati, normalizza solo cio' che viene mostrato e conteggiato.
+// ---------------------------------------------------------------------------
+
+function applyFornitoreCurrencyFallback(
+  item: NextDocumentiCostiReadOnlyItem,
+  map: FornitoreCurrencyMap,
+): NextDocumentiCostiReadOnlyItem {
+  const inherited = inheritCurrencyFromFornitore(item.valuta, item.supplier, map);
+  if (!inherited) return item;
+  return {
+    ...item,
+    valuta: inherited,
+    currency: inherited,
+    valutaEreditata: true,
+    flags: item.flags.includes(VALUTA_EREDITATA_FORNITORE_FLAG)
+      ? item.flags
+      : [...item.flags, VALUTA_EREDITATA_FORNITORE_FLAG],
+  };
+}
+
+function applyArchiveFornitoreCurrencyFallback(
+  item: NextIADocumentiArchiveItem,
+  map: FornitoreCurrencyMap,
+): NextIADocumentiArchiveItem {
+  const inherited = inheritCurrencyFromFornitore(item.valuta, item.fornitore, map);
+  if (!inherited) return item;
+  return {
+    ...item,
+    valuta: inherited,
+    currency: inherited,
+    valutaEreditata: true,
+  };
 }
 
 function parseAmountAny(value: unknown): number | null {
@@ -833,6 +880,9 @@ function mergeDuplicateGroup(
       merged.importo = candidate.importo;
       merged.currency = candidate.currency;
       merged.valuta = candidate.valuta;
+      // La valuta arriva dal candidate: porta con se' anche il marcatore
+      // "dedotta dal fornitore", altrimenti il badge sparirebbe dopo il merge.
+      merged.valutaEreditata = candidate.valutaEreditata;
       merged.fieldQuality = { ...merged.fieldQuality, amount: candidate.fieldQuality.amount };
     }
   }
@@ -1399,6 +1449,9 @@ export type NextIADocumentiArchiveItem = {
   fileUrl: string | null;
   valuta: NextDocumentiCostiCurrency;
   currency: NextDocumentiCostiCurrency;
+  // true quando la valuta e' stata dedotta dalla valuta predefinita del
+  // fornitore (il documento/preventivo non aveva una valuta esplicita).
+  valutaEreditata?: boolean;
   testo: string | null;
   imponibile: string | null;
   ivaImporto: string | null;
@@ -1616,11 +1669,13 @@ function buildAllDocumentiCostiItems(args: {
   costiDataset: NextDocumentiCostiSources["costiDataset"];
   documentSnapshots: NextDocumentiCostiSources["documentSnapshots"];
   cloneDocuments: NextDocumentiCostiSources["cloneDocuments"];
+  fornitoreCurrencyMap?: FornitoreCurrencyMap;
 }): {
   items: NextDocumentiCostiReadOnlyItem[];
   materialSupportDocuments: NextDocumentiMagazzinoSupportDocument[];
 } {
   const { costiDataset, documentSnapshots, cloneDocuments } = args;
+  const fornitoreCurrencyMap = args.fornitoreCurrencyMap ?? new Map();
 
   const costiItems = costiDataset.items
     .map((entry, index) => {
@@ -1665,8 +1720,14 @@ function buildAllDocumentiCostiItems(args: {
         .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry)),
     );
 
+  // Eredita la valuta dal fornitore (Fase B) PRIMA di dedup e totali, cosi'
+  // il merge dei duplicati e i conteggi vedono gia' la valuta risolta.
+  const allItems = [...costiItems, ...documentItems, ...cloneDocumentItems].map(
+    (item) => applyFornitoreCurrencyFallback(item, fornitoreCurrencyMap),
+  );
+
   return {
-    items: sortItems(dedupItems([...costiItems, ...documentItems, ...cloneDocumentItems])),
+    items: sortItems(dedupItems(allItems)),
     materialSupportDocuments,
   };
 }
@@ -2006,9 +2067,11 @@ export async function readNextIADocumentiArchiveSnapshot(
   options: ReadNextDocumentiCostiSnapshotOptions = {},
 ): Promise<NextIADocumentiArchiveSnapshot> {
   const includeCloneDocuments = options.includeCloneDocuments !== false;
-  const { documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources({
-    includeCloneDocuments,
-  });
+  const [{ documentSnapshots, cloneDocuments, readFailures }, fornitoreCurrencyMap] =
+    await Promise.all([
+      readDocumentiCostiSources({ includeCloneDocuments }),
+      loadFornitoreCurrencyMap(),
+    ]);
   const preventiviResult = await getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_PREVENTIVI_DATASET_KEY))
     .then((snapshot) => ({ status: "fulfilled" as const, snapshot }))
     .catch(() => ({ status: "rejected" as const }));
@@ -2045,11 +2108,11 @@ export async function readNextIADocumentiArchiveSnapshot(
           .map((raw, index) => mapIADocumentiPreventivoArchiveRecord({ raw, index }))
       : ((readFailures.push(`storage/${PROCUREMENT_PREVENTIVI_DATASET_KEY}`), []) as NextIADocumentiArchiveItem[]);
 
-  const items = sortIADocumentiArchiveItems([
-    ...documentItems,
-    ...cloneDocumentItems,
-    ...preventiviItems,
-  ]);
+  const items = sortIADocumentiArchiveItems(
+    [...documentItems, ...cloneDocumentItems, ...preventiviItems].map((item) =>
+      applyArchiveFornitoreCurrencyFallback(item, fornitoreCurrencyMap),
+    ),
+  );
 
   return {
     domainCode: "D08-IA-DOCUMENTI",
@@ -2242,12 +2305,13 @@ export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcure
 export async function readNextDocumentiCostiFleetSnapshot(
   options: ReadNextDocumentiCostiSnapshotOptions = {},
 ): Promise<NextDocumentiCostiFleetSnapshot> {
-  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } =
-    await readDocumentiCostiSources(options);
+  const [{ costiDataset, documentSnapshots, cloneDocuments, readFailures }, fornitoreCurrencyMap] =
+    await Promise.all([readDocumentiCostiSources(options), loadFornitoreCurrencyMap()]);
   const { items, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,
     cloneDocuments,
+    fornitoreCurrencyMap,
   });
   const groups = {
     preventivi: items.filter((item) => item.category === "preventivo"),
@@ -2310,12 +2374,13 @@ export async function readNextMezzoDocumentiCostiSnapshot(
   options: ReadNextDocumentiCostiSnapshotOptions = {},
 ): Promise<NextMezzoDocumentiCostiSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
-  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } =
-    await readDocumentiCostiSources(options);
+  const [{ costiDataset, documentSnapshots, cloneDocuments, readFailures }, fornitoreCurrencyMap] =
+    await Promise.all([readDocumentiCostiSources(options), loadFornitoreCurrencyMap()]);
   const { items: fleetItems, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,
     cloneDocuments,
+    fornitoreCurrencyMap,
   });
   const items = fleetItems.filter((item) => item.mezzoTarga === mezzoTarga);
   const groups = {

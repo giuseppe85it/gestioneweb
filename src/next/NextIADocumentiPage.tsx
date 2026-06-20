@@ -55,6 +55,7 @@ type SupplierGroup = {
   anagraficaNome: string | null;
   items: NextIADocumentiArchiveItem[];
   total: number;
+  totals: CurrencyTotals;
 };
 
 type ArchivistaPresetPayload = {
@@ -131,13 +132,55 @@ function formatMoney(
   }).format(parsed);
 }
 
-function formatMoneyCompact(value: number) {
+function formatMoneyCompact(value: number, currency: "EUR" | "CHF" = "EUR") {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
-    currency: "EUR",
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+type CurrencyTotals = { eur: number; chf: number; unknown: number };
+
+// Somma gli importi tenendo separate le valute (CHF/EUR) invece di sommarle
+// in un unico totale "€". Gli importi senza valuta certa finiscono in "unknown".
+function buildCurrencyTotals(items: NextIADocumentiArchiveItem[]): CurrencyTotals {
+  const totals: CurrencyTotals = { eur: 0, chf: 0, unknown: 0 };
+  for (const item of items) {
+    const amount = parseAmount(item.totaleDocumento);
+    if (amount === null) {
+      continue;
+    }
+    const currency = normalizeText(item.currency).toUpperCase();
+    if (currency === "CHF") {
+      totals.chf += amount;
+    } else if (currency === "EUR") {
+      totals.eur += amount;
+    } else {
+      totals.unknown += amount;
+    }
+  }
+  return totals;
+}
+
+// Mostra i totali per valuta: es. "1.200 CHF + 350 €", oppure il solo importo
+// da verificare se manca la valuta. Non somma mai valute diverse insieme.
+function formatCurrencyTotals(totals: CurrencyTotals): string {
+  const parts: string[] = [];
+  if (totals.chf > 0) {
+    parts.push(formatMoneyCompact(totals.chf, "CHF"));
+  }
+  if (totals.eur > 0) {
+    parts.push(formatMoneyCompact(totals.eur, "EUR"));
+  }
+  if (totals.unknown > 0) {
+    parts.push(`${formatMoneyCompact(totals.unknown, "EUR")} da verificare`);
+  }
+  if (parts.length === 0) {
+    return formatMoneyCompact(0, "EUR");
+  }
+  return parts.join(" + ");
 }
 
 function formatDate(item: NextIADocumentiArchiveItem) {
@@ -582,6 +625,7 @@ export default function NextIADocumentiPage() {
           anagraficaNome,
           items: sortItems(supplierItems),
           total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+          totals: buildCurrencyTotals(supplierItems),
         };
       })
       .sort((left, right) => {
@@ -957,7 +1001,7 @@ export default function NextIADocumentiPage() {
                   <b>{group.items.length}</b> doc
                 </span>
                 <span className="doc-costi-fornitore-total">
-                  Totale {formatMoneyCompact(group.total)}
+                  Totale {formatCurrencyTotals(group.totals)}
                 </span>
               </button>
 
@@ -1061,7 +1105,24 @@ export default function NextIADocumentiPage() {
                                 </button>
                               ) : normalizeText(item.currency) &&
                                 normalizeText(item.currency) !== "EUR" ? (
-                                <span className="doc-costi-valuta">{item.currency}</span>
+                                <span
+                                  className="doc-costi-valuta"
+                                  title={
+                                    item.valutaEreditata
+                                      ? "Valuta dedotta dalla valuta predefinita del fornitore"
+                                      : undefined
+                                  }
+                                >
+                                  {item.currency}
+                                  {item.valutaEreditata ? " (dedotta)" : ""}
+                                </span>
+                              ) : item.valutaEreditata ? (
+                                <span
+                                  className="doc-costi-valuta"
+                                  title="Valuta dedotta dalla valuta predefinita del fornitore"
+                                >
+                                  EUR (dedotta)
+                                </span>
                               ) : null}
                             </td>
                             <td
@@ -1150,7 +1211,7 @@ export default function NextIADocumentiPage() {
 
                   <div className="doc-costi-section-total">
                     <span className="doc-costi-stat">
-                      Totale {group.displayName}: <b>{formatMoneyCompact(group.total)}</b>
+                      Totale {group.displayName}: <b>{formatCurrencyTotals(group.totals)}</b>
                     </span>
                   </div>
                 </>

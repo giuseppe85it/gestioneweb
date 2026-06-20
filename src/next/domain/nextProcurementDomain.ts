@@ -2,6 +2,10 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { parseAnyDate, toDisplay } from "../helpers/dateUnica";
 import { readNextProcurementCloneOrders } from "../nextProcurementCloneState";
+import {
+  loadFornitoreCurrencyMap,
+  inheritCurrencyFromFornitore,
+} from "./nextFornitoreCurrency";
 
 const STORAGE_COLLECTION = "storage";
 const ORDINI_KEY = "@ordini";
@@ -131,6 +135,9 @@ export type NextProcurementPreventivoItem = {
   materialsPreview: string[];
   totalAmount: number | null;
   currency: string | null;
+  // true quando la valuta non era esplicita nel preventivo ed e' stata dedotta
+  // dalla valuta predefinita del fornitore (anagrafica fornitori).
+  valutaEreditata?: boolean;
   approvalStatus: NextProcurementApprovalStatus;
   approvalUpdatedAtLabel: string | null;
   approvalUpdatedAtTimestamp: number | null;
@@ -984,12 +991,14 @@ export async function readNextProcurementSnapshot(
   options: NextProcurementReadOptions = {},
 ): Promise<NextProcurementSnapshot> {
   const includeCloneOverlays = options.includeCloneOverlays ?? true;
-  const [dataset, preventiviDataset, approvalsDataset, listinoDataset] = await Promise.all([
-    readOrdersDataset({ includeCloneOverlays }),
-    readStorageDataset(PREVENTIVI_KEY, ["preventivi"]),
-    readStorageDataset(APPROVALS_KEY),
-    readStorageDataset(LISTINO_KEY, ["voci"]),
-  ]);
+  const [dataset, preventiviDataset, approvalsDataset, listinoDataset, fornitoreCurrencyMap] =
+    await Promise.all([
+      readOrdersDataset({ includeCloneOverlays }),
+      readStorageDataset(PREVENTIVI_KEY, ["preventivi"]),
+      readStorageDataset(APPROVALS_KEY),
+      readStorageDataset(LISTINO_KEY, ["voci"]),
+      loadFornitoreCurrencyMap(),
+    ]);
 
   const approvals = approvalsDataset.items
     .map((entry, index) => {
@@ -1018,6 +1027,18 @@ export async function readNextProcurementSnapshot(
       )
       .map((entry, index) => mapPreventivoRecord(entry, index, approvalIndex))
       .filter((entry): entry is NextProcurementPreventivoItem => Boolean(entry))
+      .map((preventivo) => {
+        // Fase B: preventivi senza valuta esplicita ereditano la valuta del
+        // fornitore (sola lettura, non riscrive @preventivi).
+        const inherited = inheritCurrencyFromFornitore(
+          preventivo.currency,
+          preventivo.supplierName,
+          fornitoreCurrencyMap,
+        );
+        return inherited
+          ? { ...preventivo, currency: inherited, valutaEreditata: true }
+          : preventivo;
+      })
   );
 
   const listino = sortListino(

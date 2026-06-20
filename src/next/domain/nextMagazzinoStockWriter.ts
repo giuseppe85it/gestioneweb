@@ -60,6 +60,20 @@ export type RigaArrivoInput = {
   materialId: string;
 };
 
+// Riga generica di carico: il chiamante fornisce gia' la chiave anti-doppione
+// (`sourceLoadKey`) e gli eventuali agganci alla voce inventario. Usata dal
+// carico FATTURE del Magazzino, che costruisce la propria sourceLoadKey.
+export type RigaCaricoInput = {
+  descrizione: string;
+  fornitore: string | null;
+  unita: string;
+  quantita: number | null;
+  sourceLoadKey: string;
+  // Suggerimenti opzionali di aggancio alla voce inventario gia' calcolati a monte.
+  stockKeyHint?: string | null;
+  inventarioRefId?: string | null;
+};
+
 export type SimileTrovatoInfo = {
   descrizioneArrivo: string;
   candidato: {
@@ -249,8 +263,18 @@ function sameMaterialIdentity(
 
 function findInventarioIndexByDescriptor(
   inventario: InventarioItem[],
-  descriptor: { stockKey?: string | null; descrizione?: string | null; fornitore?: string | null; unita?: string | null },
+  descriptor: {
+    inventarioRefId?: string | null;
+    stockKey?: string | null;
+    descrizione?: string | null;
+    fornitore?: string | null;
+    unita?: string | null;
+  },
 ): number {
+  if (descriptor.inventarioRefId) {
+    const byId = inventario.findIndex((item) => item.id === descriptor.inventarioRefId);
+    if (byId >= 0) return byId;
+  }
   if (descriptor.stockKey) {
     const byStockKey = inventario.findIndex((item) => item.stockKey === descriptor.stockKey);
     if (byStockKey >= 0) return byStockKey;
@@ -309,7 +333,37 @@ export type CaricaArriviArgs = {
   nowMs: number;
 };
 
+export type CaricaRigheArgs = {
+  righe: RigaCaricoInput[];
+  onSimileTrovato?: (info: SimileTrovatoInfo) => Promise<"unisci" | "nuovo">;
+  nowMs: number;
+};
+
+// Wrapper per il carico dagli ARRIVI (ordini): costruisce la chiave anti-doppione
+// dell'arrivo e delega al core condiviso.
 export async function caricaArriviInInventario(args: CaricaArriviArgs): Promise<CaricoReport> {
+  const righe: RigaCaricoInput[] = args.righe.map((riga) => ({
+    descrizione: riga.descrizione,
+    fornitore: riga.fornitore,
+    unita: riga.unita,
+    quantita: riga.quantita,
+    sourceLoadKey: buildNextMagazzinoProcurementArrivoLoadKey({
+      sourceDocId: `${riga.orderId}:${riga.materialId}`,
+      descrizione: riga.descrizione,
+      fornitore: riga.fornitore,
+      unita: riga.unita,
+      quantita: riga.quantita,
+      data: riga.data ?? "",
+    }),
+  }));
+  return caricaRigheInInventario({
+    righe,
+    onSimileTrovato: args.onSimileTrovato,
+    nowMs: args.nowMs,
+  });
+}
+
+export async function caricaRigheInInventario(args: CaricaRigheArgs): Promise<CaricoReport> {
   const rawDoc = await getItemSync(INVENTARIO_KEY);
   const shape = detectStoredArrayShape(rawDoc);
   const rawList = unwrapStoredArray(rawDoc);
@@ -358,7 +412,7 @@ export async function caricaArriviInInventario(args: CaricaArriviArgs): Promise<
     }
     const quantita = riga.quantita;
     if (quantita === null || !Number.isFinite(quantita) || quantita <= 0) {
-      esiti.push({ descrizione, esito: "bloccato", motivo: "Quantità arrivo non valida." });
+      esiti.push({ descrizione, esito: "bloccato", motivo: "Quantità non valida." });
       continue;
     }
 
@@ -369,20 +423,17 @@ export async function caricaArriviInInventario(args: CaricaArriviArgs): Promise<
     let descrizioneCanonica = alias?.canonicalDescrizione || descrizione;
     let stockKeyTarget =
       alias?.canonicalStockKey ||
+      riga.stockKeyHint ||
       buildNextMagazzinoStockKey({ descrizione: descrizioneCanonica, fornitore, unita }) ||
       null;
 
-    const sourceLoadKey = buildNextMagazzinoProcurementArrivoLoadKey({
-      sourceDocId: `${riga.orderId}:${riga.materialId}`,
-      descrizione,
-      fornitore,
-      unita,
-      quantita,
-      data: riga.data ?? "",
-    });
+    // Chiave anti-doppione: fornita dal chiamante (arrivi e fatture la
+    // costruiscono con le rispettive funzioni canoniche del contratto).
+    const sourceLoadKey = riga.sourceLoadKey;
 
     // 2) Aggancio voce esistente (id/stockKey/identità esatta).
     let targetIndex = findInventarioIndexByDescriptor(items, {
+      inventarioRefId: riga.inventarioRefId,
       stockKey: stockKeyTarget,
       descrizione: descrizioneCanonica,
       fornitore,
