@@ -25,6 +25,10 @@ import {
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
 import { fromUserInput, toDisplay, toISO } from "./helpers/dateUnica";
+import {
+  caricaArriviInInventario,
+  type RigaArrivoInput,
+} from "./domain/nextMagazzinoStockWriter";
 import { buildNextMagazzinoPath } from "./nextStructuralPaths";
 import "../pages/Acquisti.css";
 import "./next-shell.css";
@@ -591,6 +595,75 @@ function OrderDetailPanel(props: {
     }));
   };
 
+  // Carico arrivi -> inventario (writer canonico condiviso col Magazzino).
+  // Si attiva solo per i materiali che passano ORA a "arrivato" (delta vs ordine
+  // salvato), con conferma utente. Data dal documento (arrivo/ordine), mai dal click.
+  const caricaArriviDaOrdineInInventario = async (
+    oldOrderRaw: Record<string, unknown> | null,
+    updatedOrder: DetailWorkingOrder,
+  ) => {
+    const oldMateriali = Array.isArray((oldOrderRaw as { materiali?: unknown })?.materiali)
+      ? (oldOrderRaw as { materiali: Array<Record<string, unknown>> }).materiali
+      : [];
+    const eraArrivato = (id: string) =>
+      oldMateriali.some((entry) => String(entry?.id ?? "") === id && entry?.arrivato === true);
+
+    const appenaArrivati = updatedOrder.materials.filter(
+      (material) => material.arrived && !eraArrivato(material.id),
+    );
+    if (appenaArrivati.length === 0) return;
+
+    const conferma = window.confirm(
+      appenaArrivati.length === 1
+        ? "Caricare in magazzino il materiale appena arrivato?"
+        : `Caricare in magazzino i ${appenaArrivati.length} materiali appena arrivati?`,
+    );
+    if (!conferma) return;
+
+    const righe: RigaArrivoInput[] = appenaArrivati.map((material) => ({
+      descrizione: material.descrizione,
+      fornitore: updatedOrder.supplierName ?? null,
+      unita: material.unita ?? "pz",
+      quantita: typeof material.quantita === "number" ? material.quantita : null,
+      // Stessa data e stessi id usati dal carico lato Magazzino: la chiave
+      // anti-doppione coincide tra i due flussi (una sola giacenza).
+      data: material.arrivalDateLabel ?? null,
+      orderId: updatedOrder.id,
+      materialId: material.id,
+    }));
+
+    try {
+      const report = await caricaArriviInInventario({
+        righe,
+        nowMs: Date.now(),
+        onSimileTrovato: async (info) =>
+          window.confirm(
+            `"${info.descrizioneArrivo}" sembra lo stesso articolo di "${info.candidato.descrizione}" gia in magazzino.\n\nOK = unisci (ricordo l'abbinamento per le prossime volte)\nAnnulla = crea un articolo nuovo`,
+          )
+            ? "unisci"
+            : "nuovo",
+      });
+
+      const parti: string[] = [];
+      if (report.creati) parti.push(`${report.creati} nuovo/i`);
+      if (report.consolidati) parti.push(`${report.consolidati} aggiornato/i`);
+      if (report.giaCaricati) parti.push(`${report.giaCaricati} gia caricato/i`);
+      const bloccati = report.righe.filter((riga) => riga.esito === "bloccato");
+      const dettaglioBloccati = bloccati
+        .map((riga) => `- ${riga.descrizione}: ${riga.motivo ?? "non caricato"}`)
+        .join("\n");
+      window.alert(
+        `Carico in magazzino: ${parti.join(", ") || "nessuna modifica"}.` +
+          (dettaglioBloccati ? `\n\nNon caricati:\n${dettaglioBloccati}` : ""),
+      );
+    } catch (loadError) {
+      console.error("Errore carico arrivi in inventario:", loadError);
+      window.alert(
+        "Errore durante il carico in magazzino. Puoi riprovare dal Magazzino (sezione Righe arrivate).",
+      );
+    }
+  };
+
   const persistWorkingOrder = async (updatedOrder: DetailWorkingOrder) => {
     setSavingDetail(true);
     try {
@@ -599,6 +672,7 @@ function OrderDetailPanel(props: {
       const existing: Array<Record<string, unknown>> = snap.exists()
         ? ((snap.data()?.value as Array<Record<string, unknown>>) || [])
         : [];
+      const oldOrderRaw = existing.find((entry) => entry.id === updatedOrder.id) ?? null;
 
       const ordineFirestore = {
         id: updatedOrder.id,
@@ -627,6 +701,7 @@ function OrderDetailPanel(props: {
         entry.id === updatedOrder.id ? ordineFirestore : entry,
       );
       await setDoc(refDoc, { value: updatedArray }, { merge: true });
+      await caricaArriviDaOrdineInInventario(oldOrderRaw, updatedOrder);
       await onOrderSaved?.();
       onCloseOrder(backTab);
     } catch (err) {

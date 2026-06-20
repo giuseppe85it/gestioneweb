@@ -26,6 +26,13 @@ const MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES = [
   "preventivi/ia/",
   "materiali/",
 ] as const;
+// Carico arrivi -> inventario dal modulo "Materiali da ordinare" (writer stock
+// canonico condiviso): consentito scrivere la giacenza @inventario e la memoria
+// sinonimi @stock_alias. Stesso pattern path-based del Magazzino, nessuno scope.
+const MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@inventario",
+  "@stock_alias",
+]);
 const ATTREZZATURE_CANTIERI_ALLOWED_WRITE_PATHS = ["/next/attrezzature-cantieri"] as const;
 const ATTREZZATURE_CANTIERI_ALLOWED_FIRESTORE_DOC_PATHS = new Set([
   "storage/@attrezzature_cantieri",
@@ -929,6 +936,9 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     }
     if (kind === "firestore.setDoc") {
       return MATERIALI_DA_ORDINARE_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
+    }
+    if (kind === "storageSync.setItemSync") {
+      return MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
     }
     if (kind === "storage.uploadBytes") {
       const path = readMetaPath(meta);

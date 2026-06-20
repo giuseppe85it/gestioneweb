@@ -118,6 +118,31 @@ export function buildNextMagazzinoStockLoadKey(input: StockEventInput): string {
   ].join("::");
 }
 
+// Chiave anti-doppione canonica per il carico di un ARRIVO procurement in
+// inventario. UNICA fonte di verità condivisa tra il carico dal Magazzino
+// (NextMagazzinoPage) e quello dagli ordini (nextMagazzinoStockWriter), così la
+// stessa riga d'arrivo produce SEMPRE la stessa chiave e non viene contata due
+// volte. sourceDocId deve essere `${orderId}:${materialId}` (l'id riga arrivo);
+// niente rowIndex, per restare allineati alle due sorgenti.
+export function buildNextMagazzinoProcurementArrivoLoadKey(input: {
+  sourceDocId: unknown;
+  descrizione: unknown;
+  fornitore: unknown;
+  unita: unknown;
+  quantita: unknown;
+  data: unknown;
+}): string {
+  return buildNextMagazzinoStockLoadKey({
+    sourceType: "PROCUREMENT_ARRIVO",
+    sourceDocId: input.sourceDocId,
+    descrizione: input.descrizione,
+    fornitore: input.fornitore,
+    unita: input.unita,
+    quantita: input.quantita,
+    data: input.data,
+  });
+}
+
 export function readNextMagazzinoStockLoadKeys(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(

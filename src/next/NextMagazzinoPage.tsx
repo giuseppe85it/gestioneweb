@@ -33,6 +33,7 @@ import {
   NEXT_MAGAZZINO_STOCK_ALLOWED_UNITS,
   areNextMagazzinoUnitsCompatible,
   buildNextMagazzinoStockKey,
+  buildNextMagazzinoProcurementArrivoLoadKey,
   buildNextMagazzinoStockLoadKey,
   hasNextMagazzinoStockLoadKey,
   isNextMagazzinoStockUnitSupported,
@@ -2514,8 +2515,7 @@ export default function NextMagazzinoPage() {
             return dateDiff !== null && dateDiff <= PROCUREMENT_DEDUP_WINDOW_DAYS;
           });
           const procurementCoverageLoadKey = procurementCoverage
-            ? buildNextMagazzinoStockLoadKey({
-                sourceType: "PROCUREMENT_ARRIVO",
+            ? buildNextMagazzinoProcurementArrivoLoadKey({
                 sourceDocId: procurementCoverage.id,
                 descrizione: procurementCoverage.descrizione,
                 fornitore: procurementCoverage.supplierName,
@@ -2773,8 +2773,7 @@ export default function NextMagazzinoPage() {
               })
             : -1;
         const inventoryMatchId = inventoryIndex >= 0 ? items[inventoryIndex].id : null;
-        const sourceLoadKey = buildNextMagazzinoStockLoadKey({
-          sourceType: "PROCUREMENT_ARRIVO",
+        const sourceLoadKey = buildNextMagazzinoProcurementArrivoLoadKey({
           sourceDocId: entry.id,
           descrizione: entry.descrizione,
           fornitore: entry.supplierName,
