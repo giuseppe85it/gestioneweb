@@ -48,6 +48,7 @@ type FormRecord = {
   schedeCarburante: NextCollegaFuelCardRecord[];
   telefoniAggiuntivi: string[];
   citta: string;
+  valuta: "" | "CHF" | "EUR";
 };
 
 const KIND_LABELS: Record<NextAnagraficaKind, { singular: string; plural: string }> = {
@@ -70,6 +71,7 @@ function emptyRecord(kind: NextAnagraficaKind): FormRecord {
     schedeCarburante: [],
     telefoniAggiuntivi: kind === "officina" ? [] : [],
     citta: "",
+    valuta: "",
   };
 }
 
@@ -102,6 +104,7 @@ function fromFornitore(item: NextFornitoreReadOnlyItem): FormRecord {
     badge: item.badge ?? "",
     codice: item.codice ?? "",
     descrizione: item.descrizione ?? "",
+    valuta: item.valuta ?? "",
   };
 }
 
@@ -310,6 +313,7 @@ function NextAnagraficaModal({
           nome: form.nome,
           telefono: form.telefono,
           descrizione: form.descrizione,
+          valuta: form.valuta || null,
         });
       } else {
         savedId = await saveNextOfficina({
@@ -430,7 +434,10 @@ function NextAnagraficaModal({
                 {kind === "fornitore" ? (
                   <section className="ana-section">
                     <h3>Note</h3>
-                    <dl>{renderValue("Descrizione", form.descrizione)}</dl>
+                    <dl>
+                      {renderValue("Valuta predefinita", form.valuta || "Non impostata")}
+                      {renderValue("Descrizione", form.descrizione)}
+                    </dl>
                   </section>
                 ) : null}
               </div>
@@ -446,6 +453,21 @@ function NextAnagraficaModal({
                     <span>Telefono</span>
                     <input value={form.telefono} onChange={(event) => updateField("telefono", event.target.value)} />
                   </label>
+                  {kind === "fornitore" ? (
+                    <label>
+                      <span>Valuta predefinita</span>
+                      <select
+                        value={form.valuta}
+                        onChange={(event) =>
+                          updateField("valuta", event.target.value as FormRecord["valuta"])
+                        }
+                      >
+                        <option value="">Non impostata</option>
+                        <option value="CHF">CHF</option>
+                        <option value="EUR">EUR</option>
+                      </select>
+                    </label>
+                  ) : null}
                   {kind === "collega" ? (
                     <label>
                       <span>Telefono privato</span>

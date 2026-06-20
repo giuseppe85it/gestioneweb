@@ -35,6 +35,7 @@ export type NextFornitoreRecord = {
   badge?: string | null;
   codice?: string | null;
   descrizione?: string | null;
+  valuta?: "CHF" | "EUR" | null;
 };
 
 export type NextOfficinaRecord = {
@@ -54,6 +55,13 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeValutaInput(value: unknown): "CHF" | "EUR" | null {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "CHF") return "CHF";
+  if (normalized === "EUR") return "EUR";
+  return null;
 }
 
 function normalizeRequiredName(value: unknown): string {
@@ -154,6 +162,7 @@ function sanitizeFornitore(
     badge: originalBadge ?? normalizeOptionalText(record.badge),
     codice: originalCodice ?? normalizeOptionalText(record.codice),
     descrizione: normalizeOptionalText(record.descrizione),
+    valuta: normalizeValutaInput(record.valuta) ?? normalizeValutaInput(original?.valuta),
   };
 }
 

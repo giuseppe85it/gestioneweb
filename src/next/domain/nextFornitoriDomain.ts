@@ -33,6 +33,9 @@ export type NextFornitoreReadOnlyItem = {
   badge: string | null;
   codice: string | null;
   descrizione: string | null;
+  // Valuta predefinita del fornitore: i documenti/preventivi senza valuta
+  // esplicita ereditano questa (es. fornitori CH = CHF, IT = EUR).
+  valuta: "CHF" | "EUR" | null;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof FORNITORI_KEY;
   quality: "certo" | "parziale" | "da_verificare";
@@ -67,6 +70,13 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+export function normalizeFornitoreValuta(value: unknown): "CHF" | "EUR" | null {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "CHF") return "CHF";
+  if (normalized === "EUR") return "EUR";
+  return null;
 }
 
 function unwrapStorageArray(
@@ -131,6 +141,7 @@ function toFornitoreItem(raw: RawRecord, index: number): NextFornitoreReadOnlyIt
     badge,
     codice,
     descrizione,
+    valuta: normalizeFornitoreValuta(raw.valuta),
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: FORNITORI_KEY,
     quality:
@@ -156,6 +167,7 @@ function mapCloneFornitoreItem(raw: {
   badge: string | null;
   codice: string | null;
   descrizione: string | null;
+  valuta?: "CHF" | "EUR" | null;
 }): NextFornitoreReadOnlyItem {
   return {
     id: raw.id,
@@ -164,6 +176,7 @@ function mapCloneFornitoreItem(raw: {
     badge: raw.badge,
     codice: raw.codice,
     descrizione: raw.descrizione,
+    valuta: normalizeFornitoreValuta(raw.valuta),
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: FORNITORI_KEY,
     quality: "certo",
