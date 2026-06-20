@@ -5,6 +5,7 @@
   - `AGENTS.md` (questo file): regole operative complete.
   - `CLAUDE.md` (root): awareness toolbox/MCP e skill configurate.
   - le 3 config in `.claude/agents/` — `esploratore-firestore`, `guardiano-patch`, `revisore-audit` — per sapere quali subagent esistono e quando invocarli.
+- Dal 2026-06-20 la riga precedente va intesa come elenco storico minimo: vanno lette tutte le config presenti in `.claude/agents/`, incluse quelle aggiunte dopo le prime 3.
 - L'agente DEVE inoltre leggere i file di stato previsti dalla sez. 3 (`STATO_ATTUALE_PROGETTO.md` sempre; gli altri condizionali al tipo di task): per l'elenco completo e le condizioni vedi sez. 3.
 - Questa lettura e un prerequisito non negoziabile: serve a evitare che l'utente debba rispiegare a ogni sessione l'infrastruttura di agenti e regole.
 
@@ -49,6 +50,30 @@ Tutti i path sotto puntano alla cartella canonica `docs/copia questi nel progett
 - L'execution puo patchare; l'audit non deve patchare runtime.
 - L'execution non puo auto-promuoversi a verita finale.
 - L'audit deve verificare codice, route, mount, parity esterna, layer e blocchi reali.
+
+## 5.1 Agenti automatici di controllo
+- L'utente non deve chiedere ogni volta l'invocazione degli agenti: Codex/Claude deve attivarli automaticamente quando il task rientra nei trigger sotto.
+- Gli agenti di audit/controllo sono read-only, salvo diversa istruzione esplicita del prompt. L'execution resta responsabile della patch e dell'integrazione.
+- `analista-impatto-flussi`: prima di creare un modulo nuovo o modificare runtime, route, domain, writer, barrier, dati, IA, PDF, sicurezza o flussi cross-modulo.
+- `verificatore-regressioni-postpatch`: dopo una patch runtime o logica per rileggere il diff e cercare regressioni laterali, consumer rotti, test mancanti o cambi fuori perimetro.
+- `custode-contratti-dati`: quando il task tocca dataset, domain reader, writer, relazioni, campi Firestore/Storage, viste certificate o claim di assenza dati.
+- `custode-documentazione-viva`: dopo patch che cambiano stato, route, convenzioni, chiavi dati, architettura, agenti o task completati/aperti, per indicare quali documenti vivi aggiornare senza creare report non richiesti.
+- Restano attivi gli agenti gia presenti:
+  - `esploratore-firestore` per Zero-Invenzioni e assenze dati da verificare;
+  - `guardiano-patch` per regole dure del diff;
+  - `revisore-audit` per audit separati, chiusura modulo e checklist a 7 punti.
+- Se un task ha rischio `ELEVATO` o `EXTRA ELEVATO`, usare almeno `analista-impatto-flussi` prima della patch e `verificatore-regressioni-postpatch` o `guardiano-patch` dopo la patch, salvo task puramente documentale.
+- Se un task coinvolge dati business, usare `custode-contratti-dati` o `esploratore-firestore` prima di dichiarare assenze, relazioni non certificate o mapping dati.
+
+## 5.2 Correzione progressiva agenti
+- Se un agente produce audit incompleto, sbagliato o troppo generico, l'errore va trattato come difetto delle istruzioni, non come fatto da ignorare.
+- Dopo aver verificato l'errore sul codice o sui dati reali, aggiornare in modo mirato:
+  - il file agente in `.claude/agents/<nome>.md`;
+  - `AGENTS.md`, solo se serve una regola permanente comune;
+  - `CONTEXT_CLAUDE.md`, se cambia una convenzione operativa rilevante.
+- La correzione deve aggiungere una regola verificabile, un trigger o un formato di output, non una frase generica.
+- Non correggere un agente sulla base di impressioni: servono evidenza `file:riga`, comando, diff o risultato Firestore read-only.
+- Gli errori storici importanti vanno trasformati in regole operative concise, come gia fatto per `AUDIT-CERCA-PER-TARGA` e `TIMESTAMP-MAI-DA-CLICK`.
 
 ## 6. Regola meccanica di chiusura modulo
 - Un modulo clone/NEXT e `CHIUSO` solo se tutte le condizioni seguenti sono vere:
