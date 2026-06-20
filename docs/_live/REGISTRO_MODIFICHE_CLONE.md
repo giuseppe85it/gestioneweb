@@ -1,5 +1,32 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-20 1734
+
+DATA: `2026-06-20`
+TITOLO: `Runtime card Da fare manutenzioni`
+FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`, `docs/_live/spec/SPEC_MANUTENZIONI_UI_NEXT.md`, `CONTEXT_CLAUDE.md`
+COSA: `Implementato nel runtime reale il mockup accettato della sola card Da fare: filtri Urgenza/Origine, Azzera filtri, Segnalazioni aperte, Manutenzioni operative compatte e menu azioni visibile. La card ora occupa tutta l'area utile del tab, con controlli interni compatti.`
+ESITO: `FATTO`
+NOTE: `Verifiche: diff check, eslint mirato, build canonica e smoke Playwright su /next/manutenzioni con viewport 1878px, gap destro 0 e menu visibile.`
+
+## 2026-06-20 1618
+
+DATA: `2026-06-20`
+TITOLO: `Mockup card Da fare manutenzioni`
+FILE TOCCATI: `docs/_live/mockup/MOCKUP_CARD_DAFARE_MANUTENZIONI_V1.html`
+COSA: `Creato mockup mirato alla sola card manutenzione Da fare, separato dal mockup pagina. La card mantiene checkbox, badge, frase storia, Eseguita, menu gruppo, Modifica e Apri.`
+ESITO: `FATTO`
+NOTE: `Verifiche: HTTP locale 200 e smoke Playwright su menu card e modale Eseguita.`
+
+## 2026-06-20 1611
+
+DATA: `2026-06-20`
+TITOLO: `Mockup Da fare manutenzioni`
+FILE TOCCATI: `docs/_live/mockup/MOCKUP_DAFARE_MANUTENZIONI_V2.html`
+COSA: `Creato mockup HTTP statico per una UI alternativa della tab Da fare in Manutenzioni, con funzioni originali rappresentate: filtri, segnalazioni, gruppi, completamento, modifica, apertura e agganci. Nessuna modifica runtime.`
+ESITO: `FATTO`
+NOTE: `Verifiche: HTTP locale 200 e smoke Playwright su menu azioni e modale Eseguita.`
+
 ## 2026-06-19 1905
 
 DATA: `2026-06-19`

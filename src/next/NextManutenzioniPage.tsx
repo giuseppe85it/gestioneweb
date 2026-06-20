@@ -1457,7 +1457,7 @@ export default function NextManutenzioniPage() {
   const [daFareUrgenzaFilter, setDaFareUrgenzaFilter] = useState<DaFareUrgenzaFilter>("tutte");
   const [daFareOrigineFilter, setDaFareOrigineFilter] = useState<DaFareOrigineFilter>("tutte");
   const [daFareMenuId, setDaFareMenuId] = useState<string | null>(null);
-  const [segnalazioniDaFareExpanded, setSegnalazioniDaFareExpanded] = useState(false);
+  const [segnalazioniDaFareExpanded, setSegnalazioniDaFareExpanded] = useState(true);
   const [segnalazioneMenuId, setSegnalazioneMenuId] = useState<string | null>(null);
   const [gruppoSegnalazioneMenuId, setGruppoSegnalazioneMenuId] = useState<string | null>(null);
   const [agganciaSegnalazioneModal, setAgganciaSegnalazioneModal] =
@@ -4355,7 +4355,7 @@ export default function NextManutenzioniPage() {
   }) {
     const { item, checked, onToggle, action } = args;
     return (
-      <label key={item.id} className="man2-grp-row">
+      <label key={item.id} className="man2-grp-row man2-dafare-report-row">
         <input
           type="checkbox"
           checked={checked}
@@ -4629,52 +4629,67 @@ export default function NextManutenzioniPage() {
     const selectedIds = selectedFreeIdsForTarga.length > 0 ? selectedFreeIdsForTarga : [item.id];
 
     return (
-      <article key={item.id} className="man2-last-item">
-        <div className="man2-last-item__row1">
+      <article
+        key={item.id}
+        className={`man2-last-item man2-dafare-item${checkbox?.checked ? " is-selected" : ""}`}
+      >
+        <div className="man2-dafare-item__main">
           {checkbox ? (
             <input
               type="checkbox"
+              className="man2-dafare-item__check"
               checked={checkbox.checked}
               disabled={groupActionBusy}
               onChange={checkbox.onToggle}
               aria-label={`Seleziona manutenzione ${item.descrizione}`}
-              style={{ marginTop: 4 }}
             />
-          ) : null}
-          <div>
-            <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 80)}</span>
-            <div className="man2-last-item__meta">
-              {[
-                item.targa,
-                `Inserimento ${formatDaFareDateLabel(item)}`,
-                `Origine ${formatMaintenanceOrigineLabel(origine)}`,
-                item.segnalatoDa ? `Segnalato da ${item.segnalatoDa}` : null,
-              ]
-                .filter(Boolean)
-                .join(" - ")}
+          ) : (
+            <span className="man2-dafare-item__check-spacer" aria-hidden="true" />
+          )}
+          <div className="man2-dafare-item__content">
+            <div className="man2-dafare-item__title-row">
+              <span className="man2-dafare-item__title">{buildDescrizioneSnippet(item.descrizione, 96)}</span>
+              <span className="man2-dafare-date-chip">
+                {stato === "programmata" ? "Programmata" : "Inserimento"} {formatDaFareDateLabel(item)}
+              </span>
+            </div>
+            <div className="man2-dafare-item__meta">
+              <span>{item.targa}</span>
+              <span>Origine {formatMaintenanceOrigineLabel(origine)}</span>
+              {item.segnalatoDa ? <span>Segnalato da {item.segnalatoDa}</span> : null}
+              {groupKey ? (
+                <span>In gruppo</span>
+              ) : isDaFare ? (
+                <span>Non in gruppo</span>
+              ) : (
+                <span>Non raggruppabile</span>
+              )}
+            </div>
+            <div className="man2-dafare-item__badges">
+              <span className="man2-badge man2-dafare-badge--urgency" style={URGENZA_BADGE_STYLE[urgenza]}>
+                {urgenza.toUpperCase()}
+              </span>
+              <span
+                className={`man2-badge man2-badge--${item.tipo}`}
+                style={getMaintenanceStatoBadgeStyle(stato)}
+                title={buildChiusuraDaEventoTitle(item)}
+              >
+                {formatMaintenanceStatoLabel(stato)}
+              </span>
+              <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+              <span className="man2-badge man2-dafare-badge--origin">{formatMaintenanceOrigineLabel(origine)}</span>
             </div>
           </div>
-          <span className="man2-badge" style={URGENZA_BADGE_STYLE[urgenza]}>
-            {urgenza.toUpperCase()}
-          </span>
         </div>
-        <div className="man2-last-item__meta">
-          <span
-            className={`man2-badge man2-badge--${item.tipo}`}
-            style={getMaintenanceStatoBadgeStyle(stato)}
-            title={buildChiusuraDaEventoTitle(item)}
-          >
-            {formatMaintenanceStatoLabel(stato)}
-          </span>
-          <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
+        <div className="man2-dafare-story">
+          <FraseStoriaRecord
+            {...recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
+              sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
+            })}
+            compact
+          />
         </div>
-        <FraseStoriaRecord
-          {...recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
-            sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
-          })}
-          compact
-        />
-        <div className="man2-form-actions man2-form-actions--row">
+        <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
           <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
             Eseguita
           </button>
@@ -4764,17 +4779,17 @@ export default function NextManutenzioniPage() {
 
   function renderDaFare() {
     return (
-      <section className="man2-screen">
-        <div className="man2-screen-head man2-screen-head--dashboard">
-          <div>
+      <section className="man2-screen man2-screen--dafare">
+        <div className="man2-dafare-head">
+          <div className="man2-dafare-title-block">
             <h2 className="man2-screen-title">Da fare</h2>
+            <p className="man2-dafare-subtitle">
+              Filtri, segnalazioni aperte e manutenzioni operative nello stesso contenitore.
+            </p>
           </div>
-          <button type="button" className="man2-nav-btn man2-nav-btn--primary" onClick={() => setView("form")}>
-            + Nuova manutenzione
-          </button>
         </div>
 
-        <div className="man2-field-row">
+        <div className="man2-dafare-controls">
           <div className="man2-field">
             <label className="man2-field__label">Urgenza</label>
             <select
@@ -4801,19 +4816,39 @@ export default function NextManutenzioniPage() {
               <option value="manuale">Manuale</option>
             </select>
           </div>
+          <button
+            type="button"
+            className="man2-btn man2-dafare-reset"
+            onClick={() => {
+              setDaFareUrgenzaFilter("tutte");
+              setDaFareOrigineFilter("tutte");
+            }}
+          >
+            Azzera filtri
+          </button>
         </div>
 
-        <button
-          type="button"
-          className="man2-section-title man2-grp-toggle"
-          aria-expanded={segnalazioniDaFareExpanded}
-          onClick={() => setSegnalazioniDaFareExpanded((current) => !current)}
-        >
-          <span>{segnalazioniDaFareExpanded ? "▾" : "▸"}</span>
-          <span>Segnalazioni aperte ({segnalazioniEleggibili.length})</span>
-        </button>
+        <section className={`man2-dafare-reports${segnalazioniDaFareExpanded ? " is-open" : ""}`}>
+          <div className="man2-dafare-reports__head">
+            <div>
+              <div className="man2-dafare-reports__title">Segnalazioni aperte</div>
+              <div className="man2-dafare-reports__meta">
+                {segnalazioniEleggibili.length} non collegate
+                {segnalazioniDaFareByTarga.length > 0 ? ` - ${segnalazioniDaFareByTarga.length} targhe` : ""}
+                {" - selezione multipla attiva"}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="man2-btn man2-dafare-toggle"
+              aria-expanded={segnalazioniDaFareExpanded}
+              onClick={() => setSegnalazioniDaFareExpanded((current) => !current)}
+            >
+              {segnalazioniDaFareExpanded ? "Comprimi" : "Espandi"}
+            </button>
+          </div>
         {segnalazioniDaFareExpanded ? (
-          <>
+          <div className="man2-dafare-reports__body">
             {lavoroGruppoRetryState ? (
               <div className="man2-grp-alert">
                 <span>
@@ -4918,13 +4953,14 @@ export default function NextManutenzioniPage() {
                 <div className="man-empty">Nessuna segnalazione aperta non collegata con i filtri correnti.</div>
               )}
             </div>
-          </>
+          </div>
         ) : null}
+        </section>
 
-        <div className="man2-section-title">
+        <div className="man2-section-title man2-dafare-section-title">
           Manutenzioni operative ({manutenzioniOperativeFiltrate.length})
         </div>
-        <div className="man2-last-list">
+        <div className="man2-last-list man2-dafare-maintenance-list">
           {manutenzioniOperativeFiltrate.length > 0 ? (
             <>
               {manutenzioniOperativeGrouped.gruppi.map((gruppo) => (

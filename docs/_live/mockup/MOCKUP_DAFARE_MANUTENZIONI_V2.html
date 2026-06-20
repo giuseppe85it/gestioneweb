@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup Da fare Manutenzioni V2</title>
+  <style>
+    :root {
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f5f7f4;
+      --color-background-tertiary: #eef2ec;
+      --color-text-primary: #172016;
+      --color-text-secondary: #5f6b5e;
+      --color-text-tertiary: #7b8579;
+      --color-border-secondary: #cfd7cc;
+      --color-border-tertiary: #e1e6df;
+      --color-success: #166534;
+      --color-warning: #b45309;
+      --color-danger: #b91c1c;
+      --border-radius-md: 8px;
+      --border-radius-lg: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f8f5; color: var(--color-text-primary); font-size: 13px; }
+    button, input, select, textarea { font: inherit; }
+
+    .man2-page { padding: 16px; max-width: 1440px; margin: 0 auto; }
+    .man2-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+    .man2-head__left { display: flex; flex-direction: column; gap: 3px; }
+    .man2-head__right { display: flex; gap: 6px; align-items: center; padding-top: 4px; }
+    .man2-eyebrow { font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+    .man2-head h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--color-text-primary); letter-spacing: 0; }
+    .man2-select-mezzo, .man2-search, .man2-field select, .man2-field input, .man2-field textarea {
+      padding: 7px 10px;
+      font-size: 13px;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+    }
+    .man2-select-mezzo { min-width: 220px; }
+    .man2-search { width: 220px; }
+    .man2-context-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 8px 12px;
+      background: var(--color-background-secondary);
+      border-radius: var(--border-radius-md);
+      border: 1px solid var(--color-border-tertiary);
+      margin-bottom: 12px;
+    }
+    .man2-ctx-item { display: flex; flex-direction: column; gap: 1px; }
+    .man2-ctx-label { font-size: 10px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em; }
+    .man2-ctx-value { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+    .man2-ctx-divider { width: 1px; height: 28px; background: var(--color-border-tertiary); flex-shrink: 0; }
+    .man2-tabs { display: flex; border-bottom: 1px solid var(--color-border-tertiary); margin-bottom: 14px; overflow-x: auto; }
+    .man2-tab { padding: 8px 16px; font-size: 13px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--color-text-secondary); cursor: pointer; margin-bottom: -1px; white-space: nowrap; }
+    .man2-tab.active { color: var(--color-success); border-bottom-color: var(--color-success); font-weight: 600; }
+    .man2-btn, .man2-nav-btn, .man2-grp-btn {
+      padding: 7px 12px;
+      font-size: 12px;
+      border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      cursor: pointer;
+      min-height: 32px;
+    }
+    .man2-nav-btn--primary, .man2-btn-full {
+      background: var(--color-success);
+      border-color: var(--color-success);
+      color: #fff;
+    }
+    .man2-btn-full {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: var(--border-radius-md);
+      cursor: pointer;
+      min-height: 34px;
+    }
+    .man2-btn--danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
+    .man2-field { display: flex; flex-direction: column; gap: 4px; }
+    .man2-field__label { font-size: 10px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+    .man2-feedback { padding: 9px 12px; border-radius: 8px; margin-bottom: 12px; }
+    .man2-feedback--notice { background: #ecfdf3; color: #14532d; border: 1px solid #bbf7d0; }
+    .man2-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+    .man2-badge--mezzo { background: #dbeafe; color: #1e40af; }
+    .man2-badge--compressore { background: #ede9fe; color: #5b21b6; }
+    .man2-row-menu { position: relative; display: inline-flex; }
+    .man2-row-menu__trigger { width: 32px; height: 32px; border: 1px solid var(--color-border-tertiary); border-radius: 8px; background: #fff; cursor: pointer; }
+    .man2-row-menu__panel {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 36px;
+      min-width: 230px;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      box-shadow: 0 12px 26px rgba(23, 32, 22, .14);
+      z-index: 20;
+    }
+    .man2-row-menu.is-open .man2-row-menu__panel { display: grid; gap: 2px; }
+    .man2-row-menu__item { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--color-text-primary); }
+    .man2-row-menu__item:hover { background: var(--color-background-secondary); }
+
+    .dafarev2-shell { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+    .dafarev2-main { display: grid; gap: 12px; }
+    .dafarev2-toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) 160px 170px 170px auto;
+      gap: 8px;
+      align-items: end;
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .dafarev2-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .dafarev2-kpi {
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-height: 72px;
+    }
+    .dafarev2-kpi__label { font-size: 10px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+    .dafarev2-kpi__value { margin-top: 4px; font-size: 22px; font-weight: 700; }
+    .dafarev2-kpi__sub { margin-top: 2px; font-size: 11px; color: var(--color-text-secondary); }
+    .dafarev2-board {
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .dafarev2-board__head {
+      display: grid;
+      grid-template-columns: 34px 1.2fr 110px 110px 110px 150px 132px;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 12px;
+      background: #f0f4ef;
+      color: var(--color-text-secondary);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border-bottom: 1px solid var(--color-border-tertiary);
+    }
+    .dafarev2-row {
+      display: grid;
+      grid-template-columns: 34px 1.2fr 110px 110px 110px 150px 132px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-border-tertiary);
+      min-height: 78px;
+    }
+    .dafarev2-row:last-child { border-bottom: 0; }
+    .dafarev2-row.is-selected { background: #f8fbf6; box-shadow: inset 3px 0 0 var(--color-success); }
+    .dafarev2-title { font-weight: 650; line-height: 1.25; }
+    .dafarev2-meta { margin-top: 4px; color: var(--color-text-secondary); font-size: 11px; line-height: 1.35; }
+    .dafarev2-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    .dafarev2-action-primary { min-width: 86px; }
+    .dafarev2-side { display: grid; gap: 12px; position: sticky; top: 12px; }
+    .dafarev2-panel {
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .dafarev2-panel__title { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+    .dafarev2-panel__sub { color: var(--color-text-secondary); font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+    .dafarev2-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .dafarev2-detail-item { background: var(--color-background-secondary); border-radius: 8px; padding: 8px; }
+    .dafarev2-detail-label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-tertiary); }
+    .dafarev2-detail-value { margin-top: 2px; font-weight: 650; }
+    .dafarev2-stack { display: grid; gap: 8px; }
+    .dafarev2-section {
+      background: #fff;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .dafarev2-section__head {
+      width: 100%;
+      border: 0;
+      background: #fff;
+      padding: 11px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      color: var(--color-text-primary);
+    }
+    .dafarev2-section__head strong { font-size: 13px; }
+    .dafarev2-section__body { display: none; padding: 0 12px 12px; }
+    .dafarev2-section.is-open .dafarev2-section__body { display: grid; gap: 10px; }
+    .man2-grp-alert {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      background: #fff7ed;
+      color: #7c2d12;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .man2-grp-card {
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .man2-grp-card__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      background: var(--color-background-secondary);
+      border-bottom: 1px solid var(--color-border-tertiary);
+    }
+    .man2-grp-card__title { font-weight: 700; }
+    .man2-grp-card__meta { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+    .man2-grp-card__actions { display: flex; gap: 6px; align-items: center; }
+    .man2-grp-rows { display: grid; }
+    .man2-grp-row {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--color-border-tertiary);
+    }
+    .man2-grp-row:last-child { border-bottom: 0; }
+    .man2-grp-row__title { font-weight: 600; }
+    .man2-grp-row__meta { display: block; margin-top: 3px; font-size: 11px; color: var(--color-text-secondary); }
+    .dafarev2-checklist { display: grid; gap: 6px; color: var(--color-text-secondary); font-size: 12px; }
+    .dafarev2-checklist span { display: flex; gap: 6px; align-items: center; }
+    .dafarev2-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--color-success); flex: 0 0 auto; }
+    .dafarev2-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .36);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .dafarev2-modal-backdrop.is-open { display: flex; }
+    .dafarev2-modal {
+      width: min(540px, 100%);
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid var(--color-border-tertiary);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, .22);
+    }
+    .dafarev2-modal__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--color-border-tertiary);
+    }
+    .dafarev2-modal__head h3 { margin: 0; font-size: 16px; }
+    .dafarev2-modal__body { padding: 14px 16px; display: grid; gap: 10px; }
+    .dafarev2-modal__actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+    .muted { color: var(--color-text-secondary); }
+    .warning { background: #fef3c7; color: #92400e; }
+    .danger { background: #fee2e2; color: #991b1b; }
+    .success { background: #dcfce7; color: #14532d; }
+    .manuale { background: #e0f2fe; color: #075985; }
+
+    @media (max-width: 1120px) {
+      .dafarev2-shell { grid-template-columns: 1fr; }
+      .dafarev2-side { position: static; }
+      .dafarev2-toolbar { grid-template-columns: 1fr 1fr; }
+      .dafarev2-kpis { grid-template-columns: repeat(2, 1fr); }
+      .dafarev2-board__head { display: none; }
+      .dafarev2-row { grid-template-columns: 28px 1fr; align-items: start; }
+      .dafarev2-row > div:nth-child(n+3) { grid-column: 2; }
+      .dafarev2-actions { justify-content: flex-start; }
+    }
+
+    @media (max-width: 680px) {
+      .man2-page { padding: 10px; }
+      .man2-head { flex-direction: column; }
+      .man2-head__right { width: 100%; flex-direction: column; align-items: stretch; }
+      .man2-select-mezzo, .man2-search { width: 100%; min-width: 0; }
+      .dafarev2-toolbar { grid-template-columns: 1fr; }
+      .dafarev2-kpis { grid-template-columns: 1fr; }
+      .dafarev2-detail-grid { grid-template-columns: 1fr; }
+      .man2-grp-card__head { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="man2-page">
+    <header class="man2-head">
+      <div class="man2-head__left">
+        <span class="man2-eyebrow">Operatività</span>
+        <h1>Manutenzioni</h1>
+      </div>
+      <div class="man2-head__right">
+        <select class="man2-select-mezzo" aria-label="Seleziona mezzo">
+          <option>TI324633 - Iveco Stralis</option>
+          <option>TI298409 - Volvo FH</option>
+          <option>Compressore Atlas 02</option>
+        </select>
+        <input class="man2-search" value="TI324633" aria-label="Cerca targa modello autista" />
+      </div>
+    </header>
+
+    <section class="man2-context-bar" aria-label="Contesto mezzo attivo">
+      <div class="man2-ctx-item"><span class="man2-ctx-label">Targa</span><span class="man2-ctx-value">TI324633</span></div>
+      <div class="man2-ctx-divider"></div>
+      <div class="man2-ctx-item"><span class="man2-ctx-label">Modello</span><span class="man2-ctx-value">Iveco Stralis</span></div>
+      <div class="man2-ctx-divider"></div>
+      <div class="man2-ctx-item"><span class="man2-ctx-label">Autista solito</span><span class="man2-ctx-value">Riccardo Fenderico</span></div>
+      <div class="man2-ctx-divider"></div>
+      <div class="man2-ctx-item"><span class="man2-ctx-label">KM attuali</span><span class="man2-ctx-value">418.220</span></div>
+      <div class="man2-ctx-divider"></div>
+      <div class="man2-ctx-item"><span class="man2-ctx-label">Ultima manutenzione</span><span class="man2-ctx-value">15/06/2026</span></div>
+    </section>
+
+    <nav class="man2-tabs" aria-label="Sezioni manutenzioni">
+      <button class="man2-tab active">Da fare</button>
+      <button class="man2-tab">Dashboard</button>
+      <button class="man2-tab">Nuova / Modifica</button>
+      <button class="man2-tab">Dettaglio</button>
+      <button class="man2-tab">Quadro manutenzioni PDF</button>
+    </nav>
+
+    <div class="man2-feedback man2-feedback--notice">
+      Mockup statico: tutte le funzioni della tab originale sono rappresentate, senza scritture dati.
+    </div>
+
+    <section class="dafarev2-shell">
+      <div class="dafarev2-main">
+        <div class="dafarev2-toolbar" aria-label="Comandi principali Da fare">
+          <div class="man2-field">
+            <label class="man2-field__label" for="q">Ricerca operativa</label>
+            <input id="q" type="search" value="gomme freni segnalazioni" />
+          </div>
+          <div class="man2-field">
+            <label class="man2-field__label" for="urgenza">Urgenza</label>
+            <select id="urgenza">
+              <option>Tutte</option>
+              <option>Alta</option>
+              <option>Media</option>
+              <option>Bassa</option>
+            </select>
+          </div>
+          <div class="man2-field">
+            <label class="man2-field__label" for="origine">Origine</label>
+            <select id="origine">
+              <option>Tutte</option>
+              <option>Controllo</option>
+              <option>Segnalazione</option>
+              <option>Manuale</option>
+            </select>
+          </div>
+          <div class="man2-field">
+            <label class="man2-field__label" for="stato">Stato</label>
+            <select id="stato">
+              <option>Da fare + programmate</option>
+              <option>Solo da fare</option>
+              <option>Solo programmate</option>
+            </select>
+          </div>
+          <button type="button" class="man2-nav-btn man2-nav-btn--primary" data-open-modal="nuova">+ Nuova manutenzione</button>
+        </div>
+
+        <div class="dafarev2-kpis" aria-label="Riepilogo operativo">
+          <article class="dafarev2-kpi">
+            <div class="dafarev2-kpi__label">Manutenzioni operative</div>
+            <div class="dafarev2-kpi__value">12</div>
+            <div class="dafarev2-kpi__sub">9 da fare, 3 programmate</div>
+          </article>
+          <article class="dafarev2-kpi">
+            <div class="dafarev2-kpi__label">Alta urgenza</div>
+            <div class="dafarev2-kpi__value">4</div>
+            <div class="dafarev2-kpi__sub">prime in lista</div>
+          </article>
+          <article class="dafarev2-kpi">
+            <div class="dafarev2-kpi__label">Segnalazioni aperte</div>
+            <div class="dafarev2-kpi__value">7</div>
+            <div class="dafarev2-kpi__sub">3 non raggruppate</div>
+          </article>
+          <article class="dafarev2-kpi">
+            <div class="dafarev2-kpi__label">Gruppi manutenzioni</div>
+            <div class="dafarev2-kpi__value">2</div>
+            <div class="dafarev2-kpi__sub">azioni multi-record attive</div>
+          </article>
+        </div>
+
+        <section class="dafarev2-board" aria-label="Manutenzioni operative">
+          <div class="dafarev2-board__head">
+            <span></span>
+            <span>Intervento</span>
+            <span>Urgenza</span>
+            <span>Stato</span>
+            <span>Tipo</span>
+            <span>Origine</span>
+            <span>Azioni</span>
+          </div>
+
+          <article class="dafarev2-row is-selected">
+            <input type="checkbox" aria-label="Seleziona manutenzione cambio gomme asse 2" checked />
+            <div>
+              <div class="dafarev2-title">Cambio gomme asse 2 e controllo pressione</div>
+              <div class="dafarev2-meta">TI324633 - Inserimento 15/06/2026 - Segnalato da Riccardo Fenderico</div>
+              <div class="dafarev2-meta">Creata da segnalazione, origine apribile dal dettaglio.</div>
+            </div>
+            <div><span class="man2-badge danger">Alta</span></div>
+            <div><span class="man2-badge warning">Da fare</span></div>
+            <div><span class="man2-badge man2-badge--mezzo">Mezzo</span></div>
+            <div><span class="man2-badge">Segnalazione</span></div>
+            <div class="dafarev2-actions">
+              <button class="man2-btn-full dafarev2-action-primary" data-open-modal="eseguita">Eseguita</button>
+              <span class="man2-row-menu">
+                <button class="man2-row-menu__trigger" aria-label="Altre azioni">⋮</button>
+                <span class="man2-row-menu__panel" role="menu">
+                  <button class="man2-row-menu__item">Aggiungi a gruppo: TI324633 - gomme / freni (2)</button>
+                  <button class="man2-row-menu__item">Crea gruppo</button>
+                  <button class="man2-row-menu__item">Modifica</button>
+                  <button class="man2-row-menu__item">Apri</button>
+                </span>
+              </span>
+            </div>
+          </article>
+
+          <article class="dafarev2-row">
+            <input type="checkbox" aria-label="Seleziona manutenzione freni" />
+            <div>
+              <div class="dafarev2-title">Freni posteriori da controllare</div>
+              <div class="dafarev2-meta">TI324633 - Inserimento 14/06/2026 - Segnalato da Controllo KO</div>
+              <div class="dafarev2-meta">Storia: aperta da controllo, nessun evento di chiusura collegato.</div>
+            </div>
+            <div><span class="man2-badge danger">Alta</span></div>
+            <div><span class="man2-badge warning">Da fare</span></div>
+            <div><span class="man2-badge man2-badge--mezzo">Mezzo</span></div>
+            <div><span class="man2-badge">Controllo</span></div>
+            <div class="dafarev2-actions">
+              <button class="man2-btn-full dafarev2-action-primary" data-open-modal="eseguita">Eseguita</button>
+              <span class="man2-row-menu">
+                <button class="man2-row-menu__trigger" aria-label="Altre azioni">⋮</button>
+                <span class="man2-row-menu__panel" role="menu">
+                  <button class="man2-row-menu__item">Aggiungi a gruppo: TI324633 - gomme / freni (2)</button>
+                  <button class="man2-row-menu__item">Crea gruppo</button>
+                  <button class="man2-row-menu__item">Modifica</button>
+                  <button class="man2-row-menu__item">Apri</button>
+                </span>
+              </span>
+            </div>
+          </article>
+
+          <article class="dafarev2-row">
+            <span></span>
+            <div>
+              <div class="dafarev2-title">Tagliando programmato 420.000 km</div>
+              <div class="dafarev2-meta">TI324633 - Data programmata 25/06/2026 - Officina da definire</div>
+              <div class="dafarev2-meta">Le programmate restano visibili ma non raggruppabili.</div>
+            </div>
+            <div><span class="man2-badge success">Media</span></div>
+            <div><span class="man2-badge manuale">Programmata</span></div>
+            <div><span class="man2-badge man2-badge--mezzo">Mezzo</span></div>
+            <div><span class="man2-badge">Manuale</span></div>
+            <div class="dafarev2-actions">
+              <button class="man2-btn-full dafarev2-action-primary" data-open-modal="eseguita">Eseguita</button>
+              <span class="man2-row-menu">
+                <button class="man2-row-menu__trigger" aria-label="Altre azioni">⋮</button>
+                <span class="man2-row-menu__panel" role="menu">
+                  <button class="man2-row-menu__item">Modifica</button>
+                  <button class="man2-row-menu__item">Apri</button>
+                </span>
+              </span>
+            </div>
+          </article>
+        </section>
+
+        <section class="dafarev2-section is-open" id="segnalazioni">
+          <button class="dafarev2-section__head" type="button" data-toggle-section="segnalazioni">
+            <strong>Segnalazioni aperte (7)</strong>
+            <span class="muted">▾ gestione gruppi e creazione manutenzioni</span>
+          </button>
+          <div class="dafarev2-section__body">
+            <div class="man2-grp-alert">
+              <span>Lavoro creato, 1 segnalazione non agganciata.</span>
+              <button class="man2-grp-btn">Riprova</button>
+            </div>
+
+            <article class="man2-grp-card">
+              <div class="man2-grp-card__head">
+                <div>
+                  <div class="man2-grp-card__title">TI324633 - Gruppo segnalazioni</div>
+                  <div class="man2-grp-card__meta">2 aperte su TI324633 - 1 selezionata</div>
+                </div>
+                <div class="man2-grp-card__actions">
+                  <button class="man2-grp-btn">Crea lavoro (Da fare)</button>
+                  <span class="man2-row-menu">
+                    <button class="man2-row-menu__trigger" aria-label="Azioni gruppo segnalazioni">⋮</button>
+                    <span class="man2-row-menu__panel" role="menu">
+                      <button class="man2-row-menu__item">Crea lavoro (Da fare)</button>
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div class="man2-grp-rows">
+                <label class="man2-grp-row">
+                  <input type="checkbox" checked />
+                  <span>
+                    <span class="man2-grp-row__title">Vibrazione su asse posteriore</span>
+                    <span class="man2-grp-row__meta">Riccardo Fenderico - 15/06/2026 - Tipo gomme</span>
+                  </span>
+                  <span class="man2-row-menu">
+                    <button class="man2-row-menu__trigger" aria-label="Azioni segnalazione">⋮</button>
+                    <span class="man2-row-menu__panel" role="menu">
+                      <button class="man2-row-menu__item">Crea manutenzione</button>
+                      <button class="man2-row-menu__item">Rimuovi dal gruppo</button>
+                      <button class="man2-row-menu__item">Aggancia a manutenzione esistente</button>
+                      <button class="man2-row-menu__item" style="color:#b91c1c">Elimina</button>
+                    </span>
+                  </span>
+                </label>
+                <label class="man2-grp-row">
+                  <input type="checkbox" />
+                  <span>
+                    <span class="man2-grp-row__title">Perdita aria lenta</span>
+                    <span class="man2-grp-row__meta">Riccardo Fenderico - 15/06/2026 - Tipo pneumatici</span>
+                  </span>
+                  <span class="man2-row-menu">
+                    <button class="man2-row-menu__trigger" aria-label="Azioni segnalazione">⋮</button>
+                    <span class="man2-row-menu__panel" role="menu">
+                      <button class="man2-row-menu__item">Crea manutenzione</button>
+                      <button class="man2-row-menu__item">Rimuovi dal gruppo</button>
+                      <button class="man2-row-menu__item">Aggancia a manutenzione esistente</button>
+                      <button class="man2-row-menu__item" style="color:#b91c1c">Elimina</button>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </article>
+
+            <article class="man2-grp-card">
+              <div class="man2-grp-card__head">
+                <div>
+                  <div class="man2-grp-card__title">Non raggruppate</div>
+                  <div class="man2-grp-card__meta">3 segnalazioni disponibili - selezione multi-record attiva</div>
+                </div>
+              </div>
+              <div class="man2-grp-rows">
+                <label class="man2-grp-row">
+                  <input type="checkbox" />
+                  <span>
+                    <span class="man2-grp-row__title">Specchio destro allentato</span>
+                    <span class="man2-grp-row__meta">Antonio Rossi - 13/06/2026 - Tipo carrozzeria</span>
+                  </span>
+                  <span class="man2-row-menu">
+                    <button class="man2-row-menu__trigger" aria-label="Azioni segnalazione">⋮</button>
+                    <span class="man2-row-menu__panel" role="menu">
+                      <button class="man2-row-menu__item" data-open-modal="crea">Crea manutenzione</button>
+                      <button class="man2-row-menu__item">Aggiungi a gruppo</button>
+                      <button class="man2-row-menu__item">Crea gruppo</button>
+                      <button class="man2-row-menu__item" data-open-modal="aggancia">Aggancia a manutenzione esistente</button>
+                      <button class="man2-row-menu__item" style="color:#b91c1c">Elimina</button>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="dafarev2-section is-open" id="gruppi">
+          <button class="dafarev2-section__head" type="button" data-toggle-section="gruppi">
+            <strong>Gruppi manutenzioni</strong>
+            <span class="muted">▾ raggruppa, aggiungi o rimuovi record da fare</span>
+          </button>
+          <div class="dafarev2-section__body">
+            <article class="man2-grp-card">
+              <div class="man2-grp-card__head">
+                <div>
+                  <div class="man2-grp-card__title">Gruppo manutenzioni</div>
+                  <div class="man2-grp-card__meta">2 da fare su TI324633</div>
+                </div>
+              </div>
+              <div class="man2-grp-rows">
+                <div class="man2-grp-row">
+                  <span></span>
+                  <span>
+                    <span class="man2-grp-row__title">Cambio gomme asse 2</span>
+                    <span class="man2-grp-row__meta">Alta - origine segnalazione</span>
+                  </span>
+                  <span class="man2-row-menu">
+                    <button class="man2-row-menu__trigger" aria-label="Azioni manutenzione gruppo">⋮</button>
+                    <span class="man2-row-menu__panel" role="menu">
+                      <button class="man2-row-menu__item">Rimuovi dal gruppo</button>
+                      <button class="man2-row-menu__item">Modifica</button>
+                      <button class="man2-row-menu__item">Apri</button>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <aside class="dafarev2-side" aria-label="Dettaglio selezione">
+        <section class="dafarev2-panel">
+          <h2 class="dafarev2-panel__title">Dettaglio rapido</h2>
+          <div class="dafarev2-panel__sub">La riga selezionata mostra qui contesto, origine e azioni principali senza aprire subito il tab Dettaglio.</div>
+          <div class="dafarev2-detail-grid">
+            <div class="dafarev2-detail-item"><div class="dafarev2-detail-label">Record</div><div class="dafarev2-detail-value">m-2026-0615-01</div></div>
+            <div class="dafarev2-detail-item"><div class="dafarev2-detail-label">Targa</div><div class="dafarev2-detail-value">TI324633</div></div>
+            <div class="dafarev2-detail-item"><div class="dafarev2-detail-label">Origine</div><div class="dafarev2-detail-value">Segnalazione</div></div>
+            <div class="dafarev2-detail-item"><div class="dafarev2-detail-label">Urgenza</div><div class="dafarev2-detail-value">Alta</div></div>
+          </div>
+          <div class="dafarev2-stack">
+            <button class="man2-btn-full" data-open-modal="eseguita">Eseguita</button>
+            <button class="man2-btn">Apri</button>
+            <button class="man2-btn">Modifica</button>
+            <button class="man2-btn">Vedi origine</button>
+          </div>
+        </section>
+
+        <section class="dafarev2-panel">
+          <h2 class="dafarev2-panel__title">Funzioni preservate</h2>
+          <div class="dafarev2-checklist">
+            <span><i class="dafarev2-dot"></i>Filtri Urgenza e Origine originali</span>
+            <span><i class="dafarev2-dot"></i>Nuova manutenzione</span>
+            <span><i class="dafarev2-dot"></i>Eseguita con modale dati esecuzione</span>
+            <span><i class="dafarev2-dot"></i>Modifica e Apri dettaglio</span>
+            <span><i class="dafarev2-dot"></i>Crea gruppo, aggiungi e rimuovi</span>
+            <span><i class="dafarev2-dot"></i>Segnalazioni aperte e gruppi segnalazioni</span>
+            <span><i class="dafarev2-dot"></i>Crea manutenzione da segnalazione</span>
+            <span><i class="dafarev2-dot"></i>Aggancia a manutenzione esistente</span>
+            <span><i class="dafarev2-dot"></i>Elimina segnalazione e Riprova aggancio</span>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <div class="dafarev2-modal-backdrop" id="modal-eseguita">
+    <section class="dafarev2-modal" role="dialog" aria-modal="true" aria-labelledby="titolo-eseguita">
+      <div class="dafarev2-modal__head">
+        <div>
+          <h3 id="titolo-eseguita">Eseguita</h3>
+          <div class="muted">Completa la manutenzione da fare mantenendo lo stesso record.</div>
+        </div>
+        <button class="man2-btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="dafarev2-modal__body">
+        <div class="man2-field"><label class="man2-field__label">Officina</label><input value="Sciurba Autotruck snc" /></div>
+        <div class="man2-field"><label class="man2-field__label">Data esecuzione</label><input type="date" value="2026-06-20" /></div>
+        <div class="man2-field"><label class="man2-field__label">KM</label><input value="418220" /></div>
+        <div class="man2-field"><label class="man2-field__label">Selezione gomme</label><button class="man2-btn">Apri selezione gomme</button></div>
+        <div class="dafarev2-modal__actions">
+          <button class="man2-btn" data-close-modal>Annulla</button>
+          <button class="man2-btn-full">Salva esecuzione</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="dafarev2-modal-backdrop" id="modal-crea">
+    <section class="dafarev2-modal" role="dialog" aria-modal="true" aria-labelledby="titolo-crea">
+      <div class="dafarev2-modal__head">
+        <div>
+          <h3 id="titolo-crea">Crea manutenzione da segnalazione</h3>
+          <div class="muted">Modale equivalente al flusso originale.</div>
+        </div>
+        <button class="man2-btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="dafarev2-modal__body">
+        <div class="man2-field"><label class="man2-field__label">Targa</label><input value="TI324633" readonly /></div>
+        <div class="man2-field"><label class="man2-field__label">Urgenza</label><select><option>Alta</option><option>Media</option></select></div>
+        <div class="man2-field"><label class="man2-field__label">Descrizione</label><textarea rows="5">Specchio destro allentato - verificare supporto e fissaggio.</textarea></div>
+        <div class="dafarev2-modal__actions">
+          <button class="man2-btn" data-close-modal>Annulla</button>
+          <button class="man2-btn-full">Crea manutenzione</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="dafarev2-modal-backdrop" id="modal-aggancia">
+    <section class="dafarev2-modal" role="dialog" aria-modal="true" aria-labelledby="titolo-aggancia">
+      <div class="dafarev2-modal__head">
+        <div>
+          <h3 id="titolo-aggancia">Aggancia a manutenzione esistente</h3>
+          <div class="muted">Candidati caricati per targa, come nella modale originale.</div>
+        </div>
+        <button class="man2-btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="dafarev2-modal__body">
+        <label class="man2-grp-row">
+          <input type="radio" name="cand" checked />
+          <span><span class="man2-grp-row__title">Cambio gomme asse 2</span><span class="man2-grp-row__meta">TI324633 - alta - da fare</span></span>
+          <span></span>
+        </label>
+        <label class="man2-grp-row">
+          <input type="radio" name="cand" />
+          <span><span class="man2-grp-row__title">Freni posteriori da controllare</span><span class="man2-grp-row__meta">TI324633 - alta - da fare</span></span>
+          <span></span>
+        </label>
+        <div class="dafarev2-modal__actions">
+          <button class="man2-btn" data-close-modal>Annulla</button>
+          <button class="man2-btn-full">Aggancia</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="dafarev2-modal-backdrop" id="modal-nuova">
+    <section class="dafarev2-modal" role="dialog" aria-modal="true" aria-labelledby="titolo-nuova">
+      <div class="dafarev2-modal__head">
+        <div>
+          <h3 id="titolo-nuova">Nuova manutenzione</h3>
+          <div class="muted">Nel runtime reale questo apre la tab Nuova / Modifica.</div>
+        </div>
+        <button class="man2-btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="dafarev2-modal__body">
+        <div class="dafarev2-checklist">
+          <span><i class="dafarev2-dot"></i>Stato iniziale Da fare / Eseguita</span>
+          <span><i class="dafarev2-dot"></i>Urgenza quando Da fare</span>
+          <span><i class="dafarev2-dot"></i>Campi base, materiali, gomme e scadenze invariati</span>
+        </div>
+        <div class="dafarev2-modal__actions">
+          <button class="man2-btn" data-close-modal>Annulla</button>
+          <button class="man2-btn-full">Vai al form</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.querySelectorAll(".man2-row-menu__trigger").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        document.querySelectorAll(".man2-row-menu.is-open").forEach((menu) => {
+          if (!menu.contains(button)) menu.classList.remove("is-open");
+        });
+        button.closest(".man2-row-menu").classList.toggle("is-open");
+      });
+    });
+
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".man2-row-menu.is-open").forEach((menu) => menu.classList.remove("is-open"));
+    });
+
+    document.querySelectorAll("[data-toggle-section]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.getElementById(button.dataset.toggleSection).classList.toggle("is-open");
+      });
+    });
+
+    const openModal = (id) => document.getElementById(`modal-${id}`)?.classList.add("is-open");
+    const closeModals = () => document.querySelectorAll(".dafarev2-modal-backdrop.is-open").forEach((modal) => modal.classList.remove("is-open"));
+
+    document.querySelectorAll("[data-open-modal]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openModal(button.dataset.openModal);
+      });
+    });
+
+    document.querySelectorAll("[data-close-modal]").forEach((button) => {
+      button.addEventListener("click", closeModals);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeModals();
+    });
+  </script>
+</body>
+</html>

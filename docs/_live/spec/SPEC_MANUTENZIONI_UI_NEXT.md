@@ -34,6 +34,14 @@ Redesign UI del modulo Manutenzioni NEXT (`src/next/NextManutenzioniPage.tsx`).
 - La shape additiva `gommeSelezione` conserva anche `assiIds` e `assiLabels` quando la selezione ordinaria riguarda piu assi. Il dettaglio tecnico usa questi campi prima del fallback e, per i record gia salvati senza campi multi-asse, ricostruisce gli assi dai `gommeIds`.
 - Nel dettaglio manutenzione gomme ordinaria, le card `Quantita` e `Motivo` derivano da `gommeSelezione.numeroGomme` e dalla modalita ordinaria, evitando il valore `non indicato` quando la selezione modale e' confermata.
 
+### Addendum 2026-06-20 - Card Da fare mirata
+
+- Il tab `Da fare` di `/next/manutenzioni` non ridisegna tutta la pagina: il cambio riguarda solo il contenitore operativo interno.
+- La card mantiene tutte le funzioni originali: checkbox/selezione multipla, filtri `Urgenza` e `Origine`, segnalazioni aperte, gruppi segnalazioni, manutenzioni operative, `Eseguita`, menu azioni per gruppi, modifica e apertura dettaglio.
+- Il doppione `+ Nuova manutenzione` e' rimosso dalla sola card `Da fare`; l'ingresso superiore resta fuori perimetro.
+- La UI reale usa `width: 100%` dentro l'area utile del tab e `box-sizing: border-box`; i controlli interni restano compatti per evitare campi inutilmente larghi su desktop grandi.
+- Il menu con i tre puntini dentro segnalazioni e manutenzioni resta `overflow: visible` e non deve essere nascosto dalla card.
+
 Problema attuale: la card sinistra fissa (`mx-header-grid` + `ms-layout` a due colonne `1.56fr / 1fr`)
 occupa troppo spazio orizzontale e rende il contenuto utile troppo stretto.
 

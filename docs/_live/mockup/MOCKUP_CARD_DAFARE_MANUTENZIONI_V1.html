@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup Card Da fare Manutenzioni</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --card: #ffffff;
+      --panel: #f2f5f0;
+      --text: #172016;
+      --muted: #667063;
+      --soft: #7d877a;
+      --line: #dfe6dc;
+      --line-strong: #c9d4c5;
+      --green: #166534;
+      --green-soft: #dcfce7;
+      --red: #b91c1c;
+      --red-soft: #fee2e2;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --blue: #1e40af;
+      --blue-soft: #dbeafe;
+      --violet: #5b21b6;
+      --violet-soft: #ede9fe;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      padding: 18px 22px 28px 28px;
+      font-size: 13px;
+    }
+
+    button, input { font: inherit; }
+
+    .wrap {
+      width: 100%;
+      display: grid;
+      gap: 14px;
+      justify-items: start;
+    }
+
+    .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .kicker {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .note {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 640px;
+    }
+
+    .variants {
+      width: min(1180px, 100%);
+      display: grid;
+      gap: 12px;
+    }
+
+    .label {
+      color: var(--soft);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-weight: 700;
+    }
+
+    .todo-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(23, 32, 22, .06);
+      overflow: visible;
+      position: relative;
+      border-left: 4px solid var(--green);
+    }
+
+    .todo-shell-card {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(23, 32, 22, .07);
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .todo-shell-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .todo-shell-title {
+      display: grid;
+      gap: 3px;
+    }
+
+    .todo-shell-title h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .todo-shell-sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .todo-controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 320px) minmax(220px, 320px) auto;
+      gap: 8px;
+      align-items: end;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .control-field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .control-field label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 750;
+    }
+
+    .control-field select {
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+      padding: 7px 10px;
+      color: var(--text);
+    }
+
+    .reports-block {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: visible;
+    }
+
+    .reports-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #f5f8f3;
+      border-bottom: 1px solid var(--line);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .reports-title {
+      font-weight: 800;
+    }
+
+    .reports-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .reports-list {
+      display: grid;
+    }
+
+    .report-row {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .report-row:last-child {
+      border-bottom: 0;
+    }
+
+    .report-title {
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .report-meta {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .todo-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .todo-card.is-selected {
+      border-color: #9bc5a2;
+      box-shadow: 0 0 0 3px rgba(22, 101, 52, .09), 0 10px 24px rgba(23, 32, 22, .08);
+    }
+
+    .todo-main {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 13px 14px 11px;
+    }
+
+    .todo-check {
+      width: 17px;
+      height: 17px;
+      margin-top: 3px;
+      accent-color: var(--green);
+    }
+
+    .todo-title-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-start;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .todo-title {
+      font-size: 15px;
+      font-weight: 750;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .todo-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .todo-meta span {
+      white-space: nowrap;
+      min-height: 22px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: #f8faf7;
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .todo-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .badge.high { color: var(--red); background: var(--red-soft); }
+    .badge.medium { color: var(--amber); background: var(--amber-soft); }
+    .badge.todo { color: var(--amber); background: var(--amber-soft); }
+    .badge.planned { color: #075985; background: #e0f2fe; }
+    .badge.vehicle { color: var(--blue); background: var(--blue-soft); }
+    .badge.compressor { color: var(--violet); background: var(--violet-soft); }
+    .badge.origin { color: #365314; background: #ecfccb; }
+
+    .todo-story {
+      margin: 0 14px 0 54px;
+      border: 1px solid var(--line);
+      background: #fbfcfa;
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .todo-story strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .todo-actions {
+      display: grid;
+      grid-template-columns: minmax(130px, 180px) auto;
+      gap: 8px;
+      align-items: center;
+      justify-content: start;
+      padding: 10px 14px 13px 54px;
+      background: transparent;
+      border-top: 0;
+    }
+
+    .btn {
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 7px 12px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .btn-primary {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .menu {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .menu-trigger {
+      width: 36px;
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .menu-panel {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 38px;
+      min-width: 250px;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 38px rgba(23, 32, 22, .16);
+      z-index: 20;
+    }
+
+    .menu.is-open .menu-panel {
+      display: grid;
+      gap: 2px;
+    }
+
+    .menu-item {
+      text-align: left;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      padding: 8px 10px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .menu-item:hover { background: var(--panel); }
+
+    .right-summary {
+      display: none;
+    }
+
+    .date-chip {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .group-strip {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #f0f5ee;
+      color: var(--muted);
+      font-size: 12px;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .group-strip strong {
+      color: var(--text);
+    }
+
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .35);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 40;
+    }
+
+    .modal-backdrop.is-open { display: flex; }
+
+    .modal {
+      width: min(480px, 100%);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, .22);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-head h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .modal-body {
+      padding: 14px 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 700;
+    }
+
+    .field input {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 720px) {
+      body { padding: 18px 10px 28px 10px; }
+      .head { display: grid; }
+      .todo-shell-head { display: grid; }
+      .todo-controls { grid-template-columns: 1fr; }
+      .reports-head { align-items: flex-start; flex-direction: column; }
+      .todo-main { grid-template-columns: 24px minmax(0, 1fr); }
+      .right-summary { grid-column: 2; justify-items: start; }
+      .todo-title-row { display: grid; }
+      .todo-meta span { white-space: normal; }
+      .todo-story { margin-left: 12px; }
+      .todo-actions {
+        grid-template-columns: 1fr auto;
+      }
+      .btn-primary { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <div>
+        <div class="kicker">Mockup mirato</div>
+        <h1>Solo card “Da fare”</h1>
+      </div>
+      <p class="note">
+        Questa proposta non ridisegna la pagina: cambia soltanto la card manutenzione operativa.
+        I comandi originali restano presenti nella card.
+      </p>
+    </header>
+
+    <section class="variants" aria-label="Varianti card da fare">
+      <div class="label">Card completa Da fare</div>
+      <article class="todo-shell-card">
+        <div class="todo-shell-head">
+          <div class="todo-shell-title">
+            <h2>Da fare</h2>
+            <div class="todo-shell-sub">Filtri, segnalazioni aperte e manutenzioni operative nello stesso contenitore.</div>
+          </div>
+        </div>
+
+        <div class="todo-controls" aria-label="Filtri Da fare">
+          <div class="control-field">
+            <label for="filter-urgency">Urgenza</label>
+            <select id="filter-urgency">
+              <option>Tutte</option>
+              <option>Alta</option>
+              <option>Media</option>
+              <option>Bassa</option>
+            </select>
+          </div>
+          <div class="control-field">
+            <label for="filter-origin">Origine</label>
+            <select id="filter-origin">
+              <option>Tutte</option>
+              <option>Controllo</option>
+              <option>Segnalazione</option>
+              <option>Manuale</option>
+            </select>
+          </div>
+          <button class="btn">Azzera filtri</button>
+        </div>
+
+        <section class="reports-block" aria-label="Segnalazioni aperte">
+          <div class="reports-head">
+            <div>
+              <div class="reports-title">Segnalazioni aperte</div>
+              <div class="reports-meta">7 non collegate · 2 gruppi · selezione multipla attiva</div>
+            </div>
+            <button class="btn">Comprimi</button>
+          </div>
+          <div class="reports-list">
+            <label class="report-row">
+              <input type="checkbox" checked />
+              <span>
+                <span class="report-title">Vibrazione su asse posteriore</span>
+                <span class="report-meta">Riccardo Fenderico · 15/06/2026 · Tipo gomme · TI324633</span>
+              </span>
+              <span class="menu">
+                <button class="menu-trigger" aria-label="Azioni segnalazione">⋮</button>
+                <span class="menu-panel" role="menu">
+                  <button class="menu-item" data-open-create-modal>Crea manutenzione</button>
+                  <button class="menu-item">Aggiungi a gruppo</button>
+                  <button class="menu-item">Crea gruppo</button>
+                  <button class="menu-item" data-open-attach-modal>Aggancia a manutenzione esistente</button>
+                  <button class="menu-item" style="color:#b91c1c">Elimina</button>
+                </span>
+              </span>
+            </label>
+            <label class="report-row">
+              <input type="checkbox" />
+              <span>
+                <span class="report-title">Perdita aria lenta</span>
+                <span class="report-meta">Riccardo Fenderico · 15/06/2026 · Tipo pneumatici · TI324633</span>
+              </span>
+              <span class="menu">
+                <button class="menu-trigger" aria-label="Azioni segnalazione">⋮</button>
+                <span class="menu-panel" role="menu">
+                  <button class="menu-item" data-open-create-modal>Crea manutenzione</button>
+                  <button class="menu-item">Rimuovi dal gruppo</button>
+                  <button class="menu-item" data-open-attach-modal>Aggancia a manutenzione esistente</button>
+                  <button class="menu-item" style="color:#b91c1c">Elimina</button>
+                </span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <div class="label">Manutenzioni operative</div>
+        <div class="todo-list">
+          <article class="todo-card is-selected">
+            <div class="todo-main">
+              <input class="todo-check" type="checkbox" checked aria-label="Seleziona manutenzione cambio gomme" />
+              <div>
+                <div class="todo-title-row">
+                  <div class="todo-title">Cambio gomme asse 2 e controllo pressione</div>
+                  <div class="date-chip">Inserimento 15/06/2026</div>
+                </div>
+                <div class="todo-meta">
+                  <span>TI324633</span>
+                  <span>Origine segnalazione</span>
+                  <span>Segnalato da Riccardo Fenderico</span>
+                  <span>Non in gruppo</span>
+                </div>
+                <div class="todo-badges">
+                  <span class="badge high">Alta</span>
+                  <span class="badge todo">Da fare</span>
+                  <span class="badge vehicle">Mezzo</span>
+                  <span class="badge origin">Segnalazione</span>
+                </div>
+              </div>
+              <div class="right-summary">
+              </div>
+            </div>
+            <div class="todo-story">
+              <strong>Storia:</strong> aperta da segnalazione, non ancora presa in esecuzione. Origine disponibile nel dettaglio.
+            </div>
+            <div class="todo-actions">
+              <button class="btn btn-primary" data-open-modal>Eseguita</button>
+              <span class="menu">
+                <button class="menu-trigger" aria-label="Altre azioni">⋮</button>
+                <span class="menu-panel" role="menu">
+                  <button class="menu-item">Aggiungi a gruppo: TI324633 - gomme / freni (2)</button>
+                  <button class="menu-item">Crea gruppo</button>
+                  <button class="menu-item">Modifica</button>
+                  <button class="menu-item">Apri</button>
+                </span>
+              </span>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <div class="label">Esempio singola card libera selezionabile</div>
+      <article class="todo-card is-selected">
+        <div class="todo-main">
+          <input class="todo-check" type="checkbox" checked aria-label="Seleziona manutenzione cambio gomme" />
+          <div>
+            <div class="todo-title-row">
+              <div class="todo-title">Cambio gomme asse 2 e controllo pressione</div>
+              <div class="date-chip">Inserimento 15/06/2026</div>
+            </div>
+            <div class="todo-meta">
+              <span>TI324633</span>
+              <span>Origine segnalazione</span>
+              <span>Segnalato da Riccardo Fenderico</span>
+              <span>Non in gruppo</span>
+            </div>
+            <div class="todo-badges">
+              <span class="badge high">Alta</span>
+              <span class="badge todo">Da fare</span>
+              <span class="badge vehicle">Mezzo</span>
+              <span class="badge origin">Segnalazione</span>
+            </div>
+          </div>
+          <div class="right-summary">
+          </div>
+        </div>
+        <div class="todo-story">
+          <strong>Storia:</strong> aperta da segnalazione, non ancora presa in esecuzione. Origine disponibile nel dettaglio.
+        </div>
+        <div class="todo-actions">
+          <button class="btn btn-primary" data-open-modal>Eseguita</button>
+          <span class="menu">
+            <button class="menu-trigger" aria-label="Altre azioni">⋮</button>
+            <span class="menu-panel" role="menu">
+              <button class="menu-item">Aggiungi a gruppo: TI324633 - gomme / freni (2)</button>
+              <button class="menu-item">Crea gruppo</button>
+              <button class="menu-item">Modifica</button>
+              <button class="menu-item">Apri</button>
+            </span>
+          </span>
+        </div>
+      </article>
+
+      <div class="label">Card dentro gruppo manutenzioni</div>
+      <article class="todo-card">
+        <div class="group-strip">
+          <span><strong>Gruppo manutenzioni</strong> · 2 da fare su TI324633</span>
+          <span>Azioni gruppo mantenute nel menu</span>
+        </div>
+        <div class="todo-main">
+          <span></span>
+          <div>
+            <div class="todo-title-row">
+              <div class="todo-title">Freni posteriori da controllare</div>
+              <div class="date-chip">Inserimento 14/06/2026</div>
+            </div>
+            <div class="todo-meta">
+              <span>TI324633</span>
+              <span>Origine controllo</span>
+              <span>Segnalato da Controllo KO</span>
+              <span>In gruppo</span>
+            </div>
+            <div class="todo-badges">
+              <span class="badge high">Alta</span>
+              <span class="badge todo">Da fare</span>
+              <span class="badge vehicle">Mezzo</span>
+              <span class="badge origin">Controllo</span>
+            </div>
+          </div>
+          <div class="right-summary">
+          </div>
+        </div>
+        <div class="todo-story">
+          <strong>Storia:</strong> aperta da controllo KO. Nessun evento di chiusura collegato.
+        </div>
+        <div class="todo-actions">
+          <button class="btn btn-primary" data-open-modal>Eseguita</button>
+          <span class="menu">
+            <button class="menu-trigger" aria-label="Altre azioni">⋮</button>
+            <span class="menu-panel" role="menu">
+              <button class="menu-item">Rimuovi dal gruppo</button>
+              <button class="menu-item">Modifica</button>
+              <button class="menu-item">Apri</button>
+            </span>
+          </span>
+        </div>
+      </article>
+
+      <div class="label">Card programmata, stessa struttura ma senza checkbox gruppo</div>
+      <article class="todo-card">
+        <div class="todo-main">
+          <span></span>
+          <div>
+            <div class="todo-title-row">
+              <div class="todo-title">Tagliando programmato 420.000 km</div>
+              <div class="date-chip">Programmata 25/06/2026</div>
+            </div>
+            <div class="todo-meta">
+              <span>TI324633</span>
+              <span>Origine manuale</span>
+              <span>Officina da definire</span>
+              <span>Non raggruppabile</span>
+            </div>
+            <div class="todo-badges">
+              <span class="badge medium">Media</span>
+              <span class="badge planned">Programmata</span>
+              <span class="badge vehicle">Mezzo</span>
+              <span class="badge origin">Manuale</span>
+            </div>
+          </div>
+          <div class="right-summary">
+          </div>
+        </div>
+        <div class="todo-story">
+          <strong>Storia:</strong> manutenzione programmata, visibile nella coda ma fuori dalle azioni di gruppo da fare.
+        </div>
+        <div class="todo-actions">
+          <button class="btn btn-primary" data-open-modal>Eseguita</button>
+          <span class="menu">
+            <button class="menu-trigger" aria-label="Altre azioni">⋮</button>
+            <span class="menu-panel" role="menu">
+              <button class="menu-item">Modifica</button>
+              <button class="menu-item">Apri</button>
+            </span>
+          </span>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="completion-modal">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="modal-title">Eseguita</h2>
+          <p class="note">Stessa modale della card originale: officina, data, KM e selezione gomme se necessaria.</p>
+        </div>
+        <button class="btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Officina</label>
+          <input value="Sciurba Autotruck snc" />
+        </div>
+        <div class="field">
+          <label>Data esecuzione</label>
+          <input type="date" value="2026-06-20" />
+        </div>
+        <div class="field">
+          <label>KM</label>
+          <input value="418220" />
+        </div>
+        <button class="btn">Apri selezione gomme</button>
+        <div class="modal-actions">
+          <button class="btn" data-close-modal>Annulla</button>
+          <button class="btn btn-primary">Conferma eseguita</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="create-modal">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="create-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="create-title">Crea manutenzione da segnalazione</h2>
+          <p class="note">Stessa azione presente nel menu delle segnalazioni aperte.</p>
+        </div>
+        <button class="btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Targa</label>
+          <input value="TI324633" readonly />
+        </div>
+        <div class="field">
+          <label>Urgenza</label>
+          <input value="Alta" />
+        </div>
+        <div class="field">
+          <label>Descrizione</label>
+          <input value="Vibrazione su asse posteriore - verificare gomme e pressione" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn" data-close-modal>Annulla</button>
+          <button class="btn btn-primary">Crea manutenzione</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="attach-modal">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="attach-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="attach-title">Aggancia a manutenzione esistente</h2>
+          <p class="note">Candidati per la stessa targa, come nel flusso originale.</p>
+        </div>
+        <button class="btn" data-close-modal>Chiudi</button>
+      </div>
+      <div class="modal-body">
+        <label class="report-row">
+          <input type="radio" name="candidate" checked />
+          <span>
+            <span class="report-title">Cambio gomme asse 2 e controllo pressione</span>
+            <span class="report-meta">TI324633 · alta · da fare</span>
+          </span>
+          <span></span>
+        </label>
+        <label class="report-row">
+          <input type="radio" name="candidate" />
+          <span>
+            <span class="report-title">Freni posteriori da controllare</span>
+            <span class="report-meta">TI324633 · alta · da fare</span>
+          </span>
+          <span></span>
+        </label>
+        <div class="modal-actions">
+          <button class="btn" data-close-modal>Annulla</button>
+          <button class="btn btn-primary">Aggancia</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.querySelectorAll(".menu-trigger").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        document.querySelectorAll(".menu.is-open").forEach((menu) => {
+          if (!menu.contains(button)) menu.classList.remove("is-open");
+        });
+        button.closest(".menu").classList.toggle("is-open");
+      });
+    });
+
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".menu.is-open").forEach((menu) => menu.classList.remove("is-open"));
+    });
+
+    const modal = document.getElementById("completion-modal");
+    const createModal = document.getElementById("create-modal");
+    const attachModal = document.getElementById("attach-modal");
+    const closeAllModals = () => {
+      modal.classList.remove("is-open");
+      createModal.classList.remove("is-open");
+      attachModal.classList.remove("is-open");
+    };
+    document.querySelectorAll("[data-open-modal]").forEach((button) => {
+      button.addEventListener("click", () => modal.classList.add("is-open"));
+    });
+    document.querySelectorAll("[data-open-create-modal]").forEach((button) => {
+      button.addEventListener("click", () => createModal.classList.add("is-open"));
+    });
+    document.querySelectorAll("[data-open-attach-modal]").forEach((button) => {
+      button.addEventListener("click", () => attachModal.classList.add("is-open"));
+    });
+    document.querySelectorAll("[data-close-modal]").forEach((button) => {
+      button.addEventListener("click", closeAllModals);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAllModals();
+    });
+  </script>
+</body>
+</html>
