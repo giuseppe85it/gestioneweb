@@ -438,7 +438,7 @@ export async function generateScadenzePdfBlob(input: ScadenzePdfInput): Promise<
   const firstTableY = drawScadenzePdfHeader(doc, logoBase64, {
     title,
     generatedAtLabel: input.generatedAtLabel,
-    categoria: input.categoria,
+    categoriaLabel: categoriaLabelText,
   });
   let currentY = drawScadenzePdfSummary(doc, { summary, filtersLabel: input.filtersLabel });
 
