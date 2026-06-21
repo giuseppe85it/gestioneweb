@@ -20,7 +20,7 @@ Non archivia documenti.
 Non modifica record.
 Non scrive niente.
 
-### IA 2 · Archivista documenti
+### IA 2 · Importa documenti
 È la parte che serve per:
 - scegliere il tipo documento
 - scegliere il contesto

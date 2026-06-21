@@ -1473,9 +1473,6 @@ export default function NextCentroControlloParityPage() {
     <div className="next-centro-controllo-scope cc-page">
       <div className="cc-shell">
         <header className="cc-header">
-          <button className="cc-back" type="button" onClick={() => navigate("/next/gestione-operativa")}>
-            Torna a Gestione Operativa
-          </button>
           <h1>Centro Controllo</h1>
           <p>
             Monitoraggio manutenzioni, rifornimenti e flussi autisti (segnalazioni, controlli,

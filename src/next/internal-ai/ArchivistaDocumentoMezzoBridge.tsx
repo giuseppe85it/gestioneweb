@@ -2250,7 +2250,7 @@ export default function ArchivistaDocumentoMezzoBridge({
 
   const summaryText = useMemo(() => {
     if (!analysis) {
-      return "Seleziona il sottotipo, carica il documento e avvia l'analisi. Archivista mostra prima la review, poi ti chiede conferma esplicita per archiviare e per eventuale update del mezzo.";
+      return "Seleziona il sottotipo, carica il documento e avvia l'analisi. Importa documenti mostra prima la review, poi ti chiede conferma esplicita per archiviare e per eventuale update del mezzo.";
     }
 
     return (
@@ -2393,7 +2393,7 @@ export default function ArchivistaDocumentoMezzoBridge({
       return {
         tone: "saving" as const,
         title: "Archiviazione in corso",
-        message: "Archivista sta salvando il libretto e il collegamento al mezzo.",
+        message: "Importa documenti sta salvando il libretto e il collegamento al mezzo.",
       };
     }
     if (archiveStatus === "error" && archiveError) {
@@ -3467,7 +3467,7 @@ export default function ArchivistaDocumentoMezzoBridge({
             </div>
             <div className="ia-archivista-bridge__callout is-warning">
               <strong>Aggiornamento mezzo sempre esplicito</strong>
-              <p>Archivista non aggiorna il mezzo in silenzio: lo fa solo se lo confermi tu.</p>
+              <p>Importa documenti non aggiorna il mezzo in silenzio: lo fa solo se lo confermi tu.</p>
             </div>
           </div>
 
@@ -3580,7 +3580,7 @@ export default function ArchivistaDocumentoMezzoBridge({
               {duplicateStatus === "checking" ? "Controllo in corso..." : "Controlla duplicati"}
             </button>
             <p className="internal-ai-card__meta">
-              Se il match e forte, Archivista ti chiede una scelta secca e non decide da solo.
+              Se il match e forte, Importa documenti ti chiede una scelta secca e non decide da solo.
             </p>
           </div>
 

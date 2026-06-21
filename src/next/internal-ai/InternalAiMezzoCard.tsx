@@ -131,11 +131,11 @@ export default function InternalAiMezzoCard({ data }: { data: MezzoDossierCardDa
 
         {data.alerts.length > 0 ? (
           <div className="internal-ai-mezzo-card__alert-list">
-            <div className="internal-ai-mezzo-card__list-label">Alert D10</div>
+            <div className="internal-ai-mezzo-card__list-label">Sinottica D10</div>
             {data.alerts.map((alert) => (
               <div key={alert.id} className="internal-ai-mezzo-card__alert-row">
                 <span className={`internal-ai-pill ${severityClass(alert.severity)}`}>
-                  Alert
+                  Segnale
                 </span>
                 <span className="internal-ai-mezzo-card__alert-title">{alert.title}</span>
                 {alert.detailText ? (

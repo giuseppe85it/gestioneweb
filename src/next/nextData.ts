@@ -124,7 +124,7 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     title: "PRINCIPALE",
     items: [
       { id: "dashboard", label: "Dashboard", path: NEXT_HOME_PATH, exact: true },
-      { id: "alert", label: "Alert", path: NEXT_CENTRO_CONTROLLO_PATH },
+      { id: "alert", label: "Sinottica", path: NEXT_CENTRO_CONTROLLO_PATH },
     ],
   },
   {
@@ -183,10 +183,7 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
   {
     id: "ia",
     title: "IA",
-    items: [
-      { id: "ia-documenti", label: "Documenti", path: NEXT_IA_DOCUMENTI_PATH },
-      { id: "libretti-export", label: "Export libretti", path: NEXT_LIBRETTI_EXPORT_PATH },
-    ],
+    items: [{ id: "ia-documenti", label: "Documenti", path: NEXT_IA_DOCUMENTI_PATH }],
   },
   {
     id: "autisti",
@@ -375,7 +372,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       "Controparte clone autonoma della pagina madre `CentroControllo`, separata dalla Home clone e collegata ai moduli gia aperti.",
     phase: "Importato read-only",
     primaryGrammar: "Centro di controllo",
-    searchPlaceholder: "Targa, badge, alert, ordine",
+    searchPlaceholder: "Targa, badge, segnali, ordine",
     shellFocus: "Priorita, quick link e ponte al dossier",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
@@ -388,7 +385,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Dati reali",
         value: "Letture attive",
-        meta: "La pagina usa snapshot clone-safe su eventi, alert, flotta e code operative.",
+        meta: "La pagina usa snapshot clone-safe su eventi, segnali, flotta e code operative.",
         tone: "success",
       },
       {
@@ -760,7 +757,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ingressi mostrati nel clone",
         description:
-          "La sidebar IA espone solo le pagine figlie NEXT vive e l'export libretti.",
+          "La sidebar IA espone Documenti; l'export libretti resta raggiungibile dal tab Libretti.",
       },
     ],
   },

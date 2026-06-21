@@ -772,7 +772,7 @@ export default function ArchivistaPreventivoManutenzioneBridge({
 
   const summaryText = useMemo(() => {
     if (!analysis) {
-      return "Carica un preventivo di officina e avvia l'analisi. Archivista prepara la review manutenzione, controlla duplicati e archivia il preventivo solo dopo la tua conferma esplicita.";
+      return "Carica un preventivo di officina e avvia l'analisi. Importa documenti prepara la review manutenzione, controlla duplicati e archivia il preventivo solo dopo la tua conferma esplicita.";
     }
 
     if (normalizeText(analysis.riassuntoBreve)) {

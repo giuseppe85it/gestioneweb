@@ -224,11 +224,11 @@ export default function HomeInternalAiLauncher() {
             <div className="home-ia-launcher__title-wrap">
               <span
                 className={`home-ia-launcher__status-dot ${statusMeta.cls}`}
-                title={`Archivista ${statusMeta.label}`}
+                title={`Importa documenti: ${statusMeta.label}`}
               />
               <div>
                 <p className="home-ia-launcher__eyebrow">IA 2</p>
-                <strong className="home-ia-launcher__title">Archivista documenti</strong>
+                <strong className="home-ia-launcher__title">Importa documenti</strong>
               </div>
             </div>
             <div className="home-ia-launcher__head-right">
@@ -242,7 +242,7 @@ export default function HomeInternalAiLauncher() {
                   onClick={() => setMenuOpen((open) => !open)}
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
-                  aria-label="Comandi Archivista"
+                  aria-label="Comandi Importa documenti"
                 >
                   ⋮
                 </button>
@@ -287,7 +287,7 @@ export default function HomeInternalAiLauncher() {
 
           <p className="home-ia-launcher__intro">
             {backendStatus === "offline"
-              ? "Archivista non collegato: parte da solo al prossimo accesso a Windows, oppure usa il menu ⋮ per riavviarlo. Prima scegli il tipo e il contesto, poi carichi il file."
+              ? "Importa documenti non collegato: parte da solo al prossimo accesso a Windows, oppure usa il menu ⋮ per riavviarlo. Prima scegli il tipo e il contesto, poi carichi il file."
               : "Prima scegli il tipo e il contesto. Poi carichi il file. Questa area non e una chat."}
           </p>
 
@@ -315,7 +315,7 @@ export default function HomeInternalAiLauncher() {
                 className="home-ia-launcher__history-link"
                 onClick={() => handleOpenArchivista()}
               >
-                Apri Archivista
+                Apri Importa documenti
               </button>
               <button
                 type="button"

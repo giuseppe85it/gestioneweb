@@ -421,7 +421,7 @@ export default function ArchivistaPreventivoMagazzinoBridge({
 
   const summaryText = useMemo(() => {
     if (!analysis) {
-      return "Carica il preventivo e avvia l'analisi. Archivista prepara una review pulita, poi controlla duplicati e chiede la conferma finale prima di archiviare.";
+      return "Carica il preventivo e avvia l'analisi. Importa documenti prepara una review pulita, poi controlla duplicati e chiede la conferma finale prima di archiviare.";
     }
 
     return (
@@ -630,7 +630,7 @@ export default function ArchivistaPreventivoMagazzinoBridge({
             <p>
               {analysisStatus === "success"
                 ? "Review preventivo pronta per la verifica utente."
-                : "Archivista analizza il preventivo ma non avvia workflow procurement o listino."}
+                : "Importa documenti analizza il preventivo ma non avvia workflow procurement o listino."}
             </p>
           </div>
         </article>
@@ -780,7 +780,7 @@ export default function ArchivistaPreventivoMagazzinoBridge({
               {duplicateStatus === "checking" ? "Controllo in corso..." : "Controlla duplicati"}
             </button>
             <p className="internal-ai-card__meta">
-              Se il match e forte, Archivista ti chiede una scelta secca e non decide da solo.
+              Se il match e forte, Importa documenti ti chiede una scelta secca e non decide da solo.
             </p>
           </div>
 

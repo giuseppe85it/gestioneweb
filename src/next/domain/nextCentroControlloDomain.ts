@@ -1706,9 +1706,9 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
     motriciTrattoriDaMostrare: assetLocations.motriciTrattoriDaMostrare,
     missingMezzi,
     limitations: [
-      "Il clone legge direttamente i dataset reali della madre in sola lettura, senza overlay locali Home per alert, mezzi o eventi.",
+      "Il clone legge direttamente i dataset reali della madre in sola lettura, senza overlay locali Home per segnali, mezzi o eventi.",
       "Eventi storici e luoghi mezzo derivano da @storico_eventi_operativi: se il feed non contiene luogo o targa, il limite resta esplicito nel layer.",
-      "Alert e focus supportati in D10 riguardano revisioni, conflitti sessione, segnalazioni operative da gestire, eventi autisti importanti, controlli KO e mezzi incompleti.",
+      "Segnali e focus supportati in D10 riguardano revisioni, conflitti sessione, segnalazioni operative da gestire, eventi autisti importanti, controlli KO e mezzi incompleti.",
       "Richieste attrezzature, gomme, rifornimenti e altri feed legacy restano fuori da questo layer per non introdurre aggregazioni non usate oggi dalla Home clone.",
       "Le sessioni e i controlli KO restano feed operativi legacy: il layer li normalizza e li espone come segnali read-only, senza renderli canonici o scrivibili.",
     ],

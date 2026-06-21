@@ -1,4 +1,4 @@
-# SPEC GUIDA — IA REPORT E ARCHIVISTA DOCUMENTI
+# SPEC GUIDA — IA REPORT E IMPORTA DOCUMENTI
 **Progetto:** GestioneManutenzione  
 **Scopo del documento:** fissare in modo chiaro come deve diventare il nuovo sistema IA, così da avere un riferimento unico sia per Giuseppe sia per Codex.  
 **Stato del documento:** guida principale di progetto per la nuova IA.  
@@ -34,7 +34,7 @@ Oggi nel gestionale esiste una IA interna che prova a fare troppe cose insieme.
 
 Il risultato è che:
 - non è chiaro quando stai usando una chat
-- non è chiaro quando stai usando un archivista documenti
+- non è chiaro quando stai usando Importa documenti
 - alcuni flussi sono ancora legati a logiche vecchie
 - alcune destinazioni finali dei dati non sono pulite
 - alcune parti funzionano meglio di altre
@@ -54,7 +54,7 @@ Non archivia documenti.
 Non modifica dati.  
 Non scrive niente.
 
-### IA 2 · Archivista Documenti
+### IA 2 · Importa documenti
 È un flusso guidato, non una chat.  
 Serve per caricare foto e PDF di documenti, vedere cosa la IA ha capito, correggere se serve, confermare, e poi archiviare nel posto giusto.
 
@@ -146,7 +146,7 @@ Questo vincolo non va rotto.
 ## Capitolo 6 · IA 2 spiegata bene
 
 ## 6.1 Cos’è
-IA 2 è l’archivista documenti del gestionale.
+IA 2 è Importa documenti nel gestionale.
 
 Non serve per chiacchierare.  
 Serve per:
@@ -584,7 +584,7 @@ Il sistema finale desiderato non è:
 
 Il sistema finale desiderato è:
 - **una chat report pulita**
-- **un archivista documenti pulito**
+- **Importa documenti pulito**
 - **regole semplici**
 - **archiviazione chiara**
 - **azioni business solo dopo conferma**

@@ -179,13 +179,13 @@ function buildHomeAlertBanner(
   if (counters.alertsVisible > 0) {
     return {
       tone: "warning",
-      text: `${counters.alertsVisible} alert operativi da verificare`,
+      text: `${counters.alertsVisible} segnali operativi da verificare`,
     };
   }
 
   return {
     tone: "success",
-    text: "Tutto ok: nessun alert prioritario",
+    text: "Tutto ok: nessun segnale prioritario",
   };
 }
 
@@ -890,14 +890,14 @@ export default function NextHomePage() {
         <div className="next-home__ai-head">
           <div className="next-home__ai-title-wrap">
             <span className="next-home__ai-status-dot" aria-hidden="true" />
-            <div className="next-home__ai-title">IA report e Archivista</div>
+            <div className="next-home__ai-title">IA report e Importa documenti</div>
           </div>
           <div className="next-home__ai-status">due strumenti distinti</div>
         </div>
 
         <div className="next-home__ai-copy">
           Da qui apri due strumenti diversi: IA Report per domande e report in sola lettura,
-          Archivista documenti per caricare file con un flusso guidato.
+          Importa documenti per caricare file con un flusso guidato.
         </div>
 
         <div className="next-home__ai-launcher">

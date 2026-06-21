@@ -903,7 +903,7 @@ export default function ArchivistaManutenzioneBridge({
 
   const summaryText = useMemo(() => {
     if (!analysis) {
-      return "Carica una fattura o un DDT di officina e avvia l'analisi. Archivista prepara la review manutenzione, controlla duplicati e archivia il documento solo dopo la tua conferma esplicita.";
+      return "Carica una fattura o un DDT di officina e avvia l'analisi. Importa documenti prepara la review manutenzione, controlla duplicati e archivia il documento solo dopo la tua conferma esplicita.";
     }
 
     if (normalizeText(analysis.riassuntoBreve)) {
@@ -1163,7 +1163,7 @@ export default function ArchivistaManutenzioneBridge({
         ? maintenanceCreateStatus === "declined"
           ? "Hai scelto di fermarti all'archiviazione del documento."
           : "Dopo l'archiviazione puoi decidere se creare anche una manutenzione reale."
-        : "Archivista prepara la review e archivia il documento; la manutenzione resta una scelta separata del secondo step.";
+        : "Importa documenti prepara la review e archivia il documento; la manutenzione resta una scelta separata del secondo step.";
 
   const toggleRow = (rowKey: string) => {
     setSelectedRowKeys((current) =>

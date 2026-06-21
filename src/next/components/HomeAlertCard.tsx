@@ -425,7 +425,7 @@ export default function HomeAlertCard({
     >
       <div className="panel-head home-card__head home-top-equal-card__head">
         <div>
-          <h2 className="home-card__title">ALERT</h2>
+          <h2 className="home-card__title">Sinottica</h2>
           <span className="home-card__subtitle">
             Revisioni, segnalazioni, eventi autisti e conflitti filtrabili
           </span>
@@ -458,10 +458,10 @@ export default function HomeAlertCard({
 
         <div className="panel-body home-alert-card__list">
           {loading ? (
-            <div className="panel-row panel-row-empty">Caricamento alert...</div>
+            <div className="panel-row panel-row-empty">Caricamento sinottica...</div>
           ) : visibleAlertItems.length === 0 ? (
             <div className="panel-row panel-row-empty">
-              Nessun alert per il filtro selezionato
+              Nessun segnale per il filtro selezionato
             </div>
           ) : (
             renderedAlerts

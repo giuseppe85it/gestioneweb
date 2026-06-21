@@ -1,5 +1,32 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-21 0732
+
+DATA: `2026-06-21`
+TITOLO: `Rimozione Export libretti dalla sidebar NEXT`
+FILE TOCCATI: `src/next/nextData.ts`, `CONTEXT_CLAUDE.md`
+COSA: `Rimossa dalla sidebar IA NEXT la voce Export libretti. La route /next/libretti-export, il pulsante nel tab Libretti di Documenti, il domain reader e la preview PDF restano invariati.`
+ESITO: `FATTO`
+NOTE: `Verifiche: lint mirato, diff check, build canonica e smoke Playwright sidebar/documenti.`
+
+## 2026-06-20 2137
+
+DATA: `2026-06-20`
+TITOLO: `Rimozione ritorno Gestione Operativa da Sinottica`
+FILE TOCCATI: `src/next/NextCentroControlloParityPage.tsx`, `CONTEXT_CLAUDE.md`
+COSA: `Rimosso dalla Sinottica NEXT il bottone alto Torna a Gestione Operativa. Nessuna modifica a route /next/gestione-operativa, redirect, writer, barrier o dataset.`
+ESITO: `FATTO`
+NOTE: `Verifiche: eslint mirato OK, diff check OK, Playwright su /next/centro-controllo con backButtonCount 0. Dismissione della route hub analizzata ma non eseguita.`
+
+## 2026-06-20 2121
+
+DATA: `2026-06-20`
+TITOLO: `Rinomina label Sinottica e Importa documenti`
+FILE TOCCATI: `src/next/nextData.ts`, `src/next/NextHomePage.tsx`, `src/next/NextCentroControlloPage.tsx`, `src/next/components/HomeAlertCard.tsx`, `src/next/components/HomeInternalAiLauncher.tsx`, `src/next/internal-ai/*`, `docs/_live/spec/*IA*.md`, `CONTEXT_CLAUDE.md`
+COSA: `Rinominati solo testi visibili NEXT: Alert diventa Sinottica e Archivista documenti diventa Importa documenti. Route /next/ia/archivista, barrier, writer, dataset e identificatori tecnici Archivista* restano invariati.`
+ESITO: `FATTO`
+NOTE: `Verifiche: grep testi vecchi runtime pulito, diff check OK, eslint mirato OK con 1 warning hook preesistente, build canonica OK.`
+
 ## 2026-06-20 1734
 
 DATA: `2026-06-20`

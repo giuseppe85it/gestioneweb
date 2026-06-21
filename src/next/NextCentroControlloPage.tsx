@@ -895,7 +895,7 @@ function Home() {
 
   const handleExportAlertsPdf = async () => {
     if (!canExportAlerts) {
-      window.alert("Nessun alert da esportare.");
+      window.alert("Nessun segnale da esportare.");
       return;
     }
 
@@ -908,7 +908,7 @@ function Home() {
     ]);
 
     try {
-      await generateTablePDF("Alert Home", rows, [
+      await generateTablePDF("Sinottica Home", rows, [
         "Categoria",
         "Targa",
         "Titolo",
@@ -933,7 +933,7 @@ function Home() {
                 <div className="home-kicker">Centrale Operativa</div>
                 <h1 className="home-title">Dashboard Admin</h1>
                 <p className="home-subtitle">
-                  Panoramica rapida su stato operativo, alert e revisioni. Tutti i pannelli
+                  Panoramica rapida su stato operativo, sinottica e revisioni. Tutti i pannelli
                   portano alle sezioni operative.
                 </p>
               </div>

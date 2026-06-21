@@ -1061,7 +1061,7 @@ function NextEstrazioneLibretto({
             <p className="iai-sec-label">Controllo duplicati</p>
             <h4 className="iai-dup-title">Archivio documento mezzo</h4>
             <p className="iai-upload-hint iai-dup-copy">
-              Archivista controlla i duplicati prima della conferma finale, senza usare un parser
+              Importa documenti controlla i duplicati prima della conferma finale, senza usare un parser
               generico.
             </p>
             <button
