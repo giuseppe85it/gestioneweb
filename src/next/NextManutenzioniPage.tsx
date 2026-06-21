@@ -51,6 +51,10 @@ import {
   NextAgganciaLegameModal,
   type AgganciaLegameSorgente,
 } from "./components/NextAgganciaLegameModal";
+import {
+  NextProponiAgganciaSegnaliModal,
+  type ProponiAgganciaSegnaleItem,
+} from "./components/NextProponiAgganciaSegnaliModal";
 import type { EventoCompatibile } from "./helpers/eventiCompatibili";
 import {
   getManutenzioniPerAggancio,
@@ -59,7 +63,10 @@ import {
 import { getDataRiferimentoRecord } from "./helpers/parseRobusto";
 import { isSatelliteChiusoDaEvento } from "./helpers/storiaRecord";
 import { readLegamiOrigine } from "./helpers/cicloLegame";
-import { isNextSegnalazioneOperativa } from "./helpers/segnalazioniOperative";
+import {
+  getNextSegnalazioneOperativaTarga,
+  isNextSegnalazioneOperativa,
+} from "./helpers/segnalazioniOperative";
 import { readNextUnifiedStorageDocument } from "./domain/nextUnifiedReadRegistryDomain";
 import { buildFraseStoria, recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
@@ -74,6 +81,7 @@ import {
 } from "./domain/nextColleghiDomain";
 import {
   readNextAutistiReadOnlySnapshot,
+  type NextAutistiControlloSectionItem,
   type NextAutistiSegnalazioneSectionItem,
 } from "./domain/nextAutistiDomain";
 import {
@@ -207,6 +215,7 @@ type PageLoadData = {
   storico: NextManutenzioniLegacyDatasetRecord[];
   mezzi: NextManutenzioniMezzoOption[];
   segnalazioniAutisti: NextAutistiSegnalazioneSectionItem[];
+  controlliAutisti: NextAutistiControlloSectionItem[];
   materialiInventario: MaterialeInventario[];
   mezzoPreview: MezzoPreview[];
   kmUltimoByTarga: Record<string, number | null>;
@@ -252,6 +261,64 @@ type AgganciaSegnalazioneModalState = {
   candidati: ManutenzioneCandidataAggancio[];
   busy: boolean;
 };
+
+type ProponiAgganciaModalState = {
+  manutenzioneId: string;
+  targa: string;
+  manutenzioneEseguita: boolean;
+  descrizioneManutenzione: string;
+  segnali: ProponiAgganciaSegnaleItem[];
+};
+
+const normalizzaTargaConfronto = (value: unknown): string =>
+  String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * Segnali ancora aperti (segnalazioni operative + controlli KO) della targa, da
+ * proporre per il collegamento a una manutenzione appena creata/eseguita.
+ * Riusa gli stessi filtri della Sinottica: isNextSegnalazioneOperativa per le
+ * segnalazioni; isKo && !chiuso && !hasLinkedLavoro per i controlli. I segnali
+ * gia' collegati a un lavoro sono esclusi da questi filtri, quindi non vengono
+ * mai riproposti.
+ */
+function buildSegnaliApertiPerTarga(
+  targa: string,
+  segnalazioni: NextAutistiSegnalazioneSectionItem[],
+  controlli: NextAutistiControlloSectionItem[],
+): ProponiAgganciaSegnaleItem[] {
+  const targaKey = normalizzaTargaConfronto(targa);
+  if (!targaKey) return [];
+  const out: ProponiAgganciaSegnaleItem[] = [];
+  for (const seg of segnalazioni) {
+    if (!isNextSegnalazioneOperativa(seg)) continue;
+    if (getNextSegnalazioneOperativaTarga(seg) !== targaKey) continue;
+    const descrizione = [seg.tipo, seg.descrizione]
+      .map((part) => (part && part !== "-" ? part : ""))
+      .filter(Boolean)
+      .join(" - ");
+    out.push({
+      id: seg.id,
+      tipo: "segnalazione",
+      descrizione: descrizione || "(senza descrizione)",
+      dataLabel: seg.timestamp ? toDisplay(seg.timestamp) ?? "" : "",
+    });
+  }
+  for (const ctrl of controlli) {
+    if (!ctrl.isKo || ctrl.chiuso || ctrl.hasLinkedLavoro) continue;
+    const matchTarga =
+      normalizzaTargaConfronto(ctrl.targaMotrice) === targaKey ||
+      normalizzaTargaConfronto(ctrl.targaRimorchio) === targaKey;
+    if (!matchTarga) continue;
+    const koLabel = ctrl.koList.length > 0 ? `KO: ${ctrl.koList.join(", ")}` : "Controllo KO";
+    out.push({
+      id: ctrl.id,
+      tipo: "controllo",
+      descrizione: ctrl.note ? `${koLabel} - ${ctrl.note}` : koLabel,
+      dataLabel: ctrl.timestamp ? toDisplay(ctrl.timestamp) ?? "" : "",
+    });
+  }
+  return out;
+}
 
 const PDF_SUBJECT_ORDER: TipoVoce[] = ["mezzo", "compressore", "attrezzature"];
 const PDF_SUBJECT_LABELS: Record<TipoVoce, { singular: string; plural: string }> = {
@@ -1404,6 +1471,7 @@ async function readPageData(): Promise<PageLoadData> {
     storico: workspace.storico,
     mezzi: workspace.mezzi,
     segnalazioniAutisti: autistiSnapshot.segnalazioniRows,
+    controlliAutisti: autistiSnapshot.controlliRows,
     materialiInventario: inventorySnapshot.items.map(mapInventoryItem),
     mezzoPreview,
     kmUltimoByTarga,
@@ -1462,6 +1530,9 @@ export default function NextManutenzioniPage() {
   const [gruppoSegnalazioneMenuId, setGruppoSegnalazioneMenuId] = useState<string | null>(null);
   const [agganciaSegnalazioneModal, setAgganciaSegnalazioneModal] =
     useState<AgganciaSegnalazioneModalState | null>(null);
+  const [proponiAgganciaModal, setProponiAgganciaModal] =
+    useState<ProponiAgganciaModalState | null>(null);
+  const [proponiAgganciaBusy, setProponiAgganciaBusy] = useState(false);
   const [creaManutenzioneSegnalazioneModal, setCreaManutenzioneSegnalazioneModal] =
     useState<CreaManutenzioneSegnalazioneModalState | null>(null);
   const [selectedSegnalazioneIds, setSelectedSegnalazioneIds] = useState<string[]>([]);
@@ -1560,7 +1631,7 @@ export default function NextManutenzioniPage() {
     };
   }, []);
 
-  async function refreshData() {
+  async function refreshData(): Promise<PageLoadData> {
     const pageData = await readPageData();
     setStorico(pageData.storico);
     setMezzi(pageData.mezzi);
@@ -1570,6 +1641,7 @@ export default function NextManutenzioniPage() {
     setKmUltimoByTarga(pageData.kmUltimoByTarga);
     setLavoriInAttesaByTarga(pageData.lavoriInAttesaByTarga);
     setOrigineRawById(pageData.origineRawById);
+    return pageData;
   }
 
   // Risolve i record GREZZI di origine (segnalazioni/controlli) collegati a una
@@ -2989,7 +3061,7 @@ export default function NextManutenzioniPage() {
             }
           : {}),
       });
-      await refreshData();
+      const freshData = await refreshData();
 
       // Fase B: se richiesto, registra questa esecuzione sulla scadenza collegata
       // (ultima esecuzione = data/km dell'intervento) e ricalcola la prossima.
@@ -3044,6 +3116,28 @@ export default function NextManutenzioniPage() {
             ? "Manutenzione aggiornata in modo compatibile con il legacy."
             : "Manutenzione salvata in modo compatibile con il legacy.";
       setNotice(scadenzaAggiornata ? `${baseNotice} Scadenza del mezzo aggiornata.` : baseNotice);
+
+      // Proposta collegamento segnali aperti: dopo una creazione manuale o un
+      // completamento -> eseguita, se sulla targa ci sono segnali aperti non
+      // ancora collegati, proponi di collegarli a questa manutenzione.
+      const isCreazioneManualeManut = !sourceRecord;
+      const isCompletamentoEseguita = Boolean(sourceRecord) && isCompletionSave;
+      if (savedRecord?.id && (isCreazioneManualeManut || isCompletamentoEseguita)) {
+        const segnaliAperti = buildSegnaliApertiPerTarga(
+          normalizedTarga,
+          freshData.segnalazioniAutisti,
+          freshData.controlliAutisti,
+        );
+        if (segnaliAperti.length > 0) {
+          setProponiAgganciaModal({
+            manutenzioneId: savedRecord.id,
+            targa: normalizedTarga,
+            manutenzioneEseguita: selectedStato === "eseguita",
+            descrizioneManutenzione: normalizedDescrizione,
+            segnali: segnaliAperti,
+          });
+        }
+      }
     } catch (saveError) {
       console.error("Errore salvataggio manutenzione:", saveError);
       setError("Salvataggio manutenzione non riuscito.");
@@ -4170,6 +4264,44 @@ export default function NextManutenzioniPage() {
       setError("Riprova aggancio segnalazioni non riuscita.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleConfirmProponiAggancia(segnaliIds: string[]) {
+    const modal = proponiAgganciaModal;
+    if (!modal) return;
+    if (segnaliIds.length === 0) {
+      setProponiAgganciaModal(null);
+      return;
+    }
+    const tipoById = new Map(modal.segnali.map((s) => [s.id, s.tipo] as const));
+    setProponiAgganciaBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await agganciaSegnalazioniAManutenzioneEsistenteBatch({
+        manutenzioneTargetId: modal.manutenzioneId,
+        sorgenti: segnaliIds.map((id) => ({
+          sorgenteId: id,
+          sorgenteTipo: tipoById.get(id) ?? "segnalazione",
+        })),
+      });
+      await refreshData();
+      if (result.failures.length > 0) {
+        setError(
+          `Alcuni segnali non sono stati collegati (${result.failures.length} su ${segnaliIds.length}).`,
+        );
+      } else {
+        const azione = modal.manutenzioneEseguita ? "collegati e chiusi" : "collegati";
+        const n = result.successes.length;
+        setNotice(`${n} ${n === 1 ? "segnale" : "segnali"} ${azione}.`);
+      }
+      setProponiAgganciaModal(null);
+    } catch (attachError) {
+      console.error("Errore collegamento segnali a manutenzione:", attachError);
+      setError("Collegamento dei segnali non riuscito.");
+    } finally {
+      setProponiAgganciaBusy(false);
     }
   }
 
@@ -6782,6 +6914,19 @@ export default function NextManutenzioniPage() {
             if (!agganciaSegnalazioneModal.busy) setAgganciaSegnalazioneModal(null);
           }}
           onConfirm={(id) => void handleConfirmAgganciaSegnalazione(id)}
+        />
+      ) : null}
+      {proponiAgganciaModal ? (
+        <NextProponiAgganciaSegnaliModal
+          targa={proponiAgganciaModal.targa}
+          descrizioneManutenzione={proponiAgganciaModal.descrizioneManutenzione}
+          manutenzioneEseguita={proponiAgganciaModal.manutenzioneEseguita}
+          segnali={proponiAgganciaModal.segnali}
+          busy={proponiAgganciaBusy}
+          onConfirm={(ids) => void handleConfirmProponiAggancia(ids)}
+          onCancel={() => {
+            if (!proponiAgganciaBusy) setProponiAgganciaModal(null);
+          }}
         />
       ) : null}
       {renderCreaManutenzioneSegnalazioneModal()}
