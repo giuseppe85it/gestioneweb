@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup — Cisterna AdBlue semplificata (V1)</title>
+<style>
+  :root {
+    --green: #166534;
+    --bg: #f3f6fb;
+    --card: #ffffff;
+    --text: #111827;
+    --muted: #5b6474;
+    --line: #e5e7eb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  .note {
+    background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 18px;
+  }
+  .note b { color: #7c2d12; }
+
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+  /* KPI */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 16px;
+  }
+  .kpi__label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi__value { font-size: 26px; font-weight: 700; margin: 6px 0 2px; }
+  .kpi__value small { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .kpi__sub { font-size: 12px; color: var(--muted); }
+  .kpi--accent { background: #f0fdf4; border-color: #bbf7d0; }
+  .kpi--accent .kpi__value { color: var(--green); }
+
+  /* Cards row */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  .card__title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 12px; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .name { font-size: 16px; font-weight: 700; }
+  .badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .badge--ok { background: #dcfce7; color: #166534; }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .progress { height: 12px; background: #eef2f7; border-radius: 999px; margin: 14px 0 6px; overflow: hidden; }
+  .progress__fill { height: 100%; border-radius: 999px; background: #22c55e; }
+  .progress__labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .footer { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+  /* Cost card */
+  .cost-main { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 6px; }
+  .cost-big { font-size: 30px; font-weight: 800; color: var(--green); }
+  .cost-big small { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .cost-alt { font-size: 18px; font-weight: 700; color: #334155; }
+  .cost-list { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 12px; font-size: 13px; }
+  .cost-list div { display: flex; justify-content: space-between; padding: 3px 0; }
+  .cost-list b { font-weight: 700; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.4; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 700; }
+
+  /* Storico table */
+  .log { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .log-row { display: grid; grid-template-columns: 1.1fr 1.6fr .8fr .9fr 1fr; gap: 10px; padding: 11px 16px; font-size: 13px; align-items: center; border-top: 1px solid var(--line); }
+  .log-row--head { background: #f8fafc; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; border-top: 0; }
+  .log-note { font-size: 11px; color: #6b7280; display: block; }
+
+  .legend { font-size: 12px; color: var(--muted); margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .legend b { color: #334155; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="note">
+    <b>Mockup di PROPOSTA</b> — i numeri sono <b>dati di esempio</b> per mostrare il layout, non valori reali.
+    Obiettivo: UI più semplice da leggere + nuova card <b>Costo AdBlue</b> con media €/lt e CHF/lt.
+    La regola di calcolo (1 tanica = 1000 lt) è quella concordata.
+  </div>
+
+  <h1>Cisterna AdBlue</h1>
+  <div class="sub">Stato cisterna attiva, costo medio al litro e storico cambi — tutto in una vista.</div>
+
+  <!-- KPI: 4 numeri chiave, il costo è messo in evidenza -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi__label">Litri rimasti (stima)</div>
+      <div class="kpi__value">~620 <small>lt</small></div>
+      <div class="kpi__sub">su 1000 lt della tanica</div>
+    </div>
+    <div class="kpi kpi--accent">
+      <div class="kpi__label">Costo medio AdBlue</div>
+      <div class="kpi__value">0,47 <small>CHF/lt</small></div>
+      <div class="kpi__sub">· 0,42 €/lt</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">Media durata cisterna</div>
+      <div class="kpi__value">38 <small>gg</small></div>
+      <div class="kpi__sub">ultimi 3 cambi</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">Consumo medio</div>
+      <div class="kpi__value">26 <small>lt/gg</small></div>
+      <div class="kpi__sub">su durata media</div>
+    </div>
+  </div>
+
+  <!-- Due card affiancate: Cisterna attiva + Costo AdBlue (sostituisce la vecchia "Come funziona il calcolo") -->
+  <div class="grid">
+    <div class="card">
+      <div class="card__title">Cisterna attiva</div>
+      <div class="row">
+        <div class="name">Cisterna 2</div>
+        <span class="badge badge--ok">Regolare</span>
+      </div>
+      <div class="meta">Avviata il 18/05/2026 · 15 giorni fa</div>
+      <div class="progress"><div class="progress__fill" style="width:38%"></div></div>
+      <div class="progress__labels"><span>~380 lt consumati</span><span>~620 lt rimasti</span></div>
+      <div class="footer">Carico registrato: 1000 lt · Stima fine: 25/06/2026 (tra 23 giorni)</div>
+    </div>
+
+    <div class="card">
+      <div class="card__title">Costo AdBlue</div>
+      <div class="cost-main">
+        <div class="cost-big">0,47 <small>CHF/lt</small></div>
+        <div class="cost-alt">0,42 €/lt</div>
+      </div>
+      <div class="kpi__sub">media d'acquisto al litro, valute tenute separate</div>
+
+      <div class="cost-list">
+        <div><span>Valore AdBlue consumato finora</span><b>~179 CHF</b></div>
+        <div><span>Valore giacenza residua stimato</span><b>~291 CHF</b></div>
+        <div><span>Base del calcolo</span><b>5.000 lt · 5 fatture</b></div>
+      </div>
+
+      <div class="hint">
+        Media = somma importi ÷ somma litri delle fatture AdBlue.
+        <b>1 tanica = 1000 lt</b> (le righe a "pz" valgono 1000 lt l'una).
+        Le fatture senza litri/quantità sono escluse dal calcolo (2 escluse).
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab compatte: lo Stato è già sopra, qui restano Storico e Registra -->
+  <div class="tabs">
+    <div class="tab active">Storico cambi</div>
+    <div class="tab">Registra cambio</div>
+    <div class="tab">Costo per fattura</div>
+  </div>
+
+  <div class="log">
+    <div class="log-row log-row--head">
+      <span>Data cambio</span><span>Cisterna</span><span>Durata</span><span>Consumo/gg</span><span>Costo stimato</span>
+    </div>
+    <div class="log-row">
+      <span>18/05/2026</span>
+      <span>Cisterna 2 · 1000 lt<span class="log-note">TRUCK SERVICE</span></span>
+      <span>—</span><span>—</span><span>~470 CHF</span>
+    </div>
+    <div class="log-row">
+      <span>10/04/2026</span>
+      <span>Cisterna 1 · 1000 lt<span class="log-note">Thommen</span></span>
+      <span>38 gg</span><span>26 lt/gg</span><span>~490 CHF</span>
+    </div>
+    <div class="log-row">
+      <span>02/03/2026</span>
+      <span>Cisterna 1 · 1000 lt</span>
+      <span>39 gg</span><span>26 lt/gg</span><span>~470 CHF</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>Cosa cambia rispetto a ora:</b> la card verbosa "Come funziona il calcolo" è sostituita dalla card
+    <b>Costo AdBlue</b>; lo stato cisterna resta in cima sempre visibile; aggiunta una colonna
+    <b>Costo stimato</b> nello storico e una nuova vista <b>Costo per fattura</b> (dettaglio €/lt per ogni acquisto).
+    I 3 KPI diventano 4, con il <b>costo al litro</b> in evidenza.
+  </div>
+
+</div>
+</body>
+</html>

@@ -57,7 +57,7 @@ import "./next-magazzino.css";
 type ModuloAttivo = "inv" | "mc" | "adblue" | "docs";
 type InventarioTab = "magazzino" | "aggiungi";
 type MaterialiTab = "storico" | "nuova";
-type AdBlueTab = "stato" | "storico" | "registra";
+type AdBlueTab = "storico" | "registra" | "costo";
 type UnitaMagazzino = string;
 type StockStatus = "ok" | "basso" | "esaurito";
 type DestinatarioType = "MEZZO" | "COLLEGA" | "MAGAZZINO";
@@ -1256,6 +1256,97 @@ function durataGiorni(dataInizio: string, dataFine: string): number {
   return diff ?? 0;
 }
 
+// ---------------------------------------------------------------------------
+// Giorni lavorativi (Canton Ticino): esclude sabato, domenica e le festivita'
+// cantonali/nazionali, comprese quelle mobili calcolate dalla Pasqua.
+// Usato per la media durata cisterna, il consumo medio e la stima di fine.
+// ---------------------------------------------------------------------------
+
+function pasquaGregoriana(anno: number): Date {
+  const a = anno % 19;
+  const b = Math.floor(anno / 100);
+  const c = anno % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mese = Math.floor((h + l - 7 * m + 114) / 31);
+  const giorno = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(anno, mese - 1, giorno);
+}
+
+function chiaveData(date: Date): string {
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${mm}-${dd}`;
+}
+
+const festeTicinoCache = new Map<number, Set<string>>();
+
+function festeTicino(anno: number): Set<string> {
+  const cached = festeTicinoCache.get(anno);
+  if (cached) return cached;
+  const set = new Set<string>([
+    `${anno}-01-01`, // Capodanno
+    `${anno}-01-06`, // Epifania
+    `${anno}-03-19`, // San Giuseppe
+    `${anno}-08-01`, // Festa nazionale
+    `${anno}-08-15`, // Assunzione
+    `${anno}-11-01`, // Ognissanti
+    `${anno}-12-08`, // Immacolata
+    `${anno}-12-25`, // Natale
+    `${anno}-12-26`, // Santo Stefano
+  ]);
+  const pasqua = pasquaGregoriana(anno);
+  // Lunedi dell'Angelo (+1), Ascensione (+39), Lunedi di Pentecoste (+50),
+  // Corpus Domini (+60). In Ticino il Venerdi Santo NON e' festivo.
+  for (const offset of [1, 39, 50, 60]) {
+    const giorno = new Date(pasqua);
+    giorno.setDate(giorno.getDate() + offset);
+    set.add(chiaveData(giorno));
+  }
+  festeTicinoCache.set(anno, set);
+  return set;
+}
+
+function isGiornoLavorativoTicino(date: Date): boolean {
+  const giornoSettimana = date.getDay();
+  if (giornoSettimana === 0 || giornoSettimana === 6) return false;
+  return !festeTicino(date.getFullYear()).has(chiaveData(date));
+}
+
+// Giorni lavorativi trascorsi DOPO dataInizio fino a dataFine inclusa.
+function durataGiorniLavorativi(dataInizio: string, dataFine: string): number {
+  const inizio = parseStoredDate(dataInizio);
+  const fine = parseStoredDate(dataFine);
+  if (!inizio || !fine) return 0;
+  const cursore = new Date(inizio.getFullYear(), inizio.getMonth(), inizio.getDate());
+  const ultimo = new Date(fine.getFullYear(), fine.getMonth(), fine.getDate());
+  let count = 0;
+  cursore.setDate(cursore.getDate() + 1);
+  while (cursore <= ultimo) {
+    if (isGiornoLavorativoTicino(cursore)) count += 1;
+    cursore.setDate(cursore.getDate() + 1);
+  }
+  return count;
+}
+
+// Aggiunge N giorni lavorativi a una data base e ritorna la data risultante.
+function aggiungiGiorniLavorativi(base: Date, giorni: number): Date {
+  const risultato = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  let rimanenti = Math.max(0, Math.round(giorni));
+  while (rimanenti > 0) {
+    risultato.setDate(risultato.getDate() + 1);
+    if (isGiornoLavorativoTicino(risultato)) rimanenti -= 1;
+  }
+  return risultato;
+}
+
 function mediaDurataGiorni(cambi: CambioAdBlue[]): number {
   if (cambi.length < 2) return 0;
   const sorted = [...cambi].sort(
@@ -1266,7 +1357,8 @@ function mediaDurataGiorni(cambi: CambioAdBlue[]): number {
   const recent = sorted.slice(-Math.min(sorted.length, N_CAMBI_MEDIA + 1));
   const durations: number[] = [];
   for (let index = 1; index < recent.length; index += 1) {
-    const days = durataGiorni(recent[index - 1].data, recent[index].data);
+    // Solo giorni lavorativi: sabato, domenica e festivita' TI non contano.
+    const days = durataGiorniLavorativi(recent[index - 1].data, recent[index].data);
     if (days > 0) durations.push(days);
   }
   if (!durations.length) return 0;
@@ -1275,7 +1367,7 @@ function mediaDurataGiorni(cambi: CambioAdBlue[]): number {
 
 function litriConsumatiStima(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): number {
   if (!ultimoCambio || mediaGiorni <= 0) return 0;
-  const giorniPassati = durataGiorni(ultimoCambio.data, storedToday());
+  const giorniPassati = durataGiorniLavorativi(ultimoCambio.data, storedToday());
   const capacita = ultimoCambio.quantitaLitri ?? LITRI_PER_CISTERNA;
   const consumoGiornaliero = capacita / mediaGiorni;
   return Math.min(Math.round(consumoGiornaliero * giorniPassati), capacita);
@@ -1295,9 +1387,165 @@ function coloreProgress(perc: number): "verde" | "giallo" | "rosso" {
 function stimaDataFine(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): string {
   const baseDate = parseStoredDate(ultimoCambio?.data);
   if (!baseDate || mediaGiorni <= 0) return "-";
-  const target = new Date(baseDate.getTime());
-  target.setDate(target.getDate() + mediaGiorni);
+  // mediaGiorni e' in giorni lavorativi: li aggiungo saltando weekend e feste.
+  const target = aggiungiGiorniLavorativi(baseDate, mediaGiorni);
   return toDisplay(target) || "-";
+}
+
+// ---------------------------------------------------------------------------
+// Costo AdBlue al litro (stima)
+// Ricava una media €/lt e CHF/lt dalle FATTURE AdBlue di "Documenti e costi".
+// Regola concordata: 1 tanica = 1000 lt. Le righe a "pz/tanica" (quantita
+// piccola) valgono 1000 lt l'una; le righe gia' in litri (quantita grande)
+// restano tali. Cosi' un fornitore che fattura a tanica e uno che fattura al
+// litro diventano confrontabili. Valute tenute separate (CHF != EUR).
+// ---------------------------------------------------------------------------
+
+const LITRI_PER_TANICA_ADBLUE = 1000;
+// Sotto questa soglia la quantita di una riga AdBlue e' interpretata come
+// numero di taniche (x1000 lt); pari o sopra, e' considerata gia' in litri.
+const SOGLIA_TANICA_LITRI = 100;
+
+function litriAdBlueDaQuantita(quantita: number | null): number | null {
+  if (quantita === null || !Number.isFinite(quantita) || quantita <= 0) return null;
+  return quantita >= SOGLIA_TANICA_LITRI ? quantita : quantita * LITRI_PER_TANICA_ADBLUE;
+}
+
+type AdBlueValutaCosto = { litri: number; importo: number; perLitro: number; fatture: number };
+type AdBlueFatturaCosto = {
+  id: string;
+  data: string | null;
+  sortTimestamp: number | null;
+  fornitore: string;
+  numeroDocumento: string | null;
+  litri: number;
+  importo: number;
+  valuta: "CHF" | "EUR";
+  perLitro: number;
+  valutaEreditata: boolean;
+};
+type AdBlueCostSummary = {
+  chf: AdBlueValutaCosto | null;
+  eur: AdBlueValutaCosto | null;
+  primaria: "CHF" | "EUR" | null;
+  litriTotali: number;
+  fattureIncluse: number;
+  fattureEscluse: number;
+  dettaglioFatture: AdBlueFatturaCosto[];
+  // Prezzo della cisterna attuale = quello della fattura piu' recente (l'ultima
+  // arrivata), tenuto distinto dalla media generale che include i prezzi vecchi.
+  cisternaAttuale: AdBlueFatturaCosto | null;
+};
+
+function isMagazzinoDocumentoAdBlue(item: MagazzinoDocumentUiItem): boolean {
+  return (
+    looksLikeNextMagazzinoAdBlueMaterial(item.descrizione) ||
+    looksLikeNextMagazzinoAdBlueMaterial(item.fornitore) ||
+    item.righe.some((row) => looksLikeNextMagazzinoAdBlueMaterial(row.descrizione))
+  );
+}
+
+function buildAdBlueCostSummary(items: MagazzinoDocumentUiItem[]): AdBlueCostSummary {
+  const acc: Record<"CHF" | "EUR", AdBlueValutaCosto> = {
+    CHF: { litri: 0, importo: 0, perLitro: 0, fatture: 0 },
+    EUR: { litri: 0, importo: 0, perLitro: 0, fatture: 0 },
+  };
+  const dettaglio: AdBlueFatturaCosto[] = [];
+  let escluse = 0;
+
+  for (const item of items) {
+    if (item.categoria !== "fattura") continue;
+    if (!isMagazzinoDocumentoAdBlue(item)) continue;
+
+    const valuta: "CHF" | "EUR" =
+      normalizeText(item.currency).toUpperCase() === "CHF" ? "CHF" : "EUR";
+
+    // Righe AdBlue esplicite; se nessuna ma la fattura ha una sola riga, usala.
+    const righeAdBlue = item.righe.filter((row) =>
+      looksLikeNextMagazzinoAdBlueMaterial(row.descrizione),
+    );
+    const righe = righeAdBlue.length
+      ? righeAdBlue
+      : item.righe.length === 1
+        ? item.righe
+        : [];
+
+    let litri = 0;
+    let importoRighe = 0;
+    for (const row of righe) {
+      const litriRiga = litriAdBlueDaQuantita(row.quantita);
+      if (litriRiga === null) continue;
+      litri += litriRiga;
+      const importoRiga =
+        parseMagazzinoDocumentAmount(row.totale) ??
+        (row.prezzoUnitario !== null && row.quantita !== null
+          ? row.prezzoUnitario * row.quantita
+          : null);
+      if (importoRiga !== null && importoRiga > 0) importoRighe += importoRiga;
+    }
+
+    // Importo: per le fatture TUTTE AdBlue uso il TOTALE del documento (quello
+    // che dice la fattura, IVA inclusa) invece della somma delle righe (che e'
+    // l'imponibile netto). Per le fatture miste sommo solo le righe AdBlue.
+    const totaleDocumento = parseMagazzinoDocumentAmount(item.totaleDocumento);
+    const fatturaTuttaAdBlue = item.righe.length > 0 && righe.length === item.righe.length;
+    let importo: number;
+    if (totaleDocumento !== null && totaleDocumento > 0 && fatturaTuttaAdBlue) {
+      importo = totaleDocumento;
+    } else if (importoRighe > 0) {
+      importo = importoRighe;
+    } else {
+      importo = totaleDocumento ?? 0;
+    }
+    // Fattura AdBlue senza litri o senza importo: non calcolabile (esclusa).
+    if (litri <= 0 || importo <= 0) {
+      escluse += 1;
+      continue;
+    }
+
+    acc[valuta].litri += litri;
+    acc[valuta].importo += importo;
+    acc[valuta].fatture += 1;
+    dettaglio.push({
+      id: item.id,
+      data: item.dataDocumento,
+      sortTimestamp: item.sortTimestamp,
+      fornitore: item.fornitore,
+      numeroDocumento: item.numeroDocumento,
+      litri,
+      importo,
+      valuta,
+      perLitro: importo / litri,
+      valutaEreditata: Boolean(item.valutaEreditata),
+    });
+  }
+
+  const chf =
+    acc.CHF.fatture > 0 ? { ...acc.CHF, perLitro: acc.CHF.importo / acc.CHF.litri } : null;
+  const eur =
+    acc.EUR.fatture > 0 ? { ...acc.EUR, perLitro: acc.EUR.importo / acc.EUR.litri } : null;
+  const primaria: "CHF" | "EUR" | null =
+    chf && eur ? (chf.litri >= eur.litri ? "CHF" : "EUR") : chf ? "CHF" : eur ? "EUR" : null;
+
+  dettaglio.sort((left, right) => (right.sortTimestamp ?? 0) - (left.sortTimestamp ?? 0));
+
+  return {
+    chf,
+    eur,
+    primaria,
+    litriTotali: acc.CHF.litri + acc.EUR.litri,
+    fattureIncluse: acc.CHF.fatture + acc.EUR.fatture,
+    fattureEscluse: escluse,
+    dettaglioFatture: dettaglio,
+    cisternaAttuale: dettaglio[0] ?? null,
+  };
+}
+
+function formatAdBluePerLitro(value: number, valuta: "CHF" | "EUR"): string {
+  return `${new Intl.NumberFormat("it-IT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 3,
+  }).format(value)} ${valuta}/lt`;
 }
 
 export default function NextMagazzinoPage() {
@@ -1314,7 +1562,7 @@ export default function NextMagazzinoPage() {
   const modulo = useMemo(() => mapTabToModulo(requestedTab), [requestedTab]);
   const [inventarioTab, setInventarioTab] = useState<InventarioTab>("magazzino");
   const [materialiTab, setMaterialiTab] = useState<MaterialiTab>("storico");
-  const [adBlueTab, setAdBlueTab] = useState<AdBlueTab>("stato");
+  const [adBlueTab, setAdBlueTab] = useState<AdBlueTab>("storico");
 
   const [items, setItems] = useState<InventarioItem[]>([]);
   const [inventarioRawMap, setInventarioRawMap] = useState<Record<string, RawDatasetRecord>>({});
@@ -2188,7 +2436,7 @@ export default function NextMagazzinoPage() {
       setItems(inventarioAggiornato);
       setNotice("Cambio cisterna registrato e inventario AdBlue aggiornato.");
       resetAdBlueForm();
-      setAdBlueTab("stato");
+      setAdBlueTab("storico");
     } catch (saveError) {
       console.error("Errore registrazione cambio AdBlue:", saveError);
       setError("Errore durante il salvataggio del cambio cisterna.");
@@ -3216,7 +3464,56 @@ export default function NextMagazzinoPage() {
   const giorniPassatiUltimoCambio = ultimoCambio
     ? durataGiorni(ultimoCambio.data, storedToday())
     : 0;
+  const giorniLavorativiPassati = ultimoCambio
+    ? durataGiorniLavorativi(ultimoCambio.data, storedToday())
+    : 0;
   const consumoMedio = mediaGiorni > 0 ? Math.round(capienzaUltimaCisterna / mediaGiorni) : 0;
+  const adBlueCostSummary = useMemo(
+    () => buildAdBlueCostSummary(documentiMagazzinoUiItems),
+    [documentiMagazzinoUiItems],
+  );
+  const adBlueCostoPrimario =
+    adBlueCostSummary.primaria === "CHF"
+      ? adBlueCostSummary.chf
+      : adBlueCostSummary.primaria === "EUR"
+        ? adBlueCostSummary.eur
+        : null;
+  const adBlueCostoAlt =
+    adBlueCostSummary.primaria === "CHF" ? adBlueCostSummary.eur : adBlueCostSummary.chf;
+  const adBlueValutaAlt: "CHF" | "EUR" = adBlueCostSummary.primaria === "CHF" ? "EUR" : "CHF";
+  // Prezzo della cisterna attuale = ultima fattura (NON la media), cosi' il
+  // valore della cisterna in uso riflette il suo costo reale.
+  const adBlueCostoCisterna = adBlueCostSummary.cisternaAttuale;
+  const adBlueCostoCisternaPiena =
+    adBlueCostoCisterna ? capienzaUltimaCisterna * adBlueCostoCisterna.perLitro : null;
+  const adBlueValoreConsumato =
+    adBlueCostoCisterna && litriConsumati > 0
+      ? litriConsumati * adBlueCostoCisterna.perLitro
+      : null;
+  const adBlueValoreResiduo =
+    adBlueCostoCisterna && litriResidui > 0
+      ? litriResidui * adBlueCostoCisterna.perLitro
+      : null;
+  // Per lo storico: prezzo della fattura piu' vicina nel tempo a quel cambio
+  // (la fattura che con ogni probabilita' ha riempito quella cisterna).
+  const adBluePrezzoPerData = (
+    timestamp: number | null,
+  ): AdBlueFatturaCosto | null => {
+    const fatture = adBlueCostSummary.dettaglioFatture;
+    if (!fatture.length) return null;
+    if (timestamp === null) return fatture[0];
+    let migliore = fatture[0];
+    let minDiff = Number.POSITIVE_INFINITY;
+    for (const fattura of fatture) {
+      if (fattura.sortTimestamp === null) continue;
+      const diff = Math.abs(fattura.sortTimestamp - timestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        migliore = fattura;
+      }
+    }
+    return migliore;
+  };
   const inventarioTotale = items.length;
   const inventarioSottoSoglia = items.filter(
     (item) => getStockStatus(item) === "basso",
@@ -3867,30 +4164,221 @@ export default function NextMagazzinoPage() {
           <>
             <section className="mag-kpis">
               <article className="mag-kpi">
+                <div className="mag-kpi__label">Litri rimasti (stima)</div>
+                <div className="mag-kpi__value">
+                  {ultimoCambio ? `~${litriResidui}` : "—"}
+                  <span className="mag-kpi__sub"> lt</span>
+                </div>
+                <div className="mag-kpi__sub">su {capienzaUltimaCisterna} lt della tanica</div>
+              </article>
+              <article className="mag-kpi mag-kpi--accent">
+                <div className="mag-kpi__label">Costo AdBlue cisterna</div>
+                <div className="mag-kpi__value">
+                  {adBlueCostoCisterna
+                    ? formatAdBluePerLitro(adBlueCostoCisterna.perLitro, adBlueCostoCisterna.valuta)
+                    : "—"}
+                </div>
+                <div className="mag-kpi__sub">
+                  {adBlueCostoPrimario && adBlueCostSummary.primaria
+                    ? `media generale ${formatAdBluePerLitro(
+                        adBlueCostoPrimario.perLitro,
+                        adBlueCostSummary.primaria,
+                      )}`
+                    : "dall'ultima fattura"}
+                </div>
+              </article>
+              <article className="mag-kpi">
                 <div className="mag-kpi__label">Media durata cisterna</div>
-                <div className="mag-kpi__value">{mediaGiorni || "—"}</div>
-                <div className="mag-kpi__sub">ultimi {N_CAMBI_MEDIA} cambi</div>
+                <div className="mag-kpi__value">
+                  {mediaGiorni || "—"}
+                  <span className="mag-kpi__sub"> gg lav.</span>
+                </div>
+                <div className="mag-kpi__sub">giorni lavorativi · ultimi {N_CAMBI_MEDIA} cambi</div>
               </article>
               <article className="mag-kpi">
                 <div className="mag-kpi__label">Consumo medio</div>
-                <div className="mag-kpi__value">{consumoMedio || "—"}</div>
-                <div className="mag-kpi__sub">lt/gg</div>
-              </article>
-              <article className="mag-kpi">
-                <div className="mag-kpi__label">Cambi registrati</div>
-                <div className="mag-kpi__value">{cambi.length}</div>
-                <div className="mag-kpi__sub">dal primo inserimento</div>
+                <div className="mag-kpi__value">
+                  {consumoMedio || "—"}
+                  <span className="mag-kpi__sub"> lt/gg</span>
+                </div>
+                <div className="mag-kpi__sub">per giorno lavorativo</div>
               </article>
             </section>
 
+            <div className="mag-cis-grid">
+              <div className="mag-cis-card">
+                <div className="mag-cis-card__title">Cisterna attiva</div>
+                {ultimoCambio ? (
+                  <>
+                    <div className="mag-cis-card__header">
+                      <div className="mag-cis-card__name">
+                        {ultimoCambio.numeroCisterna
+                          ? `Cisterna ${ultimoCambio.numeroCisterna}`
+                          : "Cisterna attiva"}
+                      </div>
+                      <span
+                        className={`mag-badge ${
+                          percentuale < 60
+                            ? "mag-badge--ok"
+                            : percentuale < 85
+                            ? "mag-badge--basso"
+                            : "mag-badge--esaurito"
+                        }`}
+                      >
+                        {percentuale < 60
+                          ? "Regolare"
+                          : percentuale < 85
+                          ? "In consumo"
+                          : "Quasi esaurita"}
+                      </span>
+                    </div>
+                    <div className="mag-cis-card__sub">
+                      Avviata il {formatStoredDateForUi(ultimoCambio.data)} ·{" "}
+                      {giorniPassatiUltimoCambio} giorni fa
+                    </div>
+                    <div className="mag-cis-bigrow">
+                      <div className="mag-cis-big">
+                        {litriResidui} <small>lt rimasti</small>
+                      </div>
+                      <div className="mag-cis-bigside">
+                        ~{litriConsumati} lt consumati · su {capienzaUltimaCisterna} lt
+                      </div>
+                    </div>
+                    <div className="mag-progress">
+                      <div
+                        className={`mag-progress__fill mag-progress__fill--${progressColor}`}
+                        style={{ width: `${Math.min(percentuale, 100)}%` }}
+                      />
+                    </div>
+                    <div className="mag-cis-duo">
+                      <div className="mag-cis-cell">
+                        <div className="mag-cis-cell__lab">Carico registrato</div>
+                        <div className="mag-cis-cell__val">
+                          {ultimoCambio.quantitaLitri ?? LITRI_PER_CISTERNA} lt
+                        </div>
+                      </div>
+                      <div className="mag-cis-cell">
+                        <div className="mag-cis-cell__lab">Stima fine</div>
+                        <div className="mag-cis-cell__val">
+                          {stimaDataFine(ultimoCambio, mediaGiorni)}
+                          {mediaGiorni > 0 ? (
+                            <span className="mag-cis-cell__x">
+                              {" "}
+                              · tra {Math.max(mediaGiorni - giorniLavorativiPassati, 0)} gg lav.
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mag-empty">Nessun cambio cisterna registrato.</div>
+                )}
+              </div>
+
+              <div className="mag-cis-card">
+                <div className="mag-cis-card__title">Costo AdBlue</div>
+                {adBlueCostoCisterna ? (
+                  <>
+                    <div>
+                      <span className="mag-cost-big">
+                        {formatAdBluePerLitro(
+                          adBlueCostoCisterna.perLitro,
+                          adBlueCostoCisterna.valuta,
+                        )}
+                      </span>
+                      <span className="mag-cost-chip">cisterna attuale</span>
+                    </div>
+                    <div className="mag-cis-card__sub">
+                      ultima fattura · {adBlueCostoCisterna.fornitore} ·{" "}
+                      {Math.round(adBlueCostoCisterna.litri).toLocaleString("it-IT")} lt
+                    </div>
+
+                    <div className="mag-cost-section">Questa cisterna</div>
+                    {adBlueCostoCisternaPiena !== null ? (
+                      <div className="mag-cost-kv">
+                        <span className="k">
+                          Cisterna piena <small>({capienzaUltimaCisterna} lt)</small>
+                        </span>
+                        <span className="v">
+                          {formatMagazzinoDocumentCompactAmount(
+                            adBlueCostoCisternaPiena,
+                            adBlueCostoCisterna.valuta,
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
+                    {adBlueValoreResiduo !== null ? (
+                      <div className="mag-cost-kv">
+                        <span className="k">
+                          Giacenza residua <small>(~{litriResidui} lt)</small>
+                        </span>
+                        <span className="v">
+                          {formatMagazzinoDocumentCompactAmount(
+                            adBlueValoreResiduo,
+                            adBlueCostoCisterna.valuta,
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
+                    {adBlueValoreConsumato !== null ? (
+                      <div className="mag-cost-kv">
+                        <span className="k">
+                          Consumato finora <small>(~{litriConsumati} lt)</small>
+                        </span>
+                        <span className="v">
+                          {formatMagazzinoDocumentCompactAmount(
+                            adBlueValoreConsumato,
+                            adBlueCostoCisterna.valuta,
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {adBlueCostoPrimario && adBlueCostSummary.primaria ? (
+                      <>
+                        <div className="mag-cost-divider" />
+                        <div className="mag-cost-general">
+                          <span className="k">
+                            Media generale
+                            <br />
+                            <small>
+                              tutte le fatture ·{" "}
+                              {Math.round(adBlueCostSummary.litriTotali).toLocaleString("it-IT")} lt ·{" "}
+                              {adBlueCostSummary.fattureIncluse}{" "}
+                              {adBlueCostSummary.fattureIncluse === 1 ? "fattura" : "fatture"}
+                            </small>
+                          </span>
+                          <span className="v">
+                            {formatAdBluePerLitro(
+                              adBlueCostoPrimario.perLitro,
+                              adBlueCostSummary.primaria,
+                            )}
+                            {adBlueCostoAlt
+                              ? ` · ${formatAdBluePerLitro(adBlueCostoAlt.perLitro, adBlueValutaAlt)}`
+                              : ""}
+                          </span>
+                        </div>
+                      </>
+                    ) : null}
+
+                    <div className="mag-cost-note">
+                      Prezzo cisterna = ultima fattura · media generale = tutte le fatture AdBlue ·
+                      1 tanica = 1000 lt.{" "}
+                      {adBlueCostSummary.fattureEscluse > 0
+                        ? `${adBlueCostSummary.fattureEscluse} fattura/e senza litri esclusa/e.`
+                        : ""}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mag-empty">
+                    Nessuna fattura AdBlue con litri leggibili: impossibile stimare il costo al litro.
+                  </div>
+                )}
+              </div>
+            </div>
+
             <nav className="mag-tabs">
-              <button
-                type="button"
-                className={`mag-tab ${adBlueTab === "stato" ? "active" : ""}`}
-                onClick={() => setAdBlueTab("stato")}
-              >
-                Stato attuale
-              </button>
               <button
                 type="button"
                 className={`mag-tab ${adBlueTab === "storico" ? "active" : ""}`}
@@ -3905,91 +4393,23 @@ export default function NextMagazzinoPage() {
               >
                 Registra cambio
               </button>
+              <button
+                type="button"
+                className={`mag-tab ${adBlueTab === "costo" ? "active" : ""}`}
+                onClick={() => setAdBlueTab("costo")}
+              >
+                Costo per fattura
+              </button>
             </nav>
-
-            {adBlueTab === "stato" ? (
-              <div className="mag-cis-grid">
-                <div className="mag-cis-card">
-                  <div className="mag-cis-card__title">Cisterna attiva</div>
-                  {ultimoCambio ? (
-                    <>
-                      <div className="mag-cis-card__header">
-                        <div className="mag-cis-card__name">
-                          {ultimoCambio.numeroCisterna
-                            ? `Cisterna ${ultimoCambio.numeroCisterna}`
-                            : "Cisterna attiva"}
-                        </div>
-                        <span
-                          className={`mag-badge ${
-                            percentuale < 60
-                              ? "mag-badge--ok"
-                              : percentuale < 85
-                              ? "mag-badge--basso"
-                              : "mag-badge--esaurito"
-                          }`}
-                        >
-                          {percentuale < 60
-                            ? "Regolare"
-                            : percentuale < 85
-                            ? "In consumo"
-                            : "Quasi esaurita"}
-                        </span>
-                      </div>
-                      <div className="mag-cis-card__sub">
-                        Avviata il {formatStoredDateForUi(ultimoCambio.data)} ·{" "}
-                        {giorniPassatiUltimoCambio} giorni fa
-                      </div>
-                      <div className="mag-progress">
-                        <div
-                          className={`mag-progress__fill mag-progress__fill--${progressColor}`}
-                          style={{ width: `${Math.min(percentuale, 100)}%` }}
-                        />
-                      </div>
-                      <div className="mag-progress__labels">
-                        <span>~{litriConsumati} lt consumati</span>
-                        <span>~{litriResidui} lt rimasti</span>
-                      </div>
-                      <div className="mag-cis-card__footer">
-                        Carico registrato: {ultimoCambio.quantitaLitri ?? LITRI_PER_CISTERNA} lt
-                      </div>
-                      <div className="mag-cis-card__footer">
-                        Stima fine: {stimaDataFine(ultimoCambio, mediaGiorni)}{" "}
-                        {mediaGiorni > 0
-                          ? `(tra ${Math.max(mediaGiorni - giorniPassatiUltimoCambio, 0)} giorni)`
-                          : ""}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mag-empty">Nessun cambio cisterna registrato.</div>
-                  )}
-                </div>
-
-                <div className="mag-cis-card">
-                  <div className="mag-cis-card__title">Come funziona il calcolo</div>
-                  <div className="mag-calc-copy">
-                    La stima usa una media mobile sugli ultimi {N_CAMBI_MEDIA} intervalli
-                    disponibili. La cisterna attiva usa i litri registrati nel cambio e il
-                    consumo giornaliero viene ricavato dividendo quella quantita per la
-                    durata media.
-                  </div>
-                  <div className="mag-calc-stats">
-                    <div>Ultimo cambio: {formatStoredDateForUi(ultimoCambio?.data)}</div>
-                    <div>Litri ultimo cambio: {ultimoCambio?.quantitaLitri ?? "â€”"}</div>
-                    <div>Durata media prevista: {mediaGiorni || "—"} giorni</div>
-                    <div>Giorni trascorsi: {ultimoCambio ? giorniPassatiUltimoCambio : "—"}</div>
-                    <div>Consumo medio: {consumoMedio || "—"} lt/gg</div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
 
             {adBlueTab === "storico" ? (
               <div className="mag-log-panel">
                 <div className="mag-log-row mag-log-row--head">
                   <span className="mag-log-row__date">Data cambio</span>
                   <span className="mag-log-row__cisterna">Cisterna</span>
-                  <span className="mag-log-row__durata">Durata</span>
+                  <span className="mag-log-row__durata">Durata (gg lav.)</span>
                   <span className="mag-log-row__ltgg">Consumo/gg</span>
+                  <span className="mag-log-row__costo">Costo stimato</span>
                 </div>
                 {storicoAdBlue.length === 0 ? (
                   <div className="mag-empty">Nessun cambio cisterna registrato.</div>
@@ -4002,11 +4422,23 @@ export default function NextMagazzinoPage() {
                     );
                     const ascIndex = sortedAsc.findIndex((entry) => entry.id === cambio.id);
                     const nextEntry = ascIndex >= 0 ? sortedAsc[ascIndex + 1] : null;
-                    const durata = nextEntry ? durataGiorni(cambio.data, nextEntry.data) : null;
+                    const durata = nextEntry
+                      ? durataGiorniLavorativi(cambio.data, nextEntry.data)
+                      : null;
                     const consumo =
                       durata && durata > 0
                         ? Math.round((cambio.quantitaLitri ?? LITRI_PER_CISTERNA) / durata)
                         : null;
+                    const litriCambio = cambio.quantitaLitri ?? LITRI_PER_CISTERNA;
+                    const prezzoCambio = adBluePrezzoPerData(
+                      parseStoredDate(cambio.data)?.getTime() ?? null,
+                    );
+                    const costoStimato = prezzoCambio
+                      ? formatMagazzinoDocumentCompactAmount(
+                          litriCambio * prezzoCambio.perLitro,
+                          prezzoCambio.valuta,
+                        )
+                      : null;
 
                     return (
                       <div key={cambio.id} className="mag-log-row">
@@ -4025,6 +4457,9 @@ export default function NextMagazzinoPage() {
                         </span>
                         <span className="mag-log-row__ltgg">
                           {index === 0 ? "—" : consumo ? `${consumo} lt/gg` : "—"}
+                        </span>
+                        <span className="mag-log-row__costo">
+                          {costoStimato ? `~${costoStimato}` : "—"}
                         </span>
                       </div>
                     );
@@ -4106,6 +4541,48 @@ export default function NextMagazzinoPage() {
                 >
                   {saving ? "Salvo..." : "Registra cambio cisterna"}
                 </button>
+              </div>
+            ) : null}
+
+            {adBlueTab === "costo" ? (
+              <div className="mag-log-panel">
+                <div className="mag-log-row mag-log-row--head">
+                  <span className="mag-log-row__date">Data</span>
+                  <span className="mag-log-row__fornitore">Fornitore / documento</span>
+                  <span className="mag-log-row__litri">Litri (taniche×1000)</span>
+                  <span className="mag-log-row__ltgg">Importo</span>
+                  <span className="mag-log-row__costo">Costo/lt</span>
+                </div>
+                {adBlueCostSummary.dettaglioFatture.length === 0 ? (
+                  <div className="mag-empty">
+                    Nessuna fattura AdBlue con litri leggibili. Carica le fatture AdBlue in
+                    "Documenti e costi" con quantità e importo per vedere il costo al litro.
+                  </div>
+                ) : (
+                  adBlueCostSummary.dettaglioFatture.map((fattura) => (
+                    <div key={fattura.id} className="mag-log-row">
+                      <span className="mag-log-row__date">
+                        {fattura.data ? formatStoredDateForUi(fattura.data) : "—"}
+                      </span>
+                      <span className="mag-log-row__fornitore">
+                        {fattura.fornitore}
+                        {fattura.numeroDocumento ? (
+                          <span className="mag-log-row__note">{fattura.numeroDocumento}</span>
+                        ) : null}
+                      </span>
+                      <span className="mag-log-row__litri">
+                        {Math.round(fattura.litri).toLocaleString("it-IT")} lt
+                      </span>
+                      <span className="mag-log-row__ltgg">
+                        {formatMagazzinoDocumentCompactAmount(fattura.importo, fattura.valuta)}
+                        {fattura.valutaEreditata ? " (dedotta)" : ""}
+                      </span>
+                      <span className="mag-log-row__costo">
+                        {formatAdBluePerLitro(fattura.perLitro, fattura.valuta)}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             ) : null}
           </>

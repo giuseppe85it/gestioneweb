@@ -414,7 +414,133 @@
 .mag-log-row__cisterna { flex: 1; display: grid; gap: 2px; }
 .mag-log-row__durata { min-width: 70px; text-align: right; }
 .mag-log-row__ltgg { min-width: 86px; text-align: right; }
+.mag-log-row__costo { min-width: 96px; text-align: right; }
+.mag-log-row__fornitore { flex: 1; display: grid; gap: 2px; }
+.mag-log-row__litri { min-width: 96px; text-align: right; }
 .mag-log-row__note { font-size: 11px; color: #6b7280; }
+
+/* Costo AdBlue (card + KPI in evidenza) */
+.mag-kpi--accent {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.mag-kpi--accent .mag-kpi__value { color: #166534; }
+.mag-cost-main {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+.mag-cost-big { font-size: 26px; font-weight: 800; color: #166534; }
+.mag-cost-alt { font-size: 16px; font-weight: 700; color: #334155; }
+.mag-cost-note {
+  font-size: 12px;
+  color: var(--color-text-secondary, #5b6474);
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
+/* Cisterna attiva - leggibilita' (V2) */
+.mag-cis-bigrow {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+}
+.mag-cis-big {
+  font-size: 30px;
+  font-weight: 800;
+  color: #166534;
+  line-height: 1;
+}
+.mag-cis-big small {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-secondary, #5b6474);
+}
+.mag-cis-bigside {
+  font-size: 13px;
+  color: var(--color-text-secondary, #5b6474);
+}
+.mag-cis-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.mag-cis-cell {
+  background: #f8fafc;
+  border: 0.5px solid var(--color-border-tertiary, rgba(15, 23, 42, 0.12));
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.mag-cis-cell__lab {
+  font-size: 12px;
+  color: var(--color-text-secondary, #5b6474);
+}
+.mag-cis-cell__val {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.mag-cis-cell__x {
+  font-size: 12px;
+  color: var(--color-text-secondary, #5b6474);
+  font-weight: 600;
+}
+
+/* Costo AdBlue - leggibilita' (V2) */
+.mag-cost-chip {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  background: #eef2f7;
+  border-radius: 999px;
+  padding: 3px 10px;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+.mag-cost-section {
+  font-size: 12px;
+  color: var(--color-text-secondary, #5b6474);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 14px 0 6px;
+}
+.mag-cost-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid #f0f2f6;
+  font-size: 14px;
+}
+.mag-cost-kv:last-child { border-bottom: 0; }
+.mag-cost-kv .k { color: #334155; }
+.mag-cost-kv .k small { color: var(--color-text-secondary, #5b6474); font-size: 12px; }
+.mag-cost-kv .v { font-weight: 800; white-space: nowrap; }
+.mag-cost-divider {
+  height: 1px;
+  background: var(--color-border-tertiary, rgba(15, 23, 42, 0.12));
+  margin: 14px 0;
+}
+.mag-cost-general {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  background: #f8fafc;
+  border: 0.5px solid var(--color-border-tertiary, rgba(15, 23, 42, 0.12));
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.mag-cost-general .k { font-size: 13px; color: var(--color-text-secondary, #5b6474); }
+.mag-cost-general .v { font-size: 16px; font-weight: 800; color: #334155; white-space: nowrap; }
+.mag-cost-general .v small { font-size: 12px; color: var(--color-text-secondary, #5b6474); font-weight: 600; }
 
 .mag-domain-grid {
   display: grid;

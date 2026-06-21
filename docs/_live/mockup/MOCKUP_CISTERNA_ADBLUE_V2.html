@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup V2 — Cisterna attiva + Costo AdBlue (leggibilità)</title>
+<style>
+  :root{--green:#166534;--bg:#f3f6fb;--card:#fff;--text:#111827;--muted:#5b6474;--line:#e6e9ef;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:24px;}
+  .wrap{max-width:1040px;margin:0 auto;}
+  .note{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;}
+  .card__title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;}
+
+  /* header */
+  .head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .name{font-size:17px;font-weight:800;}
+  .badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;}
+  .sub{font-size:13px;color:var(--muted);margin-top:4px;}
+
+  /* big residuo */
+  .big-row{display:flex;align-items:baseline;gap:14px;margin:14px 0 4px;flex-wrap:wrap;}
+  .big{font-size:30px;font-weight:800;color:var(--green);line-height:1;}
+  .big small{font-size:15px;font-weight:700;color:var(--muted);}
+  .big-side{font-size:13px;color:var(--muted);}
+
+  .progress{height:12px;background:#eef2f7;border-radius:999px;margin:12px 0 14px;overflow:hidden;}
+  .progress__fill{height:100%;border-radius:999px;background:#22c55e;}
+
+  /* due celle in fondo */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .duo .cell{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+  .duo .lab{font-size:12px;color:var(--muted);}
+  .duo .val{font-size:15px;font-weight:700;margin-top:2px;}
+  .duo .val .x{font-size:12px;color:var(--muted);font-weight:600;}
+
+  /* costo card */
+  .cost-big{font-size:30px;font-weight:800;color:var(--green);}
+  .cost-big small{font-size:14px;color:var(--muted);font-weight:600;}
+  .chip{display:inline-block;font-size:12px;font-weight:700;color:#334155;background:#eef2f7;border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px;}
+  .section-lab{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;}
+  .kv{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid #f0f2f6;font-size:14px;}
+  .kv:last-child{border-bottom:0;}
+  .kv .k{color:#334155;}
+  .kv .k small{color:var(--muted);font-size:12px;}
+  .kv .v{font-weight:800;white-space:nowrap;}
+  .divider{height:1px;background:var(--line);margin:14px 0;}
+  .general{display:flex;justify-content:space-between;align-items:baseline;gap:12px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+  .general .k{font-size:13px;color:var(--muted);}
+  .general .v{font-size:16px;font-weight:800;color:#334155;}
+  .general .v small{font-size:12px;color:var(--muted);font-weight:600;}
+  .foot{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.45;}
+  h1{font-size:18px;margin:0 0 14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note"><b>Mockup V2 — proposta di leggibilità.</b> Stessi dati reali della tua schermata (0,648 CHF/lt, 789 lt rimasti…), solo layout più chiaro. Approva o dimmi cosa cambiare.</div>
+  <h1>Cisterna AdBlue — leggibilità card</h1>
+
+  <div class="grid">
+
+    <!-- CISTERNA ATTIVA: numeri più grandi -->
+    <div class="card">
+      <div class="card__title">Cisterna attiva</div>
+      <div class="head">
+        <div class="name">Cisterna 1</div>
+        <span class="badge">Regolare</span>
+      </div>
+      <div class="sub">Avviata il 15/06/2026 · 6 giorni fa</div>
+
+      <div class="big-row">
+        <div class="big">789 <small>lt rimasti</small></div>
+        <div class="big-side">~211 lt consumati · su 1000 lt</div>
+      </div>
+      <div class="progress"><div class="progress__fill" style="width:21%"></div></div>
+
+      <div class="duo">
+        <div class="cell">
+          <div class="lab">Carico registrato</div>
+          <div class="val">1000 lt</div>
+        </div>
+        <div class="cell">
+          <div class="lab">Stima fine</div>
+          <div class="val">10/07/2026 <span class="x">· tra 15 gg lav.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COSTO ADBLUE: meno confusione, valori allineati -->
+    <div class="card">
+      <div class="card__title">Costo AdBlue</div>
+      <div>
+        <span class="cost-big">0,648 <small>CHF/lt</small></span>
+        <span class="chip">cisterna attuale</span>
+      </div>
+      <div class="sub">ultima fattura · Thommen-Furler AG · 3000 lt</div>
+
+      <div class="section-lab">Questa cisterna</div>
+      <div class="kv"><span class="k">Cisterna piena <small>(1000 lt)</small></span><span class="v">647,53 CHF</span></div>
+      <div class="kv"><span class="k">Giacenza residua <small>(789 lt)</small></span><span class="v">510,90 CHF</span></div>
+      <div class="kv"><span class="k">Consumato finora <small>(211 lt)</small></span><span class="v">136,63 CHF</span></div>
+
+      <div class="divider"></div>
+
+      <div class="general">
+        <span class="k">Media generale<br><small style="color:#94a3b8">tutte le fatture · 3000 lt · 1 fattura</small></span>
+        <span class="v">0,648 <small>CHF/lt</small></span>
+      </div>
+
+      <div class="foot">Prezzo cisterna = ultima fattura · media generale = tutte le fatture AdBlue · 1 tanica = 1000 lt.</div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
