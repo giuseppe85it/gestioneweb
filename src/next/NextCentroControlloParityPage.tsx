@@ -77,10 +77,7 @@ export type {
   ScheduledMaintenanceRow,
 };
 
-type TabKey =
-  | "rifornimenti"
-  | "segnalazioni"
-  | "controlli";
+type CentroControlloViewMode = "sinottica" | "archivio" | "rifornimenti";
 type MonthFilter = number | "all";
 type YearFilter = number | "all";
 
@@ -576,20 +573,20 @@ const normalizeRefuelRecord = (
 
 export default function NextCentroControlloParityPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabKey>("rifornimenti");
-  // PROMPT 30.3 — page-tabbar persistita via `?tab=archivio` (default "sinottica")
+  // PROMPT 30.3: page-tabbar persistita via `?tab=...` (default "sinottica").
   const [searchParams, setSearchParams] = useSearchParams();
-  const archivioMode: "sinottica" | "archivio" =
-    searchParams.get("tab") === "archivio" ? "archivio" : "sinottica";
+  const tabParam = searchParams.get("tab");
+  const archivioMode: CentroControlloViewMode =
+    tabParam === "archivio" || tabParam === "rifornimenti" ? tabParam : "sinottica";
   const setArchivioMode = useCallback(
-    (mode: "sinottica" | "archivio"): void => {
+    (mode: CentroControlloViewMode): void => {
       setSearchParams(
         (prev: URLSearchParams) => {
           const next: URLSearchParams = new URLSearchParams(prev);
-          if (mode === "archivio") {
-            next.set("tab", "archivio");
-          } else {
+          if (mode === "sinottica") {
             next.delete("tab");
+          } else {
+            next.set("tab", mode);
           }
           return next;
         },
@@ -606,16 +603,9 @@ export default function NextCentroControlloParityPage() {
   const [refuelsError, setRefuelsError] = useState<string | null>(null);
   const [refuelRows, setRefuelRows] = useState<RefuelRow[]>([]);
 
-  const [loadingSegnalazioni, setLoadingSegnalazioni] = useState(false);
-  const [segnalazioniError, setSegnalazioniError] = useState<string | null>(null);
   const [segnalazioniRows, setSegnalazioniRows] = useState<SegnalazioneRow[]>([]);
-  const [segnalazioniFilterTarga, setSegnalazioniFilterTarga] = useState("");
-  const [segnalazioniOnlyNuove, setSegnalazioniOnlyNuove] = useState(false);
 
-  const [loadingControlli, setLoadingControlli] = useState(false);
-  const [controlliError, setControlliError] = useState<string | null>(null);
   const [controlliRows, setControlliRows] = useState<ControlloRow[]>([]);
-  const [controlliFilterTarga, setControlliFilterTarga] = useState("");
 
   const [richiesteRows, setRichiesteRows] = useState<RichiestaRow[]>([]);
 
@@ -881,11 +871,6 @@ export default function NextCentroControlloParityPage() {
   };
 
   const loadAutistiReadOnlySections = async () => {
-    setLoadingSegnalazioni(true);
-    setSegnalazioniError(null);
-    setLoadingControlli(true);
-    setControlliError(null);
-
     try {
       const snapshot = await readNextAutistiReadOnlySnapshot(Date.now(), {
         includeLocalClone: false,
@@ -894,19 +879,10 @@ export default function NextCentroControlloParityPage() {
       setSegnalazioniRows(snapshot.segnalazioniRows.map(mapSegnalazioneRow));
       setControlliRows(snapshot.controlliRows.map(mapControlloRow));
       setRichiesteRows(snapshot.richiesteRows.map(mapRichiestaRow));
-      setSegnalazioniError(null);
-      setControlliError(null);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Errore caricamento flussi autisti.";
+    } catch {
       setSegnalazioniRows([]);
       setControlliRows([]);
       setRichiesteRows([]);
-      setSegnalazioniError(message);
-      setControlliError(message);
-    } finally {
-      setLoadingSegnalazioni(false);
-      setLoadingControlli(false);
     }
   };
 
@@ -1266,48 +1242,6 @@ export default function NextCentroControlloParityPage() {
     [segnalazioniRows]
   );
 
-  const segnalazioniCounters = useMemo(
-    () => ({
-      totale: segnalazioniOperativeRows.length,
-      nuove: segnalazioniOperativeRows.filter((row) => row.isNuova).length,
-    }),
-    [segnalazioniOperativeRows]
-  );
-
-  const segnalazioniFiltered = useMemo(() => {
-    const targaKey = normalizeTargaFilter(segnalazioniFilterTarga);
-    return segnalazioniOperativeRows.filter((row) => {
-      if (segnalazioniOnlyNuove && !row.isNuova) return false;
-      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
-      return true;
-    });
-  }, [segnalazioniOperativeRows, segnalazioniFilterTarga, segnalazioniOnlyNuove]);
-
-  const controlliCounters = useMemo(
-    () => ({
-      ko: controlliRows.filter((row) => row.isKo).length,
-      ok: controlliRows.filter((row) => !row.isKo).length,
-    }),
-    [controlliRows]
-  );
-
-  const controlliFiltered = useMemo(() => {
-    const targaKey = normalizeTargaFilter(controlliFilterTarga);
-    return controlliRows.filter((row) => {
-      if (targaKey && !row.targaFilterKey.includes(targaKey)) return false;
-      return true;
-    });
-  }, [controlliRows, controlliFilterTarga]);
-
-  const controlliKoFiltered = useMemo(
-    () => controlliFiltered.filter((row) => row.isKo),
-    [controlliFiltered]
-  );
-  const controlliOkFiltered = useMemo(
-    () => controlliFiltered.filter((row) => !row.isKo),
-    [controlliFiltered]
-  );
-
   const closePdfPreview = () => {
     revokePdfPreviewUrl(pdfPreviewUrl);
     setPdfPreviewOpen(false);
@@ -1498,6 +1432,15 @@ export default function NextCentroControlloParityPage() {
             onClick={() => setArchivioMode("archivio")}
           >
             Archivio storico
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={archivioMode === "rifornimenti"}
+            className={archivioMode === "rifornimenti" ? "is-active" : ""}
+            onClick={() => setArchivioMode("rifornimenti")}
+          >
+            Report rifornimenti
           </button>
         </div>
 
@@ -1765,32 +1708,10 @@ export default function NextCentroControlloParityPage() {
             }}
           />
         )}
+        </>
+        ) : null}
 
-        <div className="cc-tabs">
-          <button
-            type="button"
-            className={activeTab === "rifornimenti" ? "active" : ""}
-            onClick={() => setActiveTab("rifornimenti")}
-          >
-            Report rifornimenti
-          </button>
-          <button
-            type="button"
-            className={activeTab === "segnalazioni" ? "active" : ""}
-            onClick={() => setActiveTab("segnalazioni")}
-          >
-            Segnalazioni autisti
-          </button>
-          <button
-            type="button"
-            className={activeTab === "controlli" ? "active" : ""}
-            onClick={() => setActiveTab("controlli")}
-          >
-            Controlli KO/OK
-          </button>
-        </div>
-
-        {activeTab === "rifornimenti" && (
+        {archivioMode === "rifornimenti" ? (
           <section className="cc-section" id="cc-anchor-rifornimenti">
             <div className="cc-section-head">
               <h2>Report rifornimenti mensili</h2>
@@ -2168,180 +2089,13 @@ export default function NextCentroControlloParityPage() {
               </div>
             )}
           </section>
-        )}
-
-        {activeTab === "segnalazioni" && (
-          <section className="cc-section" id="cc-anchor-segnalazioni">
-            <div className="cc-section-head">
-              <h2>Segnalazioni autisti</h2>
-              <div className="cc-actions">
-                <span className="cc-inline-count">
-                  Da gestire: {segnalazioniCounters.totale} | Nuove: {segnalazioniCounters.nuove}
-                </span>
-                <button
-                  type="button"
-                  className="cc-secondary-btn"
-                  disabled={loadingSegnalazioni}
-                  onClick={() => void loadAutistiReadOnlySections()}
-                >
-                  Aggiorna dati
-                </button>
-              </div>
-            </div>
-
-            <div className="cc-filters cc-filters-compact">
-              <label className="cc-targa-filter">
-                Filtro targa
-                <input
-                  type="text"
-                  placeholder="Es. TI315407"
-                  value={segnalazioniFilterTarga}
-                  onChange={(e) => setSegnalazioniFilterTarga(e.target.value)}
-                />
-              </label>
-              <label className="cc-toggle">
-                <input
-                  type="checkbox"
-                  checked={segnalazioniOnlyNuove}
-                  onChange={(e) => setSegnalazioniOnlyNuove(e.target.checked)}
-                />
-                <span>Solo nuove</span>
-              </label>
-            </div>
-
-            {loadingSegnalazioni && <div className="cc-status">Caricamento segnalazioni...</div>}
-            {segnalazioniError && <div className="cc-status error">{segnalazioniError}</div>}
-            {!loadingSegnalazioni && !segnalazioniError && segnalazioniFiltered.length === 0 && (
-              <div className="cc-status">Nessuna segnalazione per i filtri selezionati.</div>
-            )}
-
-            {!loadingSegnalazioni && segnalazioniFiltered.length > 0 && (
-              <div className="cc-table-wrap">
-                <table className="cc-table">
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Targa</th>
-                      <th>Autista</th>
-                      <th>Tipo</th>
-                      <th>Descrizione</th>
-                      <th>Stato</th>
-                      <th>Foto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {segnalazioniFiltered.map((row, idx) => (
-                      <tr key={`${row.id}_${row.ts}_${idx}`}>
-                        <td>{formatDateIt(row.dateObj)}</td>
-                        <td>{row.targa}</td>
-                        <td>{row.autistaNome || "-"}</td>
-                        <td>{row.tipo}</td>
-                        <td>{row.descrizione}</td>
-                        <td>{row.isNuova ? "NUOVA" : row.stato}</td>
-                        <td>{row.fotoCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        )}
-
-        {activeTab === "controlli" && (
-          <section className="cc-section" id="cc-anchor-controlli">
-            <div className="cc-section-head">
-              <h2>Controlli mezzo KO/OK</h2>
-              <div className="cc-actions">
-                <span className="cc-inline-count">
-                  KO: {controlliCounters.ko} | OK: {controlliCounters.ok}
-                </span>
-                <button
-                  type="button"
-                  className="cc-secondary-btn"
-                  disabled={loadingControlli}
-                  onClick={() => void loadAutistiReadOnlySections()}
-                >
-                  Aggiorna dati
-                </button>
-              </div>
-            </div>
-
-            <div className="cc-filters cc-filters-compact">
-              <label className="cc-targa-filter">
-                Filtro targa
-                <input
-                  type="text"
-                  placeholder="Es. TI315407"
-                  value={controlliFilterTarga}
-                  onChange={(e) => setControlliFilterTarga(e.target.value)}
-                />
-              </label>
-            </div>
-
-            {loadingControlli && <div className="cc-status">Caricamento controlli...</div>}
-            {controlliError && <div className="cc-status error">{controlliError}</div>}
-            {!loadingControlli && !controlliError && controlliFiltered.length === 0 && (
-              <div className="cc-status">Nessun controllo per i filtri selezionati.</div>
-            )}
-
-            {!loadingControlli && controlliFiltered.length > 0 && (
-              <div className="cc-two-columns">
-                <div className="cc-column">
-                  <h3 className="cc-column-title">KO ({controlliKoFiltered.length})</h3>
-                  {controlliKoFiltered.length === 0 ? (
-                    <div className="cc-status">Nessun controllo KO.</div>
-                  ) : (
-                    <div className="cc-card-list">
-                      {controlliKoFiltered.map((row, idx) => (
-                        <article className="cc-control-card ko" key={`${row.id}_${row.ts}_${idx}`}>
-                          <div className="cc-control-row">
-                            <span>{formatDateIt(row.dateObj)}</span>
-                            <span className="cc-badge scaduta">KO</span>
-                          </div>
-                          <div className="cc-control-title">{row.targaLabel}</div>
-                          <div className="cc-control-text">Autista: {row.autistaNome || "-"}</div>
-                          <div className="cc-control-text">Check KO: {row.koList.join(", ")}</div>
-                          {row.note ? <div className="cc-control-note">Note: {row.note}</div> : null}
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="cc-column">
-                  <h3 className="cc-column-title">OK ({controlliOkFiltered.length})</h3>
-                  {controlliOkFiltered.length === 0 ? (
-                    <div className="cc-status">Nessun controllo OK.</div>
-                  ) : (
-                    <div className="cc-card-list">
-                      {controlliOkFiltered.map((row, idx) => (
-                        <article className="cc-control-card ok" key={`${row.id}_${row.ts}_${idx}`}>
-                          <div className="cc-control-row">
-                            <span>{formatDateIt(row.dateObj)}</span>
-                            <span className="cc-badge ok">OK</span>
-                          </div>
-                          <div className="cc-control-title">{row.targaLabel}</div>
-                          <div className="cc-control-text">Autista: {row.autistaNome || "-"}</div>
-                          <div className="cc-control-text">Check KO: nessuno</div>
-                          {row.note ? <div className="cc-control-note">Note: {row.note}</div> : null}
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-        </>
         ) : null}
 
       </div>
 
-      {/* PROMPT 30.2: NextHomeAutistiEventoModal montato fuori dal wrap
-          archivioMode="sinottica" cosi' e' raggiungibile sia dal click
-          chip Sinottica V2 sia dal click "Apri dettaglio" Archivio. */}
+      {/* PROMPT 30.2: NextHomeAutistiEventoModal montato fuori dalle viste
+          principali cosi' e' raggiungibile sia dal click chip Sinottica V2
+          sia dal click "Apri dettaglio" Archivio. */}
       {sinotticaEventoModalOpen && sinotticaEventoModalEvent && (
         <NextHomeAutistiEventoModal
           event={sinotticaEventoModalEvent}

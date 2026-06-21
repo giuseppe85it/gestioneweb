@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-21 1734
+
+DATA: `2026-06-21`
+TITOLO: `Riorganizzazione Report rifornimenti Centro Controllo`
+FILE TOCCATI: `src/next/NextCentroControlloParityPage.tsx`, `src/next/next-centro-controllo.css`, `CONTEXT_CLAUDE.md`
+COSA: `Spostato Report rifornimenti nella tabbar alta accanto ad Archivio storico. Rimosse dalla Sinottica le viste tabellari basse Segnalazioni autisti e Controlli KO/OK, mantenendo dati, chip, modale evento, writer e flussi rifornimenti invariati.`
+ESITO: `FATTO`
+NOTE: `Verifiche: eslint mirato OK, diff check OK, build canonica OK, smoke Playwright OK su Sinottica, Archivio, Report rifornimenti, analisi consumi, modale modifica e anteprima PDF mensile.`
+
 ## 2026-06-21 0732
 
 DATA: `2026-06-21`
