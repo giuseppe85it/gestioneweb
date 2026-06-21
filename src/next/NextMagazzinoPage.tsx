@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getDownloadURL, ref } from "firebase/storage";
 import { storage } from "../firebase";
@@ -3351,7 +3351,7 @@ export default function NextMagazzinoPage() {
       totaleDocumento: item.totalAmount,
       currency: item.currency,
       valutaEreditata: item.valutaEreditata,
-      fileUrl: item.pdfUrl,
+      fileUrl: item.pdfUrl ?? item.imageUrls[0] ?? null,
       targa: null,
       numeroDocumento: item.numeroPreventivo,
       descrizione: buildMagazzinoPreventivoDescription(item),
@@ -3678,111 +3678,134 @@ export default function NextMagazzinoPage() {
                 {inventarioFiltrato.length === 0 ? (
                   <div className="mag-empty">Nessun articolo trovato.</div>
                 ) : (
-                  <div className="mag-list">
-                    {inventarioFiltrato.map((item) => {
-                      const stockStatus = getStockStatus(item);
-                      return (
-                        <article
-                          key={item.id}
-                          className={`mag-item ${stockStatus === "esaurito" ? "esaurito" : ""}`}
-                        >
-                          <div className="mag-item__row1">
-                            <div className="mag-item__photo">
-                              {item.fotoUrl ? (
-                                <img
-                                  src={item.fotoUrl}
-                                  alt={item.descrizione}
-                                  className="mag-item__photo-img"
-                                />
-                              ) : (
-                                <span className="mag-item__photo-placeholder">IMG</span>
-                              )}
-                            </div>
-                            <div className="mag-item__title">{item.descrizione}</div>
-                            <span className={`mag-badge mag-badge--${stockStatus}`}>
-                              {stockStatus === "ok"
-                                ? "Disponibile"
-                                : stockStatus === "basso"
-                                ? "Sotto soglia"
-                                : "Esaurito"}
-                            </span>
-                          </div>
-                          <div className="mag-item__row2">
-                            <div className="mag-item__meta">
-                              {item.fornitore || "Fornitore non indicato"} · {item.unita}
-                              {!hasSupportedUnit(item.unita) ? " · unita da verificare" : ""}
-                              {typeof item.sogliaMinima === "number"
-                                ? ` · soglia ${formatNumber(item.sogliaMinima)}`
-                                : ""}
-                            </div>
-                            <div className="mag-qty">
-                              <button
-                                type="button"
-                                className="mag-qty__btn"
-                                onClick={() => void handleDeltaQuantita(item.id, -1)}
-                                disabled={saving || !hasSupportedUnit(item.unita)}
-                              >
-                                −
-                              </button>
-                              <input
-                                className="mag-qty__input"
-                                value={String(item.quantita)}
-                                onChange={(event) =>
-                                  void handleDirectQuantita(item.id, event.target.value)
-                                }
-                                disabled={!hasSupportedUnit(item.unita)}
-                              />
-                              <button
-                                type="button"
-                                className="mag-qty__btn"
-                                onClick={() => void handleDeltaQuantita(item.id, 1)}
-                                disabled={saving || !hasSupportedUnit(item.unita)}
-                              >
-                                +
-                              </button>
-                            </div>
-                            <div className="mag-row-actions">
-                              <button
-                                type="button"
-                                className="mag-btn mag-btn--sm"
-                                onClick={() => {
-                                  setEditFotoFile(null);
-                                  setEditingItem({ ...item });
-                                }}
-                              >
-                                Modifica
-                              </button>
-                              {pendingDeleteItemId === item.id ? (
-                                <div className="mag-inline-confirm">
+                  <div className="mag-table-card">
+                    <table className="doc-costi-table mag-table">
+                      <thead>
+                        <tr>
+                          <th className="mag-th-foto">Foto</th>
+                          <th>Descrizione</th>
+                          <th>Fornitore</th>
+                          <th>Unita</th>
+                          <th className="mag-th-qty">Giacenza</th>
+                          <th>Stato</th>
+                          <th className="mag-th-azioni">Azioni</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {inventarioFiltrato.map((item) => {
+                          const stockStatus = getStockStatus(item);
+                          const unitaSupportata = hasSupportedUnit(item.unita);
+                          return (
+                            <tr
+                              key={item.id}
+                              className={stockStatus === "esaurito" ? "mag-row--esaurito" : ""}
+                            >
+                              <td>
+                                <div className="mag-cell-foto">
+                                  {item.fotoUrl ? (
+                                    <img src={item.fotoUrl} alt={item.descrizione} />
+                                  ) : (
+                                    <span className="mag-cell-foto__placeholder">IMG</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="mag-cell-desc">{item.descrizione}</td>
+                              <td>
+                                {item.fornitore || "Fornitore non indicato"}
+                                {typeof item.sogliaMinima === "number" ? (
+                                  <span className="mag-cell-note">
+                                    soglia {formatNumber(item.sogliaMinima)}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td>
+                                {item.unita}
+                                {!unitaSupportata ? (
+                                  <span className="mag-cell-note">da verificare</span>
+                                ) : null}
+                              </td>
+                              <td>
+                                <div className="mag-qty mag-qty--table">
                                   <button
                                     type="button"
-                                    className="mag-btn mag-btn--sm mag-btn--danger"
-                                    onClick={() => void handleDeleteInventario(item.id)}
+                                    className="mag-qty__btn"
+                                    onClick={() => void handleDeltaQuantita(item.id, -1)}
+                                    disabled={saving || !unitaSupportata}
                                   >
-                                    Conferma
+                                    −
                                   </button>
+                                  <input
+                                    className="mag-qty__input"
+                                    value={String(item.quantita)}
+                                    onChange={(event) =>
+                                      void handleDirectQuantita(item.id, event.target.value)
+                                    }
+                                    disabled={!unitaSupportata}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="mag-qty__btn"
+                                    onClick={() => void handleDeltaQuantita(item.id, 1)}
+                                    disabled={saving || !unitaSupportata}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`mag-badge mag-badge--${stockStatus}`}>
+                                  {stockStatus === "ok"
+                                    ? "Disponibile"
+                                    : stockStatus === "basso"
+                                    ? "Sotto soglia"
+                                    : "Esaurito"}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="mag-row-actions">
                                   <button
                                     type="button"
                                     className="mag-btn mag-btn--sm"
-                                    onClick={() => setPendingDeleteItemId(null)}
+                                    onClick={() => {
+                                      setEditFotoFile(null);
+                                      setEditingItem({ ...item });
+                                    }}
                                   >
-                                    Annulla
+                                    Modifica
                                   </button>
+                                  {pendingDeleteItemId === item.id ? (
+                                    <div className="mag-inline-confirm">
+                                      <button
+                                        type="button"
+                                        className="mag-btn mag-btn--sm mag-btn--danger"
+                                        onClick={() => void handleDeleteInventario(item.id)}
+                                      >
+                                        Conferma
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="mag-btn mag-btn--sm"
+                                        onClick={() => setPendingDeleteItemId(null)}
+                                      >
+                                        Annulla
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="mag-btn mag-btn--sm mag-btn--danger"
+                                      onClick={() => setPendingDeleteItemId(item.id)}
+                                    >
+                                      Elimina
+                                    </button>
+                                  )}
                                 </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="mag-btn mag-btn--sm mag-btn--danger"
-                                  onClick={() => setPendingDeleteItemId(item.id)}
-                                >
-                                  Elimina
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </>
@@ -3931,83 +3954,140 @@ export default function NextMagazzinoPage() {
                 {groupedConsegne.length === 0 ? (
                   <div className="mag-empty">Nessuna consegna trovata.</div>
                 ) : (
-                  groupedConsegne.map((group) => (
-                    <div key={group.groupId} className="mag-movement">
-                      <div className="mag-movement__head">
-                        <span className={buildDestBadgeClass(group.destinatario.type)}>
-                          {buildDestinatarioLabel(group.destinatario.type)}
-                        </span>
-                        <span className="mag-movement__dest">{group.destinatario.label}</span>
-                        <span className="mag-movement__tot">
-                          Tot: {buildGroupedTotalLabel(group.items)}
-                        </span>
-                        {group.dossierTarga ? (
-                          <button
-                            type="button"
-                            className="mag-btn mag-btn--sm"
-                            onClick={() => navigate(buildNextDossierPath(group.dossierTarga!))}
-                          >
-                            Apri dossier
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="mag-movement__toggle"
-                          onClick={() => toggleGroup(group.groupId)}
-                        >
-                          {openGroups.includes(group.groupId) ? "Chiudi ▲" : "Dettaglio ▼"}
-                        </button>
-                      </div>
-                      {openGroups.includes(group.groupId) ? (
-                        <div className="mag-movement__body">
-                          {group.items.map((consegna) => (
-                            <div key={consegna.id} className="mag-movement__row">
-                              <span className="mag-movement__row-date">
-                                {formatStoredDateForUi(consegna.data)}
-                              </span>
-                              <span className="mag-movement__row-desc">
-                                {consegna.descrizione}
-                              </span>
-                              <span className="mag-movement__row-qty">
-                                {formatQuantita(consegna.quantita, consegna.unita)}
-                              </span>
-                              <span className="mag-movement__row-motivo">
-                                {consegna.motivo || "—"}
-                              </span>
-                              <button
-                                type="button"
-                                className="mag-btn mag-btn--sm mag-btn--danger"
-                                onClick={() => void handleDeleteConsegna(consegna)}
+                  <div className="mag-table-card">
+                    <table className="doc-costi-table mag-table">
+                      <thead>
+                        <tr>
+                          <th className="mag-th-tipo">Tipo</th>
+                          <th>Destinatario</th>
+                          <th className="mag-th-num">Consegne</th>
+                          <th>Totale</th>
+                          <th className="mag-th-azioni">Azioni</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedConsegne.map((group) => {
+                          const isOpen = openGroups.includes(group.groupId);
+                          return (
+                            <Fragment key={group.groupId}>
+                              <tr
+                                className="mag-master-row"
+                                onClick={() => toggleGroup(group.groupId)}
                               >
-                                Elimina
-                              </button>
-                              {warningDelete?.consegna.id === consegna.id ? (
-                                <div className="mag-inline-warning">
-                                  <div className="mag-warning">{warningDelete.messaggio}</div>
-                                  <div className="mag-inline-confirm">
-                                    <button
-                                      type="button"
-                                      className="mag-btn mag-btn--sm mag-btn--danger"
-                                      onClick={() => void eseguiDeleteConsegna(consegna)}
-                                    >
-                                      Continua
-                                    </button>
+                                <td>
+                                  <span className={buildDestBadgeClass(group.destinatario.type)}>
+                                    {buildDestinatarioLabel(group.destinatario.type)}
+                                  </span>
+                                </td>
+                                <td className="mag-cell-desc">{group.destinatario.label}</td>
+                                <td>{group.items.length}</td>
+                                <td className="doc-costi-importo">
+                                  {buildGroupedTotalLabel(group.items)}
+                                </td>
+                                <td>
+                                  <div className="mag-row-actions">
+                                    {group.dossierTarga ? (
+                                      <button
+                                        type="button"
+                                        className="mag-btn mag-btn--sm"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          navigate(buildNextDossierPath(group.dossierTarga!));
+                                        }}
+                                      >
+                                        Apri dossier
+                                      </button>
+                                    ) : null}
                                     <button
                                       type="button"
                                       className="mag-btn mag-btn--sm"
-                                      onClick={() => setWarningDelete(null)}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleGroup(group.groupId);
+                                      }}
                                     >
-                                      Annulla
+                                      {isOpen ? "Chiudi ▲" : "Dettaglio ▼"}
                                     </button>
                                   </div>
-                                </div>
+                                </td>
+                              </tr>
+                              {isOpen ? (
+                                <tr className="mag-detail-row">
+                                  <td colSpan={5}>
+                                    <table className="mag-subtable">
+                                      <thead>
+                                        <tr>
+                                          <th>Data</th>
+                                          <th>Materiale</th>
+                                          <th>Quantita</th>
+                                          <th>Motivo</th>
+                                          <th className="mag-th-azioni" />
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {group.items.map((consegna) => (
+                                          <Fragment key={consegna.id}>
+                                            <tr>
+                                              <td>{formatStoredDateForUi(consegna.data)}</td>
+                                              <td className="mag-cell-desc">
+                                                {consegna.descrizione}
+                                              </td>
+                                              <td>
+                                                {formatQuantita(consegna.quantita, consegna.unita)}
+                                              </td>
+                                              <td>{consegna.motivo || "—"}</td>
+                                              <td>
+                                                <button
+                                                  type="button"
+                                                  className="mag-btn mag-btn--sm mag-btn--danger"
+                                                  onClick={() => void handleDeleteConsegna(consegna)}
+                                                >
+                                                  Elimina
+                                                </button>
+                                              </td>
+                                            </tr>
+                                            {warningDelete?.consegna.id === consegna.id ? (
+                                              <tr>
+                                                <td colSpan={5}>
+                                                  <div className="mag-inline-warning">
+                                                    <div className="mag-warning">
+                                                      {warningDelete.messaggio}
+                                                    </div>
+                                                    <div className="mag-inline-confirm">
+                                                      <button
+                                                        type="button"
+                                                        className="mag-btn mag-btn--sm mag-btn--danger"
+                                                        onClick={() =>
+                                                          void eseguiDeleteConsegna(consegna)
+                                                        }
+                                                      >
+                                                        Continua
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className="mag-btn mag-btn--sm"
+                                                        onClick={() => setWarningDelete(null)}
+                                                      >
+                                                        Annulla
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                            ) : null}
+                                          </Fragment>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
                               ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </>
             ) : (
@@ -4723,18 +4803,26 @@ export default function NextMagazzinoPage() {
                                     </td>
                                     <td>
                                       <div className="doc-costi-actions">
-                                        <button
-                                          type="button"
-                                          className="doc-costi-btn"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            if (!item.fileUrl) return;
-                                            window.open(item.fileUrl, "_blank", "noopener,noreferrer");
-                                          }}
-                                          disabled={!item.fileUrl}
-                                        >
-                                          PDF
-                                        </button>
+                                        {item.fileUrl ? (
+                                          <button
+                                            type="button"
+                                            className="doc-costi-btn"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              window.open(
+                                                item.fileUrl!,
+                                                "_blank",
+                                                "noopener,noreferrer",
+                                              );
+                                            }}
+                                          >
+                                            Apri originale
+                                          </button>
+                                        ) : (
+                                          <span className="doc-costi-no-file">
+                                            Originale non disponibile
+                                          </span>
+                                        )}
                                       </div>
                                       {isReviewItem ? (
                                         <span className="doc-costi-row-flag">Da verificare</span>
@@ -5447,17 +5535,25 @@ export default function NextMagazzinoPage() {
                     )}
 
                     <div className="doc-costi-modal-actions">
-                      <button
-                        type="button"
-                        className="doc-costi-modal-btn-primary"
-                        onClick={() => {
-                          if (!docModalItem.fileUrl) return;
-                          window.open(docModalItem.fileUrl, "_blank", "noopener,noreferrer");
-                        }}
-                        disabled={!docModalItem.fileUrl}
-                      >
-                        Apri PDF originale
-                      </button>
+                      {docModalItem.fileUrl ? (
+                        <button
+                          type="button"
+                          className="doc-costi-modal-btn-primary"
+                          onClick={() => {
+                            window.open(
+                              docModalItem.fileUrl!,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          }}
+                        >
+                          Apri documento originale
+                        </button>
+                      ) : (
+                        <span className="doc-costi-no-file">
+                          Originale non disponibile
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="doc-costi-modal-btn-secondary"

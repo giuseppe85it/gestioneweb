@@ -682,3 +682,141 @@
     flex-wrap: wrap;
   }
 }
+
+/* ===== Tabelle dense Inventario / Materiali consegnati ===== */
+.mag-table-card {
+  background: var(--color-background-primary, #fff);
+  border: 0.5px solid var(--color-border-tertiary, rgba(15, 23, 42, 0.12));
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.mag-table {
+  width: 100%;
+}
+
+.mag-table tbody tr td {
+  cursor: default;
+}
+
+.mag-master-row,
+.mag-master-row td {
+  cursor: pointer;
+}
+
+.mag-row--esaurito td {
+  background: #fef2f2;
+}
+
+/* larghezze colonne: la descrizione/destinatario resta flessibile */
+.mag-th-foto {
+  width: 56px;
+}
+.mag-th-qty {
+  width: 132px;
+}
+.mag-th-tipo {
+  width: 116px;
+}
+.mag-th-num {
+  width: 96px;
+}
+.mag-th-azioni {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.mag-cell-foto {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-background-secondary, #eef2f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mag-cell-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mag-cell-foto__placeholder {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.mag-cell-desc {
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.mag-cell-note {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-secondary, #5b6474);
+}
+
+.mag-qty--table {
+  justify-content: flex-start;
+}
+
+.mag-qty--table .mag-qty__input {
+  width: 48px;
+}
+
+/* riga di dettaglio espandibile (Materiali consegnati) */
+.mag-detail-row > td {
+  padding: 0 20px 12px;
+  background: #faf9f6;
+  cursor: default;
+}
+
+.mag-subtable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-background-primary, #fff);
+  border: 0.5px solid var(--color-border-tertiary, rgba(15, 23, 42, 0.1));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mag-subtable th {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6a7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 8px 14px;
+  border-bottom: 0.5px solid rgba(15, 23, 42, 0.08);
+}
+
+.mag-subtable td {
+  font-size: 12px;
+  color: #202329;
+  padding: 8px 14px;
+  border-bottom: 0.5px solid rgba(15, 23, 42, 0.06);
+  vertical-align: middle;
+}
+
+.mag-subtable tr:last-child td {
+  border-bottom: none;
+}
+
+/* etichetta "Originale non disponibile" (Documenti e costi) */
+.doc-costi-no-file {
+  font-size: 11px;
+  color: var(--color-text-secondary, #94a3b8);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .mag-table-card {
+    overflow-x: auto;
+  }
+}
