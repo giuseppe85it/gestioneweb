@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- Baseline storico: la pagina esporta helper usati dalla Sinottica. */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
@@ -20,10 +20,7 @@ import {
   type NextAutistiRichiestaSectionItem,
   type NextAutistiSegnalazioneSectionItem,
 } from "./domain/nextAutistiDomain";
-import {
-  readNextRifornimentiReadOnlySnapshot,
-  type NextRifornimentoReadOnlyItem,
-} from "./domain/nextRifornimentiDomain";
+import { readNextRifornimentiReadOnlySnapshot } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "./domain/nextColleghiDomain";
 import {
@@ -51,29 +48,59 @@ import {
   readNextManutenzioniLegacyDataset,
 } from "./domain/nextManutenzioniDomain";
 import { loadActiveSessions, type ActiveSession, type HomeEvent } from "../utils/homeEvents";
+import {
+  buildRefuelConsumptionIndex,
+  buildRefuelRowsFromReadOnlyItems,
+  buildRefuelSeedIndex,
+  describeAnomaly,
+  detectRefuelAnomalies,
+  detectRefuelReportAnomalies,
+  formatDateItDisplay,
+  formatMediaLitriKm,
+  formatNumberIt,
+  normalizeTargaFilter,
+} from "./helpers/refuelAnomalies";
 import { isNextSegnalazioneOperativa } from "./helpers/segnalazioniOperative";
 import type {
   Anomaly,
   AnomalyTarget,
   AnomalyType,
   MaintenanceStatus,
+  RefuelConsumptionIndex,
+  RefuelConsumptionSuspicion,
   RefuelRow,
   RefuelSource,
   RefuelSourceFilter,
   RefuelSourceKey,
+  RefuelSeedIndex,
   ScheduledMaintenanceRow,
 } from "./types/centroControlloTypes";
 import "./next-centro-controllo.css";
+
+export {
+  describeAnomaly,
+  detectRefuelAnomalies,
+  detectRefuelReportAnomalies,
+  formatDateItDisplay,
+  formatDecimalIt,
+  formatIntegerIt,
+  formatMediaLitriKm,
+  formatNumberIt,
+  normalizeTargaFilter,
+} from "./helpers/refuelAnomalies";
 
 export type {
   Anomaly,
   AnomalyTarget,
   AnomalyType,
   MaintenanceStatus,
+  RefuelConsumptionIndex,
+  RefuelConsumptionSuspicion,
   RefuelRow,
   RefuelSource,
   RefuelSourceFilter,
   RefuelSourceKey,
+  RefuelSeedIndex,
   ScheduledMaintenanceRow,
 };
 
@@ -150,184 +177,6 @@ export const MONTH_NAMES = [
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const deriveRefuelSource = (
-  tipoRaw: string | null,
-  metodoRaw: string | null,
-): { label: string; key: RefuelSourceKey } => {
-  const tipo = (tipoRaw ?? "").toLowerCase().trim();
-  const metodo = (metodoRaw ?? "").toLowerCase().trim();
-  if (tipo === "caravate") {
-    return { label: "Caravate", key: "caravate" };
-  }
-  if (tipo === "distributore") {
-    if (metodo === "piccadilly") {
-      return { label: "Distributore Piccadilly", key: "distributore_piccadilly" };
-    }
-    if (metodo === "eni") {
-      return { label: "Distributore Eni", key: "distributore_eni" };
-    }
-    if (metodo === "contanti") {
-      return { label: "Distributore Contanti", key: "distributore_contanti" };
-    }
-    return { label: "Distributore", key: "distributore_altro" };
-  }
-  return { label: "—", key: "non_determinato" };
-};
-
-export const formatMediaLitriKm = (value: number): string => {
-  const fixed = value.toFixed(2);
-  return `${fixed.replace(".", ",")} km/L`;
-};
-
-export function formatIntegerIt(value: number): string {
-  return value.toLocaleString("it-IT", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-}
-
-export function formatDecimalIt(value: number, fractionDigits = 2): string {
-  return value.toLocaleString("it-IT", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-}
-
-export function formatDateItDisplay(value: Date | null): string {
-  return toDisplay(value) || "--/--/----";
-}
-
-export function describeAnomaly(
-  anomaly: Anomaly,
-  row: RefuelRow,
-  seed: RefuelRow | null,
-): string {
-  const seedDate = seed ? formatDateItDisplay(seed.dateObj) : "—";
-  const seedKmText =
-    seed && typeof seed.km === "number" ? formatIntegerIt(seed.km) : "—";
-  const rowKmText =
-    typeof row.km === "number" ? formatIntegerIt(row.km) : "—";
-  const rowKmRaw =
-    row.km === null || row.km === undefined ? "assente" : String(row.km);
-  const rowLitriRaw =
-    row.litri === null || row.litri === undefined
-      ? "assente"
-      : String(row.litri);
-  const rowLitriText =
-    typeof row.litri === "number" ? formatDecimalIt(row.litri, 2) : "—";
-
-  switch (anomaly.type) {
-    case "KM_TORNANO_INDIETRO": {
-      const diff =
-        seed && typeof seed.km === "number" && typeof row.km === "number"
-          ? formatIntegerIt(seed.km - row.km)
-          : "—";
-      return `Salto km incoerente: il rifornimento precedente del ${seedDate} ha km ${seedKmText}, superiori di ${diff} km a questo (km ${rowKmText}). Probabile errore di battitura su uno dei due record.`;
-    }
-    case "KM_SALTO_TROPPO_GRANDE": {
-      const diff =
-        seed && typeof seed.km === "number" && typeof row.km === "number"
-          ? formatIntegerIt(row.km - seed.km)
-          : "—";
-      return `Salto km elevato: dal rifornimento precedente del ${seedDate} (km ${seedKmText}) sono stati percorsi ${diff} km. Verifica plausibilità (oltre soglia 1.200 km tra rifornimenti consecutivi).`;
-    }
-    case "KM_INVALIDI": {
-      return `Km mancanti o non validi sul rifornimento. Valore registrato: ${rowKmRaw}.`;
-    }
-    case "KM_INVARIATI": {
-      return `Km uguali al rifornimento precedente del ${seedDate} (km ${seedKmText}). Mezzo non si è mosso ma ha rifornito: verifica.`;
-    }
-    case "LITRI_TROPPO_ALTI": {
-      return `Litri sospetti: registrati ${rowLitriText} L (oltre soglia 500 L per singolo rifornimento). Verifica il valore.`;
-    }
-    case "LITRI_NON_VALIDI": {
-      return `Litri mancanti o non validi sul rifornimento. Valore registrato: ${rowLitriRaw}.`;
-    }
-    case "LITRI_TROPPO_BASSI": {
-      return `Litri sospetti: registrati ${rowLitriText} L (sotto soglia 20 L, insolito per un camion). Verifica il valore.`;
-    }
-    default:
-      return anomaly.message;
-  }
-}
-
-export function detectRefuelAnomalies(
-  row: RefuelRow,
-  seed: RefuelRow | null,
-): Anomaly[] {
-  const result: Anomaly[] = [];
-
-  const rowKmInvalid =
-    row.km === null ||
-    row.km === undefined ||
-    (typeof row.km === "number" && row.km <= 0);
-
-  if (rowKmInvalid) {
-    result.push({
-      type: "KM_INVALIDI",
-      target: "km",
-      message: "Km mancanti o non validi",
-    });
-  } else if (
-    seed &&
-    typeof seed.km === "number" &&
-    seed.km > 0 &&
-    typeof row.km === "number" &&
-    row.km > 0
-  ) {
-    if (row.km < seed.km) {
-      result.push({
-        type: "KM_TORNANO_INDIETRO",
-        target: "km",
-        message:
-          "Km inferiori al rifornimento precedente (possibile errore di battitura)",
-      });
-    } else if (row.km > seed.km && row.km - seed.km > 1200) {
-      result.push({
-        type: "KM_SALTO_TROPPO_GRANDE",
-        target: "km",
-        message: "Salto km > 1200 dal rifornimento precedente",
-      });
-    } else if (row.km === seed.km) {
-      result.push({
-        type: "KM_INVARIATI",
-        target: "km",
-        message:
-          "Km uguali al rifornimento precedente (mezzo non si è mosso ma ha rifornito)",
-      });
-    }
-  }
-
-  const rowLitriInvalid =
-    row.litri === null ||
-    row.litri === undefined ||
-    (typeof row.litri === "number" && row.litri <= 0);
-
-  if (rowLitriInvalid) {
-    result.push({
-      type: "LITRI_NON_VALIDI",
-      target: "litri",
-      message: "Litri mancanti o non validi",
-    });
-  } else if (typeof row.litri === "number" && row.litri > 0) {
-    if (row.litri > 500) {
-      result.push({
-        type: "LITRI_TROPPO_ALTI",
-        target: "litri",
-        message: "Litri sospetti (> 500 L per singolo rifornimento)",
-      });
-    } else if (row.litri < 20) {
-      result.push({
-        type: "LITRI_TROPPO_BASSI",
-        target: "litri",
-        message:
-          "Litri sospetti (< 20 L per singolo rifornimento, insolito per un camion)",
-      });
-    }
-  }
-
-  return result;
-}
 
 const safeText = (value: unknown): string => String(value ?? "").trim();
 
@@ -337,33 +186,6 @@ const normalizeTarga = (value: unknown): string =>
     .replace(/[^A-Z0-9]/g, "")
     .trim();
 
-export const normalizeTargaFilter = (value: unknown): string =>
-  String(value ?? "")
-    .toUpperCase()
-    .replace(/\s+/g, "")
-    .trim();
-
-const toNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const normalized = String(value).replace(",", ".").replace(/[^\d.-]/g, "").trim();
-  if (!normalized) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const extractAutistaNome = (record: Record<string, unknown> | null | undefined): string => {
-  const direct = safeText(record?.autistaNome ?? record?.nomeAutista);
-  if (direct) return direct;
-  const rawAutista = record?.autista;
-  if (typeof rawAutista === "string") {
-    return safeText(rawAutista);
-  }
-  if (rawAutista && typeof rawAutista === "object") {
-    return safeText((rawAutista as { nome?: unknown })?.nome);
-  }
-  return "";
-};
 
 const parseDateFlexible = (value: unknown): Date | null => {
   if (!value) return null;
@@ -421,13 +243,6 @@ export const formatDateIt = (value: Date | null): string => {
   return toDisplay(value) || "--/--/----";
 };
 
-export const formatNumberIt = (value: number | null, fractionDigits = 2): string => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  return value.toLocaleString("it-IT", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-};
 
 const startOfDay = (value: Date): Date =>
   new Date(value.getFullYear(), value.getMonth(), value.getDate(), 0, 0, 0, 0);
@@ -448,11 +263,6 @@ const evaluateMaintenanceStatus = (
   return { status: "OK", daysToDeadline: days, priority: 2 };
 };
 
-const mapRefuelSource = (item: NextRifornimentoReadOnlyItem): RefuelSource => {
-  if (item.provenienza === "business") return "dossier";
-  if (item.provenienza === "campo") return "tmp";
-  return "merged";
-};
 
 const mapSegnalazioneRow = (item: NextAutistiSegnalazioneSectionItem): SegnalazioneRow => ({
   id: item.id,
@@ -521,61 +331,13 @@ const mapRichiestaRow = (item: NextAutistiRichiestaSectionItem): RichiestaRow =>
   evasa: item.evasa,
 });
 
-const normalizeRefuelRecord = (
-  record: Record<string, unknown> | null | undefined,
-  index: number,
-  source: RefuelSource
-): RefuelRow | null => {
-  const originId = safeText(record?.id);
-  const targa = normalizeTarga(
-    record?.mezzoTarga ??
-      record?.targaCamion ??
-      record?.targaMotrice ??
-      record?.targaRimorchio ??
-      record?.targa
-  );
-  const dateObj =
-    parseDateFlexible(record?.data) ||
-    parseDateFlexible(record?.dataOra) ||
-    parseDateFlexible(record?.timestamp);
-  if (!targa || !dateObj) return null;
-
-  const tipoRawValue = record?.tipo;
-  const tipoRaw = typeof tipoRawValue === "string" ? tipoRawValue : null;
-  const metodoValue = record?.metodoPagamento;
-  const metodoPagamento =
-    metodoValue === "piccadilly" || metodoValue === "eni" || metodoValue === "contanti"
-      ? metodoValue
-      : null;
-  const paeseValue = record?.paese;
-  const paese = paeseValue === "IT" || paeseValue === "CH" ? paeseValue : null;
-  const derived = deriveRefuelSource(tipoRaw, metodoPagamento);
-
-  return {
-    id: originId || `${source}_${index}`,
-    originId,
-    targa,
-    dateObj,
-    autistaNome: extractAutistaNome(record) || null,
-    badgeAutista: safeText(record?.badgeAutista ?? record?.badge) || null,
-    litri: toNumber(record?.litri),
-    km: toNumber(record?.km),
-    distributore: safeText(record?.distributore ?? record?.tipo),
-    note: safeText(record?.note),
-    source,
-    tipoRaw,
-    metodoPagamento,
-    paese,
-    sourceLabel: derived.label,
-    sourceKey: derived.key,
-  };
-};
-
 export default function NextCentroControlloParityPage() {
   const navigate = useNavigate();
   // PROMPT 30.3: page-tabbar persistita via `?tab=...` (default "sinottica").
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
+  const refuelAnomalyDeepLinkActive = searchParams.get("anomalie") === "1";
+  const refuelAnomalyDeepLinkHandledRef = useRef(false);
   const archivioMode: CentroControlloViewMode =
     tabParam === "archivio" || tabParam === "rifornimenti" ? tabParam : "sinottica";
   const setArchivioMode = useCallback(
@@ -587,6 +349,9 @@ export default function NextCentroControlloParityPage() {
             next.delete("tab");
           } else {
             next.set("tab", mode);
+          }
+          if (mode !== "rifornimenti") {
+            next.delete("anomalie");
           }
           return next;
         },
@@ -600,6 +365,7 @@ export default function NextCentroControlloParityPage() {
     []
   );
   const [loadingRefuels, setLoadingRefuels] = useState(false);
+  const [refuelsLoadedOnce, setRefuelsLoadedOnce] = useState(false);
   const [refuelsError, setRefuelsError] = useState<string | null>(null);
   const [refuelRows, setRefuelRows] = useState<RefuelRow[]>([]);
 
@@ -833,40 +599,18 @@ export default function NextCentroControlloParityPage() {
 
   const loadRefuels = async () => {
     setLoadingRefuels(true);
+    setRefuelsLoadedOnce(false);
     setRefuelsError(null);
     try {
       const snapshot = await readNextRifornimentiReadOnlySnapshot();
-      const rows = snapshot.items
-        .map((item, idx) =>
-          normalizeRefuelRecord(
-            {
-              id: item.id,
-              mezzoTarga: item.targa,
-              autistaNome: item.autistaNome,
-              badgeAutista: item.badgeAutista,
-              litri: item.litri,
-              km: item.km,
-              distributore: item.distributore,
-              note: item.note,
-              timestamp: item.timestamp ?? item.timestampRicostruito ?? item.dataDisplay,
-              data: item.dataDisplay,
-              tipo: item.tipo,
-              metodoPagamento: item.metodoPagamento,
-              paese: item.paese,
-            },
-            idx,
-            mapRefuelSource(item)
-          )
-        )
-        .filter((item): item is RefuelRow => Boolean(item))
-        .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
-      setRefuelRows(rows);
+      setRefuelRows(buildRefuelRowsFromReadOnlyItems(snapshot.items));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore caricamento rifornimenti.";
       setRefuelsError(message);
       setRefuelRows([]);
     } finally {
       setLoadingRefuels(false);
+      setRefuelsLoadedOnce(true);
     }
   };
 
@@ -1089,40 +833,13 @@ export default function NextCentroControlloParityPage() {
   }, [mezziTargheList, targaFilterInput]);
 
   const refuelSeedIndex = useMemo(() => {
-    const fullSortedByTarga = new Map<string, RefuelRow[]>();
-    const fullSorted = [...refuelRows].sort((left, right) => {
-      const targaCompare = left.targa.localeCompare(right.targa, "it", { sensitivity: "base" });
-      if (targaCompare !== 0) return targaCompare;
-      return left.dateObj.getTime() - right.dateObj.getTime();
-    });
-    for (const row of fullSorted) {
-      const list = fullSortedByTarga.get(row.targa);
-      if (list) {
-        list.push(row);
-      } else {
-        fullSortedByTarga.set(row.targa, [row]);
-      }
-    }
-    const findSeed = (row: RefuelRow): RefuelRow | null => {
-      const list = fullSortedByTarga.get(row.targa);
-      if (!list || list.length === 0) return null;
-      const rowTs = row.dateObj.getTime();
-      for (let i = list.length - 1; i >= 0; i -= 1) {
-        const candidate = list[i];
-        if (
-          candidate.dateObj.getTime() < rowTs &&
-          typeof candidate.km === "number" &&
-          candidate.km > 0 &&
-          typeof row.km === "number" &&
-          candidate.km < row.km
-        ) {
-          return candidate;
-        }
-      }
-      return null;
-    };
-    return { findSeed };
+    return buildRefuelSeedIndex(refuelRows);
   }, [refuelRows]);
+
+  const refuelConsumptionIndex = useMemo(
+    () => buildRefuelConsumptionIndex(refuelRows, refuelSeedIndex),
+    [refuelRows, refuelSeedIndex],
+  );
 
   const filteredMonthlyRefuelsWithMedia = useMemo(() => {
     const mediaById = new Map<string, { label: string; value: number | null }>();
@@ -1211,22 +928,32 @@ export default function NextCentroControlloParityPage() {
   const filteredMonthlyRefuelsWithAnomalies = useMemo(() => {
     return filteredMonthlyRefuelsWithMedia.map((entry) => {
       const seed = refuelSeedIndex.findSeed(entry.row);
-      const anomalies = detectRefuelAnomalies(entry.row, seed);
+      const anomalies = detectRefuelReportAnomalies(
+        entry.row,
+        seed,
+        refuelConsumptionIndex,
+      );
       return { ...entry, anomalies };
     });
-  }, [filteredMonthlyRefuelsWithMedia, refuelSeedIndex]);
+  }, [filteredMonthlyRefuelsWithMedia, refuelSeedIndex, refuelConsumptionIndex]);
 
   const anomaliesSummary = useMemo(() => {
     let totalRows = 0;
+    let dataRows = 0;
     let kmRows = 0;
     let litriRows = 0;
+    let consumoRows = 0;
     for (const entry of filteredMonthlyRefuelsWithAnomalies) {
       if (entry.anomalies.length === 0) continue;
       totalRows += 1;
+      if (entry.anomalies.some((a) => a.target === "km" || a.target === "litri")) {
+        dataRows += 1;
+      }
       if (entry.anomalies.some((a) => a.target === "km")) kmRows += 1;
       if (entry.anomalies.some((a) => a.target === "litri")) litriRows += 1;
+      if (entry.anomalies.some((a) => a.target === "consumo")) consumoRows += 1;
     }
-    return { totalRows, kmRows, litriRows };
+    return { totalRows, dataRows, kmRows, litriRows, consumoRows };
   }, [filteredMonthlyRefuelsWithAnomalies]);
 
   const displayedRefuelsWithAnomalies = useMemo(() => {
@@ -1235,6 +962,54 @@ export default function NextCentroControlloParityPage() {
       (entry) => entry.anomalies.length > 0,
     );
   }, [filteredMonthlyRefuelsWithAnomalies, anomaliesFilterActive]);
+
+  useEffect(() => {
+    if (!refuelAnomalyDeepLinkActive) {
+      refuelAnomalyDeepLinkHandledRef.current = false;
+    }
+  }, [refuelAnomalyDeepLinkActive]);
+
+  useEffect(() => {
+    if (!refuelAnomalyDeepLinkActive || archivioMode !== "rifornimenti") return;
+    setAnomaliesFilterActive(true);
+    if (loadingRefuels || !refuelsLoadedOnce || refuelAnomalyDeepLinkHandledRef.current) {
+      return;
+    }
+
+    const mostRecent = filteredMonthlyRefuelsWithAnomalies
+      .filter((entry) => entry.anomalies.length > 0)
+      .sort(
+        (left, right) =>
+          right.row.dateObj.getTime() - left.row.dateObj.getTime(),
+      )[0]?.row;
+
+    refuelAnomalyDeepLinkHandledRef.current = true;
+    if (mostRecent) {
+      setInvestigationRow(mostRecent);
+      setInvestigationOpen(true);
+    }
+  }, [
+    archivioMode,
+    filteredMonthlyRefuelsWithAnomalies,
+    loadingRefuels,
+    refuelAnomalyDeepLinkActive,
+    refuelsLoadedOnce,
+  ]);
+
+  const closeInvestigationModal = useCallback(() => {
+    setInvestigationOpen(false);
+    setInvestigationRow(null);
+    if (searchParams.has("anomalie")) {
+      setSearchParams(
+        (prev: URLSearchParams) => {
+          const next = new URLSearchParams(prev);
+          next.delete("anomalie");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, setSearchParams]);
 
 
   const segnalazioniOperativeRows = useMemo(
@@ -1266,6 +1041,7 @@ export default function NextCentroControlloParityPage() {
       isAnomala: entry.anomalies.length > 0,
       hasKmAnomaly: entry.anomalies.some((a) => a.target === "km"),
       hasLitriAnomaly: entry.anomalies.some((a) => a.target === "litri"),
+      hasConsumoAnomaly: entry.anomalies.some((a) => a.target === "consumo"),
     }));
 
   const buildAnomalieDettaglio = (): Array<{
@@ -1344,8 +1120,10 @@ export default function NextCentroControlloParityPage() {
             },
             anomalieSummary: {
               totalRows: anomaliesSummary.totalRows,
+              dataRows: anomaliesSummary.dataRows,
               kmRows: anomaliesSummary.kmRows,
               litriRows: anomaliesSummary.litriRows,
+              consumoRows: anomaliesSummary.consumoRows,
             },
             anomalieDettaglio: buildAnomalieDettaglio(),
           }),
@@ -1972,14 +1750,14 @@ export default function NextCentroControlloParityPage() {
                 <strong>{anomaliesSummary.totalRows}</strong>
                 {anomaliesSummary.totalRows > 0 && (
                   <>
-                    {anomaliesSummary.kmRows > 0 && (
+                    {anomaliesSummary.dataRows > 0 && (
                       <small className="cc-summary-sub">
-                        {anomaliesSummary.kmRows} km incoerenti
+                        {anomaliesSummary.dataRows} errori dati
                       </small>
                     )}
-                    {anomaliesSummary.litriRows > 0 && (
+                    {anomaliesSummary.consumoRows > 0 && (
                       <small className="cc-summary-sub">
-                        {anomaliesSummary.litriRows} litri sospetti
+                        {anomaliesSummary.consumoRows} consumi sospetti
                       </small>
                     )}
                   </>
@@ -2011,6 +1789,7 @@ export default function NextCentroControlloParityPage() {
                       <th>Litri</th>
                       <th>Km</th>
                       <th>Fonte</th>
+                      <th>Stato</th>
                       <th className="cc-col-media">Media km/L</th>
                     </tr>
                   </thead>
@@ -2021,8 +1800,18 @@ export default function NextCentroControlloParityPage() {
                         const litriAnomalies = anomalies.filter(
                           (a) => a.target === "litri",
                         );
+                        const dataAnomalies = anomalies.filter(
+                          (a) => a.target === "km" || a.target === "litri",
+                        );
+                        const consumoAnomalies = anomalies.filter(
+                          (a) => a.target === "consumo",
+                        );
                         const trClass =
-                          anomalies.length > 0 ? "cc-row-anomala" : undefined;
+                          dataAnomalies.length > 0
+                            ? "cc-row-anomala"
+                            : consumoAnomalies.length > 0
+                              ? "cc-row-anomala-consumo"
+                              : undefined;
                         const renderWarning = (list: Anomaly[]) => {
                           if (list.length === 0) return null;
                           const tooltip = list.map((a) => a.message).join(" · ");
@@ -2040,6 +1829,40 @@ export default function NextCentroControlloParityPage() {
                             >
                               ⚠
                             </button>
+                          );
+                        };
+                        const openInvestigation = (e: ReactMouseEvent) => {
+                          e.stopPropagation();
+                          setInvestigationRow(item);
+                          setInvestigationOpen(true);
+                        };
+                        const renderAnomalyPills = () => {
+                          if (anomalies.length === 0) {
+                            return <span className="cc-muted-cell">-</span>;
+                          }
+                          return (
+                            <div className="cc-anomaly-pill-row">
+                              {dataAnomalies.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="cc-anomaly-pill cc-anomaly-pill-data"
+                                  title={dataAnomalies.map((a) => a.message).join(" - ")}
+                                  onClick={openInvestigation}
+                                >
+                                  Errore dati
+                                </button>
+                              )}
+                              {consumoAnomalies.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="cc-anomaly-pill cc-anomaly-pill-consumo"
+                                  title={consumoAnomalies.map((a) => a.message).join(" - ")}
+                                  onClick={openInvestigation}
+                                >
+                                  Consumo sospetto
+                                </button>
+                              )}
+                            </div>
                           );
                         };
                         const trClassNames = [trClass, "cc-row-clickable"]
@@ -2079,6 +1902,7 @@ export default function NextCentroControlloParityPage() {
                               {renderWarning(kmAnomalies)}
                             </td>
                             <td>{item.sourceLabel}</td>
+                            <td>{renderAnomalyPills()}</td>
                             <td className="cc-col-media">{mediaLitriKm}</td>
                           </tr>
                         );
@@ -2170,13 +1994,10 @@ export default function NextCentroControlloParityPage() {
       <NextCentroControlloIndagineModal
         open={investigationOpen}
         row={investigationRow}
-        onClose={() => {
-          setInvestigationOpen(false);
-          setInvestigationRow(null);
-        }}
+        onClose={closeInvestigationModal}
         refuelRows={refuelRows}
         refuelSeedIndex={refuelSeedIndex}
-        mediaFlottaMese={mediaFlottaMese}
+        refuelConsumptionIndex={refuelConsumptionIndex}
       />
 
       <NextCentroControlloAnalisiModal

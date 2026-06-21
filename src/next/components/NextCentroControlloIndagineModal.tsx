@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   Anomaly,
-  MediaFlottaContext,
+  RefuelConsumptionIndex,
   RefuelRow,
   RefuelSeedIndex,
 } from "../types/centroControlloTypes";
 import {
   describeAnomaly,
-  detectRefuelAnomalies,
+  detectRefuelReportAnomalies,
   formatDateItDisplay,
   formatDecimalIt,
   formatIntegerIt,
   formatMediaLitriKm,
-} from "../NextCentroControlloParityPage";
+} from "../helpers/refuelAnomalies";
 
 type Props = {
   open: boolean;
@@ -20,7 +20,7 @@ type Props = {
   onClose: () => void;
   refuelRows: RefuelRow[];
   refuelSeedIndex: RefuelSeedIndex;
-  mediaFlottaMese: MediaFlottaContext;
+  refuelConsumptionIndex: RefuelConsumptionIndex;
 };
 
 export default function NextCentroControlloIndagineModal({
@@ -29,12 +29,13 @@ export default function NextCentroControlloIndagineModal({
   onClose,
   refuelRows,
   refuelSeedIndex,
-  mediaFlottaMese: _mediaFlottaMese,
+  refuelConsumptionIndex,
 }: Props) {
   const [investigationExpansion, setInvestigationExpansion] = useState<5 | 10 | "all">(5);
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetta lo stato locale quando si apre un'indagine diversa.
     setInvestigationExpansion(5);
   }, [open, row]);
 
@@ -65,7 +66,11 @@ export default function NextCentroControlloIndagineModal({
           mediaLitriKmValue = mediaKmL;
         }
       }
-      const anomalies = detectRefuelAnomalies(innerRow, seed);
+      const anomalies = detectRefuelReportAnomalies(
+        innerRow,
+        seed,
+        refuelConsumptionIndex,
+      );
       return { row: innerRow, seed, mediaLitriKm, mediaLitriKmValue, anomalies };
     };
 
@@ -105,9 +110,10 @@ export default function NextCentroControlloIndagineModal({
     const targetSeed = targetEntry.seed;
     const targetMediaLabel = targetEntry.mediaLitriKm;
 
-    const descriptions = targetAnomalies.map((a) =>
-      describeAnomaly(a, target, targetSeed),
-    );
+    const descriptions = targetAnomalies.map((anomaly) => ({
+      anomaly,
+      text: describeAnomaly(anomaly, target, targetSeed),
+    }));
 
     return {
       target,
@@ -124,7 +130,14 @@ export default function NextCentroControlloIndagineModal({
       ultimi5AutistaCount,
       autistaKey,
     };
-  }, [open, row, investigationExpansion, refuelRows, refuelSeedIndex]);
+  }, [
+    open,
+    row,
+    investigationExpansion,
+    refuelRows,
+    refuelSeedIndex,
+    refuelConsumptionIndex,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -156,11 +169,34 @@ export default function NextCentroControlloIndagineModal({
   const targetLitriAnomalies = targetAnomalies.filter(
     (a) => a.target === "litri",
   );
+  const targetConsumoAnomalies = targetAnomalies.filter(
+    (a) => a.target === "consumo",
+  );
+  const targetDataAnomalies = targetAnomalies.filter(
+    (a) => a.target === "km" || a.target === "litri",
+  );
+  const hasOnlyConsumptionAnomaly =
+    targetConsumoAnomalies.length > 0 && targetDataAnomalies.length === 0;
 
   let p1Title: string;
   let p1Sub: string;
   let p1Variant: "isolata" | "parziale" | "sistematica" = "parziale";
-  if (mezzoCount <= 1) {
+  if (hasOnlyConsumptionAnomaly && mezzoCount <= 1) {
+    p1Title = `Consumo sospetto ISOLATO - solo 1 segnale su ${nMezzo} rifornimenti recenti del mezzo.`;
+    p1Sub =
+      "Non e un errore matematico: il consumo e possibile, ma fuori media storica autista+targa.";
+    p1Variant = "isolata";
+  } else if (hasOnlyConsumptionAnomaly && mezzoCount === 2) {
+    p1Title = `Consumo sospetto parzialmente ricorrente - 2 segnali su ${nMezzo} rifornimenti recenti del mezzo.`;
+    p1Sub =
+      "Verifica se lo stesso schema si ripete su percorso, carico, mezzo o autista.";
+    p1Variant = "parziale";
+  } else if (hasOnlyConsumptionAnomaly) {
+    p1Title = `Consumo sospetto SISTEMATICO - ${mezzoCount} segnali su ${nMezzo} rifornimenti recenti del mezzo.`;
+    p1Sub =
+      "Pattern ricorrente: serve indagine operativa, non una correzione automatica.";
+    p1Variant = "sistematica";
+  } else if (mezzoCount <= 1) {
     p1Title = `Anomalia ISOLATA — solo 1 anomalia su ${nMezzo} rifornimenti recenti del mezzo.`;
     p1Sub =
       "I rifornimenti precedenti e successivi sono coerenti tra loro. L'errore è circoscritto a questo singolo record.";
@@ -170,6 +206,16 @@ export default function NextCentroControlloIndagineModal({
     p1Sub =
       "Alcuni rifornimenti presentano segnalazioni. Verifica se c'è un pattern.";
     p1Variant = "parziale";
+  // eslint-disable-next-line no-dupe-else-if -- ramo irraggiungibile dopo la nuova casistica consumo, mantenuto per non toccare altra logica del modale.
+  } else if (hasOnlyConsumptionAnomaly) {
+    const autistaLabel = target.autistaNome ?? "â€”";
+    const consumption = targetConsumoAnomalies[0]?.consumption ?? null;
+    p1Title = `Consumo sospetto su ${target.targa}: confronto storico autista+targa per ${autistaLabel}.`;
+    p1Sub = consumption
+      ? `Rifornimento attuale ${formatMediaLitriKm(
+          consumption.currentKmL,
+        )}; media storica ${formatMediaLitriKm(consumption.historicalKmL)}.`
+      : "Confronto storico disponibile sul dettaglio anomalia.";
   } else {
     p1Title = `Anomalia SISTEMATICA — ${mezzoCount} anomalie su ${nMezzo} rifornimenti recenti del mezzo.`;
     p1Sub =
@@ -197,6 +243,15 @@ export default function NextCentroControlloIndagineModal({
     p3Title =
       "Autista non identificato sul record corrente — analisi non applicabile.";
     p3Sub = "";
+  } else if (hasOnlyConsumptionAnomaly) {
+    const autistaLabel = target.autistaNome ?? "â€”";
+    const consumption = targetConsumoAnomalies[0]?.consumption ?? null;
+    p3Title = `Autista ${autistaLabel} su ${target.targa}: confronto sugli ultimi 20 rifornimenti validi della stessa coppia autista+targa.`;
+    p3Sub = consumption
+      ? `Rifornimento attuale ${formatMediaLitriKm(
+          consumption.currentKmL,
+        )}; media storica ${formatMediaLitriKm(consumption.historicalKmL)}.`
+      : "Confronto storico disponibile sul dettaglio anomalia.";
   } else {
     const autistaLabel = target.autistaNome ?? "—";
     p3Title = `Autista ${autistaLabel}: ${autistaCount}/${nAutista} anomalie sui suoi ultimi ${nAutista} rifornimenti (su qualsiasi mezzo).`;
@@ -214,7 +269,10 @@ export default function NextCentroControlloIndagineModal({
   }
 
   let p4Title: string;
-  if (mezzoCount >= 2 && autistaCount >= 2) {
+  if (hasOnlyConsumptionAnomaly) {
+    p4Title =
+      "Il rifornimento e molto sotto la media storica. Prima di correggere o contestare, confronta km, litri, ricevuta, percorso, carico e stato del mezzo.";
+  } else if (mezzoCount >= 2 && autistaCount >= 2) {
     p4Title =
       "Anomalie concentrate su MEZZO E AUTISTA insieme. Probabile accoppiamento problematico (autista che usa spesso questo mezzo e fa errori specifici).";
   } else if (mezzoCount >= 2 && autistaCount < 2) {
@@ -229,10 +287,13 @@ export default function NextCentroControlloIndagineModal({
 
   const renderHistoryWarning = (list: Anomaly[]) => {
     if (list.length === 0) return null;
+    const hasOnlyConsumption = list.every((a) => a.target === "consumo");
     const tooltip = list.map((a) => a.message).join(" · ");
     return (
       <span
-        className="cc-cell-warning"
+        className={`cc-cell-warning${
+          hasOnlyConsumption ? " cc-cell-warning-consumo" : ""
+        }`}
         title={tooltip}
         aria-label="Anomalia rilevata"
       >
@@ -323,17 +384,32 @@ export default function NextCentroControlloIndagineModal({
                 <strong>{target.sourceLabel}</strong>
               </div>
             </div>
+            {targetConsumoAnomalies.length > 0 && (
+              <div className="cc-investigation-consumption-box">
+                <span className="cc-anomaly-pill cc-anomaly-pill-consumo">
+                  Consumo sospetto
+                </span>
+                <p>
+                  Il dato e possibile ma fuori media: verificare prima di
+                  correggere o contestare.
+                </p>
+              </div>
+            )}
             {descriptions.length > 0 && (
               <div className="cc-investigation-anomaly-list">
-                {descriptions.map((desc, idx) => (
+                {descriptions.map(({ anomaly, text }, idx) => (
                   <div
                     key={idx}
-                    className="cc-investigation-anomaly-desc"
+                    className={`cc-investigation-anomaly-desc${
+                      anomaly.target === "consumo"
+                        ? " cc-investigation-anomaly-desc-consumo"
+                        : ""
+                    }`}
                   >
                     <span className="cc-investigation-anomaly-icon">
                       ⚠
                     </span>
-                    <span>{desc}</span>
+                    <span>{text}</span>
                   </div>
                 ))}
               </div>

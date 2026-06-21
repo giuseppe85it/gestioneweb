@@ -4,6 +4,7 @@ import "./next-home.css";
 import { getNextRoleFromSearch } from "./nextAccess";
 import {
   NEXT_AUTISTI_APP_PATH,
+  NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_MAGAZZINO_PATH,
   buildNextDossierPath,
   buildNextManutenzioniPath,
@@ -29,7 +30,11 @@ import {
   readNextInventarioSnapshot,
   type NextInventarioSnapshot,
 } from "./domain/nextInventarioDomain";
-import { readNextProcurementSnapshot } from "./domain/nextProcurementDomain";
+import { readNextRifornimentiReadOnlySnapshot } from "./domain/nextRifornimentiDomain";
+import {
+  buildRefuelReportAnomalySummary,
+  buildRefuelRowsFromReadOnlyItems,
+} from "./helpers/refuelAnomalies";
 import { toDisplay } from "./helpers/dateUnica";
 import { saveNextHomeLuogoMezzo } from "./writers/nextHomeLuogoMezzoWriter";
 
@@ -37,7 +42,7 @@ type StatCard = {
   label: string;
   value: string;
   detail: string;
-  action?: "segnalazioni";
+  action?: "segnalazioni" | "anomalieRifornimenti";
 };
 
 type StatusTone = "ok" | "warning" | "danger" | "idle" | "info";
@@ -92,8 +97,7 @@ type HomeLavoriAlert = {
 type HomeStatsState = {
   lavoriAperti: number | null;
   lavoriUrgenti: number | null;
-  ordiniInAttesa: number | null;
-  ordiniParziali: number | null;
+  anomalieRifornimenti: number | null;
   segnalazioniNuove: number | null;
 };
 
@@ -225,16 +229,16 @@ function formatUrgentLavoriDetail(count: number | null): string {
   return `${count} ${count === 1 ? "urgente" : "urgenti"}`;
 }
 
-function formatPendingOrdersDetail(count: number | null): string {
+function formatRefuelAnomaliesDetail(count: number | null): string {
   if (count == null) {
     return "in caricamento";
   }
 
   if (count === 0) {
-    return "nessuno parziale";
+    return "nessuna";
   }
 
-  return `${count} ${count === 1 ? "parziale" : "parziali"}`;
+  return "da verificare";
 }
 
 function mapAssetStatusTone(statusLabel: string): StatusTone {
@@ -444,8 +448,7 @@ export default function NextHomePage() {
   const [homeStats, setHomeStats] = useState<HomeStatsState>({
     lavoriAperti: null,
     lavoriUrgenti: null,
-    ordiniInAttesa: null,
-    ordiniParziali: null,
+    anomalieRifornimenti: null,
     segnalazioniNuove: null,
   });
   const [lavoriSnapshot, setLavoriSnapshot] = useState<NextManutenzioniLegacyDatasetRecord[] | null>(null);
@@ -457,13 +460,14 @@ export default function NextHomePage() {
 
   const loadSnapshot = useCallback(
     async (isActive: () => boolean = () => true) => {
-      const [centroResult, lavoriResult, procurementResult, inventarioResult, scadenzeManutResult] =
+      const now = new Date();
+      const [centroResult, lavoriResult, rifornimentiResult, inventarioResult, scadenzeManutResult] =
         await Promise.allSettled([
-          readNextCentroControlloSnapshot(Date.now()),
+          readNextCentroControlloSnapshot(now.getTime()),
           readNextManutenzioniDaFareSnapshot(),
-          readNextProcurementSnapshot({ includeCloneOverlays: false }),
+          readNextRifornimentiReadOnlySnapshot(),
           readNextInventarioSnapshot({ includeCloneOverlays: false }),
-          readNextManutenzioniScadenzeSnapshot(Date.now()),
+          readNextManutenzioniScadenzeSnapshot(now.getTime()),
         ]);
 
       if (!isActive()) {
@@ -501,13 +505,15 @@ export default function NextHomePage() {
           lavoriResult.status === "fulfilled"
             ? lavoriResult.value.filter((item) => item.urgenza === "alta").length
             : null,
-        ordiniInAttesa:
-          procurementResult.status === "fulfilled"
-            ? procurementResult.value.counts.pendingOrders
-            : null,
-        ordiniParziali:
-          procurementResult.status === "fulfilled"
-            ? procurementResult.value.counts.partialOrders
+        anomalieRifornimenti:
+          rifornimentiResult.status === "fulfilled"
+            ? buildRefuelReportAnomalySummary(
+                buildRefuelRowsFromReadOnlyItems(rifornimentiResult.value.items),
+                {
+                  selectedMonth: now.getMonth() + 1,
+                  selectedYear: now.getFullYear(),
+                },
+              ).totalRows
             : null,
         segnalazioniNuove:
           centroResult.status === "fulfilled" ? centroResult.value.counters.segnalazioniOperative : null,
@@ -539,9 +545,10 @@ export default function NextHomePage() {
         detail: formatUrgentLavoriDetail(homeStats.lavoriUrgenti),
       },
       {
-        label: "Ordini in attesa",
-        value: formatHomeStatValue(homeStats.ordiniInAttesa),
-        detail: formatPendingOrdersDetail(homeStats.ordiniParziali),
+        label: "Anomalie rifornimenti",
+        value: formatHomeStatValue(homeStats.anomalieRifornimenti),
+        detail: formatRefuelAnomaliesDetail(homeStats.anomalieRifornimenti),
+        action: "anomalieRifornimenti",
       },
       {
         label: "Segnalazioni",
@@ -792,12 +799,18 @@ export default function NextHomePage() {
 
       <section className="next-home__stats-grid" aria-label="Statistiche dashboard">
         {statCards.map((card) =>
-          card.action === "segnalazioni" ? (
+          card.action ? (
             <button
               key={card.label}
               type="button"
               className="next-home__stat-card next-home__stat-card--button"
-              onClick={() => navigate("/next/autisti-admin?module=segnalazioni")}
+              onClick={() => {
+                if (card.action === "segnalazioni") {
+                  navigate("/next/autisti-admin?module=segnalazioni");
+                  return;
+                }
+                navigate(`${NEXT_CENTRO_CONTROLLO_PATH}?tab=rifornimenti&anomalie=1`);
+              }}
             >
               <div className="next-home__stat-label">{card.label}</div>
               <div className="next-home__stat-value">{card.value}</div>

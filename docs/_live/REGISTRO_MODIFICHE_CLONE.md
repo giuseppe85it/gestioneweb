@@ -1,5 +1,41 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-21 2042
+
+DATA: `2026-06-21`
+TITOLO: `Card Home anomalie rifornimenti`
+FILE TOCCATI: `src/next/NextHomePage.tsx`, `src/next/NextCentroControlloParityPage.tsx`, `src/next/helpers/refuelAnomalies.ts`, `src/next/components/NextCentroControlloIndagineModal.tsx`, `CONTEXT_CLAUDE.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`
+COSA: `La Home NEXT sostituisce Ordini in attesa con Anomalie rifornimenti. Il conteggio usa la stessa regola del Report rifornimenti e il click apre direttamente il tab rifornimenti con filtro anomalie e modale indagine.`
+ESITO: `FATTO`
+NOTE: `Backup creato in backups/codex-20260621-home-anomalie. Verifiche: eslint mirato OK, build canonica OK, diff check OK, smoke browser Home -> modale OK. Nessun writer, barrier o dataset modificato.`
+
+## 2026-06-21 2006
+
+DATA: `2026-06-21`
+TITOLO: `Microcopy consumo sospetto`
+FILE TOCCATI: `src/next/NextCentroControlloParityPage.tsx`, `src/next/components/NextCentroControlloIndagineModal.tsx`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`
+COSA: `Rimossi dai testi UI del consumo sospetto i riferimenti espliciti al furto. Restano indicazioni operative neutre su percorso, carico, ricevuta e possibili errori km/litri.`
+ESITO: `FATTO`
+NOTE: `Backup creato in backups/codex-20260621-200622. Nessuna modifica a calcolo, writer, barrier, route o dataset.`
+
+## 2026-06-21 1947
+
+DATA: `2026-06-21`
+TITOLO: `Consumi sospetti Report rifornimenti`
+FILE TOCCATI: `src/next/NextCentroControlloParityPage.tsx`, `src/next/components/NextCentroControlloIndagineModal.tsx`, `src/next/types/centroControlloTypes.ts`, `src/next/next-centro-controllo.css`, `src/utils/pdfEngine.ts`, `CONTEXT_CLAUDE.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`
+COSA: `Il Report rifornimenti NEXT distingue errori dati e consumi sospetti. La nuova regola legge solo rifornimenti gia caricati: ultimi 20 validi dello stesso autista sulla stessa targa, con segnale se il km/L corrente e oltre il 30% peggiore della media storica.`
+ESITO: `FATTO`
+NOTE: `Verifiche: eslint mirato OK, build canonica OK. Backup creato in backups/codex-20260621-193327. Nessun writer, barrier, route o dataset modificato.`
+
+## 2026-06-21 1855
+
+DATA: `2026-06-21`
+TITOLO: `Fix seed anomalie rifornimenti`
+FILE TOCCATI: `src/next/NextCentroControlloParityPage.tsx`, `CONTEXT_CLAUDE.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`
+COSA: `Nel Report rifornimenti NEXT il confronto anomalie usa ora il rifornimento precedente per data/targa con km valido, senza filtrarlo per km minori del record corrente. Questo consente di rilevare anche km tornati indietro o invariati. Home KPI non ancora modificata.`
+ESITO: `FATTO`
+NOTE: `Verifiche: diff check OK, eslint mirato OK, build canonica OK. Backup creato in backups/codex-20260621-185525.`
+
 ## 2026-06-21 1734
 
 DATA: `2026-06-21`

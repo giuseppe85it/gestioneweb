@@ -2915,6 +2915,7 @@ export type RifornimentiMensiliPdfItem = {
   isAnomala?: boolean | null;
   hasKmAnomaly?: boolean | null;
   hasLitriAnomaly?: boolean | null;
+  hasConsumoAnomaly?: boolean | null;
 };
 
 export type RifornimentiMensiliPdfInput = {
@@ -2931,8 +2932,10 @@ export type RifornimentiMensiliPdfInput = {
   };
   anomalieSummary?: {
     totalRows: number;
+    dataRows?: number;
     kmRows: number;
     litriRows: number;
+    consumoRows?: number;
   };
   anomalieDettaglio?: Array<{
     targa: string;
@@ -3112,6 +3115,10 @@ async function buildRifornimentiMensiliMonthlyDocument(
       item?.hasLitriAnomaly === true ? `${litriText} ${WARNING_GLYPH}` : litriText;
     const kmCell =
       item?.hasKmAnomaly === true ? `${kmText} ${WARNING_GLYPH}` : kmText;
+    const mediaCell =
+      item?.hasConsumoAnomaly === true
+        ? `${mediaLabel} ${WARNING_GLYPH}`
+        : mediaLabel;
     return [
       safeStr(item?.data) || "-",
       fmtTarga(item?.targa) || "-",
@@ -3119,7 +3126,7 @@ async function buildRifornimentiMensiliMonthlyDocument(
       litriCell,
       kmCell,
       fonte,
-      mediaLabel,
+      mediaCell,
     ];
   });
 
@@ -3188,7 +3195,23 @@ async function buildRifornimentiMensiliMonthlyDocument(
     doc.setTextColor(80, 80, 80);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const anomalieText = `${WARNING_GLYPH} ${anomalie.totalRows} anomalie rilevate: ${anomalie.kmRows} km incoerenti - ${anomalie.litriRows} litri sospetti`;
+    const anomalieParts: string[] = [];
+    const dataRows =
+      anomalie.dataRows ?? Math.max(anomalie.kmRows, anomalie.litriRows);
+    const consumoRows = anomalie.consumoRows ?? 0;
+    if (dataRows > 0) {
+      anomalieParts.push(`${dataRows} errori dati`);
+    }
+    if (consumoRows > 0) {
+      anomalieParts.push(`${consumoRows} consumi sospetti`);
+    }
+    const anomalieText = `${WARNING_GLYPH} ${
+      anomalie.totalRows
+    } anomalie rilevate: ${
+      anomalieParts.length > 0
+        ? anomalieParts.join(" - ")
+        : `${anomalie.totalRows} da verificare`
+    }`;
     doc.text(anomalieText, 14, summaryY);
   }
 

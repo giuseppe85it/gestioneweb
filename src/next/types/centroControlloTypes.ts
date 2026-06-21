@@ -56,14 +56,24 @@ export type AnomalyType =
   | "KM_INVARIATI"
   | "LITRI_TROPPO_ALTI"
   | "LITRI_NON_VALIDI"
-  | "LITRI_TROPPO_BASSI";
+  | "LITRI_TROPPO_BASSI"
+  | "CONSUMO_SOSPETTO_MEDIA_AUTISTA_TARGA";
 
-export type AnomalyTarget = "km" | "litri";
+export type AnomalyTarget = "km" | "litri" | "consumo";
+
+export type RefuelConsumptionSuspicion = {
+  currentKmL: number;
+  historicalKmL: number;
+  historyCount: number;
+  deltaPercent: number;
+  thresholdFactor: number;
+};
 
 export type Anomaly = {
   type: AnomalyType;
   target: AnomalyTarget;
   message: string;
+  consumption?: RefuelConsumptionSuspicion;
 };
 
 export type MediaFlottaContext = {
@@ -74,4 +84,11 @@ export type MediaFlottaContext = {
 
 export type RefuelSeedIndex = {
   findSeed: (row: RefuelRow) => RefuelRow | null;
+};
+
+export type RefuelConsumptionIndex = {
+  findSuspicion: (
+    row: RefuelRow,
+    seed: RefuelRow | null,
+  ) => RefuelConsumptionSuspicion | null;
 };

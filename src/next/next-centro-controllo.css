@@ -406,6 +406,50 @@
   border-radius: 3px;
 }
 
+.next-centro-controllo-scope .cc-cell-warning-consumo {
+  color: #b46a00;
+}
+
+.next-centro-controllo-scope .cc-cell-warning-consumo:hover,
+.next-centro-controllo-scope .cc-cell-warning-consumo:focus-visible {
+  color: #825000;
+}
+
+.next-centro-controllo-scope .cc-anomaly-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.next-centro-controllo-scope .cc-anomaly-pill {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.next-centro-controllo-scope .cc-anomaly-pill-data {
+  background: #ffe8e4;
+  border-color: #d89f99;
+  color: #9a2f22;
+}
+
+.next-centro-controllo-scope .cc-anomaly-pill-consumo {
+  background: #fff3d7;
+  border-color: #deba76;
+  color: #8a5a12;
+}
+
+.next-centro-controllo-scope .cc-muted-cell {
+  color: #9a8565;
+}
+
 .next-centro-controllo-scope .cc-investigation-overlay {
   position: fixed;
   inset: 0;
@@ -540,6 +584,30 @@
   color: #4f381c;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.next-centro-controllo-scope .cc-investigation-anomaly-desc-consumo {
+  background: #fff8e9;
+  border-color: #deba76;
+}
+
+.next-centro-controllo-scope .cc-investigation-consumption-box {
+  margin-top: 12px;
+  border: 1px solid #deba76;
+  border-radius: 10px;
+  background: #fff8e9;
+  padding: 10px 12px;
+}
+
+.next-centro-controllo-scope .cc-investigation-consumption-box p {
+  margin: 8px 0 0;
+  color: #6b4d18;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.next-centro-controllo-scope .cc-investigation-consumption-box .cc-anomaly-pill {
+  cursor: default;
 }
 
 .next-centro-controllo-scope .cc-investigation-anomaly-icon {
@@ -1131,6 +1199,12 @@
 .next-centro-controllo-scope .cc-table tbody tr.cc-row-anomala:nth-child(even) {
   background: #fff5f4;
   box-shadow: inset 3px 0 0 0 #b03a2e;
+}
+
+.next-centro-controllo-scope .cc-table tbody tr.cc-row-anomala-consumo,
+.next-centro-controllo-scope .cc-table tbody tr.cc-row-anomala-consumo:nth-child(even) {
+  background: #fff8e9;
+  box-shadow: inset 3px 0 0 0 #d99022;
 }
 
 .next-centro-controllo-scope .cc-summary-card-clickable {
