@@ -20,7 +20,10 @@ export type OrarioGiornoRecord = {
   inizio: string | null; // "HH:MM" (null se assenza)
   fine: string | null; // "HH:MM" (null se assenza)
   notte: boolean; // flag, default false
-  noPausa: boolean; // flag, default false
+  noPausa: boolean; // flag: true ⟺ pausa effettiva = 0 (nessuna pausa). Mantenuto per
+  // retrocompat e per i lettori binari (colonna). Default false.
+  pausaMin?: number | null; // SPEC §4 — minuti di pausa REALI scalati dal lordo (pausa
+  // parziale). Se assente si applica il fallback su `noPausa` (vedi pausaEffettivaMinuti).
   note: string; // testo libero, "" se vuoto
   createdAt: number; // epoch ms, creazione record
   updatedAt: number; // epoch ms, ultima modifica
@@ -128,15 +131,33 @@ export function formatMinutesToHHMM(totalMinutes: number | null | undefined): st
   return `${h}:${pad2(m)}`;
 }
 
+// SPEC §4 — Minuti di pausa EFFETTIVI da scalare dal lordo. SINGLE SOURCE usata da
+// app autista, gestionale e PDF: nessuno deve duplicare questa regola di fallback.
+//  - se `pausaMin` è un numero valido (≥ 0) → vale quello (pausa parziale reale);
+//  - altrimenti retrocompat sui record già salvati (solo `noPausa`): true → 0, false → 60.
+// Va passato SEMPRE l'intero record (non il solo `noPausa`), così i record vecchi e nuovi
+// danno lo stesso risultato in ogni contesto.
+export function pausaEffettivaMinuti(record: {
+  noPausa?: boolean;
+  pausaMin?: number | null;
+}): number {
+  const pm = record.pausaMin;
+  if (typeof pm === "number" && Number.isFinite(pm) && pm >= 0) {
+    return Math.round(pm);
+  }
+  return record.noPausa === true ? 0 : MINUTI_PAUSA_FISSA;
+}
+
 // SPEC §4 — Totale netto del giorno (solo tipo "lavoro").
 // Base = Fine − Inizio; se Fine < Inizio attraversa la mezzanotte (+24h);
-// pausa 1h fissa scalata se NO PAUSA spento (noPausa=false); lordo se acceso.
-// Ritorna minuti, o null se non calcolabile (assenza o orari mancanti).
+// pausa scalata = minuti REALI (pausaEffettivaMinuti): 60 di default, 0 se "No pausa",
+// valore parziale se inserito dall'autista. Ritorna minuti, o null se non calcolabile.
 export function calcTotaleNettoMinuti(record: {
   tipo: TipoGiorno;
   inizio: string | null;
   fine: string | null;
-  noPausa: boolean;
+  noPausa?: boolean;
+  pausaMin?: number | null;
 }): number | null {
   if (record.tipo !== "lavoro") return null;
   const inizio = parseHHMMtoMinutes(record.inizio);
@@ -145,7 +166,7 @@ export function calcTotaleNettoMinuti(record: {
 
   let base = fine - inizio;
   if (base < 0) base += MINUTI_GIORNO; // turno oltre mezzanotte
-  const netto = record.noPausa ? base : base - MINUTI_PAUSA_FISSA;
+  const netto = base - pausaEffettivaMinuti(record);
   return Math.max(0, netto);
 }
 
@@ -159,7 +180,8 @@ export function monteOreGiornoMinuti(record: {
   tipo: TipoGiorno;
   inizio: string | null;
   fine: string | null;
-  noPausa: boolean;
+  noPausa?: boolean;
+  pausaMin?: number | null;
 }): number | null {
   if (record.tipo !== "lavoro") return 0;
   const netto = calcTotaleNettoMinuti(record);
@@ -211,17 +233,29 @@ export function formatDataGGMM(data: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : s;
 }
 
-// SPEC §4 — colonna Pausa Sì/No: "No" quando NO PAUSA acceso, "Sì" altrimenti.
-// Solo per i giorni "lavoro"; per le assenze non si applica.
-export function pausaApplicata(record: { tipo: TipoGiorno; noPausa: boolean }): boolean | null {
+// SPEC §4 — la pausa è applicata se i minuti effettivi sono > 0. Solo per i giorni
+// "lavoro"; per le assenze non si applica.
+export function pausaApplicata(record: {
+  tipo: TipoGiorno;
+  noPausa?: boolean;
+  pausaMin?: number | null;
+}): boolean | null {
   if (record.tipo !== "lavoro") return null;
-  return !record.noPausa;
+  return pausaEffettivaMinuti(record) > 0;
 }
 
-export function pausaLabel(record: { tipo: TipoGiorno; noPausa: boolean }): string {
-  const applicata = pausaApplicata(record);
-  if (applicata === null) return "-";
-  return applicata ? "Sì" : "No";
+// SPEC §4 — etichetta pausa: "No" (0 min), "Sì" (1h piena), "X min" (pausa parziale),
+// "-" per le assenze. Usata da hint app, form gestionale, colonna tabella e PDF.
+export function pausaLabel(record: {
+  tipo: TipoGiorno;
+  noPausa?: boolean;
+  pausaMin?: number | null;
+}): string {
+  if (record.tipo !== "lavoro") return "-";
+  const min = pausaEffettivaMinuti(record);
+  if (min <= 0) return "No";
+  if (min >= MINUTI_PAUSA_FISSA) return "Sì";
+  return `${min} min`;
 }
 
 // SPEC §5 — footer conteggi del mese.

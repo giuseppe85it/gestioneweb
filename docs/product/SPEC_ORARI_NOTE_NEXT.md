@@ -101,12 +101,19 @@ Record giorno (campi salvati — il Totale NON si salva, si calcola in lettura):
   inizio: string | null,    // "HH:MM" (null se assenza)
   fine: string | null,      // "HH:MM" (null se assenza)
   notte: boolean,           // flag, default false
-  noPausa: boolean,         // flag, default false
+  noPausa: boolean,         // flag DERIVATO: true ⟺ pausa effettiva = 0 (nessuna pausa).
+  pausaMin?: number | null, // minuti di pausa REALI scalati dal lordo (pausa parziale).
+                            // Se assente → fallback su noPausa (vecchi record: true→0, false→60).
   note: string,             // testo libero, "" se vuoto
   createdAt: number,        // epoch ms, creazione record
   updatedAt: number         // epoch ms, ultima modifica
 }
 ```
+
+> **Pausa — fallback unico (`pausaEffettivaMinuti`, src/utils/orariCalc.ts):** i minuti di pausa
+> effettivi sono `pausaMin` se valido (≥0), altrimenti `noPausa===true ? 0 : 60`. La regola vive
+> in UN SOLO punto: app autista, gestionale e PDF la usano tutti via `calcTotaleNettoMinuti`. I
+> record salvati prima dell'introduzione di `pausaMin` restano corretti (retrocompat garantita).
 
 Stato cartellino mensile: documento SEPARATO, collection nuova `storage/@orari_autisti_chiusure`.
 Forma:
@@ -123,9 +130,14 @@ legittimi (creazione/modifica record), NON scritti come side-effect di operazion
 **Totale giorno (solo tipo "lavoro"):**
 - Base = Fine − Inizio.
 - Se Fine < Inizio → turno che attraversa la mezzanotte → +24h alla fine (es. 22:00→06:00 = 8:00).
-- **Pausa**: default (NO PAUSA spento) → si scala **1h fissa** dal totale.
-  Es. 06:01→16:30 = 10:29 lordo → **9:29 netto**.
-- **NO PAUSA acceso** → totale LORDO, nessuno scalo. Es. resta 10:29.
+- **Pausa**: dal totale si scalano i **minuti di pausa effettivi** (`pausaEffettivaMinuti`).
+  - Default (tasto "No pausa" spento) → **1h fissa** (60 min). Es. 06:01→16:30 = 10:29 lordo → **9:29 netto**.
+  - **"No pausa" acceso** (tap sul tasto) → **0 min**, totale LORDO. Es. resta 10:29.
+  - **Pausa parziale** (touch lungo sul tasto "No pausa" → modale "Pausa effettiva"): l'autista
+    inserisce i minuti reali (es. 30). Si scalano **solo quei minuti**; il resto torna a contare
+    come lavoro. Es. 08:00→17:00 = 9:00 lordo, pausa 30 → **8:30 netto**. Lo stato resta "No pausa"
+    (tasto acceso) ma l'etichetta indica i minuti reali ("30 min pausa").
+- Il netto non scende mai sotto 0 (pausa ≥ lordo → 0).
 - Il totale mostrato (app, footer, PDF, gestionale) è sempre il NETTO così calcolato.
 
 **Flag NOTTE:**
@@ -135,8 +147,11 @@ Resa UI: NOTTE e NO PAUSA sono due controlli grandi ai lati del Totale nella vis
 Visibilità per giorno (oltre al contatore footer): la notte è mostrata sul singolo giorno in tutte le viste — etichetta "Notte" sulla card del riepilogo autista (§2.1), colonna "Notte" Sì/— nella tabella gestionale (§2.2), e indicazione nella riga del PDF (§7). Serve a sapere QUALI giorni hanno la notte, non solo quanti.
 
 **Visibilità pausa lato gestionale:**
-- Colonna "Pausa" Sì/No nel cartellino gestionale e nel PDF.
-- "No" quando NO PAUSA è acceso (totale lordo); "Sì" altrimenti (è stata scalata 1h).
+- Colonna "No pausa" nel cartellino gestionale e nel PDF, da `pausaLabel`:
+  - "X" quando la pausa è 0 (totale lordo);
+  - vuoto quando la pausa è piena (1h scalata);
+  - i minuti reali (es. "30 min") per le pause parziali.
+- Nel modale di modifica admin: flag "No pausa" (= 0 min) + campo "Pausa (min)" per il valore parziale.
 
 ---
 
@@ -247,7 +262,13 @@ Estensione scrittura admin (decisione 2026-06-14): l'azione admin MODIFICA (§2.
 - Filtro per commessa/lavoro ("Lavoro: «tutti» | Matrice Lavori" dell'app vecchia): la nota
   libera lo copre. Eventuale evoluzione.
 - Calcolo automatico di straordinari/monte-ore contrattuale.
-- Campo pausa a durata variabile (la pausa è 1h fissa in v1).
+
+> **Implementato dopo v1** (non più fuori scope):
+> - Pausa a durata variabile: pausa parziale in minuti (`pausaMin`) — vedi §3/§4.
+> - Inserimento ora con **tastierino numerico** (modale, tasti grandi) al posto dell'orologio
+>   nativo, nell'app autista (vista giorno).
+> - Feedback visivo sul tasto **Salva**: dopo il salvataggio diventa **blu "Salvato ✓"**
+>   (stacca dal verde dell'azione) e resta tale finché non si modifica un campo.
 
 ---
 

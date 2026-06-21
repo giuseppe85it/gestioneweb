@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./OrariNote.css";
@@ -20,7 +20,9 @@ import {
   isMeseChiuso,
   listaMancantiFeriali,
   meseLabelShort,
+  MINUTI_PAUSA_FISSA,
   monteOreGiornoMinuti,
+  pausaEffettivaMinuti,
   pausaLabel,
   TIPO_GIORNO_LABEL,
   toISODate,
@@ -56,12 +58,13 @@ type DayForm = {
   inizio: string;
   fine: string;
   notte: boolean;
-  noPausa: boolean;
+  pausaMin: number; // minuti di pausa reali: 60 (default), 0 (No pausa), o parziale
   note: string;
 };
 
 // Costruisce il form del giorno dal record esistente, o default Lavoro con ora
-// corrente del telefono (SPEC §2.1).
+// corrente del telefono (SPEC §2.1). La pausa si ricava sempre con l'helper condiviso
+// (retrocompat: record vecchi con solo `noPausa` → 0/60).
 function buildFormFromRecord(existing: OrarioGiornoRecord | null): DayForm {
   if (existing) {
     return {
@@ -69,12 +72,35 @@ function buildFormFromRecord(existing: OrarioGiornoRecord | null): DayForm {
       inizio: existing.inizio ?? nowHHMM(),
       fine: existing.fine ?? nowHHMM(),
       notte: existing.notte === true,
-      noPausa: existing.noPausa === true,
+      pausaMin: pausaEffettivaMinuti(existing),
       note: existing.note ?? "",
     };
   }
   const now = nowHHMM();
-  return { tipo: "lavoro", inizio: now, fine: now, notte: false, noPausa: false, note: "" };
+  return { tipo: "lavoro", inizio: now, fine: now, notte: false, pausaMin: MINUTI_PAUSA_FISSA, note: "" };
+}
+
+// INT1 — cifre digitate sul tastierino → display "HH:MM" con segnaposto. Es. "073" → "07:3–".
+function digitsToDisplay(digits: string): string {
+  const d = digits.slice(0, 4).padEnd(4, "–");
+  return `${d.slice(0, 2)}:${d.slice(2, 4)}`;
+}
+
+// INT1 — cifre digitate → "HH:MM" valido (HH 0-23, MM 0-59) o null. Min 3 cifre ("730" → 07:30).
+function digitsToHHMM(digits: string): string | null {
+  const d = digits.replace(/\D/g, "");
+  if (d.length < 3) return null;
+  const padded = d.slice(0, 4).padStart(4, "0");
+  const h = Number(padded.slice(0, 2));
+  const m = Number(padded.slice(2, 4));
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// INT2 — etichetta del tasto pausa secondo i minuti reali: "No pausa" (0 o pieno) / "X min pausa".
+function pausaButtonLabel(pausaMin: number): string {
+  if (pausaMin > 0 && pausaMin < MINUTI_PAUSA_FISSA) return `${pausaMin} min pausa`;
+  return "No pausa";
 }
 
 // Nota in tabella riepilogo: 1–3 parole troncate (SPEC §2.1), nessun a capo.
@@ -115,6 +141,15 @@ export default function OrariNote() {
     open: false,
     missing: [],
   });
+  // INT3 — feedback Salva: blu "Salvato ✓" stabile finché non si modifica un campo.
+  const [savedClean, setSavedClean] = useState(false);
+  // INT1 — tastierino numerico per l'ora (sostituisce l'orologio). digits = cifre digitate.
+  const [timeKeypad, setTimeKeypad] = useState<{ field: "inizio" | "fine"; digits: string } | null>(null);
+  // INT2 — modale pausa reale (touch lungo sul tasto "No pausa"). draft = minuti in stringa.
+  const [pausaModal, setPausaModal] = useState<{ open: boolean; draft: string }>({ open: false, draft: "" });
+  // INT2 — gestione touch lungo vs tap sul tasto pausa.
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
 
   // Carica autista + dati. L'autista deve avere un badge (no mezzo richiesto).
   useEffect(() => {
@@ -143,6 +178,14 @@ export default function OrariNote() {
       cancelled = true;
     };
   }, [navigate, todayISO]);
+
+  // Pulisce il timer del touch lungo allo smontaggio (evita setTimeout pendenti su
+  // componente smontato → niente setState fuori ciclo di vita).
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    };
+  }, []);
 
   const badge = autista?.badge ?? "";
 
@@ -194,9 +237,25 @@ export default function OrariNote() {
     setMonth1(d.getMonth() + 1);
   }
 
+  // Ogni modifica al form invalida il feedback "Salvato" (INT3): il tasto torna "Salva".
+  function updateForm(patch: Partial<DayForm>) {
+    setForm((f) => (f ? { ...f, ...patch } : f));
+    setSavedClean(false);
+  }
+
   function openGiorno(data: string) {
+    // Annulla un eventuale touch lungo in corso: cambiando giorno non deve aprire la
+    // modale pausa sul giorno sbagliato (il setTimeout cattura il form del giorno vecchio).
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    longPressFired.current = false;
     setSelectedData(data);
     setForm(buildFormFromRecord(findGiorno(allRecords, badge, data)));
+    setSavedClean(false); // nuovo giorno: il tasto riparte da "Salva"
+    setTimeKeypad(null);
+    setPausaModal({ open: false, draft: "" });
     setView("giorno");
   }
 
@@ -229,6 +288,7 @@ export default function OrariNote() {
       const existing = findGiorno(allRecords, badge, selectedData);
       const now = Date.now();
       const isAssenza = form.tipo !== "lavoro";
+      const pausaMin = isAssenza ? null : Math.max(0, Math.round(form.pausaMin));
       const record: OrarioGiornoRecord = {
         badge,
         data: selectedData,
@@ -236,7 +296,9 @@ export default function OrariNote() {
         inizio: isAssenza ? null : form.inizio || null,
         fine: isAssenza ? null : form.fine || null,
         notte: isAssenza ? false : form.notte,
-        noPausa: isAssenza ? false : form.noPausa,
+        // noPausa derivato e coerente con pausaMin (true ⟺ nessuna pausa = 0 min).
+        noPausa: isAssenza ? false : pausaMin === 0,
+        pausaMin,
         note: form.note ?? "",
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -244,6 +306,7 @@ export default function OrariNote() {
       const nextList = upsertGiornoRecord(allRecords, record);
       await setItemSync(KEY_ORARI, nextList);
       setAllRecords(nextList);
+      setSavedClean(true); // INT3: conferma visiva, resta finché non si modifica un campo
       // SPEC §2.1: dopo Salva si RESTA sulla vista giorno (navigabile con le frecce).
     } finally {
       setSaving(false);
@@ -271,6 +334,50 @@ export default function OrariNote() {
     }
   }
 
+  // ===== INT1 — tastierino numerico per l'ora =====
+  function keypadPush(d: string) {
+    setTimeKeypad((k) => (k && k.digits.length < 4 ? { ...k, digits: k.digits + d } : k));
+  }
+  function keypadBackspace() {
+    setTimeKeypad((k) => (k ? { ...k, digits: k.digits.slice(0, -1) } : k));
+  }
+  function keypadConfirm() {
+    if (!timeKeypad) return;
+    const hhmm = digitsToHHMM(timeKeypad.digits);
+    if (hhmm === null) return; // non valido: l'OK è disabilitato, ma doppia sicurezza
+    if (timeKeypad.field === "inizio") updateForm({ inizio: hhmm });
+    else updateForm({ fine: hhmm });
+    setTimeKeypad(null);
+  }
+
+  // ===== INT2 — tasto "No pausa": tap = toggle 60⟺0; touch lungo = modale pausa reale =====
+  function pausaClick() {
+    if (longPressFired.current) {
+      longPressFired.current = false; // era un touch lungo: niente toggle
+      return;
+    }
+    if (!form) return;
+    updateForm({ pausaMin: form.pausaMin < MINUTI_PAUSA_FISSA ? MINUTI_PAUSA_FISSA : 0 });
+  }
+  function pausaPointerDown() {
+    longPressFired.current = false;
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = window.setTimeout(() => {
+      longPressFired.current = true;
+      setPausaModal({ open: true, draft: form && form.pausaMin > 0 ? String(form.pausaMin) : "" });
+    }, 500);
+  }
+  function pausaPointerEnd() {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+  function applyPausaParziale(min: number) {
+    updateForm({ pausaMin: Math.max(0, Math.round(min)) });
+    setPausaModal({ open: false, draft: "" });
+  }
+
   if (loading || !autista) {
     return (
       <div className="autisti-container orari-container">
@@ -287,8 +394,9 @@ export default function OrariNote() {
       tipo: form.tipo,
       inizio: form.inizio,
       fine: form.fine,
-      noPausa: form.noPausa,
+      pausaMin: form.pausaMin,
     });
+    const pausaAttiva = form.pausaMin < MINUTI_PAUSA_FISSA; // tasto acceso: 0 o parziale
     const readOnly = chiusoForData(selectedData);
 
     return (
@@ -323,7 +431,7 @@ export default function OrariNote() {
               type="button"
               className={form.tipo === t ? "active green" : ""}
               disabled={readOnly}
-              onClick={() => setForm((f) => (f ? { ...f, tipo: t } : f))}
+              onClick={() => updateForm({ tipo: t })}
             >
               {TIPO_GIORNO_LABEL[t]}
             </button>
@@ -332,25 +440,30 @@ export default function OrariNote() {
 
         {!isAssenza && (
           <>
+            {/* INT1 — l'ora si inserisce col tastierino numerico, non più con l'orologio. */}
             <div className="orari-field-row">
-              <label className="orari-field">
+              <div className="orari-field">
                 <span>Inizio</span>
-                <input
-                  type="time"
-                  value={form.inizio}
+                <button
+                  type="button"
+                  className="orari-time-btn"
                   disabled={readOnly}
-                  onChange={(e) => setForm((f) => (f ? { ...f, inizio: e.target.value } : f))}
-                />
-              </label>
-              <label className="orari-field">
+                  onClick={() => setTimeKeypad({ field: "inizio", digits: "" })}
+                >
+                  {form.inizio || "--:--"}
+                </button>
+              </div>
+              <div className="orari-field">
                 <span>Fine</span>
-                <input
-                  type="time"
-                  value={form.fine}
+                <button
+                  type="button"
+                  className="orari-time-btn"
                   disabled={readOnly}
-                  onChange={(e) => setForm((f) => (f ? { ...f, fine: e.target.value } : f))}
-                />
-              </label>
+                  onClick={() => setTimeKeypad({ field: "fine", digits: "" })}
+                >
+                  {form.fine || "--:--"}
+                </button>
+              </div>
             </div>
 
             {/* Flag grandi ai LATI del Totale: NOTTE a sinistra, NO PAUSA a destra. */}
@@ -360,7 +473,7 @@ export default function OrariNote() {
                 className={`orari-flag-big${form.notte ? " active green" : ""}`}
                 disabled={readOnly}
                 aria-pressed={form.notte}
-                onClick={() => setForm((f) => (f ? { ...f, notte: !f.notte } : f))}
+                onClick={() => updateForm({ notte: !form.notte })}
               >
                 Notte
               </button>
@@ -369,18 +482,25 @@ export default function OrariNote() {
                 <span className="orari-totale-label">Totale</span>
                 <strong className="orari-totale-val">{formatMinutesToHHMM(totaleMin)}</strong>
                 <span className="orari-pausa-hint">
-                  Pausa {pausaLabel({ tipo: form.tipo, noPausa: form.noPausa })}
+                  Pausa {pausaLabel({ tipo: form.tipo, pausaMin: form.pausaMin })}
                 </span>
               </div>
 
+              {/* INT2 — tap = No pausa on/off; tieni premuto = pausa reale (minuti). */}
               <button
                 type="button"
-                className={`orari-flag-big${form.noPausa ? " active green" : ""}`}
+                className={`orari-flag-big${pausaAttiva ? " active green" : ""}`}
                 disabled={readOnly}
-                aria-pressed={form.noPausa}
-                onClick={() => setForm((f) => (f ? { ...f, noPausa: !f.noPausa } : f))}
+                aria-pressed={pausaAttiva}
+                title="Tocca per 'No pausa'; tieni premuto per inserire i minuti reali"
+                onClick={pausaClick}
+                onPointerDown={readOnly ? undefined : pausaPointerDown}
+                onPointerUp={pausaPointerEnd}
+                onPointerLeave={pausaPointerEnd}
+                onPointerCancel={pausaPointerEnd}
+                onContextMenu={(e) => e.preventDefault()}
               >
-                No pausa
+                {pausaButtonLabel(form.pausaMin)}
               </button>
             </div>
           </>
@@ -423,8 +543,12 @@ export default function OrariNote() {
         ) : null}
 
         {!readOnly && (
-          <button className="autisti-button" onClick={handleSaveGiorno} disabled={saving}>
-            {saving ? "Salvataggio…" : "Salva"}
+          <button
+            className={`autisti-button${savedClean ? " orari-save-ok" : ""}`}
+            onClick={handleSaveGiorno}
+            disabled={saving}
+          >
+            {saving ? "Salvataggio…" : savedClean ? "Salvato ✓" : "Salva"}
           </button>
         )}
         <button className="autisti-button secondary" onClick={() => navigate("/autisti/home")}>
@@ -445,13 +569,107 @@ export default function OrariNote() {
                 <button
                   className="autisti-button"
                   onClick={() => {
-                    setForm((f) => (f ? { ...f, note: noteDraft } : f));
+                    updateForm({ note: noteDraft });
                     setNoteModalOpen(false);
                   }}
                 >
                   Salva nota
                 </button>
                 <button className="autisti-button secondary" onClick={() => setNoteModalOpen(false)}>
+                  Annulla
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* INT1 — tastierino numerico (sostituisce l'orologio). */}
+        {timeKeypad && (
+          <div className="orari-modal-backdrop" onClick={() => setTimeKeypad(null)}>
+            <div className="orari-modal orari-keypad" onClick={(e) => e.stopPropagation()}>
+              <h3>{timeKeypad.field === "inizio" ? "Ora di inizio" : "Ora di fine"}</h3>
+              <div className="orari-keypad-display">{digitsToDisplay(timeKeypad.digits)}</div>
+              <div className="orari-keypad-grid">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((k) => (
+                  <button type="button" key={k} className="orari-keypad-key" onClick={() => keypadPush(k)}>
+                    {k}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="orari-keypad-key orari-keypad-aux"
+                  onClick={keypadBackspace}
+                  aria-label="Cancella"
+                >
+                  ⌫
+                </button>
+                <button type="button" className="orari-keypad-key" onClick={() => keypadPush("0")}>
+                  0
+                </button>
+                <button
+                  type="button"
+                  className="orari-keypad-key orari-keypad-ok"
+                  onClick={keypadConfirm}
+                  disabled={digitsToHHMM(timeKeypad.digits) === null}
+                >
+                  OK
+                </button>
+              </div>
+              <button className="autisti-button secondary" onClick={() => setTimeKeypad(null)}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* INT2 — modale pausa reale (aperto dal touch lungo su "No pausa"). */}
+        {pausaModal.open && (
+          <div className="orari-modal-backdrop" onClick={() => setPausaModal({ open: false, draft: "" })}>
+            <div className="orari-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Pausa effettiva</h3>
+              <p className="orari-pausa-sub">
+                Inserisci i minuti di pausa realmente fatti: il resto torna a contare come lavoro.
+              </p>
+              <div className="orari-pausa-presets">
+                {[0, 15, 30, 45, 60].map((m) => (
+                  <button
+                    type="button"
+                    key={m}
+                    className={`orari-pausa-preset${Number(pausaModal.draft) === m ? " active" : ""}`}
+                    onClick={() => setPausaModal({ open: true, draft: String(m) })}
+                  >
+                    {m === 0 ? "Nessuna" : m === 60 ? "1 ora" : `${m} min`}
+                  </button>
+                ))}
+              </div>
+              <label className="orari-pausa-custom">
+                <span>Altri minuti</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={600}
+                  value={pausaModal.draft}
+                  placeholder="es. 40"
+                  onChange={(e) => setPausaModal({ open: true, draft: e.target.value })}
+                />
+              </label>
+              <div className="orari-modal-actions">
+                <button
+                  className="autisti-button"
+                  disabled={
+                    pausaModal.draft.trim() === "" ||
+                    !Number.isFinite(Number(pausaModal.draft)) ||
+                    Number(pausaModal.draft) < 0
+                  }
+                  onClick={() => applyPausaParziale(Number(pausaModal.draft))}
+                >
+                  Conferma pausa
+                </button>
+                <button
+                  className="autisti-button secondary"
+                  onClick={() => setPausaModal({ open: false, draft: "" })}
+                >
                   Annulla
                 </button>
               </div>
@@ -513,6 +731,7 @@ export default function OrariNote() {
                 const isAssenza = rec.tipo !== "lavoro";
                 const totaleMin = calcTotaleNettoMinuti(rec);
                 const monteMin = monteOreGiornoMinuti(rec);
+                const pausaMinRec = isAssenza ? null : pausaEffettivaMinuti(rec);
                 const isWeekend = isWeekendByData.get(rec.data) ?? false;
                 return (
                   <tr
@@ -547,7 +766,15 @@ export default function OrariNote() {
                     )}
                     <td className={`orari-tab-monte ${monteClass(monteMin)}`}>{formatMonteOre(monteMin)}</td>
                     <td className="orari-tab-x">{rec.notte ? "X" : ""}</td>
-                    <td className="orari-tab-x">{!isAssenza && rec.noPausa ? "X" : ""}</td>
+                    <td className="orari-tab-x">
+                      {pausaMinRec === null
+                        ? ""
+                        : pausaMinRec <= 0
+                          ? "X"
+                          : pausaMinRec < MINUTI_PAUSA_FISSA
+                            ? `${pausaMinRec}m`
+                            : ""}
+                    </td>
                     <td className="orari-tab-note">{noteWords(rec.note)}</td>
                   </tr>
                 );

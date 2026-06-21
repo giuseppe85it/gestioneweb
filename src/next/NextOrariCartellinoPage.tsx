@@ -21,7 +21,9 @@ import {
   formatMinutesToHHMM,
   formatMonteOre,
   meseLabelLong,
+  MINUTI_PAUSA_FISSA,
   monteOreMinutiDaTotale,
+  pausaEffettivaMinuti,
   pausaLabel,
   TIPO_GIORNO_LABEL,
   type OrarioGiornoRecord,
@@ -50,7 +52,7 @@ type EditForm = {
   inizio: string;
   fine: string;
   notte: boolean;
-  noPausa: boolean;
+  pausaMin: number; // minuti di pausa reali (60 default, 0 = No pausa, parziale)
   note: string;
 };
 
@@ -74,11 +76,11 @@ function buildEditForm(rec: OrarioGiornoRecord | null): EditForm {
       inizio: rec.inizio ?? "",
       fine: rec.fine ?? "",
       notte: rec.notte === true,
-      noPausa: rec.noPausa === true,
+      pausaMin: pausaEffettivaMinuti(rec),
       note: rec.note ?? "",
     };
   }
-  return { tipo: "lavoro", inizio: "", fine: "", notte: false, noPausa: false, note: "" };
+  return { tipo: "lavoro", inizio: "", fine: "", notte: false, pausaMin: MINUTI_PAUSA_FISSA, note: "" };
 }
 
 export default function NextOrariCartellinoPage() {
@@ -357,7 +359,7 @@ export default function NextOrariCartellinoPage() {
       inizio: editForm.inizio || null,
       fine: editForm.fine || null,
       notte: editForm.notte,
-      noPausa: editForm.noPausa,
+      pausaMin: editForm.pausaMin,
       note: editForm.note,
     });
     setEditBusy(false);
@@ -576,7 +578,7 @@ export default function NextOrariCartellinoPage() {
                         </>
                       )}
                       <td className={`next-orari-monte ${monteCls(monteMin)}`}>{formatMonteOre(monteMin)}</td>
-                      <td>{r.pausa === "No" ? "X" : ""}</td>
+                      <td>{r.pausa === "No" ? "X" : r.pausa === "Sì" || r.pausa === "-" ? "" : r.pausa}</td>
                       <td>{r.notte ? "Sì" : "—"}</td>
                       <td className="next-orari-note-cell">{r.note}</td>
                     </tr>
@@ -661,11 +663,11 @@ export default function NextOrariCartellinoPage() {
                         tipo: editForm.tipo,
                         inizio: editForm.inizio,
                         fine: editForm.fine,
-                        noPausa: editForm.noPausa,
+                        pausaMin: editForm.pausaMin,
                       })
                     )}
                   </strong>{" "}
-                  (Pausa {pausaLabel({ tipo: editForm.tipo, noPausa: editForm.noPausa })})
+                  (Pausa {pausaLabel({ tipo: editForm.tipo, pausaMin: editForm.pausaMin })})
                 </div>
                 <div className="next-orari-edit-flags">
                   <label>
@@ -676,13 +678,21 @@ export default function NextOrariCartellinoPage() {
                     />
                     Notte
                   </label>
-                  <label>
+                  <label className="next-orari-pausa-min">
+                    Pausa (min)
                     <input
-                      type="checkbox"
-                      checked={editForm.noPausa}
-                      onChange={(e) => setEditForm((f) => ({ ...f, noPausa: e.target.checked }))}
+                      type="number"
+                      min={0}
+                      max={600}
+                      value={editForm.pausaMin}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          pausaMin: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                        }))
+                      }
                     />
-                    No pausa
+                    <span className="next-orari-pausa-hint">0 = nessuna · 60 = 1h</span>
                   </label>
                 </div>
               </>

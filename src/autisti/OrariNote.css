@@ -561,3 +561,132 @@
   color: #777;
   font-style: italic;
 }
+
+/* INT1 — campo ora che apre il tastierino (sostituisce input[type=time]). */
+.orari-time-btn {
+  width: 100%;
+  padding: 12px 10px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-align: center;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.orari-time-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* INT1 — tastierino numerico (stile calcolatrice, tasti grandi). */
+.orari-keypad {
+  max-width: 320px;
+}
+
+.orari-keypad-display {
+  font-size: 2.6rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 3px;
+  padding: 10px 0 14px;
+  color: #1a237e;
+}
+
+.orari-keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.orari-keypad-key {
+  min-height: 64px;
+  font-size: 1.8rem;
+  font-weight: 700;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.orari-keypad-key:active {
+  background: #ececec;
+}
+
+.orari-keypad-aux {
+  font-size: 1.5rem;
+  color: #c62828;
+}
+
+.orari-keypad-ok {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.orari-keypad-ok:disabled {
+  background: #c8d6c8;
+  border-color: #c8d6c8;
+  color: #fff;
+  cursor: default;
+}
+
+/* INT2 — modale pausa reale (preset + minuti liberi). */
+.orari-pausa-sub {
+  color: #555;
+  font-size: 0.92rem;
+  margin: 0 0 12px;
+}
+
+.orari-pausa-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.orari-pausa-preset {
+  flex: 1 1 28%;
+  min-height: 52px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.orari-pausa-preset.active {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.orari-pausa-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.orari-pausa-custom input {
+  width: 110px;
+  padding: 10px;
+  font-size: 1.2rem;
+  text-align: center;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+/* INT3 — feedback Salva: BLU "Salvato ✓" finché non si modifica un campo (stacca dal
+   verde brillante del tasto Salva, così il cambiamento è inequivocabile). */
+.autisti-button.orari-save-ok {
+  background: #1565c0;
+  border-color: #1565c0;
+  color: #fff;
+}

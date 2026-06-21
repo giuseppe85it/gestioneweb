@@ -367,8 +367,26 @@
 
 .next-orari-edit-flags {
   display: flex;
+  align-items: center;
   gap: 20px;
   margin-bottom: 12px;
+}
+
+/* Pausa parziale: minuti reali accanto al flag "No pausa". */
+.next-orari-pausa-min {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.next-orari-pausa-min input {
+  width: 70px;
+  padding: 4px 6px;
+}
+
+.next-orari-pausa-hint {
+  color: #777;
+  font-size: 0.8rem;
 }
 
 .next-orari-edit-actions {

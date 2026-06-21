@@ -51,7 +51,7 @@ export type OrarioCartellinoRow = {
   inizio: string; // "HH:MM" o "-"
   fine: string; // "HH:MM" o "-"
   totale: string; // "H:MM" o "-"
-  pausa: string; // "Sì"/"No"/"-"
+  pausa: string; // "Sì"/"No"/"X min"/"-"
   note: string;
   notte: boolean;
 };
@@ -96,6 +96,15 @@ function asNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Minuti di pausa REALI se presenti sul doc, altrimenti null (→ il calcolo userà il
+// fallback retrocompat su `noPausa` via pausaEffettivaMinuti). NON iniettare un default
+// qui: la regola di fallback vive in un solo posto (orariCalc.pausaEffettivaMinuti).
+function asPausaMin(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
 function normalizeRecord(raw: RawRecord): OrarioGiornoRecord | null {
   const badge = asString(raw.badge).trim();
   const data = asString(raw.data).trim();
@@ -110,6 +119,7 @@ function normalizeRecord(raw: RawRecord): OrarioGiornoRecord | null {
     fine: asNullableHHMM(raw.fine),
     notte: raw.notte === true,
     noPausa: raw.noPausa === true,
+    pausaMin: asPausaMin(raw.pausaMin), // pausa parziale: preserva il valore reale salvato
     note: asString(raw.note),
     createdAt: asNumber(raw.createdAt),
     updatedAt: asNumber(raw.updatedAt),

@@ -26,7 +26,7 @@ export type SalvaGiornoAdminInput = {
   inizio: string | null;
   fine: string | null;
   notte: boolean;
-  noPausa: boolean;
+  pausaMin: number; // minuti di pausa reali (60 default, 0 = No pausa, parziale). noPausa derivato.
   note: string;
 };
 
@@ -52,6 +52,7 @@ export async function salvaGiornoAdmin(input: SalvaGiornoAdminInput): Promise<Sa
     const existing = findGiorno(list, badge, data);
     const now = Date.now();
     const isAssenza = input.tipo !== "lavoro";
+    const pausaMin = isAssenza ? null : Math.max(0, Math.round(Number(input.pausaMin) || 0));
     const record: OrarioGiornoRecord = {
       badge,
       data,
@@ -59,7 +60,9 @@ export async function salvaGiornoAdmin(input: SalvaGiornoAdminInput): Promise<Sa
       inizio: isAssenza ? null : input.inizio || null,
       fine: isAssenza ? null : input.fine || null,
       notte: isAssenza ? false : input.notte === true,
-      noPausa: isAssenza ? false : input.noPausa === true,
+      // noPausa derivato e coerente con pausaMin (true ⟺ nessuna pausa = 0 min).
+      noPausa: isAssenza ? false : pausaMin === 0,
+      pausaMin,
       note: input.note ?? "",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

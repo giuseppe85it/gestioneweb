@@ -3815,8 +3815,8 @@ export async function generateArchivioStoricoPDFBlob(
 // Cartellino orari (Registro orari) - SPEC v0.8 sez. 7.
 // Un PDF = un autista (badge) per un mese. Header: banda aziendale + titolo su riga
 // propria. Colonne: Data|Giorno|Inizio|Fine|Totale|Monte ore|No pausa|Notte|Note.
-// Colonna "No pausa": "X" SOLO quando la pausa NON è stata fatta (noPausa=true, cioè
-// r.pausa === "No"); vuota se la pausa è stata fatta. Footer Monte ore: due righe NON
+// Colonna "No pausa": "X" se nessuna pausa (r.pausa === "No"); vuota se pausa piena (1h);
+// i minuti reali (es. "30 min") per le pause parziali. Footer Monte ore: due righe NON
 // compensate (+ verde / − rosso). renderOrariCartellinoPage = una pagina (singolo + massivo).
 // =============================================================================
 
@@ -3852,9 +3852,12 @@ export type OrariCartellinoPdfInput = {
   footerRows: { label: string; value: string; variant?: "positive" | "negative" }[];
 };
 
-// "X" solo se la pausa NON è stata fatta (noPausa=true → pausaLabel "No").
+// Colonna "No pausa": "X" se nessuna pausa (pausaLabel "No"); vuoto se pausa piena ("Sì")
+// o assenza ("-"); i minuti reali (es. "30 min") per le pause parziali.
 function noPausaCell(r: OrariCartellinoPdfRow): string {
-  return r.pausa === "No" ? "X" : "";
+  if (r.pausa === "No") return "X";
+  if (r.pausa === "Sì" || r.pausa === "-") return "";
+  return r.pausa;
 }
 
 async function renderOrariCartellinoPage(
