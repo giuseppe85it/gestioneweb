@@ -37,6 +37,21 @@ export type ManutenzioneDaFareCreateResult = {
   manutenzioneIds?: string[];
 };
 
+// Selezione assi REALE scelta dall'utente nel modale gomme alla creazione
+// (controllo KO / segnalazione). Quando presente, sostituisce il marker gomme
+// derivato per euristica testuale: il dato nasce gia' corretto e coerente con
+// i campi che il form manutenzioni scrive per una manutenzione gomme.
+export type ManutenzioneDaFareGommeSelezione = {
+  gommeInterventoTipo: "ordinario" | "straordinario";
+  assiCoinvolti?: string[];
+  gommeStraordinario?: {
+    asseId: string | null;
+    quantita: number | null;
+    motivo: string | null;
+  } | null;
+  gommeSelezione?: unknown;
+};
+
 type RawRecord = Record<string, unknown>;
 type AsseGommaId = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
 type GommeStraordinarioDraft = {
@@ -224,6 +239,7 @@ function buildManutenzioneDaFareRecord(args: {
   origineRefId: string | null;
   origineRefKey: string | null;
   gommeMarker?: GommeMarkerDraft;
+  gommeSelezione?: ManutenzioneDaFareGommeSelezione;
 }): RawRecord {
   return {
     id: args.id,
@@ -248,7 +264,17 @@ function buildManutenzioneDaFareRecord(args: {
     importo: null,
     sottotipo: null,
     materiali: [],
-    ...(args.gommeMarker ?? {}),
+    // Selezione assi reale (modale) ha priorita' sul marker euristico: scrive
+    // gli stessi campi gomme che il form manutenzioni usa per una daFare gomme.
+    ...(args.gommeSelezione
+      ? {
+          gommeInterventoTipo: args.gommeSelezione.gommeInterventoTipo,
+          assiCoinvolti: args.gommeSelezione.assiCoinvolti ?? [],
+          gommePerAsse: [],
+          gommeStraordinario: args.gommeSelezione.gommeStraordinario ?? null,
+          gommeSelezione: args.gommeSelezione.gommeSelezione ?? null,
+        }
+      : (args.gommeMarker ?? {})),
   };
 }
 
@@ -387,6 +413,7 @@ export async function createManutenzioneDaFareFromEvento(
 export async function createManutenzioneDaFareFromSegnalazione(
   record: unknown,
   descrizioneOverride?: string,
+  gommeSelezione?: ManutenzioneDaFareGommeSelezione,
 ): Promise<ManutenzioneDaFareCreateResult> {
   if (!isRecord(record)) {
     return { ok: false, error: "Segnalazione non valida." };
@@ -422,6 +449,7 @@ export async function createManutenzioneDaFareFromSegnalazione(
     origineRefId: origineId,
     origineRefKey: SEGNALAZIONI_KEY,
     gommeMarker: deriveGommeMarkerFromSegnalazione(record),
+    gommeSelezione,
   });
 
   try {
@@ -438,6 +466,7 @@ export async function createManutenzioneDaFareFromSegnalazione(
 
 export async function createManutenzioneDaFareFromControllo(
   record: unknown,
+  gommeSelezione?: ManutenzioneDaFareGommeSelezione,
 ): Promise<ManutenzioneDaFareCreateResult> {
   if (!isRecord(record)) {
     return { ok: false, error: "Controllo non valido." };
@@ -492,6 +521,7 @@ export async function createManutenzioneDaFareFromControllo(
       origineRefId: origineId,
       origineRefKey: CONTROLLI_KEY,
       gommeMarker: deriveGommeMarkerFromControllo(record),
+      gommeSelezione,
     }),
   );
   const manutenzioneIds = manutenzioni.map((item) => normalizeText(item.id));

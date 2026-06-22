@@ -103,6 +103,7 @@ import { agganciaSegnalazioniAManutenzioneEsistenteBatch } from "./writers/aggan
 import {
   createManutenzioneDaFareFromControllo,
   createManutenzioneDaFareFromSegnalazione,
+  type ManutenzioneDaFareGommeSelezione,
 } from "./writers/nextManutenzioneDaFareCreateWriter";
 import { deleteSegnalazioneAutista } from "./writers/nextSegnalazioneDeleteWriter";
 import { deleteControlloAutista } from "./writers/nextControlloDeleteWriter";
@@ -1307,6 +1308,60 @@ function buildGommeSelezioneRecord(data: NextCambioGommeData): NextManutenzioneG
   };
 }
 
+// Predicati "è gomme?" condivisi dal punto unico di creazione: coprono sia il
+// controllo KO (check.gomme === false) sia la segnalazione (tipoProblema === "gomme").
+function isControlloGomme(record: Record<string, unknown>): boolean {
+  const check = record.check;
+  return (
+    typeof check === "object" &&
+    check !== null &&
+    (check as Record<string, unknown>).gomme === false
+  );
+}
+
+function isSegnalazioneGomme(record: Record<string, unknown>): boolean {
+  return String(record.tipoProblema ?? "").trim().toLowerCase() === "gomme";
+}
+
+// Targa principale del controllo (caso singolo mezzo): replica la scelta del
+// writer per derivare categoria/assi da mostrare nel modale.
+function controlloTargaPrincipale(record: Record<string, unknown>): string {
+  const target = String(record.target ?? "").trim().toLowerCase();
+  const motrice =
+    normalizeText(record.targaCamion) || normalizeText(record.targaMotrice);
+  const rimorchio = normalizeText(record.targaRimorchio);
+  if (target === "rimorchio") return (rimorchio || motrice).toUpperCase();
+  return (motrice || rimorchio).toUpperCase();
+}
+
+// Selezione assi reale dal modale → payload gomme per il writer (stessi campi
+// che il form scrive per una manutenzione gomme daFare).
+function buildGommeSelezioneOrigine(
+  data: NextCambioGommeData,
+): ManutenzioneDaFareGommeSelezione {
+  const assi = normalizeNextAssiCoinvolti(
+    data.assiIds?.length ? data.assiIds : data.asseId ? [data.asseId] : [],
+  );
+  if (data.modalita === "straordinario") {
+    return {
+      gommeInterventoTipo: "straordinario",
+      assiCoinvolti: [],
+      gommeStraordinario: {
+        asseId: assi[0] ?? data.asseId ?? null,
+        quantita: data.numeroGomme ?? null,
+        motivo: "gomma singola",
+      },
+      gommeSelezione: buildGommeSelezioneRecord(data),
+    };
+  }
+  return {
+    gommeInterventoTipo: "ordinario",
+    assiCoinvolti: assi,
+    gommeStraordinario: null,
+    gommeSelezione: buildGommeSelezioneRecord(data),
+  };
+}
+
 function toModalGommeData(
   selection: NextManutenzioneGommeSelezioneRecord | null,
   fallback: {
@@ -1593,6 +1648,18 @@ export default function NextManutenzioniPage() {
   const [gommeSelezioneDraft, setGommeSelezioneDraft] =
     useState<NextManutenzioneGommeSelezioneRecord | null>(null);
   const [gommeModalOpen, setGommeModalOpen] = useState(false);
+  // Creazione manutenzione gomme da controllo KO / segnalazione: tiene
+  // l'origine in attesa mentre l'utente sceglie gli assi nel modale gomme.
+  // Quando valorizzato, la conferma del modale crea la manutenzione (non
+  // aggiorna il form). È il "punto unico" condiviso dai due flussi.
+  const [creaGommeOrigine, setCreaGommeOrigine] = useState<{
+    origineTipo: "controllo" | "segnalazione";
+    sourceRecord: Record<string, unknown>;
+    descrizioneOverride?: string;
+    segnalazioneItemId?: string;
+    targa: string;
+    categoria: string | null;
+  } | null>(null);
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   // Fase B: scadenze del mezzo, per collegare un'esecuzione alla scadenza.
@@ -2932,6 +2999,65 @@ export default function NextManutenzioniPage() {
     return [before, generated, after].filter(Boolean).join("\n\n");
   }
 
+  function categoriaTecnicaPerTarga(targaInput: string): string | null {
+    const t = normalizeText(targaInput);
+    if (!t) return categoriaTecnica;
+    const tUpper = t.toUpperCase();
+    const preview =
+      mezzoPreviewByTarga.get(t) ?? mezzoPreviewByTarga.get(tUpper);
+    const fallback =
+      mezzi.find((mezzo) => normalizeText(mezzo.targa).toUpperCase() === tUpper) ?? null;
+    return preview?.categoria ?? fallback?.categoria ?? null;
+  }
+
+  // Conferma del modale assi nel contesto "creazione da origine": crea la
+  // manutenzione daFare con gli assi scelti (non aggiorna il form). Punto unico
+  // condiviso da controllo KO e segnalazione.
+  async function handleConfirmGommeOrigine(data: NextCambioGommeData) {
+    const origine = creaGommeOrigine;
+    if (!origine) return;
+    const gommeSelezione = buildGommeSelezioneOrigine(data);
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result =
+        origine.origineTipo === "controllo"
+          ? await createManutenzioneDaFareFromControllo(origine.sourceRecord, gommeSelezione)
+          : await createManutenzioneDaFareFromSegnalazione(
+              origine.sourceRecord,
+              origine.descrizioneOverride,
+              gommeSelezione,
+            );
+      if (!result.ok) {
+        throw new Error(result.error || "Creazione manutenzione non riuscita.");
+      }
+      await refreshData();
+      if (origine.origineTipo === "segnalazione" && origine.segnalazioneItemId) {
+        clearSegnalazioneSelectionEverywhere(origine.segnalazioneItemId);
+      }
+      if (result.manutenzioneId) {
+        setSelectedDetailRecordId(result.manutenzioneId);
+      }
+      setNotice(
+        origine.origineTipo === "controllo"
+          ? "Manutenzione Da fare creata dal controllo KO."
+          : "Manutenzione Da fare creata dalla segnalazione.",
+      );
+      setGommeModalOpen(false);
+      setCreaGommeOrigine(null);
+    } catch (createError) {
+      console.error("Errore creazione manutenzione gomme da origine:", createError);
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "Creazione manutenzione non riuscita.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleConfirmGommeSelection(data: NextCambioGommeData) {
     const selection = buildGommeSelezioneRecord(data);
     const selectedAssi = normalizeNextAssiCoinvolti(
@@ -3314,6 +3440,7 @@ export default function NextManutenzioniPage() {
     // Foto-prova: foto caricate dall'autista nella segnalazione/controllo
     // d'origine, da mostrare in fondo al PDF come prova. Riusa la lettura
     // origine (readOrigineFotoUrls) e il caricamento immagini esistente.
+    // Origini uniche (refId -> refKey) per evitare risoluzioni duplicate.
     const origineRefMap = new Map<string, string | null>();
     for (const item of items) {
       const refId = normalizeText(item.origineRefId ?? "");
@@ -4587,16 +4714,39 @@ export default function NextManutenzioniPage() {
       setError("Descrizione manutenzione obbligatoria.");
       return;
     }
+    const sourceRecord = buildSegnalazioneWriterRecord(
+      modal.item,
+      modal.sourceRecord,
+      modal.urgenza,
+    );
+    // Ramo gomme: prima di creare, apri il modale per scegliere gli assi coinvolti.
+    if (isSegnalazioneGomme(sourceRecord)) {
+      const targa = normalizeText(
+        sourceRecord.targa ??
+          sourceRecord.targaCamion ??
+          sourceRecord.targaRimorchio ??
+          modal.item.targa ??
+          "",
+      ).toUpperCase();
+      setCreaGommeOrigine({
+        origineTipo: "segnalazione",
+        sourceRecord,
+        descrizioneOverride,
+        segnalazioneItemId: modal.item.id,
+        targa,
+        categoria: categoriaTecnicaPerTarga(targa),
+      });
+      setCreaManutenzioneSegnalazioneModal(null);
+      setError(null);
+      setNotice(null);
+      setGommeModalOpen(true);
+      return;
+    }
     setCreaManutenzioneSegnalazioneModal({ ...modal, busy: true });
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const sourceRecord = buildSegnalazioneWriterRecord(
-        modal.item,
-        modal.sourceRecord,
-        modal.urgenza,
-      );
       const result = await createManutenzioneDaFareFromSegnalazione(
         sourceRecord,
         descrizioneOverride,
@@ -4629,6 +4779,24 @@ export default function NextManutenzioniPage() {
     const rawRecord = origineRawById.get(item.id);
     if (!rawRecord) {
       setError("Record del controllo non disponibile: ricarica la pagina e riprova.");
+      return;
+    }
+    // Ramo gomme: prima di creare, apri il modale per scegliere gli assi coinvolti.
+    if (isControlloGomme(rawRecord)) {
+      const targa = controlloTargaPrincipale(rawRecord);
+      if (!targa) {
+        setError("Targa controllo non disponibile per la selezione gomme.");
+        return;
+      }
+      setCreaGommeOrigine({
+        origineTipo: "controllo",
+        sourceRecord: rawRecord,
+        targa,
+        categoria: categoriaTecnicaPerTarga(targa),
+      });
+      setError(null);
+      setNotice(null);
+      setGommeModalOpen(true);
       return;
     }
     setSaving(true);
@@ -7343,20 +7511,39 @@ export default function NextManutenzioniPage() {
       {renderPdfDeleteModal()}
       {gommeModalOpen ? (
         <NextModalGomme
-          key={`${completionModalRecord?.id ?? "form"}:${gommeSelezioneDraft?.asseId ?? "nuova"}:${gommeSelezioneDraft?.numeroGomme ?? 0}`}
+          key={
+            creaGommeOrigine
+              ? `origine:${creaGommeOrigine.origineTipo}:${creaGommeOrigine.targa}`
+              : `${completionModalRecord?.id ?? "form"}:${gommeSelezioneDraft?.asseId ?? "nuova"}:${gommeSelezioneDraft?.numeroGomme ?? 0}`
+          }
           open={gommeModalOpen}
-          targa={completionModalRecord?.targa ?? activeTarga}
-          categoria={completionCategoriaTecnica ?? categoriaTecnica}
-          kmIniziale={completionModalRecord ? completionDraftKm : km}
-          defaultModalita={isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario"}
-          initialData={toModalGommeData(gommeSelezioneDraft, {
-            targa: completionModalRecord?.targa ?? activeTarga,
-            categoria: completionCategoriaTecnica ?? categoriaTecnica,
-            km: completionModalRecord ? completionDraftKm : km,
-            modalita: isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario",
-          })}
-          onClose={() => setGommeModalOpen(false)}
-          onConfirm={handleConfirmGommeSelection}
+          targa={creaGommeOrigine ? creaGommeOrigine.targa : completionModalRecord?.targa ?? activeTarga}
+          categoria={
+            creaGommeOrigine ? creaGommeOrigine.categoria : completionCategoriaTecnica ?? categoriaTecnica
+          }
+          kmIniziale={creaGommeOrigine ? "" : completionModalRecord ? completionDraftKm : km}
+          defaultModalita={
+            creaGommeOrigine
+              ? "ordinario"
+              : isUiSubtypeGommeStraordinario(uiSubtype)
+                ? "straordinario"
+                : "ordinario"
+          }
+          initialData={
+            creaGommeOrigine
+              ? null
+              : toModalGommeData(gommeSelezioneDraft, {
+                  targa: completionModalRecord?.targa ?? activeTarga,
+                  categoria: completionCategoriaTecnica ?? categoriaTecnica,
+                  km: completionModalRecord ? completionDraftKm : km,
+                  modalita: isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario",
+                })
+          }
+          onClose={() => {
+            setGommeModalOpen(false);
+            setCreaGommeOrigine(null);
+          }}
+          onConfirm={creaGommeOrigine ? handleConfirmGommeOrigine : handleConfirmGommeSelection}
         />
       ) : null}
     </div>
