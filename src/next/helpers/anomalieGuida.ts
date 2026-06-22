@@ -56,13 +56,12 @@ export const ANOMALIE_GUIDA: AnomaliaGuidaVoce[] = [
   {
     type: "KM_SALTO_TROPPO_GRANDE",
     emoji: "🚀",
-    titolo: "Salto di km troppo grande",
+    titolo: "Km incoerenti col tempo",
     cosaVuolDire:
-      "Tra questo rifornimento e quello prima ci sono più di 1.200 km di differenza.",
+      "Tra questo rifornimento e quello prima risultano troppi km per il tempo passato: una velocità media impossibile per un camion (che è limitato a 90 km/h).",
     esempio:
-      "Spesso NON è un errore. Vuol dire solo che è passato del tempo, o che manca un rifornimento in mezzo non registrato. E alcuni mezzi grandi (come il DAF) con un pieno solo fanno tranquillamente più di 1.200 km: per loro è del tutto normale.",
-    cosaFare:
-      "Controlla se manca un rifornimento o se quel mezzo fa davvero tanta strada con un pieno. Questa soglia verrà migliorata per tenere conto del tipo di mezzo.",
+      "Es.: 600 km percorsi in 4 ore fanno 150 km/h di media, impossibile — quasi sempre è un numero di km scritto male. Invece 1.300 km in 3 giorni (come il DAF di Ivan) va benissimo: è una media bassa e non viene segnalato.",
+    cosaFare: "Controlla il numero di km segnato sul contachilometri.",
   },
   {
     type: "LITRI_NON_VALIDI",

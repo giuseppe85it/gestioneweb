@@ -33,6 +33,13 @@ const CONSUMPTION_SUSPICION_FACTOR = 0.7; // anomalia se la finestra recente è 
 // adatta a ogni mezzo (un furgone leggero e un camion pesante hanno consumi tipici diversi).
 const CONSUMPTION_OUTLIER_LOW = 0.55; // sotto 0,55× la mediana = pienone, escluso dal calcolo
 const CONSUMPTION_OUTLIER_HIGH = 1.8; // sopra 1,8× la mediana = rabbocco, escluso dal calcolo
+// Salto km: invece di un delta assoluto (es. 1200 km, che penalizzava i mezzi che fanno molta
+// strada con un pieno, tipo i DAF, e i buchi di rifornimenti non registrati) usiamo la VELOCITÀ
+// MEDIA tra due rifornimenti. Un camion è limitato a 90 km/h: una media oltre ~100 km/h è
+// fisicamente impossibile e indica un km sbagliato. Sotto un intervallo minimo non valutiamo
+// (rifornimenti troppo ravvicinati, spesso registrati con lo stesso orario).
+const KM_JUMP_MAX_KMH = 100; // velocità media oltre cui il km è incoerente
+const KM_JUMP_MIN_HOURS = 2; // intervallo minimo tra rifornimenti per valutare la velocità
 
 const safeText = (value: unknown): string => String(value ?? "").trim();
 
@@ -515,7 +522,17 @@ export function describeAnomaly(
         seed && typeof seed.km === "number" && typeof row.km === "number"
           ? formatIntegerIt(row.km - seed.km)
           : "—";
-      return `Salto km elevato: dal rifornimento precedente del ${seedDate} (km ${seedKmText}) sono stati percorsi ${diff} km. Verifica plausibilità (oltre soglia 1.200 km tra rifornimenti consecutivi).`;
+      const hours = seed
+        ? (row.dateObj.getTime() - seed.dateObj.getTime()) / 3_600_000
+        : 0;
+      const kmh =
+        seed &&
+        hours > 0 &&
+        typeof row.km === "number" &&
+        typeof seed.km === "number"
+          ? formatIntegerIt(Math.round((row.km - seed.km) / hours))
+          : "—";
+      return `Km incoerenti col tempo trascorso: dal rifornimento precedente del ${seedDate} (km ${seedKmText}) risultano ${diff} km percorsi a una media di ${kmh} km/h, impossibile per un camion (limite ~90 km/h). Probabile errore sul numero di km registrato.`;
     }
     case "KM_INVALIDI": {
       return `Km mancanti o non validi sul rifornimento. Valore registrato: ${rowKmRaw}.`;
@@ -578,12 +595,18 @@ export function detectRefuelAnomalies(
         message:
           "Km inferiori al rifornimento precedente (possibile errore di battitura)",
       });
-    } else if (row.km > seed.km && row.km - seed.km > 1200) {
-      result.push({
-        type: "KM_SALTO_TROPPO_GRANDE",
-        target: "km",
-        message: "Salto km > 1200 dal rifornimento precedente",
-      });
+    } else if (row.km > seed.km) {
+      const deltaKm = row.km - seed.km;
+      const hours =
+        (row.dateObj.getTime() - seed.dateObj.getTime()) / 3_600_000;
+      if (hours >= KM_JUMP_MIN_HOURS && deltaKm / hours > KM_JUMP_MAX_KMH) {
+        result.push({
+          type: "KM_SALTO_TROPPO_GRANDE",
+          target: "km",
+          message:
+            "Km incoerenti col tempo trascorso (velocità media impossibile per un camion)",
+        });
+      }
     } else if (row.km === seed.km) {
       result.push({
         type: "KM_INVARIATI",

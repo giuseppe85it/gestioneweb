@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-22 (salto km)
+
+DATA: `2026-06-22`
+TITOLO: `Salto km su velocità media invece di delta assoluto`
+FILE TOCCATI: `src/next/helpers/refuelAnomalies.ts`, `src/next/helpers/anomalieGuida.ts`
+COSA: `La regola "salto km" non usa piu il delta assoluto (>1200 km, che segnalava a torto i mezzi che fanno molta strada con un pieno come i DAF e i buchi di rifornimenti non registrati). Ora calcola la velocita media tra due rifornimenti (delta km / ore reali, grazie al timestamp ripristinato) e segnala solo se supera 100 km/h con intervallo >=2 ore: una media impossibile per un camion (limite 90 km/h) indica un km sbagliato. Costanti KM_JUMP_MAX_KMH=100, KM_JUMP_MIN_HOURS=2. Messaggio e guida aggiornati.`
+ESITO: `FATTO_CON_VERIFICA_MANCANTE`
+NOTE: `tsc -b OK, npm run build OK. Effetto su dati reali: gli 8 "salti km" attuali (tutti delta>1200 ma a 46-352 km/giorno reali) spariscono perche normali; nessun falso. Totale anomalie rifornimenti ora 4 (1 consumo reale, 1 km invariato, 2 km mancanti) da 26 iniziali. Nessun writer/barrier/route/dataset/IA toccato.`
+
 ## 2026-06-22
 
 DATA: `2026-06-22`
