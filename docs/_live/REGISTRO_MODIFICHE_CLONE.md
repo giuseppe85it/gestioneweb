@@ -1,5 +1,14 @@
 # REGISTRO MODIFICHE CLONE
 
+## 2026-06-22
+
+DATA: `2026-06-22`
+TITOLO: `Stabilizzazione anomalie rifornimenti (ora reale + consumo su finestra)`
+FILE TOCCATI: `src/next/helpers/refuelAnomalies.ts`, `src/next/types/centroControlloTypes.ts`, `src/next/components/NextCentroControlloIndagineModal.tsx`, `src/next/NextCentroControlloParityPage.tsx`, `src/next/helpers/anomalieGuida.ts`, `src/next/components/NextAnomaliaGuidaModal.tsx`
+COSA: `normalizeRefuelRecord deriva dateObj dal timestamp reale (ora) prima del display giorno-only: elimina la perdita d'ora (verificata 397/400 record su Firestore prod read-only) che falsava ordine, seed, delta km e km/L sui rifornimenti multipli nello stesso giorno. Il "consumo sospetto" non e piu calcolato sul singolo rifornimento (inaffidabile per pieni parziali) ma su finestra mobile di 4 rifornimenti (somma km / somma litri) confrontata con baseline storica >=8 rifornimenti sotto il 70%. Aggiunto windowCount a RefuelConsumptionSuspicion; nuovo metodo getWindowConsumption nell'indice consumo e colonna "Media 4 rif." in modale Indagine e tabella Report (la sola colonna Km/L del singolo pieno era incoerente con l'anomalia di finestra); testi modale Indagine allineati. Aggiunta guida "Cosa significano gli avvisi" (anomalieGuida.ts + NextAnomaliaGuidaModal.tsx) con spiegazione semplice ed esempi per ogni tipo di anomalia, apribile dal modale Indagine (pulsante generale e "Come funziona?" su ogni segnalazione). Inoltre i rifornimenti parziali (rabbocchi/pienoni: km/L fuori da 0,55-1,8x la mediana del mezzo+autista) sono esclusi dal calcolo del consumo, che altrimenti gonfiava la media storica e generava falsi allarmi (es. TI136914 rientrato); costanti CONSUMPTION_OUTLIER_LOW/HIGH.`
+ESITO: `FATTO_CON_VERIFICA_MANCANTE`
+NOTE: `tsc -b OK. Verifica browser non eseguita (profilo Chrome occupato). Effetto su dati reali: anomalie 26->12 (consumo 12->6 con finestra, poi ->1 escludendo i rifornimenti parziali; km 14->11), ore perse 397->0. Nessun writer, barrier, route, dataset o IA modificato; dateObj resta calcolo in memoria. Analisi impatto read-only: rischio NORMALE.`
+
 ## 2026-06-21 2042
 
 DATA: `2026-06-21`

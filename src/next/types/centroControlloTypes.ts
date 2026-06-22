@@ -62,9 +62,10 @@ export type AnomalyType =
 export type AnomalyTarget = "km" | "litri" | "consumo";
 
 export type RefuelConsumptionSuspicion = {
-  currentKmL: number;
-  historicalKmL: number;
-  historyCount: number;
+  currentKmL: number; // km/L medio della finestra recente (somma km / somma litri)
+  historicalKmL: number; // km/L medio della baseline storica precedente alla finestra
+  historyCount: number; // numero di rifornimenti nella baseline storica
+  windowCount: number; // numero di rifornimenti aggregati nella finestra recente
   deltaPercent: number;
   thresholdFactor: number;
 };
@@ -86,9 +87,23 @@ export type RefuelSeedIndex = {
   findSeed: (row: RefuelRow) => RefuelRow | null;
 };
 
+export type RefuelWindowConsumption = {
+  windowKmL: number; // km/L medio della finestra recente (somma km / somma litri)
+  baselineKmL: number; // km/L medio della baseline storica
+  windowCount: number; // rifornimenti aggregati nella finestra recente
+  baselineCount: number; // rifornimenti nella baseline storica
+  isBelowThreshold: boolean; // true se la finestra è sotto la soglia (consumo sospetto)
+};
+
 export type RefuelConsumptionIndex = {
   findSuspicion: (
     row: RefuelRow,
     seed: RefuelRow | null,
   ) => RefuelConsumptionSuspicion | null;
+  // Media della finestra recente per QUALSIASI rifornimento (anche non anomalo),
+  // così la UI può mostrarla in colonna; null se la finestra/baseline è incompleta.
+  getWindowConsumption: (
+    row: RefuelRow,
+    seed: RefuelRow | null,
+  ) => RefuelWindowConsumption | null;
 };

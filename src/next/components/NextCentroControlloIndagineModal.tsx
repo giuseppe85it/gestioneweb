@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   Anomaly,
+  AnomalyType,
   RefuelConsumptionIndex,
   RefuelRow,
   RefuelSeedIndex,
@@ -13,6 +14,7 @@ import {
   formatIntegerIt,
   formatMediaLitriKm,
 } from "../helpers/refuelAnomalies";
+import NextAnomaliaGuidaModal from "./NextAnomaliaGuidaModal";
 
 type Props = {
   open: boolean;
@@ -32,6 +34,12 @@ export default function NextCentroControlloIndagineModal({
   refuelConsumptionIndex,
 }: Props) {
   const [investigationExpansion, setInvestigationExpansion] = useState<5 | 10 | "all">(5);
+  const [guidaOpen, setGuidaOpen] = useState(false);
+  const [guidaFocus, setGuidaFocus] = useState<AnomalyType | null>(null);
+  const openGuida = (type: AnomalyType | null = null) => {
+    setGuidaFocus(type);
+    setGuidaOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -71,7 +79,18 @@ export default function NextCentroControlloIndagineModal({
         seed,
         refuelConsumptionIndex,
       );
-      return { row: innerRow, seed, mediaLitriKm, mediaLitriKmValue, anomalies };
+      const windowConsumption = refuelConsumptionIndex.getWindowConsumption(
+        innerRow,
+        seed,
+      );
+      return {
+        row: innerRow,
+        seed,
+        mediaLitriKm,
+        mediaLitriKmValue,
+        anomalies,
+        windowConsumption,
+      };
     };
 
     const mezzoHistoryEntries = mezzoHistoryAll.map(computeEntry);
@@ -212,7 +231,7 @@ export default function NextCentroControlloIndagineModal({
     const consumption = targetConsumoAnomalies[0]?.consumption ?? null;
     p1Title = `Consumo sospetto su ${target.targa}: confronto storico autista+targa per ${autistaLabel}.`;
     p1Sub = consumption
-      ? `Rifornimento attuale ${formatMediaLitriKm(
+      ? `Consumo recente ${formatMediaLitriKm(
           consumption.currentKmL,
         )}; media storica ${formatMediaLitriKm(consumption.historicalKmL)}.`
       : "Confronto storico disponibile sul dettaglio anomalia.";
@@ -246,9 +265,9 @@ export default function NextCentroControlloIndagineModal({
   } else if (hasOnlyConsumptionAnomaly) {
     const autistaLabel = target.autistaNome ?? "â€”";
     const consumption = targetConsumoAnomalies[0]?.consumption ?? null;
-    p3Title = `Autista ${autistaLabel} su ${target.targa}: confronto sugli ultimi 20 rifornimenti validi della stessa coppia autista+targa.`;
+    p3Title = `Autista ${autistaLabel} su ${target.targa}: confronto tra consumo recente (finestra) e media storica della stessa coppia autista+targa.`;
     p3Sub = consumption
-      ? `Rifornimento attuale ${formatMediaLitriKm(
+      ? `Consumo recente ${formatMediaLitriKm(
           consumption.currentKmL,
         )}; media storica ${formatMediaLitriKm(consumption.historicalKmL)}.`
       : "Confronto storico disponibile sul dettaglio anomalia.";
@@ -271,7 +290,7 @@ export default function NextCentroControlloIndagineModal({
   let p4Title: string;
   if (hasOnlyConsumptionAnomaly) {
     p4Title =
-      "Il rifornimento e molto sotto la media storica. Prima di correggere o contestare, confronta km, litri, ricevuta, percorso, carico e stato del mezzo.";
+      "Il consumo recente è molto sotto la media storica del mezzo. Prima di correggere o contestare, confronta percorso, carico, stile di guida e stato del mezzo: è una tendenza su più pieni, non un singolo rifornimento.";
   } else if (mezzoCount >= 2 && autistaCount >= 2) {
     p4Title =
       "Anomalie concentrate su MEZZO E AUTISTA insieme. Probabile accoppiamento problematico (autista che usa spesso questo mezzo e fa errori specifici).";
@@ -303,6 +322,7 @@ export default function NextCentroControlloIndagineModal({
   };
 
   return (
+    <>
     <div
       className="cc-investigation-overlay"
       role="dialog"
@@ -332,6 +352,15 @@ export default function NextCentroControlloIndagineModal({
         </div>
 
         <div className="cc-investigation-body">
+          <div style={{ marginBottom: "0.5rem" }}>
+            <button
+              type="button"
+              className="cc-secondary-btn"
+              onClick={() => openGuida(null)}
+            >
+              ❔ Cosa significano questi avvisi?
+            </button>
+          </div>
           <section className="cc-investigation-card">
             <h4>Rifornimento sospetto</h4>
             <div className="cc-investigation-record-grid">
@@ -410,6 +439,13 @@ export default function NextCentroControlloIndagineModal({
                       ⚠
                     </span>
                     <span>{text}</span>
+                    <button
+                      type="button"
+                      className="cc-investigation-expand-btn"
+                      onClick={() => openGuida(anomaly.type)}
+                    >
+                      Come funziona?
+                    </button>
                   </div>
                 ))}
               </div>
@@ -430,6 +466,7 @@ export default function NextCentroControlloIndagineModal({
                     <th>Km</th>
                     <th>Litri</th>
                     <th>Km/L</th>
+                    <th>Media 4 rif.</th>
                     <th>Fonte</th>
                     <th>Anomalie</th>
                   </tr>
@@ -462,6 +499,24 @@ export default function NextCentroControlloIndagineModal({
                             : "—"}
                         </td>
                         <td>{entry.mediaLitriKm}</td>
+                        <td
+                          className={
+                            entry.windowConsumption?.isBelowThreshold
+                              ? "cc-cell-warning-consumo"
+                              : undefined
+                          }
+                          title={
+                            entry.windowConsumption
+                              ? `Media degli ultimi ${entry.windowConsumption.windowCount} rifornimenti, contro media storica ${formatMediaLitriKm(
+                                  entry.windowConsumption.baselineKmL,
+                                )}`
+                              : "Servono almeno 4 rifornimenti recenti e una storia sufficiente"
+                          }
+                        >
+                          {entry.windowConsumption
+                            ? formatMediaLitriKm(entry.windowConsumption.windowKmL)
+                            : "—"}
+                        </td>
                         <td>{entry.row.sourceLabel}</td>
                         <td>{renderHistoryWarning(entry.anomalies)}</td>
                       </tr>
@@ -546,5 +601,11 @@ export default function NextCentroControlloIndagineModal({
         </div>
       </div>
     </div>
+      <NextAnomaliaGuidaModal
+        open={guidaOpen}
+        focusType={guidaFocus}
+        onClose={() => setGuidaOpen(false)}
+      />
+    </>
   );
 }

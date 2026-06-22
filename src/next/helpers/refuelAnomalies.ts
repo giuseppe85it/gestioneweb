@@ -21,8 +21,18 @@ export type RefuelAnomalySummary = {
   consumoRows: number;
 };
 
-const CONSUMPTION_HISTORY_SIZE = 20;
-const CONSUMPTION_SUSPICION_FACTOR = 0.7;
+// Il consumo è valutato su una FINESTRA mobile (somma km / somma litri), non sul singolo
+// rifornimento: i pieni parziali e i rabbocchi si compensano dentro la somma, così il km/L
+// diventa attendibile e l'anomalia descrive una tendenza, non un singolo pieno.
+const CONSUMPTION_WINDOW_SIZE = 4; // rifornimenti aggregati nella finestra recente
+const CONSUMPTION_BASELINE_MIN = 8; // rifornimenti storici minimi per la media di riferimento
+const CONSUMPTION_SUSPICION_FACTOR = 0.7; // anomalia se la finestra recente è sotto il 70% della media storica
+// I rifornimenti "parziali" (rabbocco: pochi litri per molti km → km/L altissimo; oppure pienone:
+// molti litri per pochi km → km/L bassissimo) non rappresentano il consumo reale e falsano la media.
+// Li riconosciamo come km/L troppo lontano dalla mediana di QUEL mezzo+autista, così la soglia si
+// adatta a ogni mezzo (un furgone leggero e un camion pesante hanno consumi tipici diversi).
+const CONSUMPTION_OUTLIER_LOW = 0.55; // sotto 0,55× la mediana = pienone, escluso dal calcolo
+const CONSUMPTION_OUTLIER_HIGH = 1.8; // sopra 1,8× la mediana = rabbocco, escluso dal calcolo
 
 const safeText = (value: unknown): string => String(value ?? "").trim();
 
@@ -186,10 +196,14 @@ export const normalizeRefuelRecord = (
       record?.targaRimorchio ??
       record?.targa,
   );
+  // FIX timestamp: usa l'ora reale (timestamp/dataOra) PRIMA del display giorno-only (data).
+  // Il feed campo @rifornimenti_autisti_tmp porta l'ora reale; il business @rifornimenti solo
+  // il giorno. Parsando "data" per prima, più rifornimenti nello stesso giorno collassavano
+  // tutti a mezzogiorno, falsando ordine, seed precedente, delta km e km/L.
   const dateObj =
-    parseDateFlexible(record?.data) ||
+    parseDateFlexible(record?.timestamp) ||
     parseDateFlexible(record?.dataOra) ||
-    parseDateFlexible(record?.timestamp);
+    parseDateFlexible(record?.data);
   if (!targa || !dateObj) return null;
 
   const tipoRawValue = record?.tipo;
@@ -322,60 +336,137 @@ const readRefuelConsumption = (
   return { km, litri: row.litri, kmL };
 };
 
+const median = (values: number[]): number | null => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+};
+
 export function buildRefuelConsumptionIndex(
   refuelRows: RefuelRow[],
   refuelSeedIndex: RefuelSeedIndex,
 ): RefuelConsumptionIndex {
-  const byAutistaTarga = new Map<
-    string,
-    Array<{ ts: number; km: number; litri: number; kmL: number }>
-  >();
+  type ConsumptionEntry = {
+    rowId: string;
+    ts: number;
+    km: number;
+    litri: number;
+    kmL: number;
+  };
 
+  // Raccolta grezza, in ordine cronologico, dei rifornimenti con consumo misurabile per coppia.
+  const rawByAutistaTarga = new Map<string, ConsumptionEntry[]>();
   const sortedRows = [...refuelRows].sort(
     (a, b) => a.dateObj.getTime() - b.dateObj.getTime(),
   );
-
   for (const row of sortedRows) {
     const key = buildAutistaTargaConsumptionKey(row);
     if (!key) continue;
     const seed = refuelSeedIndex.findSeed(row);
     const consumption = readRefuelConsumption(row, seed);
     if (!consumption) continue;
-    const list = byAutistaTarga.get(key);
-    const entry = { ts: row.dateObj.getTime(), ...consumption };
+    const entry = { rowId: row.id, ts: row.dateObj.getTime(), ...consumption };
+    const list = rawByAutistaTarga.get(key);
     if (list) {
       list.push(entry);
     } else {
-      byAutistaTarga.set(key, [entry]);
+      rawByAutistaTarga.set(key, [entry]);
     }
   }
 
+  // Filtro dei rifornimenti parziali (rabbocchi/pienoni): per ogni coppia teniamo solo i
+  // rifornimenti con km/L vicino alla mediana del mezzo. Così finestra recente e baseline storica
+  // confrontano consumi reali con consumi reali, non valori falsati da pieni non rappresentativi.
+  const byAutistaTarga = new Map<string, ConsumptionEntry[]>();
+  for (const [key, list] of rawByAutistaTarga) {
+    const medianKmL = median(list.map((entry) => entry.kmL));
+    if (medianKmL === null || medianKmL <= 0) {
+      byAutistaTarga.set(key, list);
+      continue;
+    }
+    const low = medianKmL * CONSUMPTION_OUTLIER_LOW;
+    const high = medianKmL * CONSUMPTION_OUTLIER_HIGH;
+    byAutistaTarga.set(
+      key,
+      list.filter((entry) => entry.kmL >= low && entry.kmL <= high),
+    );
+  }
+
+  const aggregateKmL = (
+    entries: Array<{ km: number; litri: number }>,
+  ): number | null => {
+    const totalKm = entries.reduce((sum, entry) => sum + entry.km, 0);
+    const totalLitri = entries.reduce((sum, entry) => sum + entry.litri, 0);
+    if (totalKm <= 0 || totalLitri <= 0) return null;
+    const value = totalKm / totalLitri;
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+
+  // Media della finestra recente + baseline per un rifornimento, senza applicare la soglia.
+  // Restituisce null se la finestra recente o la baseline storica non sono complete.
+  const computeWindow = (
+    row: RefuelRow,
+    seed: RefuelRow | null,
+  ): {
+    windowKmL: number;
+    baselineKmL: number;
+    windowCount: number;
+    baselineCount: number;
+  } | null => {
+    const key = buildAutistaTargaConsumptionKey(row);
+    if (!key) return null;
+    const current = readRefuelConsumption(row, seed);
+    if (!current) return null;
+    const list = byAutistaTarga.get(key) ?? [];
+    const idx = list.findIndex(
+      (entry) => entry.rowId === row.id && entry.ts === row.dateObj.getTime(),
+    );
+    // Serve una finestra recente completa (questo rifornimento la chiude) e una baseline
+    // storica sufficiente che la precede.
+    if (idx < 0 || idx + 1 < CONSUMPTION_WINDOW_SIZE) return null;
+
+    const windowEntries = list.slice(idx - CONSUMPTION_WINDOW_SIZE + 1, idx + 1);
+    const baselineEntries = list.slice(0, idx - CONSUMPTION_WINDOW_SIZE + 1);
+    if (baselineEntries.length < CONSUMPTION_BASELINE_MIN) return null;
+
+    const windowKmL = aggregateKmL(windowEntries);
+    const baselineKmL = aggregateKmL(baselineEntries);
+    if (windowKmL === null || baselineKmL === null) return null;
+
+    return {
+      windowKmL,
+      baselineKmL,
+      windowCount: windowEntries.length,
+      baselineCount: baselineEntries.length,
+    };
+  };
+
   return {
     findSuspicion: (row, seed) => {
-      const key = buildAutistaTargaConsumptionKey(row);
-      if (!key) return null;
-      const current = readRefuelConsumption(row, seed);
-      if (!current) return null;
-      const rowTs = row.dateObj.getTime();
-      const history = (byAutistaTarga.get(key) ?? [])
-        .filter((entry) => entry.ts < rowTs)
-        .sort((a, b) => b.ts - a.ts)
-        .slice(0, CONSUMPTION_HISTORY_SIZE);
-      if (history.length < CONSUMPTION_HISTORY_SIZE) return null;
-      const totalKm = history.reduce((sum, entry) => sum + entry.km, 0);
-      const totalLitri = history.reduce((sum, entry) => sum + entry.litri, 0);
-      if (totalKm <= 0 || totalLitri <= 0) return null;
-      const historicalKmL = totalKm / totalLitri;
-      if (!Number.isFinite(historicalKmL) || historicalKmL <= 0) return null;
-      if (current.kmL >= historicalKmL * CONSUMPTION_SUSPICION_FACTOR) {
-        return null;
-      }
+      const w = computeWindow(row, seed);
+      if (!w) return null;
+      if (w.windowKmL >= w.baselineKmL * CONSUMPTION_SUSPICION_FACTOR) return null;
       return {
-        currentKmL: current.kmL,
-        historicalKmL,
-        historyCount: history.length,
-        deltaPercent: (current.kmL - historicalKmL) / historicalKmL,
+        currentKmL: w.windowKmL,
+        historicalKmL: w.baselineKmL,
+        historyCount: w.baselineCount,
+        windowCount: w.windowCount,
+        deltaPercent: (w.windowKmL - w.baselineKmL) / w.baselineKmL,
         thresholdFactor: CONSUMPTION_SUSPICION_FACTOR,
+      };
+    },
+    getWindowConsumption: (row, seed) => {
+      const w = computeWindow(row, seed);
+      if (!w) return null;
+      return {
+        windowKmL: w.windowKmL,
+        baselineKmL: w.baselineKmL,
+        windowCount: w.windowCount,
+        baselineCount: w.baselineCount,
+        isBelowThreshold: w.windowKmL < w.baselineKmL * CONSUMPTION_SUSPICION_FACTOR,
       };
     },
   };
@@ -385,11 +476,11 @@ const buildConsumptionSuspicionMessage = (
   suspicion: RefuelConsumptionSuspicion,
 ): string => {
   const delta = Math.round(Math.abs(suspicion.deltaPercent) * 100);
-  return `Consumo sospetto: ${formatMediaLitriKm(
+  return `Consumo recente in calo: media ultimi ${suspicion.windowCount} rifornimenti ${formatMediaLitriKm(
     suspicion.currentKmL,
-  )} contro media ${formatMediaLitriKm(
+  )} contro media storica ${formatMediaLitriKm(
     suspicion.historicalKmL,
-  )} degli ultimi ${suspicion.historyCount} rifornimenti dello stesso autista su questa targa (${delta}% peggiore).`;
+  )} su ${suspicion.historyCount} rifornimenti precedenti dello stesso autista su questa targa (${delta}% peggiore).`;
 };
 
 export function describeAnomaly(
@@ -445,11 +536,11 @@ export function describeAnomaly(
       const detail = anomaly.consumption;
       if (!detail) return anomaly.message;
       const delta = Math.round(Math.abs(detail.deltaPercent) * 100);
-      return `Consumo sospetto: questo rifornimento fa ${formatMediaLitriKm(
+      return `Consumo recente peggiorato: gli ultimi ${detail.windowCount} rifornimenti di questo autista su questa targa rendono ${formatMediaLitriKm(
         detail.currentKmL,
-      )}, contro la media ${formatMediaLitriKm(
+      )}, contro la media storica ${formatMediaLitriKm(
         detail.historicalKmL,
-      )} degli ultimi ${detail.historyCount} rifornimenti dello stesso autista su questa targa (${delta}% peggiore). Verifica percorso, carico, ricevuta e possibili errori km/litri.`;
+      )} su ${detail.historyCount} rifornimenti precedenti (${delta}% peggiore). È una tendenza su più pieni, non un singolo rifornimento: verifica percorso, carico, stile di guida e stato del mezzo.`;
     }
     default:
       return anomaly.message;

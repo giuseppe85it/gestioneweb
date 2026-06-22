@@ -933,7 +933,11 @@ export default function NextCentroControlloParityPage() {
         seed,
         refuelConsumptionIndex,
       );
-      return { ...entry, anomalies };
+      const windowConsumption = refuelConsumptionIndex.getWindowConsumption(
+        entry.row,
+        seed,
+      );
+      return { ...entry, anomalies, windowConsumption };
     });
   }, [filteredMonthlyRefuelsWithMedia, refuelSeedIndex, refuelConsumptionIndex]);
 
@@ -1791,11 +1795,12 @@ export default function NextCentroControlloParityPage() {
                       <th>Fonte</th>
                       <th>Stato</th>
                       <th className="cc-col-media">Media km/L</th>
+                      <th className="cc-col-media">Media 4 rif.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {displayedRefuelsWithAnomalies.map(
-                      ({ row: item, mediaLitriKm, anomalies }) => {
+                      ({ row: item, mediaLitriKm, anomalies, windowConsumption }) => {
                         const kmAnomalies = anomalies.filter((a) => a.target === "km");
                         const litriAnomalies = anomalies.filter(
                           (a) => a.target === "litri",
@@ -1904,6 +1909,24 @@ export default function NextCentroControlloParityPage() {
                             <td>{item.sourceLabel}</td>
                             <td>{renderAnomalyPills()}</td>
                             <td className="cc-col-media">{mediaLitriKm}</td>
+                            <td
+                              className={`cc-col-media${
+                                windowConsumption?.isBelowThreshold
+                                  ? " cc-cell-warning-consumo"
+                                  : ""
+                              }`}
+                              title={
+                                windowConsumption
+                                  ? `Media degli ultimi ${windowConsumption.windowCount} rifornimenti, contro media storica ${formatMediaLitriKm(
+                                      windowConsumption.baselineKmL,
+                                    )}`
+                                  : undefined
+                              }
+                            >
+                              {windowConsumption
+                                ? formatMediaLitriKm(windowConsumption.windowKmL)
+                                : "—"}
+                            </td>
                           </tr>
                         );
                       },
