@@ -3560,8 +3560,8 @@ export default function NextManutenzioniPage() {
 
     // Sezione "Foto prova": le foto caricate dall'autista nelle origini,
     // in fondo al PDF. Usata sia per la scheda singola sia per il quadro.
-    const renderFotoProvaSection = () => {
-      const itemsConFotoProva = items.filter((item) => origineFotoByItemId.has(item.id));
+    const renderFotoProvaSection = (subset: NextManutenzioniLegacyDatasetRecord[]) => {
+      const itemsConFotoProva = subset.filter((item) => origineFotoByItemId.has(item.id));
       if (itemsConFotoProva.length === 0) return;
       checkPage(14);
       setPdfFont("bold");
@@ -3919,7 +3919,7 @@ export default function NextManutenzioniPage() {
 
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 8;
       renderClosedByExternalTable(group?.closedByExternalItems ?? [], pdfOriginNotes);
-      renderFotoProvaSection();
+      renderFotoProvaSection(items);
 
       decoratePages("Scheda manutenzioni mezzo");
       await openManutenzioniPdfPreview(
@@ -4077,6 +4077,7 @@ export default function NextManutenzioniPage() {
 
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 10;
       renderClosedByExternalTable(group.closedByExternalItems, pdfOriginNotes);
+      renderFotoProvaSection([...group.items, ...group.closedByExternalItems]);
     };
 
     if (pdfSubjectType === "tutti") {
@@ -4096,8 +4097,6 @@ export default function NextManutenzioniPage() {
     } else {
       groupedItems.forEach(renderPdfGroup);
     }
-
-    renderFotoProvaSection();
 
     decoratePages("Quadro manutenzioni");
     await openManutenzioniPdfPreview(
