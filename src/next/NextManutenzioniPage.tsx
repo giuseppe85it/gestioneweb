@@ -1510,6 +1510,8 @@ export default function NextManutenzioniPage() {
   const [origineModalRecord, setOrigineModalRecord] = useState<NextManutenzioneOrigineRecord | null>(null);
   const [origineModalLoading, setOrigineModalLoading] = useState(false);
   const [origineModalError, setOrigineModalError] = useState<string | null>(null);
+  // Foto della segnalazione/controllo d'origine ingrandita (lightbox).
+  const [origineFotoLightbox, setOrigineFotoLightbox] = useState<string | null>(null);
   const [storico, setStorico] = useState<NextManutenzioniLegacyDatasetRecord[]>([]);
   const [mezzi, setMezzi] = useState<NextManutenzioniMezzoOption[]>([]);
   const [segnalazioniAutisti, setSegnalazioniAutisti] = useState<NextAutistiSegnalazioneSectionItem[]>([]);
@@ -6711,9 +6713,11 @@ export default function NextManutenzioniPage() {
       setOrigineModalRecord(null);
       setOrigineModalError(null);
       setOrigineModalLoading(false);
+      setOrigineFotoLightbox(null);
     };
 
     return (
+      <>
       <div className="man2-pdf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Origine manutenzione">
         <div className="man2-pdf-modal">
           <div className="man2-pdf-modal__head">
@@ -6749,12 +6753,37 @@ export default function NextManutenzioniPage() {
                   <div className="man-empty">Nessun dettaglio origine disponibile.</div>
                 )}
                 {fotoUrls.length > 0 ? (
-                  <div className="man2-material-list">
-                    {fotoUrls.map((url) => (
-                      <a key={url} href={url} target="_blank" rel="noreferrer" className="man2-material-row">
-                        Foto origine
-                      </a>
-                    ))}
+                  <div className="man2-last-item">
+                    <div className="man2-last-item__row1">
+                      <span className="man2-last-item__title">Foto autista ({fotoUrls.length})</span>
+                      <span className="man2-last-item__meta">Tocca per ingrandire</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                      {fotoUrls.map((url, idx) => (
+                        <button
+                          type="button"
+                          key={url}
+                          onClick={() => setOrigineFotoLightbox(url)}
+                          aria-label={`Apri foto ${idx + 1}`}
+                          style={{
+                            padding: 0,
+                            border: "1px solid #d4d4d4",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            cursor: "pointer",
+                            background: "none",
+                            width: 96,
+                            height: 96,
+                          }}
+                        >
+                          <img
+                            src={url}
+                            alt={`Foto segnalazione ${idx + 1}`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -6762,6 +6791,52 @@ export default function NextManutenzioniPage() {
           </div>
         </div>
       </div>
+      {origineFotoLightbox ? (
+        <div
+          onClick={() => setOrigineFotoLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Foto ingrandita"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            padding: 24,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setOrigineFotoLightbox(null)}
+            aria-label="Chiudi foto"
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 16,
+              fontSize: 22,
+              lineHeight: "40px",
+              background: "#fff",
+              border: "none",
+              borderRadius: "50%",
+              width: 40,
+              height: 40,
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+          <img
+            src={origineFotoLightbox}
+            alt="Foto segnalazione ingrandita"
+            onClick={(event) => event.stopPropagation()}
+            style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 8 }}
+          />
+        </div>
+      ) : null}
+      </>
     );
   }
 
