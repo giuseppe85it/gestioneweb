@@ -124,6 +124,7 @@ type PdfSubjectSelection = TipoVoce | "tutti";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dafare" | "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
+type PdfStatusScope = "tutte" | "solo-da-fare" | "solo-eseguite";
 type DaFareUrgenzaFilter = "tutte" | NextManutenzioneUrgenza;
 type DaFareOrigineFilter = "tutte" | NextManutenzioneOrigineTipo;
 type InterventoUiSubtype =
@@ -1528,7 +1529,7 @@ export default function NextManutenzioniPage() {
   const [ricercaMezzo, setRicercaMezzo] = useState("");
   const [pdfSubjectType, setPdfSubjectType] = useState<PdfSubjectSelection>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
-  const [pdfIncludeOperative, setPdfIncludeOperative] = useState(true);
+  const [pdfStatusScope, setPdfStatusScope] = useState<PdfStatusScope>("tutte");
   const [pdfOriginNotesById, setPdfOriginNotesById] = useState<PdfOriginNotesById>({});
   const pdfOriginNotesCacheRef = useRef<PdfOriginNotesById>({});
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -2182,7 +2183,13 @@ export default function NextManutenzioniPage() {
       })
       .filter((item) => {
         const isOperative = isPdfOperativeMaintenance(item);
-        if (pdfIncludeOperative && isOperative) return true;
+        // "Solo da fare": tieni esclusivamente le manutenzioni da fare/programmate.
+        if (pdfStatusScope === "solo-da-fare") return isOperative;
+        // "Tutte": le da fare passano sempre, a prescindere dal periodo.
+        if (pdfStatusScope === "tutte" && isOperative) return true;
+        // "Solo eseguite": le da fare non compaiono mai.
+        if (pdfStatusScope === "solo-eseguite" && isOperative) return false;
+        // Storico eseguito: filtro per periodo selezionato.
         const pdfDate = getMaintenancePdfDateValue(item);
         const timestamp = getLegacyDateTimestamp(pdfDate);
         if (pdfPeriodFilter === "tutto") return true;
@@ -2190,8 +2197,9 @@ export default function NextManutenzioniPage() {
         return buildMonthFilterKey(pdfDate) === pdfPeriodFilter;
       })
       .sort((left, right) => {
-        const leftOperative = pdfIncludeOperative && isPdfOperativeMaintenance(left);
-        const rightOperative = pdfIncludeOperative && isPdfOperativeMaintenance(right);
+        const showOperative = pdfStatusScope !== "solo-eseguite";
+        const leftOperative = showOperative && isPdfOperativeMaintenance(left);
+        const rightOperative = showOperative && isPdfOperativeMaintenance(right);
         if (leftOperative !== rightOperative) return rightOperative ? 1 : -1;
         const timestampDelta =
           getMaintenancePdfSortTimestamp(right) -
@@ -2199,7 +2207,7 @@ export default function NextManutenzioniPage() {
         if (timestampDelta !== 0) return timestampDelta;
         return right.id.localeCompare(left.id);
       });
-  }, [activeTarga, pdfIncludeOperative, pdfPeriodFilter, pdfSubjectType, storico]);
+  }, [activeTarga, pdfStatusScope, pdfPeriodFilter, pdfSubjectType, storico]);
   const latestMetricByTargaAndTipo = useMemo(() => {
     const sortedItems = [...storico].sort(
       (left, right) =>
@@ -3249,8 +3257,9 @@ export default function NextManutenzioniPage() {
       const groupedRecords = items
         .filter((item) => item.tipo === subjectType && normalizeText(item.targa) === targaKey)
         .sort((left, right) => {
-          const leftOperative = pdfIncludeOperative && isPdfOperativeMaintenance(left);
-          const rightOperative = pdfIncludeOperative && isPdfOperativeMaintenance(right);
+          const showOperative = pdfStatusScope !== "solo-eseguite";
+          const leftOperative = showOperative && isPdfOperativeMaintenance(left);
+          const rightOperative = showOperative && isPdfOperativeMaintenance(right);
           if (leftOperative !== rightOperative) return rightOperative ? 1 : -1;
           const timestampDelta =
             getMaintenancePdfSortTimestamp(right) - getMaintenancePdfSortTimestamp(left);
@@ -6263,7 +6272,11 @@ export default function NextManutenzioniPage() {
               onClick={() =>
                 void exportPdfForItems(
                   pdfVisibleItems,
-                  `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
+                  pdfStatusScope === "solo-da-fare"
+                    ? "Manutenzioni da fare"
+                    : pdfStatusScope === "solo-eseguite"
+                    ? `Manutenzioni eseguite ${formatMonthFilterLabel(pdfPeriodFilter)}`
+                    : `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
                 )
               }
             >
@@ -6309,23 +6322,19 @@ export default function NextManutenzioniPage() {
                     </option>
                   ))}
                 </select>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginTop: 10,
-                    fontSize: 13,
-                    color: "#374151",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={pdfIncludeOperative}
-                    onChange={(event) => setPdfIncludeOperative(event.target.checked)}
-                  />
-                  Includi da fare e programmate
+                <label className="man2-field__label" style={{ marginTop: 10 }}>
+                  Manutenzioni da mostrare
                 </label>
+                <select
+                  value={pdfStatusScope}
+                  onChange={(event) => setPdfStatusScope(event.target.value as PdfStatusScope)}
+                  title="Scegli se includere tutte le manutenzioni, solo quelle da fare/programmate o solo quelle eseguite. Le da fare non risentono del filtro periodo."
+                  aria-label="Filtro stato manutenzioni quadro"
+                >
+                  <option value="tutte">Tutte (da fare + storico)</option>
+                  <option value="solo-da-fare">Solo da fare / programmate</option>
+                  <option value="solo-eseguite">Solo eseguite (storico)</option>
+                </select>
               </div>
             </div>
           </div>
