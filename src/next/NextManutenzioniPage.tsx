@@ -3151,8 +3151,12 @@ export default function NextManutenzioniPage() {
       return;
     }
 
-    if (!normalizedData) {
-      window.alert("Data manutenzione non disponibile o non valida. Inserisci la data nel formato GG/MM/AAAA.");
+    // La data e' richiesta solo quando si registra/chiude una manutenzione
+    // ESEGUITA. Una manutenzione che resta "Da fare" non deve chiedere la data:
+    // il suo riferimento temporale e' quello della segnalazione/controllo
+    // d'origine (TIMESTAMP-MAI-DA-CLICK), e si valorizza solo alla chiusura.
+    if (selectedStato === "eseguita" && !normalizedData) {
+      window.alert("Per registrare una manutenzione eseguita devi inserire la data nel formato GG/MM/AAAA.");
       return;
     }
 
