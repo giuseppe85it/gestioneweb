@@ -7542,6 +7542,7 @@ export default function NextManutenzioniPage() {
                   modalita: isUiSubtypeGommeStraordinario(uiSubtype) ? "straordinario" : "ordinario",
                 })
           }
+          confirmLabel={completionModalRecord ? "Conferma cambio gomme" : "Conferma assi coinvolti"}
           onClose={() => {
             setGommeModalOpen(false);
             setCreaGommeOrigine(null);

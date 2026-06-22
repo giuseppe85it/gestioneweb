@@ -39,6 +39,7 @@ type NextModalGommeProps = {
   kmIniziale?: string;
   defaultModalita?: NextModalitaCambioGomme;
   initialData?: NextCambioGommeData | null;
+  confirmLabel?: string;
   onClose: () => void;
   onConfirm: (data: NextCambioGommeData) => void;
 };
@@ -266,6 +267,7 @@ export default function NextModalGomme({
   kmIniziale,
   defaultModalita = "ordinario",
   initialData,
+  confirmLabel = "Conferma cambio gomme",
   onClose,
   onConfirm,
 }: NextModalGommeProps) {
@@ -639,7 +641,7 @@ export default function NextModalGomme({
             Annulla
           </button>
           <button type="button" className="mg-btn primary" onClick={handleConfirm} disabled={!numeroGomme}>
-            Conferma cambio gomme
+            {confirmLabel}
           </button>
         </footer>
       </div>
