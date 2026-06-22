@@ -1949,24 +1949,24 @@ export default function NextCentroControlloParityPage() {
                 }
               : undefined
           }
-          onMarkEvasa={async (id: string) => {
-            const result = await markRichiestaEvasa(id);
+          onMarkEvasa={async (id: string, dataMs: number) => {
+            const result = await markRichiestaEvasa(id, dataMs);
             if (!result.ok) {
               throw new Error(result.error || "Errore.");
             }
             await loadAutistiReadOnlySections();
             advanceAfterMark(id);
           }}
-          onMarkChiusa={async (id: string) => {
-            const result = await markSegnalazioneChiusa(id);
+          onMarkChiusa={async (id: string, dataMs: number) => {
+            const result = await markSegnalazioneChiusa(id, dataMs);
             if (!result.ok) {
               throw new Error(result.error || "Errore.");
             }
             await loadAutistiReadOnlySections();
             advanceAfterMark(id);
           }}
-          onMarkChiuso={async (id: string) => {
-            const result = await markControlloChiuso(id);
+          onMarkChiuso={async (id: string, dataMs: number) => {
+            const result = await markControlloChiuso(id, dataMs);
             if (!result.ok) {
               throw new Error(result.error || "Errore.");
             }

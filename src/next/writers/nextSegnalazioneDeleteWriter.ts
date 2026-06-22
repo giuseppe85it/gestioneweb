@@ -10,6 +10,7 @@ import {
 } from "../../utils/cloneWriteBarrier";
 import {
   readLegameLavoro,
+  readLegamiOrigine,
   removeLegameOrigine,
 } from "../helpers/cicloLegame";
 
@@ -156,30 +157,43 @@ export async function deleteSegnalazioneAutista(
         const linkedManutenzioneIds = readLegameLavoro(sourceRecord);
         const fotoPaths = readFotoStoragePaths(sourceRecord);
 
+        // Pulisci i riferimenti su TUTTE le manutenzioni collegate, in ENTRAMBE
+        // le direzioni del legame:
+        //  - forward-link: la segnalazione punta alla manutenzione (linkedLavoroId);
+        //  - back-link:    la manutenzione punta alla segnalazione (origineRefs/
+        //                  origineRefId), anche quando la segnalazione NON ha
+        //                  linkedLavoroId (legame unidirezionale, frequente nei
+        //                  dati legacy/migrati).
+        // Senza il ramo back-link la cancellazione lasciava "origini orfane"
+        // (manutenzioni che puntano a una segnalazione ormai sparita).
         let detachedManutenzioneIds: string[] = [];
-        if (linkedManutenzioneIds.length > 0) {
-          const manutenzioniList = await readStorageListDirect(MANUTENZIONI_KEY);
-          const linkedSet = new Set(linkedManutenzioneIds);
-          let changed = false;
-          const nextManutenzioni = manutenzioniList.map((record) => {
-            const id = normalizeText(record.id);
-            if (!linkedSet.has(id)) return record;
-            changed = true;
-            detachedManutenzioneIds = [...detachedManutenzioneIds, id];
-            return {
-              ...record,
-              ...removeLegameOrigine(record, {
-                tipo: "segnalazione",
-                refId: segnalazioneId,
-                refKey: SEGNALAZIONI_KEY,
-              }),
-            };
-          });
+        const linkedSet = new Set(linkedManutenzioneIds);
+        const manutenzioniList = await readStorageListDirect(MANUTENZIONI_KEY);
+        let changed = false;
+        const nextManutenzioni = manutenzioniList.map((record) => {
+          const id = normalizeText(record.id);
+          const isForwardLinked = linkedSet.has(id);
+          const isBackLinked = readLegamiOrigine(record).some(
+            (legame) =>
+              legame.tipo === "segnalazione" &&
+              normalizeText(legame.refId) === segnalazioneId,
+          );
+          if (!isForwardLinked && !isBackLinked) return record;
+          changed = true;
+          detachedManutenzioneIds = [...detachedManutenzioneIds, id];
+          return {
+            ...record,
+            ...removeLegameOrigine(record, {
+              tipo: "segnalazione",
+              refId: segnalazioneId,
+              refKey: SEGNALAZIONI_KEY,
+            }),
+          };
+        });
 
-          if (changed) {
-            assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
-            await setItemSync(MANUTENZIONI_KEY, nextManutenzioni);
-          }
+        if (changed) {
+          assertCloneWriteAllowed("storageSync.setItemSync", { key: MANUTENZIONI_KEY });
+          await setItemSync(MANUTENZIONI_KEY, nextManutenzioni);
         }
 
         const nextSegnalazioni = segnalazioniList.filter(

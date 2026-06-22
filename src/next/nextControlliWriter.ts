@@ -27,10 +27,16 @@ function unwrapList(raw: unknown): RawRecord[] {
 
 export async function markControlloChiuso(
   controlloId: string,
+  // Data REALE di chiusura (ms) scelta dall'utente nel modale. MAI Date.now():
+  // regola TIMESTAMP-MAI-DA-CLICK. Il chiamante deve fornirla sempre.
+  dataChiusuraMs: number,
 ): Promise<{ ok: boolean; error?: string }> {
   const id: string = String(controlloId ?? "").trim();
   if (!id) {
     return { ok: false, error: "ID controllo mancante." };
+  }
+  if (!Number.isFinite(dataChiusuraMs)) {
+    return { ok: false, error: "Data di chiusura mancante o non valida." };
   }
   try {
     const raw: unknown = await getItemSync(CONTROLLI_KEY);
@@ -42,10 +48,17 @@ export async function markControlloChiuso(
       return { ok: false, error: "Controllo non trovato." };
     }
     const current: RawRecord = list[targetIndex];
+    // Timbro UNIFICATO: stesso formato strutturato della chiusura automatica da
+    // manutenzione (chiudiControlloDaEvento -> stato:"chiusa" + chiusuraDi/Data).
+    // `chiusuraDi: "manuale"` distingue la chiusura manuale dalla propagata.
+    // `chiuso: true` resta come flag legacy compatibile (innocuo, additivo).
     const updated: RawRecord = {
       ...current,
       chiuso: true,
-      dataChiusura: Date.now(),
+      stato: "chiusa",
+      chiusuraDi: "manuale",
+      chiusuraData: dataChiusuraMs,
+      dataChiusura: dataChiusuraMs,
       chiuso_by: SOURCE_LABEL,
     };
     const next: RawRecord[] = [...list];

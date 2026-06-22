@@ -16,7 +16,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { toDisplayDateTime, toISO } from "../helpers/dateUnica";
+import { parseAnyDate, toDisplayDateTime, toISO } from "../helpers/dateUnica";
 import "../../autistiInbox/AutistiInboxHome.css";
 
 type CreateManutenzioneDaFareOrigineTipo = "segnalazione" | "controllo";
@@ -43,9 +43,9 @@ type NextHomeAutistiEventoModalProps = {
   event: HomeEvent | null;
   onClose: () => void;
   editable?: boolean;
-  onMarkEvasa?: (id: string) => Promise<void>;
-  onMarkChiusa?: (id: string) => Promise<void>;
-  onMarkChiuso?: (id: string) => Promise<void>;
+  onMarkEvasa?: (id: string, dataMs: number) => Promise<void>;
+  onMarkChiusa?: (id: string, dataMs: number) => Promise<void>;
+  onMarkChiuso?: (id: string, dataMs: number) => Promise<void>;
   onCreateManutenzioneDaFare?: (
     input: CreateManutenzioneDaFareSubmitInput,
   ) => Promise<CreateManutenzioneDaFareSubmitResult>;
@@ -346,6 +346,9 @@ export default function NextHomeAutistiEventoModal({
 }: NextHomeAutistiEventoModalProps) {
   const [marking, setMarking] = useState<boolean>(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  // Data REALE di chiusura/evasione scelta dall'utente (default: oggi, modificabile).
+  // Mai la data dal click: regola TIMESTAMP-MAI-DA-CLICK.
+  const [markDate, setMarkDate] = useState<string>(() => toISO(new Date()) ?? "");
   const hasNav: boolean =
     typeof eventsCount === "number" &&
     eventsCount > 1 &&
@@ -999,16 +1002,51 @@ export default function NextHomeAutistiEventoModal({
                   {markError}
                 </div>
               )}
+              {((event.tipo === "richiesta_attrezzature" && onMarkEvasa) ||
+                (event.tipo === "segnalazione" && onMarkChiusa) ||
+                (event.tipo === "controllo" && onMarkChiuso)) && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    font: "600 12.5px/1 system-ui",
+                    color: "#5b4a2f",
+                  }}
+                >
+                  {event.tipo === "richiesta_attrezzature"
+                    ? "Data evasione:"
+                    : "Data chiusura:"}
+                  <input
+                    type="date"
+                    value={markDate}
+                    max={toISO(new Date()) ?? undefined}
+                    disabled={marking}
+                    onChange={(e) => setMarkDate(e.target.value)}
+                    style={{
+                      font: "500 12.5px/1 system-ui",
+                      padding: "6px 8px",
+                      border: "1px solid #d8c39b",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </label>
+              )}
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 {event.tipo === "richiesta_attrezzature" && onMarkEvasa && (
                   <button
                     type="button"
                     disabled={marking}
                     onClick={async () => {
+                      const dataMs = parseAnyDate(markDate)?.getTime();
+                      if (!Number.isFinite(dataMs)) {
+                        setMarkError("Inserisci una data valida.");
+                        return;
+                      }
                       setMarking(true);
                       setMarkError(null);
                       try {
-                        await onMarkEvasa(event.id);
+                        await onMarkEvasa(event.id, dataMs as number);
                       } catch (err: unknown) {
                         setMarkError(
                           err instanceof Error ? err.message : "Errore salvataggio.",
@@ -1036,10 +1074,15 @@ export default function NextHomeAutistiEventoModal({
                     type="button"
                     disabled={marking}
                     onClick={async () => {
+                      const dataMs = parseAnyDate(markDate)?.getTime();
+                      if (!Number.isFinite(dataMs)) {
+                        setMarkError("Inserisci una data valida.");
+                        return;
+                      }
                       setMarking(true);
                       setMarkError(null);
                       try {
-                        await onMarkChiusa(event.id);
+                        await onMarkChiusa(event.id, dataMs as number);
                       } catch (err: unknown) {
                         setMarkError(
                           err instanceof Error ? err.message : "Errore salvataggio.",
@@ -1067,10 +1110,15 @@ export default function NextHomeAutistiEventoModal({
                     type="button"
                     disabled={marking}
                     onClick={async () => {
+                      const dataMs = parseAnyDate(markDate)?.getTime();
+                      if (!Number.isFinite(dataMs)) {
+                        setMarkError("Inserisci una data valida.");
+                        return;
+                      }
                       setMarking(true);
                       setMarkError(null);
                       try {
-                        await onMarkChiuso(event.id);
+                        await onMarkChiuso(event.id, dataMs as number);
                       } catch (err: unknown) {
                         setMarkError(
                           err instanceof Error ? err.message : "Errore salvataggio.",

@@ -164,6 +164,42 @@ describe("nextSegnalazioneDeleteWriter", () => {
     });
   });
 
+  it("ripulisce il back-link orfano: manutenzione collegata SOLO via origineRefs (segnalazione senza linkedLavoroId)", async () => {
+    seed({
+      segnalazioni: [{ id: "S-ORF", descrizione: "Solo back-link" }],
+      manutenzioni: [
+        {
+          id: "M-ORF",
+          stato: "eseguita",
+          origineTipo: "segnalazione",
+          origineRefId: "S-ORF",
+          origineRefKey: "@segnalazioni_autisti_tmp",
+          origineRefs: [
+            { tipo: "segnalazione", refId: "S-ORF", refKey: "@segnalazioni_autisti_tmp" },
+          ],
+        },
+        { id: "M-ALTRA", stato: "daFare", descrizione: "Non collegata" },
+      ],
+    });
+
+    const result = await deleteSegnalazioneAutista({ segnalazioneId: "S-ORF" });
+
+    expect(result.ok).toBe(true);
+    expect(result.detachedManutenzioneIds).toEqual(["M-ORF"]);
+    expect(readList("@segnalazioni_autisti_tmp")).toEqual([]);
+    const manutenzioni = readList("@manutenzioni");
+    expect(manutenzioni[0]).toMatchObject({
+      id: "M-ORF",
+      stato: "eseguita",
+      origineTipo: null,
+      origineRefId: null,
+      origineRefKey: null,
+      origineRefs: [],
+    });
+    // la manutenzione non collegata resta intatta
+    expect(manutenzioni[1]).toMatchObject({ id: "M-ALTRA", stato: "daFare" });
+  });
+
   it("elimina la segnalazione anche se una foto Storage e' gia assente", async () => {
     const missingPath = "autisti/segnalazioni/S-IMG/mancante.jpg";
     seed({

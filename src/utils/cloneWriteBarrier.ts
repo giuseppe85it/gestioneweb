@@ -212,6 +212,16 @@ const NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_PATH_PREFIXES = [
   "autisti/segnalazioni/",
 ] as const;
 const NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE = "next_segnalazione_delete_write_scope";
+// Eliminazione controllo KO dalla pagina Manutenzioni (vista "Da fare"), stesso
+// pattern del delete segnalazione: scrive @controlli_mezzo_autisti (rimozione
+// record) + @manutenzioni (pulizia back-link origineRefs sulle manutenzioni
+// collegate). Path autorizzato: SOLO /next/manutenzioni.
+const NEXT_CONTROLLO_DELETE_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
+const NEXT_CONTROLLO_DELETE_ALLOWED_STORAGE_KEYS = new Set<string>([
+  "@controlli_mezzo_autisti",
+  "@manutenzioni",
+]);
+const NEXT_CONTROLLO_DELETE_WRITE_SCOPE = "next_controllo_delete_write_scope";
 // PROMPT 47/48 — scope dedicato per aggancio/sgancio legame manutenzione lato CC
 // (writer agganciaSegnalazioneAManutenzioneEsistente + sganciaLegameOrfano).
 // Path autorizzato: SOLO /next/centro-controllo (Archivio Storico interno). Le storage
@@ -341,6 +351,12 @@ function isAllowedGruppoSegnalazioniWritePath(pathname: string): boolean {
 
 function isAllowedNextSegnalazioneDeleteWritePath(pathname: string): boolean {
   return NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
+function isAllowedNextControlloDeleteWritePath(pathname: string): boolean {
+  return NEXT_CONTROLLO_DELETE_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
 }
@@ -559,6 +575,7 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof CHIUSURA_DA_EVENTO_WRITE_SCOPE
     | typeof GRUPPO_SEGNALAZIONI_WRITE_SCOPE
     | typeof NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE
+    | typeof NEXT_CONTROLLO_DELETE_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE
     | typeof CENTRO_CONTROLLO_LEGAME_WRITE_SCOPE
     | typeof NEXT_HOME_LUOGO_MEZZO_WRITE_SCOPE,
@@ -674,6 +691,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
         path.startsWith(prefix),
       );
     }
+  }
+
+  if (
+    isAllowedNextControlloDeleteWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(NEXT_CONTROLLO_DELETE_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return NEXT_CONTROLLO_DELETE_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   // PROMPT 47/48 — aggancio/sgancio legame manutenzione lato Centro Controllo.

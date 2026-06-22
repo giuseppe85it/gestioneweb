@@ -4284,6 +4284,28 @@
   background: #f2f5f0;
 }
 
+/* Menu azioni "di lato" (apertura a sinistra del trigger, testo piu' grande):
+   usato dalle card Controlli KO / Segnalazioni della vista Da fare. Apertura a
+   sinistra per non uscire dal bordo destro. */
+.man2-screen--dafare .man2-row-menu--side .man2-row-menu__panel {
+  top: 0;
+  right: calc(100% + 8px);
+  left: auto;
+  min-width: 240px;
+}
+
+.man2-screen--dafare .man2-row-menu--side .man2-row-menu__item {
+  font-size: 13.5px;
+  padding: 11px 14px;
+}
+
+/* Toggle Comprimi/Espandi: evidenzia lo stato APERTO in verde. */
+.man2-dafare-toggle.is-expanded {
+  background: #1f7a4d;
+  border-color: #1f7a4d;
+  color: #ffffff;
+}
+
 @media (max-width: 760px) {
   .man2-screen--dafare {
     width: 100%;

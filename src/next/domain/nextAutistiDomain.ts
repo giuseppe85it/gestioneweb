@@ -761,8 +761,27 @@ function normalizeControlloSectionItem(
       normalizeLowerText(record.esito) === "ko" ||
       koList.length > 0,
     note: normalizeOptionalText(record.note ?? record.dettaglio ?? record.messaggio),
-    chiuso: record.chiuso === true,
-    dataChiusura: typeof record.dataChiusura === "number" ? record.dataChiusura : null,
+    // Allineamento ai segnali (stesso filo logico di normalizeSegnalazioneSectionItem,
+    // righe 600-604): un controllo KO e' "chiuso" non solo col flag forte `chiuso: true`
+    // (markControlloChiuso dal bottone "Segna chiuso"), ma anche con la chiusura
+    // strutturata propagata da una manutenzione/evento collegati
+    // (`stato === "chiusa"` / `chiusuraData` / `chiusuraRefId`, scritta da
+    // chiudiControlloDaEvento). Senza questo, un controllo chiuso-da-evento resta
+    // "aperto" nel filtro Sinottica (NextCentroControlloParityPage.tsx:1251) ed e'
+    // nascosto solo finche' sopravvive il `linkedLavoroId`: se sganciato, riemerge.
+    chiuso:
+      record.chiuso === true ||
+      normalizeLowerText(record.stato) === "chiusa" ||
+      typeof record.chiusuraData === "number" ||
+      Boolean(normalizeOptionalText(record.chiusuraRefId)),
+    // Fallback su `chiusuraData` quando manca il legacy `dataChiusura`
+    // (i writer chiudi*DaEvento non scrivono `dataChiusura`).
+    dataChiusura:
+      typeof record.dataChiusura === "number"
+        ? record.dataChiusura
+        : typeof record.chiusuraData === "number"
+          ? record.chiusuraData
+          : null,
     chiusoBy: normalizeOptionalText(record.chiuso_by),
     stato: normalizeOptionalText(record.stato),
     chiusuraDi: normalizeOptionalText(record.chiusuraDi),

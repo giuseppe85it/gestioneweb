@@ -27,10 +27,16 @@ function unwrapList(raw: unknown): RawRecord[] {
 
 export async function markRichiestaEvasa(
   richiestaId: string,
+  // Data REALE di evasione (ms) scelta dall'utente nel modale. MAI Date.now():
+  // regola TIMESTAMP-MAI-DA-CLICK. Il chiamante deve fornirla sempre.
+  dataEvasioneMs: number,
 ): Promise<{ ok: boolean; error?: string }> {
   const id: string = String(richiestaId ?? "").trim();
   if (!id) {
     return { ok: false, error: "ID richiesta mancante." };
+  }
+  if (!Number.isFinite(dataEvasioneMs)) {
+    return { ok: false, error: "Data di evasione mancante o non valida." };
   }
   try {
     const raw: unknown = await getItemSync(RICHIESTE_KEY);
@@ -45,7 +51,7 @@ export async function markRichiestaEvasa(
     const updated: RawRecord = {
       ...current,
       evasa: true,
-      dataEvasione: Date.now(),
+      dataEvasione: dataEvasioneMs,
       evasa_by: SOURCE_LABEL,
     };
     const next: RawRecord[] = [...list];
