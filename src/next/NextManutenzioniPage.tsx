@@ -3311,6 +3311,56 @@ export default function NextManutenzioniPage() {
       ),
     );
 
+    // Foto-prova: foto caricate dall'autista nella segnalazione/controllo
+    // d'origine, da mostrare in fondo al PDF come prova. Riusa la lettura
+    // origine (readOrigineFotoUrls) e il caricamento immagini esistente.
+    const origineRefMap = new Map<string, string | null>();
+    for (const item of items) {
+      const refId = normalizeText(item.origineRefId ?? "");
+      if (!refId || origineRefMap.has(refId)) continue;
+      origineRefMap.set(refId, item.origineRefKey ?? null);
+    }
+    // Risoluzione in parallelo: per ogni origine prova la cache sincrona
+    // (origineRawById), poi il fallback async. Match case-insensitive perche'
+    // alcuni record legacy hanno l'origineRefId in maiuscolo mentre l'id reale
+    // della segnalazione/controllo e' minuscolo.
+    const origineFotoUrlsByRefId = new Map<string, string[]>(
+      await Promise.all(
+        Array.from(origineRefMap.entries()).map(async ([refId, refKey]) => {
+          const refIdLower = refId.toLowerCase();
+          let origineData: Record<string, unknown> | null =
+            origineRawById.get(refId) ?? origineRawById.get(refIdLower) ?? null;
+          if (!origineData) {
+            const rec =
+              (await getNextManutenzioneOrigineRecord(refKey, refId)) ??
+              (refIdLower !== refId
+                ? await getNextManutenzioneOrigineRecord(refKey, refIdLower)
+                : null);
+            origineData = rec?.data ?? null;
+          }
+          const urls = origineData ? readOrigineFotoUrls(origineData).slice(0, 3) : [];
+          return [refId, urls] as const;
+        }),
+      ),
+    );
+    const uniqueFotoUrls = Array.from(
+      new Set(Array.from(origineFotoUrlsByRefId.values()).flat()),
+    );
+    const fotoDataByUrl = new Map<string, PdfImageData | null>(
+      await Promise.all(
+        uniqueFotoUrls.map(async (url) => [url, await loadPdfImageData(url)] as const),
+      ),
+    );
+    const origineFotoByItemId = new Map<string, PdfImageData[]>();
+    for (const item of items) {
+      const refId = normalizeText(item.origineRefId ?? "");
+      if (!refId) continue;
+      const photos = (origineFotoUrlsByRefId.get(refId) ?? [])
+        .map((url) => fotoDataByUrl.get(url) ?? null)
+        .filter((photo): photo is PdfImageData => Boolean(photo));
+      if (photos.length > 0) origineFotoByItemId.set(item.id, photos);
+    }
+
     const decoratePages = (titleLabel: string) => {
       const totalPages = doc.getNumberOfPages();
       for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 1) {
@@ -3379,6 +3429,52 @@ export default function NextManutenzioniPage() {
       doc.setDrawColor(201, 168, 106);
       doc.setLineWidth(args.borderLineWidth);
       doc.roundedRect(args.boxX, args.boxY, args.boxW, args.boxH, args.radius, args.radius);
+    };
+
+    // Sezione "Foto prova": le foto caricate dall'autista nelle origini,
+    // in fondo al PDF. Usata sia per la scheda singola sia per il quadro.
+    const renderFotoProvaSection = () => {
+      const itemsConFotoProva = items.filter((item) => origineFotoByItemId.has(item.id));
+      if (itemsConFotoProva.length === 0) return;
+      checkPage(14);
+      setPdfFont("bold");
+      doc.setFontSize(13);
+      doc.setTextColor(26, 26, 26);
+      doc.text(toPdfText("Foto prova (segnalazioni / controlli autista)", fontReady), margin, y);
+      y += 7;
+      const fotoBoxW = 70;
+      const fotoBoxH = 52;
+      const fotoGap = 6;
+      for (const item of itemsConFotoProva) {
+        const photos = origineFotoByItemId.get(item.id) ?? [];
+        checkPage(8 + fotoBoxH);
+        setPdfFont("bold");
+        doc.setFontSize(9);
+        doc.setTextColor(55, 65, 81);
+        doc.text(
+          toPdfText(
+            `${normalizeText(item.targa)} — ${buildPdfDescrizione(item)}`.slice(0, 110),
+            fontReady,
+          ),
+          margin,
+          y,
+        );
+        y += 5;
+        let fotoX = margin;
+        for (const photo of photos.slice(0, 3)) {
+          drawPdfContainedImage({
+            photoData: photo,
+            boxX: fotoX,
+            boxY: y,
+            boxW: fotoBoxW,
+            boxH: fotoBoxH,
+            radius: 2,
+            borderLineWidth: 0.5,
+          });
+          fotoX += fotoBoxW + fotoGap;
+        }
+        y += fotoBoxH + 8;
+      }
     };
 
     const renderClosedByExternalTable = (
@@ -3696,6 +3792,7 @@ export default function NextManutenzioniPage() {
 
       y = (docWithTable.lastAutoTable?.finalY ?? y) + 8;
       renderClosedByExternalTable(group?.closedByExternalItems ?? [], pdfOriginNotes);
+      renderFotoProvaSection();
 
       decoratePages("Scheda manutenzioni mezzo");
       await openManutenzioniPdfPreview(
@@ -3872,6 +3969,8 @@ export default function NextManutenzioniPage() {
     } else {
       groupedItems.forEach(renderPdfGroup);
     }
+
+    renderFotoProvaSection();
 
     decoratePages("Quadro manutenzioni");
     await openManutenzioniPdfPreview(
