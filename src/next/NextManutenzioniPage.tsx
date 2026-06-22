@@ -1327,11 +1327,13 @@ function isSegnalazioneGomme(record: Record<string, unknown>): boolean {
 // writer per derivare categoria/assi da mostrare nel modale.
 function controlloTargaPrincipale(record: Record<string, unknown>): string {
   const target = String(record.target ?? "").trim().toLowerCase();
+  // normalizeText qui rende gia' maiuscolo e toglie gli spazi (normalizzazione targa).
   const motrice =
-    normalizeText(record.targaCamion) || normalizeText(record.targaMotrice);
-  const rimorchio = normalizeText(record.targaRimorchio);
-  if (target === "rimorchio") return (rimorchio || motrice).toUpperCase();
-  return (motrice || rimorchio).toUpperCase();
+    normalizeText(String(record.targaCamion ?? "")) ||
+    normalizeText(String(record.targaMotrice ?? ""));
+  const rimorchio = normalizeText(String(record.targaRimorchio ?? ""));
+  if (target === "rimorchio") return rimorchio || motrice;
+  return motrice || rimorchio;
 }
 
 // Selezione assi reale dal modale → payload gomme per il writer (stessi campi
@@ -3220,7 +3222,7 @@ export default function NextManutenzioniPage() {
         descrizione: normalizedDescrizione,
         eseguito: normalizeFreeText(eseguito) || null,
         noteEsecuzione: normalizeFreeText(noteEsecuzione) || null,
-        data: normalizedData,
+        data: normalizedData ?? "",
         stato: selectedStato,
         importo: normalizedImporto,
         materiali: createAsDaFare ? [] : materialiTemp,
@@ -3447,7 +3449,7 @@ export default function NextManutenzioniPage() {
     // Origini uniche (refId -> refKey) per evitare risoluzioni duplicate.
     const origineRefMap = new Map<string, string | null>();
     for (const item of items) {
-      const refId = normalizeText(item.origineRefId ?? "");
+      const refId = String(item.origineRefId ?? "").trim();
       if (!refId || origineRefMap.has(refId)) continue;
       origineRefMap.set(refId, item.origineRefKey ?? null);
     }
@@ -3484,7 +3486,7 @@ export default function NextManutenzioniPage() {
     );
     const origineFotoByItemId = new Map<string, PdfImageData[]>();
     for (const item of items) {
-      const refId = normalizeText(item.origineRefId ?? "");
+      const refId = String(item.origineRefId ?? "").trim();
       if (!refId) continue;
       const photos = (origineFotoUrlsByRefId.get(refId) ?? [])
         .map((url) => fotoDataByUrl.get(url) ?? null)
@@ -4725,12 +4727,14 @@ export default function NextManutenzioniPage() {
     // Ramo gomme: prima di creare, apri il modale per scegliere gli assi coinvolti.
     if (isSegnalazioneGomme(sourceRecord)) {
       const targa = normalizeText(
-        sourceRecord.targa ??
-          sourceRecord.targaCamion ??
-          sourceRecord.targaRimorchio ??
-          modal.item.targa ??
-          "",
-      ).toUpperCase();
+        String(
+          sourceRecord.targa ??
+            sourceRecord.targaCamion ??
+            sourceRecord.targaRimorchio ??
+            modal.item.targa ??
+            "",
+        ),
+      );
       setCreaGommeOrigine({
         origineTipo: "segnalazione",
         sourceRecord,
