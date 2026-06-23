@@ -1,5 +1,23 @@
 # HANDOFF — Dossier Mezzo "Centro di Comando" (2026-06-23)
 
+> ## AGGIORNAMENTO 2026-06-23 (sessione 2) — commit `87169510`
+> - **SCAMBIO FATTO:** il "Centro di comando" è ora il **dossier UFFICIALE**. Le route
+>   `/next/dossier/:targa` e `/next/dossiermezzi/:targa` aprono `NextDossierMezzoComandoPage`.
+>   Il vecchio `NextDossierMezzoPage` è **rimosso dal routing** (import tolto da `App.tsx`); il
+>   **file resta nel repo** (recuperabile da git), NON cancellato. Verificato a schermo: lista mezzi,
+>   ricerca e scheda mezzo portano tutti al Centro di comando.
+> - **PDF RIFATTO:** nuovo `generateDossierComandoPDFBlob` in `src/utils/pdfEngine.ts` (NON tocca il
+>   motore del vecchio dossier `buildDossierMezzoPdfDocument`). Grafica nuova (fascia scura + foto,
+>   4 KPI colorate, fasce-sezione) + contenuti arricchiti: KPI, Scadenze&allerte, Costi per valuta,
+>   Storia del mezzo (timeline), Dati tecnici, Manutenzioni da fare/eseguite, Storico, Gomme,
+>   Materiali, Preventivi, Fatture. Verificato a schermo su TI113417 (3 pagine, dati reali).
+> - **Punto 1 (collegamenti) VERIFICATO:** tutti i collegamenti funzionano (‹ Mezzi, Analisi economica,
+>   Rifornimenti↗Sinottica con filtro targa, Libretto, +Modifica, click manutenzione, Fatture storico→,
+>   Elimina fattura, Anteprima PDF documento).
+> - **RESTANO APERTI:** punti 4 (armonia/card vuote), 5 (segnalazioni/controlli reali), 6 (consumo
+>   identico al Report), 7 (bug date "all'americana" nei moduli materiali/gomme), 9 (Sincronizzare).
+> - `npm run build` verde. **DA SINCRONIZZARE** (commit su master, non pushato).
+
 > Leggi questo file PER PRIMO per continuare il lavoro sul nuovo dossier mezzo.
 > Memorie collegate (Claude Code): `dossier-comando-build`, `chat-ia-stato-verdetto-audit`,
 > `timeline-mezzo-e-bug-date-parser`, `mockup-ibrido-inventario-prima`, `workflow-git-master-sync`,
