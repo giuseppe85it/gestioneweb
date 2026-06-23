@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { formatDateTimeUI, formatDateUI } from "./nextDateFormat";
@@ -43,6 +43,92 @@ const DOSSIER_DELETE_SIMPLE_MESSAGE = "Eliminare questa fattura?";
 const DOSSIER_DELETE_LINKED_MESSAGE =
   "Questa fattura ha una manutenzione collegata. Eliminando la fattura la manutenzione rimarra. Confermi l'eliminazione?";
 
+const COMANDO_CSS = `
+  .dc{ --ink:#18222f; --soft:#5a6675; --faint:#8a94a2; --line:#e0e5ec; --accent:#2f6bd6; --danger:#cf3b3b; --warn:#c9820a; --ok:#1f9457; --chf:#25303f; --eur:#3a5db0; --unk:#b07a12; font-family:"Segoe UI",system-ui,-apple-system,sans-serif; color:var(--ink); max-width:1320px; margin:0 auto; padding:8px 4px 40px; }
+  .dc *{box-sizing:border-box;}
+  .dc .mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;}
+  .dc-top{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;background:linear-gradient(180deg,#16243a,#0f1a2b);color:#eef2f8;border-radius:10px;padding:16px 18px;}
+  .dc-idleft{display:flex;gap:14px;align-items:center;}
+  .dc-photo{width:104px;height:76px;border-radius:7px;flex:none;background:#26344b;background-size:cover;background-position:center;border:1px solid #38496685;display:flex;align-items:center;justify-content:center;color:#8294b3;font-size:10px;text-transform:uppercase;cursor:pointer;}
+  .dc-plate{font-size:28px;font-weight:700;letter-spacing:.04em;line-height:1;}
+  .dc-model{font-size:14px;color:#c4d0e0;margin-top:3px;}
+  .dc-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .dc-chip{font-size:12px;padding:3px 9px;border-radius:20px;background:#ffffff14;border:1px solid #ffffff26;color:#d8e2f0;}
+  .dc-eyebrow{text-align:center;font-size:11px;letter-spacing:.06em;color:#9fb0c4;}
+  .dc-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:440px;}
+  .dc-btn{font-size:12.5px;padding:8px 12px;border-radius:7px;cursor:pointer;background:#ffffff12;border:1px solid #ffffff2b;color:#e7eef8;white-space:nowrap;}
+  .dc-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .dc-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:14px 0;}
+  .dc-kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;position:relative;box-shadow:0 1px 2px rgba(20,30,45,.06);}
+  .dc-kpi .top{position:absolute;top:0;left:16px;right:16px;height:3px;border-radius:0 0 3px 3px;}
+  .dc-kpi .lab{font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.03em;}
+  .dc-kpi .val{font-size:25px;font-weight:700;margin-top:6px;line-height:1.05;}
+  .dc-kpi .val small{font-size:14px;font-weight:600;color:var(--soft);}
+  .dc-kpi .sub{font-size:12px;color:var(--faint);margin-top:5px;}
+  .dc-grid{display:grid;grid-template-columns:330px 1fr 350px;gap:14px;align-items:start;}
+  .dc-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;}
+  .dc-card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:0;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;}
+  .dc-card>h2 .count{font-size:12px;color:var(--faint);letter-spacing:0;text-transform:none;font-weight:400;}
+  .dc-link{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;font-weight:600;}
+  .dc-row{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid #eef1f5;align-items:flex-start;}
+  .dc-row:last-child{border-bottom:none;}
+  .dc-row.click{cursor:pointer;}
+  .dc-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;}
+  .dc-main{flex:1;min-width:0;}
+  .dc-title{font-size:13.5px;font-weight:600;}
+  .dc-sub{font-size:12px;color:var(--faint);margin-top:2px;}
+  .dc-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
+  .dc-sub2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:9px 16px 3px;background:#f8fafc;}
+  .dc-empty{font-size:12.5px;color:var(--faint);padding:12px 16px;}
+  .dc-tl-day{font-size:11.5px;font-weight:700;color:var(--soft);padding:9px 16px 4px;letter-spacing:.03em;}
+  .dc-tl-item{display:grid;grid-template-columns:88px 1fr auto;gap:10px;padding:8px 16px;align-items:baseline;}
+  .dc-type{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap;}
+  .t-manut{background:#eaf1fb;color:#2f6bd6;} .t-rifor{background:#e9f6ef;color:#1f9457;} .t-doc{background:#f1edfb;color:#6b46c1;} .t-mat{background:#fff4e3;color:#b07a12;}
+  .dc-tl-text{font-size:13px;} .dc-tl-meta{color:var(--faint);}
+  .dc-tl-amt{font-size:12.5px;font-weight:700;white-space:nowrap;}
+  .dc-band{display:flex;align-items:center;gap:14px;margin:26px 2px 14px;}
+  .dc-band h2{font-size:15px;font-weight:700;margin:0;white-space:nowrap;}
+  .dc-band .sub{font-size:12.5px;color:var(--faint);}
+  .dc-band .ln{flex:1;height:1px;background:#cfd6e0;}
+  .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
+  .dc-span2{grid-column:1 / -1;}
+  .dc-tech{display:grid;grid-template-columns:repeat(4,1fr);}
+  .dc-techb{padding:13px 16px;border-right:1px solid #eef1f5;}
+  .dc-techb:last-child{border-right:none;}
+  .dc-techb h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:0 0 8px;}
+  .dc-techb ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .dc-techb li{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;}
+  .dc-techb li span{color:var(--soft);}
+  .dc-techb li strong{font-weight:600;text-align:right;}
+  .dc-pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;background:#e9f6ef;color:var(--ok);}
+  .dc-pill.off{background:#f0f2f5;color:var(--faint);}
+  .dc-twocol{display:grid;grid-template-columns:1fr 1fr;}
+  .dc-twocol>div{padding:12px 16px;border-right:1px solid #eef1f5;}
+  .dc-twocol>div:last-child{border-right:none;}
+  .dc-twocol h3{font-size:12px;margin:0 0 10px;color:var(--soft);}
+  .dc-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+  .dc-li{font-size:13px;cursor:pointer;}
+  .dc-li .meta{font-size:11.5px;color:var(--faint);margin-top:3px;}
+  .dc-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-right:6px;vertical-align:middle;}
+  .b-info{background:#eaf1fb;color:#2f6bd6;} .b-ok{background:#e9f6ef;color:var(--ok);} .b-danger{background:#fcebeb;color:var(--danger);} .b-muted{background:#f0f2f5;color:#475467;}
+  .dc-dtable{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .dc-dtable th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--faint);padding:9px 12px;border-bottom:1px solid var(--line);background:#f8fafc;}
+  .dc-dtable td{padding:9px 12px;border-bottom:1px solid #eef1f5;vertical-align:top;}
+  .dc-dtable tr:last-child td{border-bottom:none;}
+  .dc-doc{display:flex;gap:10px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid #eef1f5;}
+  .dc-doc:last-child{border-bottom:none;}
+  .dc-doc .dm{flex:1;min-width:0;}
+  .dc-doc .dt{font-size:13px;font-weight:600;}
+  .dc-doc .ds{font-size:11.5px;color:var(--faint);margin-top:2px;}
+  .dc-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .dc-mini{font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid #dbe1ea;background:#f6f8fb;color:#2f3a4b;cursor:pointer;}
+  .dc-cur{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:2px;}
+  .cur-chf{background:var(--chf);color:#fff;} .cur-eur{background:#e8edf9;color:var(--eur);} .cur-unk{background:#fbf0d9;color:var(--unk);}
+  .dc-photo-big{height:170px;background:#dde3ea;display:flex;align-items:center;justify-content:center;color:#8a94a2;font-size:12px;text-transform:uppercase;letter-spacing:.05em;background-size:cover;background-position:center;cursor:pointer;}
+  .dc-cta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;background:#f6f9ff;border-top:1px solid var(--line);}
+  @media(max-width:1080px){.dc-top{grid-template-columns:1fr}.dc-kpis{grid-template-columns:repeat(2,1fr)}.dc-grid{grid-template-columns:1fr}.dc-detail{grid-template-columns:1fr}.dc-tech{grid-template-columns:repeat(2,1fr)}.dc-actions{justify-content:flex-start;max-width:none}}
+`;
+
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -65,6 +151,22 @@ function parseDateFlexible(value: string | number | null | undefined): Date | nu
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// Per la timeline: prova SEMPRE il formato italiano gg/mm/aaaa PRIMA di new Date (evita la lettura "all'americana").
+function timelineTimestamp(value: string | number | null | undefined): number | null {
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const dmy = raw.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})/);
+  if (dmy) {
+    const y = dmy[3].length === 2 ? Number(`20${dmy[3]}`) : Number(dmy[3]);
+    const d = new Date(y, Number(dmy[2]) - 1, Number(dmy[1]), 12, 0, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d.getTime();
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
 function formatDateTime(value: string | number | null | undefined) {
   return formatDateTimeUI(parseDateFlexible(value));
 }
@@ -79,26 +181,17 @@ function formatChiusuraEventoTipo(value: string | null | undefined): string {
   return value ? value.replace(/_/g, " ") : "evento";
 }
 
-function dossierWorkBadgeLabel(item: NextDossierLegacyWorkItem, fallback: string): string {
-  return item.stato === "chiusa_da_evento" ? "CHIUSA DA EVENTO" : fallback;
-}
-
-function dossierWorkBadgeClass(item: NextDossierLegacyWorkItem, fallback: string): string {
-  return item.stato === "chiusa_da_evento" ? "badge-info" : fallback;
-}
-
-function dossierWorkBadgeStyle(item: NextDossierLegacyWorkItem): CSSProperties | undefined {
-  if (item.stato !== "chiusa_da_evento") return undefined;
-  return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
-}
-
-function dossierWorkBadgeTitle(item: NextDossierLegacyWorkItem): string | undefined {
-  if (item.stato !== "chiusa_da_evento") return undefined;
-  const evento = formatChiusuraEventoTipo(item.chiusuraDi);
-  const data = item.chiusuraData ? formatDateTimeUI(item.chiusuraData) : "-";
-  return data && data !== "-"
-    ? `Chiusa dal ${evento} del ${data}`
-    : `Chiusa dal ${evento}`;
+function workBadge(item: NextDossierLegacyWorkItem, fallbackLabel: string, fallbackCls: string) {
+  if (item.stato === "chiusa_da_evento") {
+    const evento = formatChiusuraEventoTipo(item.chiusuraDi);
+    const data = item.chiusuraData ? formatDateTimeUI(item.chiusuraData) : "-";
+    return {
+      label: "CHIUSA DA EVENTO",
+      cls: "b-muted",
+      title: data && data !== "-" ? `Chiusa dal ${evento} del ${data}` : `Chiusa dal ${evento}`,
+    };
+  }
+  return { label: fallbackLabel, cls: fallbackCls, title: undefined as string | undefined };
 }
 
 function detectCurrency(input: unknown): Currency {
@@ -118,6 +211,12 @@ function resolveCurrency(record: NextDossierFatturaPreventivoLegacyItem): Curren
 function renderAmount(value: number | undefined, currency: Currency) {
   if (typeof value !== "number" || Number.isNaN(value)) return "Importo n/d";
   return currency === "UNKNOWN" ? `${value.toFixed(2)} (valuta da verificare)` : `${value.toFixed(2)} ${currency}`;
+}
+
+function curBadge(currency: Currency) {
+  if (currency === "CHF") return <span className="dc-cur cur-chf">CHF</span>;
+  if (currency === "EUR") return <span className="dc-cur cur-eur">EUR</span>;
+  return <span className="dc-cur cur-unk">?</span>;
 }
 
 function buildTotals(items: NextDossierFatturaPreventivoLegacyItem[]) {
@@ -146,9 +245,7 @@ function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerA
   parts.push(item.dataCambio ? `Cambio ${formatDossierDate(item.dataCambio)}` : "Data cambio n/d");
   if (item.isMotorizzato) {
     parts.push(
-      typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio)
-        ? `${item.kmCambio} km`
-        : "km cambio n/d",
+      typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio) ? `${item.kmCambio} km` : "km cambio n/d",
     );
     if (typeof item.kmPercorsi === "number" && Number.isFinite(item.kmPercorsi)) {
       parts.push(`Percorsi ${item.kmPercorsi} km`);
@@ -157,9 +254,7 @@ function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerA
   return parts.join(" | ");
 }
 
-function formatGommeStraordinarieMeta(
-  item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number],
-) {
+function formatGommeStraordinarieMeta(item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number]) {
   const parts: string[] = [];
   parts.push(formatDossierDate(item.dataLabel));
   if (item.asseLabel) parts.push(item.asseLabel);
@@ -169,13 +264,6 @@ function formatGommeStraordinarieMeta(
   if (item.fornitore) parts.push(item.fornitore);
   return parts.join(" | ");
 }
-
-const COMANDO_BAND_STYLE: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 14,
-  margin: "26px 2px 14px",
-};
 
 export default function NextDossierMezzoComandoPage() {
   const location = useLocation();
@@ -193,16 +281,12 @@ export default function NextDossierMezzoComandoPage() {
   const [pdfTitle, setPdfTitle] = useState("Anteprima PDF dossier mezzo");
   const [pdfHint, setPdfHint] = useState<string | null>(null);
   const [pdfContext, setPdfContext] = useState("Dossier mezzo");
-  const [fatturaToDelete, setFatturaToDelete] =
-    useState<NextDossierFatturaPreventivoLegacyItem | null>(null);
+  const [fatturaToDelete, setFatturaToDelete] = useState<NextDossierFatturaPreventivoLegacyItem | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const requestedSection = useMemo(
-    () => location.hash.replace(/^#/, "").trim().toLowerCase(),
-    [location.hash],
-  );
+  const requestedSection = useMemo(() => location.hash.replace(/^#/, "").trim().toLowerCase(), [location.hash]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,10 +325,7 @@ export default function NextDossierMezzoComandoPage() {
   useEffect(() => () => revokePdfPreviewUrl(pdfUrl), [pdfUrl]);
 
   useEffect(() => {
-    if (requestedSection !== "preventivi" || !legacy) {
-      return undefined;
-    }
-
+    if (requestedSection !== "preventivi" || !legacy) return undefined;
     let timeoutId = 0;
     const scrollToPreventivi = () => {
       preventiviSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
@@ -252,9 +333,7 @@ export default function NextDossierMezzoComandoPage() {
         preventiviSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
       }, 160);
     };
-
     const animationFrameId = window.requestAnimationFrame(scrollToPreventivi);
-
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       window.clearTimeout(timeoutId);
@@ -268,7 +347,6 @@ export default function NextDossierMezzoComandoPage() {
   const preventiviTotals = useMemo(() => buildTotals(preventivi), [preventivi]);
   const fattureTotals = useMemo(() => buildTotals(fatture), [fatture]);
 
-  // --- Calcoli per la fascia "Centro di comando" (solo da dati gia caricati) ---
   const revisioneInfo = useMemo(() => {
     const d = parseDateFlexible(legacy?.mezzo?.dataScadenzaRevisione);
     if (!d) return { date: "-", days: null as number | null };
@@ -306,6 +384,40 @@ export default function NextDossierMezzoComandoPage() {
     return (litriTot / kmTot) * 100;
   }, [legacy]);
 
+  type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
+  const timeline = useMemo<TimelineEvent[]>(() => {
+    if (!legacy) return [];
+    const events: TimelineEvent[] = [];
+    for (const m of legacy.manutenzioni) {
+      events.push({ ts: timelineTimestamp(m.data), date: formatDossierDate(m.data), type: "Manut.", cls: "t-manut", text: m.descrizione || "Manutenzione", meta: formatKmOre(m) !== "-" ? formatKmOre(m) : undefined });
+    }
+    for (const r of legacy.rifornimenti) {
+      const meta = [r.tipo, r.autistaNome].filter(Boolean).join(" · ") || undefined;
+      events.push({ ts: timelineTimestamp(r.data), date: formatDossierDate(r.data), type: "Riforn.", cls: "t-rifor", text: typeof r.litri === "number" ? `Rifornimento ${r.litri} L` : "Rifornimento", meta });
+    }
+    for (const mat of legacy.movimentiMateriali) {
+      events.push({ ts: timelineTimestamp(mat.data), date: formatDossierDate(mat.data), type: "Materiale", cls: "t-mat", text: mat.descrizione || mat.materialeLabel || "Materiale", meta: mat.fornitore || mat.fornitoreLabel || undefined });
+    }
+    for (const d of docs) {
+      events.push({
+        ts: timelineTimestamp(d.data),
+        date: formatDossierDate(d.data),
+        type: d.tipo === "FATTURA" ? "Fattura" : "Preventivo",
+        cls: "t-doc",
+        text: d.descrizione || d.fornitoreLabel || d.tipo,
+        meta: d.fornitoreLabel || undefined,
+        amount: typeof d.importo === "number" ? { value: d.importo, cur: resolveCurrency(d) } : undefined,
+      });
+    }
+    events.sort((a, b) => {
+      if (a.ts == null && b.ts == null) return 0;
+      if (a.ts == null) return 1;
+      if (b.ts == null) return -1;
+      return b.ts - a.ts;
+    });
+    return events;
+  }, [legacy, docs]);
+
   const closePdf = () => {
     revokePdfPreviewUrl(pdfUrl);
     setPdfOpen(false);
@@ -315,12 +427,7 @@ export default function NextDossierMezzoComandoPage() {
   };
 
   const buildShareMessage = () =>
-    buildPdfShareText({
-      contextLabel: pdfContext,
-      dateLabel: formatDateUI(new Date()),
-      fileName: pdfFileName,
-      url: pdfUrl,
-    });
+    buildPdfShareText({ contextLabel: pdfContext, dateLabel: formatDateUI(new Date()), fileName: pdfFileName, url: pdfUrl });
 
   const onSharePdf = async () => {
     if (!pdfBlob) {
@@ -328,12 +435,7 @@ export default function NextDossierMezzoComandoPage() {
       setPdfHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
       return;
     }
-    const result = await sharePdfFile({
-      blob: pdfBlob,
-      fileName: pdfFileName,
-      title: pdfTitle,
-      text: buildShareMessage(),
-    });
+    const result = await sharePdfFile({ blob: pdfBlob, fileName: pdfFileName, title: pdfTitle, text: buildShareMessage() });
     if (result.status === "shared") {
       setPdfHint("PDF condiviso.");
       return;
@@ -405,41 +507,28 @@ export default function NextDossierMezzoComandoPage() {
 
   const confirmFatturaDelete = async () => {
     if (!fatturaToDelete || !targa) return;
-
     try {
       setDeletePending(true);
       setDeleteError(null);
-      await runWithCloneWriteScopedAllowance(
-        "internal_ai_magazzino_inline_magazzino",
-        async () => deleteNextDocumentoCosto(fatturaToDelete),
+      await runWithCloneWriteScopedAllowance("internal_ai_magazzino_inline_magazzino", async () =>
+        deleteNextDocumentoCosto(fatturaToDelete),
       );
-
       try {
         const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
-        if (nextSnapshot) {
-          setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
-        }
+        if (nextSnapshot) setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
       } catch {
-        /* fallback gestito sotto */
+        /* fallback applicato sotto */
       }
       setLegacy((current) =>
         current
-          ? {
-              ...current,
-              documentiCosti: current.documentiCosti.filter(
-                (item) => item.id !== fatturaToDelete.id,
-              ),
-            }
+          ? { ...current, documentiCosti: current.documentiCosti.filter((item) => item.id !== fatturaToDelete.id) }
           : current,
       );
-
       setShowDeleteConfirm(false);
       setFatturaToDelete(null);
       setDeleteError(null);
     } catch (deleteFatturaError) {
-      setDeleteError(
-        readErrorMessage(deleteFatturaError, "Eliminazione fattura non completata."),
-      );
+      setDeleteError(readErrorMessage(deleteFatturaError, "Eliminazione fattura non completata."));
     } finally {
       setDeletePending(false);
     }
@@ -476,59 +565,62 @@ export default function NextDossierMezzoComandoPage() {
   if (loading) {
     return <div className="dossier-wrapper"><div className="dossier-card dossier-card-full"><div className="dossier-card-body"><div className="dossier-empty">Caricamento dossier mezzo...</div></div></div></div>;
   }
-
   if (error || !legacy || !mezzo) {
     return <div className="dossier-wrapper"><div className="dossier-card dossier-card-full"><div className="dossier-card-body"><div className="dossier-empty">{error || "Dossier non disponibile."}</div><button className="dossier-button" type="button" onClick={back} style={{ marginTop: 12 }}>Torna a Dossier Mezzi</button></div></div></div>;
   }
 
   const librettoUrl = String(mezzo.librettoUrl ?? "").trim();
   const headerTitle = `${mezzo.marca || "-"} ${mezzo.modello || "-"}`.trim();
-  const lavoriLists = {
-    attesa: legacy.lavoriInAttesa,
-    eseguiti: legacy.lavoriEseguiti,
-    manutenzioni: legacy.manutenzioni,
-  } as const;
-
+  const lavoriDaFare = legacy.lavoriInAttesa;
+  const lavoriLists = { attesa: legacy.lavoriInAttesa, eseguiti: legacy.lavoriEseguiti, manutenzioni: legacy.manutenzioni } as const;
   const revDays = revisioneInfo.days;
   const revTone = revDays == null ? "#2f6bd6" : revDays < 0 ? "#cf3b3b" : revDays <= 30 ? "#c9820a" : "#1f9457";
-  const lavoriDaFare = legacy.lavoriInAttesa;
 
-  const renderWorkItem = (item: NextDossierLegacyWorkItem, badge: string, label: string) => (
-    <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}>
-      <div className="dossier-list-main">
-        <span className={`dossier-badge ${dossierWorkBadgeClass(item, badge)}`} style={dossierWorkBadgeStyle(item)} title={dossierWorkBadgeTitle(item)}>{dossierWorkBadgeLabel(item, label)}</span>
-        <strong>{item.descrizione}</strong>
-      </div>
-      <div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{formatDossierDate(item.dataInserimento)}</span></div>
-      <FraseStoriaRecord {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)} compact />
-    </li>
-  );
+  const techBlocks: { title: string; rows: [string, unknown][] }[] = [
+    { title: "Identificazione", rows: [["Proprietario", mezzo.proprietario], ["Targa", mezzo.targa], ["Autista abituale", mezzo.autistaNome], ["Telaio / VIN", mezzo.telaio], ["Assicurazione", mezzo.assicurazione]] },
+    { title: "Caratteristiche", rows: [["Marca", mezzo.marca], ["Modello", mezzo.modello], ["Categoria", mezzo.categoria], ["Colore", mezzo.colore]] },
+    { title: "Motore e massa", rows: [["Cilindrata", mezzo.cilindrata], ["Potenza", mezzo.potenza], ["Massa complessiva", mezzo.massaComplessiva], ["Anno", mezzo.anno]] },
+    { title: "Scadenze", rows: [["Immatricolazione", formatDateUI(parseDateFlexible(mezzo.dataImmatricolazione))], ["Revisione", formatDateUI(parseDateFlexible(mezzo.dataScadenzaRevisione))], ["Note", mezzo.note], ...(mezzo.manutenzioneProgrammata ? ([["Manut. programmata", "ATTIVA"], ["Contratto", mezzo.manutenzioneContratto], ["Periodo", `${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataInizio))} - ${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataFine))}`], ["KM massimi", mezzo.manutenzioneKmMax]] as [string, unknown][]) : ([["Manut. programmata", "NON ATTIVA"]] as [string, unknown][]))] },
+  ];
 
-  const renderDocList = (items: NextDossierFatturaPreventivoLegacyItem[], kind: "preventivo" | "fattura") => (
-    items.length === 0 ? <p className="dossier-empty">{kind === "preventivo" ? "Nessun preventivo registrato." : "Nessuna fattura registrata."}</p> : (
-      <ul className="dossier-list">
-        {items.map((item) => (
-          <li key={item.id} className="dossier-list-item">
-            <div className="dossier-list-main">
-              <span className={`dossier-badge ${kind === "preventivo" ? "badge-info" : "badge-danger"}`}>{item.tipo}</span>
-              <strong>{item.descrizione || "-"}</strong>
+  const renderWork = (item: NextDossierLegacyWorkItem, fallbackLabel: string, fallbackCls: string) => {
+    const badge = workBadge(item, fallbackLabel, fallbackCls);
+    return (
+      <li key={item.id} className="dc-li" onClick={() => openManutenzioneWorkItem(item)}>
+        <span className={`dc-badge ${badge.cls}`} title={badge.title}>{badge.label}</span>
+        {item.descrizione}
+        <div className="meta">{[item.dettagli, formatDossierDate(item.dataInserimento)].filter((v) => v && v !== "-").join(" · ") || formatDossierDate(item.dataInserimento)}</div>
+        <FraseStoriaRecord {...recordChiusoFromRaw(item as unknown as Record<string, unknown>)} compact />
+      </li>
+    );
+  };
+
+  const renderDocs = (items: NextDossierFatturaPreventivoLegacyItem[], kind: "preventivo" | "fattura") =>
+    items.length === 0 ? (
+      <div className="dc-empty">{kind === "preventivo" ? "Nessun preventivo registrato." : "Nessuna fattura registrata."}</div>
+    ) : (
+      items.map((item) => {
+        const cur = resolveCurrency(item);
+        return (
+          <div className="dc-doc" key={item.id}>
+            <div className="dm">
+              <div className="dt"><span className={`dc-badge ${kind === "preventivo" ? "b-info" : "b-danger"}`}>{item.tipo}</span>{item.descrizione || "-"}</div>
+              <div className="ds">{[item.fornitoreLabel || "-", formatDossierDate(item.data)].join(" · ")}</div>
+              <div className="dc-acts">
+                {item.fileUrl ? <button type="button" className="dc-mini" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
+                {kind === "preventivo" ? <button type="button" className="dc-mini" onClick={blockPreventivoDelete}>Elimina</button> : <button type="button" className="dc-mini" onClick={() => openFatturaDeleteConfirm(item)}>Elimina</button>}
+              </div>
             </div>
-            <div className="dossier-list-meta">
-              <span>{formatDossierDate(item.data)}</span>
-              <span>{renderAmount(item.importo, resolveCurrency(item))}</span>
-              <span>{item.fornitoreLabel || "-"}</span>
-              {item.fileUrl ? <button className="dossier-button" type="button" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
-              {kind === "preventivo" ? <button className="dossier-button" type="button" onClick={blockPreventivoDelete}>Elimina</button> : null}
-              {kind === "fattura" ? <button className="dossier-button" type="button" onClick={() => openFatturaDeleteConfirm(item)}>Elimina</button> : null}
-            </div>
-          </li>
-        ))}
-      </ul>
-    )
-  );
+            <div className="dc-tl-amt">{typeof item.importo === "number" ? `${item.importo.toFixed(2)} ` : "n/d "}{curBadge(cur)}</div>
+          </div>
+        );
+      })
+    );
+
+  let lastDay = "";
 
   return (
-    <div className="dossier-wrapper dossier-comando-page">
+    <div className="dossier-wrapper">
       {modal === "libretto" ? (
         <div className="dossier-modal-overlay"><div className="dossier-modal" style={{ maxWidth: 960 }}><div className="dossier-modal-header"><h2>Libretto - {mezzo.targa}</h2><button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button></div><div className="dossier-modal-body">{librettoUrl ? <div style={{ display: "grid", gap: 12 }}><img src={librettoUrl} alt={`Libretto ${mezzo.targa}`} style={{ width: "100%", borderRadius: 12 }} /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="dossier-button" type="button" onClick={() => window.open(librettoUrl, "_blank", "noopener,noreferrer")}>Apri file</button></div></div> : <p className="dossier-empty">Nessun libretto disponibile per questo mezzo.</p>}</div></div></div>
       ) : null}
@@ -538,173 +630,173 @@ export default function NextDossierMezzoComandoPage() {
       {showDeleteConfirm && fatturaToDelete ? (
         <div className="dossier-modal-overlay" onClick={closeFatturaDeleteConfirm}>
           <div className="dossier-modal" style={{ maxWidth: 620 }} onClick={(event) => event.stopPropagation()}>
-            <div className="dossier-modal-header">
-              <h2>Conferma eliminazione fattura</h2>
-              <button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Chiudi</button>
-            </div>
+            <div className="dossier-modal-header"><h2>Conferma eliminazione fattura</h2><button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Chiudi</button></div>
             <div className="dossier-modal-body" style={{ display: "grid", gap: 12 }}>
-              <p>
-                {legacy.manutenzioni.some((record) => record.sourceDocumentId === fatturaToDelete.id)
-                  ? DOSSIER_DELETE_LINKED_MESSAGE
-                  : DOSSIER_DELETE_SIMPLE_MESSAGE}
-              </p>
-              <div className="dossier-list-meta">
-                <span>{fatturaToDelete.descrizione || "-"}</span>
-                <span>{formatDossierDate(fatturaToDelete.data)}</span>
-                <span>{renderAmount(fatturaToDelete.importo, resolveCurrency(fatturaToDelete))}</span>
-              </div>
+              <p>{legacy.manutenzioni.some((record) => record.sourceDocumentId === fatturaToDelete.id) ? DOSSIER_DELETE_LINKED_MESSAGE : DOSSIER_DELETE_SIMPLE_MESSAGE}</p>
+              <div className="dossier-list-meta"><span>{fatturaToDelete.descrizione || "-"}</span><span>{formatDossierDate(fatturaToDelete.data)}</span><span>{renderAmount(fatturaToDelete.importo, resolveCurrency(fatturaToDelete))}</span></div>
               {deleteError ? <p className="dossier-empty" style={{ color: "#b42318", margin: 0 }}>{deleteError}</p> : null}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="dossier-button" type="button" onClick={confirmFatturaDelete} disabled={deletePending}>{deletePending ? "Eliminazione..." : "Conferma"}</button>
-                <button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Annulla</button>
-              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="dossier-button" type="button" onClick={confirmFatturaDelete} disabled={deletePending}>{deletePending ? "Eliminazione..." : "Conferma"}</button><button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Annulla</button></div>
             </div>
           </div>
         </div>
       ) : null}
-      <NextMezzoEditModal
-        mezzoId={mezzo.id}
-        isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
-        onSaved={handleMezzoSaved}
-        onDeleted={handleMezzoDeleted}
-      />
+      <NextMezzoEditModal mezzoId={mezzo.id} isOpen={showEditModal} onClose={() => setShowEditModal(false)} onSaved={handleMezzoSaved} onDeleted={handleMezzoDeleted} />
 
-      <style>{`
-        .cmd-top{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;background:linear-gradient(180deg,#16243a,#0f1a2b);color:#eef2f8;border-radius:10px;padding:16px 18px;margin-bottom:14px;}
-        .cmd-idleft{display:flex;gap:14px;align-items:center;}
-        .cmd-photo{width:96px;height:70px;border-radius:7px;flex:none;background:#26344b;background-size:cover;background-position:center;border:1px solid #38496685;display:flex;align-items:center;justify-content:center;color:#8294b3;font-size:10px;text-transform:uppercase;}
-        .cmd-plate{font-size:26px;font-weight:700;letter-spacing:.04em;line-height:1;}
-        .cmd-model{font-size:14px;color:#c4d0e0;margin-top:3px;}
-        .cmd-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
-        .cmd-chip{font-size:12px;padding:3px 9px;border-radius:20px;background:#ffffff14;border:1px solid #ffffff26;color:#d8e2f0;}
-        .cmd-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:440px;}
-        .cmd-btn{font-size:12.5px;padding:8px 12px;border-radius:7px;cursor:pointer;background:#ffffff12;border:1px solid #ffffff2b;color:#e7eef8;white-space:nowrap;}
-        .cmd-btn.primary{background:#2f6bd6;border-color:#2f6bd6;color:#fff;font-weight:600;}
-        .cmd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
-        .cmd-kpi{background:#fff;border:1px solid #e0e5ec;border-radius:10px;padding:14px 16px;position:relative;box-shadow:0 1px 2px rgba(20,30,45,.06);}
-        .cmd-kpi .top{position:absolute;top:0;left:16px;right:16px;height:3px;border-radius:0 0 3px 3px;}
-        .cmd-kpi .lab{font-size:12px;color:#5a6675;text-transform:uppercase;letter-spacing:.03em;}
-        .cmd-kpi .val{font-size:25px;font-weight:700;margin-top:6px;line-height:1.05;}
-        .cmd-kpi .val small{font-size:14px;font-weight:600;color:#5a6675;}
-        .cmd-kpi .sub{font-size:12px;color:#8a94a2;margin-top:5px;}
-        .cmd-summary{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-        .cmd-card{background:#fff;border:1px solid #e0e5ec;border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;}
-        .cmd-card h3{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#5a6675;margin:0;padding:13px 16px;border-bottom:1px solid #eef1f5;}
-        .cmd-row{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid #f1f4f8;align-items:flex-start;}
-        .cmd-row:last-child{border-bottom:none;}
-        .cmd-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;}
-        .cmd-main{flex:1;min-width:0;}
-        .cmd-title{font-size:13.5px;font-weight:600;}
-        .cmd-sub{font-size:12px;color:#8a94a2;margin-top:2px;}
-        .cmd-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
-        @media(max-width:1080px){.cmd-top{grid-template-columns:1fr}.cmd-kpis{grid-template-columns:repeat(2,1fr)}.cmd-summary{grid-template-columns:1fr}.cmd-actions{justify-content:flex-start;max-width:none}}
+      <style>{COMANDO_CSS}</style>
+      <div className="dc">
 
-        /* === Re-skin del Dettaglio nello stile Centro di comando (un'unica grafica) === */
-        .dossier-comando-page{background:#eef1f5 !important;}
-        .dossier-comando-page .dossier-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:14px !important;align-items:start !important;}
-        .dossier-comando-page .dossier-card-full,.dossier-comando-page .dossier-card-large{grid-column:1 / -1 !important;}
-        .dossier-comando-page .dossier-card{background:#fff !important;border:1px solid #e0e5ec !important;border-radius:10px !important;box-shadow:0 1px 2px rgba(20,30,45,.06) !important;}
-        .dossier-comando-page .dossier-card-header{background:#fff !important;border-bottom:1px solid #eef1f5 !important;padding:12px 16px !important;}
-        .dossier-comando-page .dossier-card-header h2{font-size:13px !important;text-transform:uppercase !important;letter-spacing:.05em !important;color:#5a6675 !important;margin:0 !important;font-weight:700 !important;}
-        .dossier-comando-page .dossier-card-body{background:#fff !important;}
-        .dossier-comando-page .dossier-tech-block h3{color:#8a94a2 !important;text-transform:uppercase;font-size:11px;letter-spacing:.05em;}
-        .dossier-comando-page .dossier-tech-block li span,.dossier-comando-page .dossier-list-meta{color:#5a6675 !important;}
-        .dossier-comando-page .dossier-list-item{background:#fff !important;border-bottom:1px solid #f1f4f8 !important;}
-        .dossier-comando-page .dossier-table th{background:#f8fafc !important;color:#8a94a2 !important;text-transform:uppercase;font-size:11px;letter-spacing:.03em;border-bottom:1px solid #e0e5ec !important;}
-        .dossier-comando-page .dossier-table td{border-bottom:1px solid #f1f4f8 !important;}
-        .dossier-comando-page .dossier-button{background:#f1f4f8 !important;border:1px solid #dbe1ea !important;color:#2f3a4b !important;border-radius:7px !important;}
-        .dossier-comando-page .dossier-button.primary{background:#2f6bd6 !important;border-color:#2f6bd6 !important;color:#fff !important;}
-        .dossier-comando-page .dossier-chip{background:#f8fafc !important;color:#5a6675 !important;border:1px solid #eef1f5 !important;border-radius:7px;}
-        .dossier-comando-page .dossier-empty{color:#8a94a2 !important;}
-      `}</style>
-
-      <div className="cmd-top">
-        <div className="cmd-idleft">
-          <div className="cmd-photo" style={mezzo.fotoUrl ? { backgroundImage: `url(${mezzo.fotoUrl})` } : undefined}>{mezzo.fotoUrl ? "" : "foto"}</div>
-          <div>
-            <div className="cmd-plate">{mezzo.targa}</div>
-            <div className="cmd-model">{headerTitle}</div>
-            <div className="cmd-chips">
-              {mezzo.categoria ? <span className="cmd-chip">{mezzo.categoria}</span> : null}
-              {mezzo.autistaNome ? <span className="cmd-chip">{mezzo.autistaNome}</span> : null}
+        <div className="dc-top">
+          <div className="dc-idleft">
+            <div className="dc-photo" style={mezzo.fotoUrl ? { backgroundImage: `url(${mezzo.fotoUrl})` } : undefined} onClick={() => mezzo.fotoUrl && setModal("foto")}>{mezzo.fotoUrl ? "" : "foto"}</div>
+            <div>
+              <div className="dc-plate mono">{mezzo.targa}</div>
+              <div className="dc-model">{headerTitle}</div>
+              <div className="dc-chips">
+                {mezzo.categoria ? <span className="dc-chip">{mezzo.categoria}</span> : null}
+                {mezzo.autistaNome ? <span className="dc-chip">{mezzo.autistaNome}</span> : null}
+              </div>
             </div>
           </div>
+          <div className="dc-eyebrow">DOSSIER MEZZO · CENTRO DI COMANDO</div>
+          <div className="dc-actions">
+            <button className="dc-btn" type="button" onClick={back}>&#8249; Mezzi</button>
+            <button className="dc-btn" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi economica</button>
+            <button className="dc-btn" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
+            <button className="dc-btn" type="button" onClick={() => setModal("libretto")}>Libretto</button>
+            <button className="dc-btn primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
+          </div>
         </div>
-        <div style={{ textAlign: "center", fontSize: 11, letterSpacing: ".06em", color: "#9fb0c4" }}>DOSSIER MEZZO · CENTRO DI COMANDO</div>
-        <div className="cmd-actions">
-          <button className="cmd-btn" type="button" onClick={back}>&#8249; Mezzi</button>
-          <button className="cmd-btn" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi economica</button>
-          <button className="cmd-btn" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
-          <button className="cmd-btn" type="button" onClick={() => setModal("libretto")}>Libretto</button>
-          <button className="cmd-btn primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
+
+        <div className="dc-kpis">
+          <div className="dc-kpi"><span className="top" style={{ background: revTone }} /><div className="lab">Prossima revisione</div><div className="val" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? "scaduta" : revDays}{revDays != null && revDays >= 0 ? <small> giorni</small> : null}</div><div className="sub">{revisioneInfo.date}{revDays != null && revDays < 0 ? ` · ${-revDays} gg fa` : ""}</div></div>
+          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Costo anno {costoAnno.year}</div><div className="val">{costoAnno.chf.toFixed(0)} <small>CHF</small>{costoAnno.eur > 0 ? <small> + {costoAnno.eur.toFixed(0)} &euro;</small> : null}</div><div className="sub">{costoAnno.unknown > 0 ? `parziale · ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}</div></div>
+          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Consumo medio</div><div className="val">{consumoMedio == null ? "n/d" : consumoMedio.toFixed(1)}{consumoMedio != null ? <small> l/100 km</small> : null}</div><div className="sub">stima da rifornimenti</div></div>
+          <div className="dc-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
         </div>
-      </div>
 
-      <div className="cmd-kpis">
-        <div className="cmd-kpi"><span className="top" style={{ background: revTone }} /><div className="lab">Prossima revisione</div><div className="val" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? "scaduta" : revDays}{revDays != null && revDays >= 0 ? <small> giorni</small> : null}</div><div className="sub">{revisioneInfo.date}{revDays != null && revDays < 0 ? ` · ${-revDays} gg fa` : ""}</div></div>
-        <div className="cmd-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Costo anno {costoAnno.year}</div><div className="val">{costoAnno.chf.toFixed(0)} <small>CHF</small>{costoAnno.eur > 0 ? <small> + {costoAnno.eur.toFixed(0)} &euro;</small> : null}</div><div className="sub">{costoAnno.unknown > 0 ? `parziale · ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}</div></div>
-        <div className="cmd-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Consumo medio</div><div className="val">{consumoMedio == null ? "n/d" : consumoMedio.toFixed(1)}{consumoMedio != null ? <small> l/100 km</small> : null}</div><div className="sub">stima da rifornimenti</div></div>
-        <div className="cmd-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
-      </div>
+        <div className="dc-grid">
+          <div className="dc-card">
+            <h2>Scadenze &amp; Allerte</h2>
+            <div className="dc-row"><span className="dc-dot" style={{ background: revTone }} /><div className="dc-main"><div className="dc-title">Revisione</div><div className="dc-sub">{revisioneInfo.date}</div></div><div className="dc-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
+            <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
+            <div className="dc-sub2">Lavori da fare</div>
+            {lavoriDaFare.length === 0 ? <div className="dc-empty">Nessun lavoro da fare.</div> : lavoriDaFare.slice(0, 5).map((item) => (
+              <div className="dc-row click" key={item.id} onClick={() => openManutenzioneWorkItem(item)}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.descrizione}</div><div className="dc-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
+            ))}
+          </div>
 
-      <div className="cmd-summary">
-        <div className="cmd-card">
-          <h3>Scadenze &amp; Allerte</h3>
-          <div className="cmd-row"><span className="cmd-dot" style={{ background: revTone }} /><div className="cmd-main"><div className="cmd-title">Revisione</div><div className="cmd-sub">{revisioneInfo.date}</div></div><div className="cmd-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
-          <div className="cmd-row"><span className="cmd-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="cmd-main"><div className="cmd-title">Manutenzione programmata</div><div className="cmd-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
-          {lavoriDaFare.length === 0 ? (
-            <div className="cmd-row"><div className="cmd-main"><div className="cmd-sub">Nessun lavoro da fare.</div></div></div>
-          ) : (
-            lavoriDaFare.slice(0, 4).map((item) => (
-              <div className="cmd-row" key={item.id}><span className="cmd-dot" style={{ background: "#c9820a" }} /><div className="cmd-main"><div className="cmd-title">{item.descrizione}</div><div className="cmd-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
-            ))
-          )}
+          <div className="dc-card">
+            <h2>Storia del mezzo <span className="count">timeline unica</span></h2>
+            {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : timeline.map((ev, i) => {
+              const showDay = ev.date !== lastDay;
+              lastDay = ev.date;
+              return (
+                <div key={i}>
+                  {showDay ? <div className="dc-tl-day" style={ev.ts == null ? { color: "#8a94a2" } : undefined}>{ev.ts == null ? "senza data" : ev.date}</div> : null}
+                  <div className="dc-tl-item">
+                    <span className={`dc-type ${ev.cls}`}>{ev.type}</span>
+                    <span className="dc-tl-text">{ev.text}{ev.meta ? <span className="dc-tl-meta"> · {ev.meta}</span> : null}</span>
+                    <span className="dc-tl-amt">{ev.amount ? <>{ev.amount.value.toFixed(2)} {curBadge(ev.amount.cur)}</> : null}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="dc-card">
+            <h2>Costi (riepilogo)</h2>
+            <div className="dc-row"><div className="dc-main"><div className="dc-title">Fatture</div><div className="dc-sub">{fatture.length} documenti</div></div><div className="dc-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} ?` : ""}</div></div>
+            <div className="dc-row"><div className="dc-main"><div className="dc-title">Preventivi</div><div className="dc-sub">{preventivi.length} documenti</div></div><div className="dc-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} ?` : ""}</div></div>
+            <div className="dc-row"><div className="dc-main"><div className="dc-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="dc-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="dc-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
+          </div>
         </div>
-        <div className="cmd-card">
-          <h3>Costi (riepilogo)</h3>
-          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Fatture</div><div className="cmd-sub">{fatture.length} documenti</div></div><div className="cmd-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}</div></div>
-          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Preventivi</div><div className="cmd-sub">{preventivi.length} documenti</div></div><div className="cmd-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}</div></div>
-          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="cmd-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="cmd-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
+
+        <div className="dc-band"><h2>Dettaglio completo</h2><span className="sub">tutte le sezioni del dossier</span><span className="ln" /></div>
+
+        <div className="dc-detail">
+          <div className="dc-card dc-span2">
+            <h2>Dati tecnici <button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
+            <div className="dc-tech">
+              {techBlocks.map((block) => (
+                <div className="dc-techb" key={block.title}>
+                  <h3>{block.title}</h3>
+                  <ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="dc-card dc-span2">
+            <h2>Manutenzioni</h2>
+            <div className="dc-twocol">
+              <div>
+                <h3>Da fare</h3>
+                {legacy.lavoriInAttesa.length === 0 ? <div className="dc-empty" style={{ padding: 0 }}>Nessuna manutenzione da fare.</div> : <ul className="dc-ul">{legacy.lavoriInAttesa.slice(0, 3).map((item) => renderWork(item, "DA FARE", "b-info"))}</ul>}
+                <button className="dc-mini" type="button" style={{ marginTop: 10 }} onClick={() => setModal("attesa")}>Mostra tutti</button>
+              </div>
+              <div>
+                <h3>Eseguite</h3>
+                {legacy.lavoriEseguiti.length === 0 ? <div className="dc-empty" style={{ padding: 0 }}>Nessuna manutenzione eseguita.</div> : <ul className="dc-ul">{legacy.lavoriEseguiti.slice(0, 3).map((item) => renderWork(item, "ESEGUITA", "b-ok"))}</ul>}
+                <button className="dc-mini" type="button" style={{ marginTop: 10 }} onClick={() => setModal("eseguiti")}>Mostra tutti</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="dc-card">
+            <h2>Storico manutenzioni <button className="dc-link" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutto</button></h2>
+            {legacy.manutenzioni.length === 0 ? <div className="dc-empty">Nessuna manutenzione registrata per questo mezzo.</div> : legacy.manutenzioni.slice(0, 5).map((item) => (
+              <div className="dc-row click" key={item.id} onClick={() => openManutenzione(item)}><div className="dc-main"><div className="dc-title">{item.descrizione || "-"}</div></div><div className="dc-right" style={{ color: "#8a94a2", fontWeight: 400 }}>{formatDossierDate(item.data)} · {formatKmOre(item)}</div></div>
+            ))}
+          </div>
+
+          <div className="dc-card">
+            <h2>Gomme <span className="count">per asse + straordinari</span></h2>
+            <div className="dc-sub2">Stato gomme per asse</div>
+            {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => (
+              <div className="dc-row" key={item.asseId}><div className="dc-main"><div className="dc-title">{item.asseLabel}</div><div className="dc-sub">{formatGommePerAsseMeta(item)}</div></div></div>
+            ))}
+            <div className="dc-sub2">Eventi gomme straordinari</div>
+            {legacy.gommeStraordinarie.length === 0 ? <div className="dc-empty">Nessun evento gomme straordinario registrato.</div> : legacy.gommeStraordinarie.slice(0, 5).map((item) => (
+              <div className="dc-row" key={item.sourceMaintenanceId}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.motivo || "Evento gomme straordinario"}</div><div className="dc-sub">{formatGommeStraordinarieMeta(item)}</div></div></div>
+            ))}
+          </div>
+
+          <div className="dc-card dc-span2">
+            <h2>Materiali e movimenti inventario</h2>
+            {legacy.movimentiMateriali.length === 0 ? <div className="dc-empty">Nessun movimento materiali registrato per questo mezzo.</div> : (
+              <table className="dc-dtable">
+                <thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead>
+                <tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{formatDossierDate(item.data)}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="dc-card">
+            <h2>Rifornimenti <span className="count">ultimi movimenti</span></h2>
+            {legacy.rifornimenti.length === 0 ? <div className="dc-empty">Nessun rifornimento registrato per questo mezzo.</div> : (
+              <table className="dc-dtable">
+                <thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead>
+                <tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody>
+              </table>
+            )}
+            <div className="dc-cta"><span style={{ fontSize: 12.5, color: "#5a6675" }}>Analisi completa rifornimenti</span><button className="dc-mini" type="button" style={{ background: "#2f6bd6", color: "#fff", borderColor: "#2f6bd6" }} onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Apri in Sinottica &#8599;</button></div>
+          </div>
+
+          <div className="dc-card">
+            <h2>Foto mezzo</h2>
+            <div className="dc-photo-big" style={mezzo.fotoUrl ? { backgroundImage: `url(${mezzo.fotoUrl})` } : undefined} onClick={() => mezzo.fotoUrl && setModal("foto")}>{mezzo.fotoUrl ? "" : "Nessuna foto caricata"}</div>
+          </div>
+
+          <section className="dc-card" ref={preventiviSectionRef} id="preventivi">
+            <h2>Preventivi <span className="count">CHF {preventiviTotals.chf.toFixed(2)} · EUR {preventiviTotals.eur.toFixed(2)}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} da verif.` : ""}</span></h2>
+            {renderDocs(preventivi, "preventivo")}
+          </section>
+
+          <div className="dc-card">
+            <h2>Fatture <span className="count">CHF {fattureTotals.chf.toFixed(2)} · EUR {fattureTotals.eur.toFixed(2)}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} da verif.` : ""} <button className="dc-link" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>storico &#8594;</button></span></h2>
+            {renderDocs(fatture, "fattura")}
+          </div>
         </div>
-      </div>
-
-      <div style={COMANDO_BAND_STYLE}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>Dettaglio completo</h2>
-        <span style={{ fontSize: 12.5, color: "#8a94a2" }}>tutte le sezioni del dossier</span>
-        <span style={{ flex: 1, height: 1, background: "#cfd6e0" }} />
-      </div>
-
-      <div className="dossier-grid">
-        <section className="dossier-card dossier-card-large"><div className="dossier-card-header"><h2>Dati tecnici</h2><button className="dossier-button" type="button" onClick={() => setShowEditModal(true)} disabled={!mezzo}>+ Modifica</button></div><div className="dossier-card-body dossier-tech-grid">
-          {[{ title: "Identificazione", rows: [["Proprietario", mezzo.proprietario], ["Targa", mezzo.targa], ["Autista abituale", mezzo.autistaNome], ["Telaio / VIN", mezzo.telaio], ["Assicurazione", mezzo.assicurazione]] }, { title: "Caratteristiche", rows: [["Marca", mezzo.marca], ["Modello", mezzo.modello], ["Categoria", mezzo.categoria], ["Colore", mezzo.colore]] }, { title: "Motore e massa", rows: [["Cilindrata", mezzo.cilindrata], ["Potenza", mezzo.potenza], ["Massa complessiva", mezzo.massaComplessiva], ["Anno", mezzo.anno]] }, { title: "Scadenze", rows: [["Immatricolazione", formatDateUI(parseDateFlexible(mezzo.dataImmatricolazione))], ["Revisione", formatDateUI(parseDateFlexible(mezzo.dataScadenzaRevisione))], ["Note", mezzo.note], ["Manutenzione programmata", mezzo.manutenzioneProgrammata ? "ATTIVA" : "NON ATTIVA"], ...(mezzo.manutenzioneProgrammata ? [["Contratto", mezzo.manutenzioneContratto], ["Periodo", `${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataInizio))} - ${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataFine))}`], ["KM massimi", mezzo.manutenzioneKmMax]] : [])] }].map((block) => (
-            <div key={block.title} className="dossier-tech-block"><h3>{block.title}</h3><ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul></div>
-          ))}
-        </div></section>
-
-        <section className="dossier-card dossier-photo-card"><div className="dossier-card-header"><h2>Foto mezzo</h2></div><div className="dossier-card-body dossier-photo-body">{mezzo.fotoUrl ? <div className="dossier-photo-thumb" role="button" tabIndex={0} onClick={() => setModal("foto")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setModal("foto"); } }}><div className="dossier-mezzo-photo-frame"><div className="dossier-mezzo-photo-bg" style={{ backgroundImage: `url(${mezzo.fotoUrl})` }} /><img src={mezzo.fotoUrl} alt={mezzo.targa} className="dossier-mezzo-photo" /></div></div> : <div className="dossier-photo-placeholder">Nessuna foto caricata</div>}</div></section>
-
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2></div><div className="dossier-card-body dossier-work-grid">
-          {[{ title: "Da fare", items: legacy.lavoriInAttesa.slice(0, 3), badge: "badge-info", label: "DA FARE", modalKey: "attesa" as const }, { title: "Eseguite", items: legacy.lavoriEseguiti.slice(0, 3), badge: "badge-success", label: "ESEGUITA", modalKey: "eseguiti" as const }].map((group) => (
-            <div key={group.title}><h3>{group.title}</h3>{group.items.length === 0 ? <p className="dossier-empty">{group.title === "Da fare" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{group.items.map((item) => renderWorkItem(item, group.badge, group.label))}</ul>}<button className="dossier-button" type="button" onClick={() => setModal(group.modalKey)} style={{ marginTop: 12 }}>Mostra tutti</button></div>
-          ))}
-        </div></section>
-
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Storico manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
-
-        <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Gomme</h2></div><div className="dossier-card-body">
-          <h3 style={{ fontSize: 13, color: "#5a6675", margin: "0 0 8px" }}>Stato gomme per asse</h3>
-          {legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}
-          <h3 style={{ fontSize: 13, color: "#5a6675", margin: "16px 0 8px" }}>Eventi gomme straordinari</h3>
-          {legacy.gommeStraordinarie.length === 0 ? <p className="dossier-empty">Nessun evento gomme straordinario registrato.</p> : <ul className="dossier-list">{legacy.gommeStraordinarie.slice(0, 5).map((item) => <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>)}</ul>}
-        </div></section>
-
-        <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Materiali e movimenti inventario</h2></div><div className="dossier-card-body">{legacy.movimentiMateriali.length === 0 ? <p className="dossier-empty">Nessun movimento materiali registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead><tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{formatDossierDate(item.data)}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody></table></div>}</div></section>
-
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2><button className="dossier-button" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Apri in Sinottica &#8599;</button></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
-
-        <section ref={preventiviSectionRef} id="preventivi" className="dossier-card" tabIndex={-1}><div className="dossier-card-header"><h2>Preventivi</h2><div className="dossier-chip">Totale preventivi: <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {preventiviTotals.eur.toFixed(2)}</span>{preventiviTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({preventiviTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(preventivi, "preventivo")}</div></section>
-        <section className="dossier-card"><div className="dossier-card-header"><div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><h2>Fatture</h2><button className="dossier-button ghost" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>Vai allo storico -&gt;</button></div><div className="dossier-chip">Totale fatture: <strong>CHF {fattureTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {fattureTotals.eur.toFixed(2)}</span>{fattureTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({fattureTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(fatture, "fattura")}</div></section>
       </div>
 
       {(["attesa", "eseguiti", "manutenzioni"] as const).map((key) =>
@@ -719,7 +811,7 @@ export default function NextDossierMezzoComandoPage() {
                 {key === "manutenzioni" ? (
                   lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
                 ) : (
-                  lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => renderWorkItem(item, key === "attesa" ? "badge-info" : "badge-success", key === "attesa" ? "DA FARE" : "ESEGUITA"))}</ul>
+                  lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => { const b = workBadge(item, key === "attesa" ? "DA FARE" : "ESEGUITA", ""); return <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className="dossier-badge" title={b.title}>{b.label}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{formatDossierDate(item.dataInserimento)}</span></div></li>; })}</ul>
                 )}
               </div>
             </div>
