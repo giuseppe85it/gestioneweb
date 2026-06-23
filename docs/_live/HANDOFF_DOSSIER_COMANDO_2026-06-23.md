@@ -35,8 +35,16 @@
 > - **Storia del mezzo senza rifornimenti + PDF 6 mesi (commit `e57b543e`):** la timeline (schermo e
 >   PDF) ESCLUDE i rifornimenti (ripetitivi, già nel Report); il PDF mostra solo gli ULTIMI 6 MESI
 >   (etichetta "ultimi 6 mesi"). Storico completo → PDF di Manutenzioni. Verificato su TI298409.
-> - **RESTANO APERTI:** solo punto 9 (Sincronizzare) e l'eventuale rifinitura di dettaglio non richiesta.
-> - `npm run build` verde. Commit su master, non pushato.
+> - **Scadenze ricorrenti (commit `364ce8a2`):** estintore/tagliando/cronotachigrafo per targa
+>   (`readNextManutenzioniScadenzeSnapshot`) nelle Scadenze & allerte (+PDF), ordinate per gravità.
+> - **Dati tecnici — layout finale (commit `333b337e`):** vecchio formato (4 blocchi, etichetta +
+>   valore in GRASSETTO), spostato nella colonna destra del comando SOTTO "Storia del mezzo"
+>   (`.dc-rightcol`), non più in "Dettaglio completo". Manut. programmata mostrata solo se attiva.
+>   (Tentativo "libretto svizzero statico" provato e poi SCARTATO su richiesta utente — file rimossi,
+>   recuperabili da git al commit `3d4e0608`.)
+> - **STATO 2026-06-23 fine giornata:** l'utente ha APPROVATO ("va bene così"), fa lui la Sincronizza
+>   e inizia a usarlo; dirà più avanti se servono altre cose. RESTA APERTO solo: Sincronizzare.
+> - `npm run build` verde. 9 commit su master da `87169510` a `333b337e`, non pushati.
 
 > Leggi questo file PER PRIMO per continuare il lavoro sul nuovo dossier mezzo.
 > Memorie collegate (Claude Code): `dossier-comando-build`, `chat-ia-stato-verdetto-audit`,
