@@ -12,7 +12,7 @@ import {
 } from "../nextMezziWriter";
 import "./next-mezzo-edit-modal.css";
 
-const MEZZI_KEY = "@mezzi_aziendali";
+export const MEZZI_KEY = "@mezzi_aziendali";
 
 const TIPI_MEZZO_OPZIONI = [
   { value: "motrice", label: "Motrice" },
@@ -20,12 +20,12 @@ const TIPI_MEZZO_OPZIONI = [
 ];
 
 type EditableMezzoField = keyof Mezzo | "anno";
-type MezzoFormData = Omit<Mezzo, "tipo" | "categoria"> & {
+export type MezzoFormData = Omit<Mezzo, "tipo" | "categoria"> & {
   tipo: string;
   categoria: string;
   anno: string;
 } & Record<string, unknown>;
-type RawLibrettoFields = Record<string, string>;
+export type RawLibrettoFields = Record<string, string>;
 
 export interface NextMezzoEditModalProps {
   mezzoId: string;
@@ -88,7 +88,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function unwrapArray(raw: unknown): unknown[] {
+export function unwrapArray(raw: unknown): unknown[] {
   if (Array.isArray(raw)) return raw;
   if (isRecord(raw) && Array.isArray(raw.value)) return raw.value;
   if (isRecord(raw) && Array.isArray(raw.items)) return raw.items;
@@ -146,7 +146,7 @@ function normalizeDateToIso(value: string | undefined | null): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function normalizeMezzoRecord(record: Record<string, unknown>): MezzoFormData {
+export function normalizeMezzoRecord(record: Record<string, unknown>): MezzoFormData {
   return {
     ...record,
     id: toText(record.id),
@@ -191,7 +191,7 @@ function readRawField(record: Record<string, unknown>, key: string): string {
   return "";
 }
 
-function buildRawLibrettoFields(record: Record<string, unknown>): RawLibrettoFields {
+export function buildRawLibrettoFields(record: Record<string, unknown>): RawLibrettoFields {
   const fields: RawLibrettoFields = {};
   Object.keys(RAW_LIBRETTO_ALIASES).forEach((key) => {
     const value = readRawField(record, key);
@@ -228,7 +228,7 @@ function isFormDirty(current: MezzoFormData | null, original: MezzoFormData | nu
   return EDITABLE_FIELDS.some((field) => current[field] !== original[field]);
 }
 
-function findMezzo(records: unknown[], mezzoId: string): Record<string, unknown> | null {
+export function findMezzo(records: unknown[], mezzoId: string): Record<string, unknown> | null {
   const normalizedId = mezzoId.trim();
   const found = records.find(
     (record) => isRecord(record) && toText(record.id).trim() === normalizedId,

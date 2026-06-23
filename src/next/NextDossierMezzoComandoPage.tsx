@@ -14,6 +14,7 @@ import {
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import NextMezzoEditModal from "./components/NextMezzoEditModal";
+import NextMezzoLibrettoStatico from "./components/NextMezzoLibrettoStatico";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import {
   buildNextDossierMezzoLegacyView,
@@ -691,11 +692,13 @@ export default function NextDossierMezzoComandoPage() {
                 right: scadenzaRightLabel(item),
                 tone: scadenzaPdfTone(item),
               }))),
-              {
-                titolo: "Manutenzione programmata",
-                sub: mezzo.manutenzioneProgrammata ? mezzo.manutenzioneContratto || "attiva" : "non attiva",
-                tone: mezzo.manutenzioneProgrammata ? "ok" : "muted",
-              },
+              ...(mezzo.manutenzioneProgrammata
+                ? ([{
+                    titolo: "Manutenzione programmata",
+                    sub: mezzo.manutenzioneContratto || "attiva",
+                    tone: "ok" as const,
+                  }])
+                : []),
               ...(allerte
                 ? ([
                     {
@@ -888,7 +891,6 @@ export default function NextDossierMezzoComandoPage() {
   const revDays = revisioneInfo.days;
   const revTone = revDays == null ? "#2f6bd6" : revDays < 0 ? "#cf3b3b" : revDays <= 30 ? "#c9820a" : "#1f9457";
 
-  const techBlocks = buildTechBlocks(mezzo);
 
   const renderWork = (item: NextDossierLegacyWorkItem, fallbackLabel: string, fallbackCls: string) => {
     const badge = workBadge(item, fallbackLabel, fallbackCls);
@@ -1015,7 +1017,9 @@ export default function NextDossierMezzoComandoPage() {
                   <div className="dc-row" key={item.id}><span className="dc-dot" style={{ background: col }} /><div className="dc-main"><div className="dc-title">{item.label}</div></div><div className="dc-right" style={{ color: col }}>{scadenzaRightLabel(item)}</div></div>
                 );
               })}
-              <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
+              {mezzo.manutenzioneProgrammata ? (
+                <div className="dc-row"><span className="dc-dot" style={{ background: "#1f9457" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneContratto || "attiva"}</div></div></div>
+              ) : null}
               {allerte ? (
                 <div className="dc-row"><span className="dc-dot" style={{ background: allerte.segnalazioniAperte.length === 0 ? "#cfd6e0" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }} /><div className="dc-main"><div className="dc-title">Segnalazioni aperte</div><div className="dc-sub">{allerte.segnalazioniAperte.length === 0 ? "nessuna" : allerte.segnalazioniAperte.slice(0, 2).map((item) => item.titolo).join(" · ")}</div></div><div className="dc-right" style={{ color: allerte.segnalazioniAperte.length === 0 ? "#1f9457" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }}>{allerte.segnalazioniAperte.length}</div></div>
               ) : null}
@@ -1045,15 +1049,8 @@ export default function NextDossierMezzoComandoPage() {
 
         <div className="dc-detail">
           <div className="dc-card dc-span2">
-            <h2>Dati tecnici <button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
-            <div className="dc-tech">
-              {techBlocks.map((block) => (
-                <div className="dc-techb" key={block.title}>
-                  <h3>{block.title}</h3>
-                  <ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul>
-                </div>
-              ))}
-            </div>
+            <h2><span>Dati tecnici <span className="count">· libretto di circolazione</span></span><button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
+            <NextMezzoLibrettoStatico mezzoId={mezzo.id} />
           </div>
 
           <div className="dc-card dc-span2">
