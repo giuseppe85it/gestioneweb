@@ -528,7 +528,7 @@ export default function NextDossierMezzoComandoPage() {
   );
 
   return (
-    <div className="dossier-wrapper">
+    <div className="dossier-wrapper dossier-comando-page">
       {modal === "libretto" ? (
         <div className="dossier-modal-overlay"><div className="dossier-modal" style={{ maxWidth: 960 }}><div className="dossier-modal-header"><h2>Libretto - {mezzo.targa}</h2><button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button></div><div className="dossier-modal-body">{librettoUrl ? <div style={{ display: "grid", gap: 12 }}><img src={librettoUrl} alt={`Libretto ${mezzo.targa}`} style={{ width: "100%", borderRadius: 12 }} /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="dossier-button" type="button" onClick={() => window.open(librettoUrl, "_blank", "noopener,noreferrer")}>Apri file</button></div></div> : <p className="dossier-empty">Nessun libretto disponibile per questo mezzo.</p>}</div></div></div>
       ) : null}
@@ -599,6 +599,24 @@ export default function NextDossierMezzoComandoPage() {
         .cmd-sub{font-size:12px;color:#8a94a2;margin-top:2px;}
         .cmd-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
         @media(max-width:1080px){.cmd-top{grid-template-columns:1fr}.cmd-kpis{grid-template-columns:repeat(2,1fr)}.cmd-summary{grid-template-columns:1fr}.cmd-actions{justify-content:flex-start;max-width:none}}
+
+        /* === Re-skin del Dettaglio nello stile Centro di comando (un'unica grafica) === */
+        .dossier-comando-page{background:#eef1f5 !important;}
+        .dossier-comando-page .dossier-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:14px !important;align-items:start !important;}
+        .dossier-comando-page .dossier-card-full,.dossier-comando-page .dossier-card-large{grid-column:1 / -1 !important;}
+        .dossier-comando-page .dossier-card{background:#fff !important;border:1px solid #e0e5ec !important;border-radius:10px !important;box-shadow:0 1px 2px rgba(20,30,45,.06) !important;}
+        .dossier-comando-page .dossier-card-header{background:#fff !important;border-bottom:1px solid #eef1f5 !important;padding:12px 16px !important;}
+        .dossier-comando-page .dossier-card-header h2{font-size:13px !important;text-transform:uppercase !important;letter-spacing:.05em !important;color:#5a6675 !important;margin:0 !important;font-weight:700 !important;}
+        .dossier-comando-page .dossier-card-body{background:#fff !important;}
+        .dossier-comando-page .dossier-tech-block h3{color:#8a94a2 !important;text-transform:uppercase;font-size:11px;letter-spacing:.05em;}
+        .dossier-comando-page .dossier-tech-block li span,.dossier-comando-page .dossier-list-meta{color:#5a6675 !important;}
+        .dossier-comando-page .dossier-list-item{background:#fff !important;border-bottom:1px solid #f1f4f8 !important;}
+        .dossier-comando-page .dossier-table th{background:#f8fafc !important;color:#8a94a2 !important;text-transform:uppercase;font-size:11px;letter-spacing:.03em;border-bottom:1px solid #e0e5ec !important;}
+        .dossier-comando-page .dossier-table td{border-bottom:1px solid #f1f4f8 !important;}
+        .dossier-comando-page .dossier-button{background:#f1f4f8 !important;border:1px solid #dbe1ea !important;color:#2f3a4b !important;border-radius:7px !important;}
+        .dossier-comando-page .dossier-button.primary{background:#2f6bd6 !important;border-color:#2f6bd6 !important;color:#fff !important;}
+        .dossier-comando-page .dossier-chip{background:#f8fafc !important;color:#5a6675 !important;border:1px solid #eef1f5 !important;border-radius:7px;}
+        .dossier-comando-page .dossier-empty{color:#8a94a2 !important;}
       `}</style>
 
       <div className="cmd-top">
