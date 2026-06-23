@@ -32,6 +32,9 @@
 >   `nextManutenzioniGommeDomain.ts` (formato gg/mm/aaaa PROVATO PRIMA di `new Date`). Verificato sui
 >   dati reali: 8/8 record ambigui ora corretti (12 05 → maggio, 10 04 → aprile). Impatta in positivo
 >   anche le altre viste che usano questi domini (ordinamento/raggruppamento date).
+> - **Storia del mezzo senza rifornimenti + PDF 6 mesi (commit `e57b543e`):** la timeline (schermo e
+>   PDF) ESCLUDE i rifornimenti (ripetitivi, già nel Report); il PDF mostra solo gli ULTIMI 6 MESI
+>   (etichetta "ultimi 6 mesi"). Storico completo → PDF di Manutenzioni. Verificato su TI298409.
 > - **RESTANO APERTI:** solo punto 9 (Sincronizzare) e l'eventuale rifinitura di dettaglio non richiesta.
 > - `npm run build` verde. Commit su master, non pushato.
 
