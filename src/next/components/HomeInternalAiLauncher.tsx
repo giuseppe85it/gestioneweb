@@ -4,34 +4,23 @@ import { NEXT_IA_DOCUMENTI_PATH } from "../nextStructuralPaths";
 import "../internal-ai/internal-ai.css";
 
 const INTERNAL_AI_BACKEND_BASE = "http://127.0.0.1:4310/internal-ai-backend";
-const ARCHIVISTA_SCRIPTS_DIR = "c:\\progetti\\gestioneweb\\scripts\\archivista";
-const ARCHIVISTA_PS_PREFIX = "powershell -NoProfile -ExecutionPolicy Bypass -File";
+
+// Protocollo personale registrato sul PC (vedi scripts/archivista/archivista-protocol-register.ps1):
+// un click apre "archivista://<azione>" e Windows esegue lo script corrispondente,
+// anche quando il backend e' completamente spento. Il browser non puo' lanciare PowerShell
+// direttamente, per questo si passa dal protocollo.
+const ARCHIVISTA_PROTOCOL = "archivista";
 
 type BackendStatus = "checking" | "online" | "offline";
 
-type ArchivistaCommand = { id: string; label: string; cmd: string };
+// reloadAfter: l'azione riaccende il backend, quindi ricontrolliamo lo stato dopo qualche secondo.
+type ArchivistaCommand = { id: string; label: string; action: string; reloadAfter?: boolean };
 
 const ARCHIVISTA_COMMANDS: ArchivistaCommand[] = [
-  {
-    id: "restart",
-    label: "Riavvia backend",
-    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-restart.ps1"`,
-  },
-  {
-    id: "stop",
-    label: "Ferma backend",
-    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-stop.ps1"`,
-  },
-  {
-    id: "disable",
-    label: "Spegni avvio automatico",
-    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-disable.ps1"`,
-  },
-  {
-    id: "enable",
-    label: "Riattiva avvio automatico",
-    cmd: `${ARCHIVISTA_PS_PREFIX} "${ARCHIVISTA_SCRIPTS_DIR}\\archivista-enable.ps1"`,
-  },
+  { id: "restart", label: "Riavvia backend", action: "restart", reloadAfter: true },
+  { id: "stop", label: "Ferma backend", action: "stop" },
+  { id: "disable", label: "Spegni avvio automatico", action: "disable" },
+  { id: "enable", label: "Riattiva avvio automatico", action: "enable", reloadAfter: true },
 ];
 
 function getBackendStatusMeta(status: BackendStatus): { cls: string; label: string } {
@@ -133,16 +122,23 @@ export default function HomeInternalAiLauncher() {
     return () => document.removeEventListener("mousedown", handleDocClick);
   }, [menuOpen]);
 
-  const copyCommand = useCallback(async (command: ArchivistaCommand) => {
-    setMenuOpen(false);
-    try {
-      await navigator.clipboard.writeText(command.cmd);
-      setCommandFeedback(`Comando "${command.label}" copiato: incollalo in PowerShell e premi Invio.`);
-    } catch {
-      setCommandFeedback(`Copia non riuscita. Comando da incollare: ${command.cmd}`);
-    }
-    window.setTimeout(() => setCommandFeedback(null), 7000);
-  }, []);
+  const launchCommand = useCallback(
+    (command: ArchivistaCommand) => {
+      setMenuOpen(false);
+      // Apre il protocollo locale: Windows esegue lo script collegato all'azione.
+      window.location.href = `${ARCHIVISTA_PROTOCOL}://${command.action}`;
+      setCommandFeedback(
+        `"${command.label}" avviato. Se il browser chiede conferma, consenti l'apertura di "Archivista".`,
+      );
+      if (command.reloadAfter) {
+        setBackendStatus("checking");
+        window.setTimeout(() => void checkBackend(), 3500);
+        window.setTimeout(() => void checkBackend(), 7000);
+      }
+      window.setTimeout(() => setCommandFeedback(null), 9000);
+    },
+    [checkBackend],
+  );
 
   const statusMeta = getBackendStatusMeta(backendStatus);
 
@@ -184,7 +180,7 @@ export default function HomeInternalAiLauncher() {
                 </button>
                 {menuOpen && (
                   <div className="home-ia-launcher__menu-pop" role="menu">
-                    <p className="home-ia-launcher__menu-hint">Comandi da incollare in PowerShell</p>
+                    <p className="home-ia-launcher__menu-hint">Controlla il backend (un click)</p>
                     {ARCHIVISTA_COMMANDS.map((command) => (
                       <button
                         key={command.id}
@@ -192,7 +188,7 @@ export default function HomeInternalAiLauncher() {
                         role="menuitem"
                         className="home-ia-launcher__menu-item"
                         onClick={() => {
-                          void copyCommand(command);
+                          launchCommand(command);
                         }}
                       >
                         {command.label}
