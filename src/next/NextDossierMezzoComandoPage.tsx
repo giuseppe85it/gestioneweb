@@ -14,7 +14,6 @@ import {
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import NextMezzoEditModal from "./components/NextMezzoEditModal";
-import NextMezzoLibrettoStatico from "./components/NextMezzoLibrettoStatico";
 import { FraseStoriaRecord } from "./components/FraseStoriaRecord";
 import {
   buildNextDossierMezzoLegacyView,
@@ -81,6 +80,7 @@ const COMANDO_CSS = `
   .dc-kpi .sub{font-size:12px;color:var(--faint);margin-top:5px;}
   .dc-grid{display:grid;grid-template-columns:380px 1fr;gap:14px;align-items:start;}
   .dc-leftcol{display:flex;flex-direction:column;gap:14px;min-width:0;}
+  .dc-rightcol{display:flex;flex-direction:column;gap:14px;min-width:0;}
   .dc-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;display:flex;flex-direction:column;}
   .dc-card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:0;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;}
   .dc-card>h2 .count{font-size:12px;color:var(--faint);letter-spacing:0;text-transform:none;font-weight:400;}
@@ -116,7 +116,7 @@ const COMANDO_CSS = `
   .dc-techb ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
   .dc-techb li{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;}
   .dc-techb li span{color:var(--soft);}
-  .dc-techb li strong{font-weight:600;text-align:right;}
+  .dc-techb li strong{font-weight:700;text-align:right;}
   .dc-pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;background:#e9f6ef;color:var(--ok);}
   .dc-pill.off{background:#f0f2f5;color:var(--faint);}
   .dc-twocol{display:grid;grid-template-columns:1fr 1fr;}
@@ -890,6 +890,7 @@ export default function NextDossierMezzoComandoPage() {
   const lavoriLists = { attesa: legacy.lavoriInAttesa, eseguiti: legacy.lavoriEseguiti, manutenzioni: legacy.manutenzioni } as const;
   const revDays = revisioneInfo.days;
   const revTone = revDays == null ? "#2f6bd6" : revDays < 0 ? "#cf3b3b" : revDays <= 30 ? "#c9820a" : "#1f9457";
+  const techBlocks = buildTechBlocks(mezzo);
 
 
   const renderWork = (item: NextDossierLegacyWorkItem, fallbackLabel: string, fallbackCls: string) => {
@@ -1039,20 +1040,28 @@ export default function NextDossierMezzoComandoPage() {
             </div>
           </div>
 
-          <div className="dc-card">
-            <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
-            {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
+          <div className="dc-rightcol">
+            <div className="dc-card">
+              <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
+              {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
+            </div>
+            <div className="dc-card">
+              <h2><span>Dati tecnici</span><button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
+              <div className="dc-tech">
+                {techBlocks.map((block) => (
+                  <div className="dc-techb" key={block.title}>
+                    <h3>{block.title}</h3>
+                    <ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="dc-band"><h2>Dettaglio completo</h2><span className="sub">tutte le sezioni del dossier</span><span className="ln" /></div>
 
         <div className="dc-detail">
-          <div className="dc-card dc-span2">
-            <h2><span>Dati tecnici <span className="count">· libretto di circolazione</span></span><button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
-            <NextMezzoLibrettoStatico mezzoId={mezzo.id} />
-          </div>
-
           <div className="dc-card dc-span2">
             <h2>Manutenzioni</h2>
             <div className="dc-twocol">
