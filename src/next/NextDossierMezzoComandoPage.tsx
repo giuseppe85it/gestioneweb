@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { formatDateTimeUI, formatDateUI } from "./nextDateFormat";
-import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
+import { generateDossierComandoPDFBlob } from "../utils/pdfEngine";
 import {
   buildPdfShareText,
   buildWhatsAppShareUrl,
@@ -263,6 +263,17 @@ function formatGommeStraordinarieMeta(item: NextDossierMezzoLegacyViewState["gom
   return parts.join(" | ");
 }
 
+function buildTechBlocks(
+  mezzo: NonNullable<NextDossierMezzoLegacyViewState["mezzo"]>,
+): { title: string; rows: [string, unknown][] }[] {
+  return [
+    { title: "Identificazione", rows: [["Proprietario", mezzo.proprietario], ["Targa", mezzo.targa], ["Autista abituale", mezzo.autistaNome], ["Telaio / VIN", mezzo.telaio], ["Assicurazione", mezzo.assicurazione]] },
+    { title: "Caratteristiche", rows: [["Marca", mezzo.marca], ["Modello", mezzo.modello], ["Categoria", mezzo.categoria], ["Colore", mezzo.colore]] },
+    { title: "Motore e massa", rows: [["Cilindrata", mezzo.cilindrata], ["Potenza", mezzo.potenza], ["Massa complessiva", mezzo.massaComplessiva], ["Anno", mezzo.anno]] },
+    { title: "Scadenze", rows: [["Immatricolazione", formatDateUI(parseDateFlexible(mezzo.dataImmatricolazione))], ["Revisione", formatDateUI(parseDateFlexible(mezzo.dataScadenzaRevisione))], ["Note", mezzo.note], ...(mezzo.manutenzioneProgrammata ? ([["Manut. programmata", "ATTIVA"], ["Contratto", mezzo.manutenzioneContratto], ["Periodo", `${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataInizio))} - ${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataFine))}`], ["KM massimi", mezzo.manutenzioneKmMax]] as [string, unknown][]) : ([["Manut. programmata", "NON ATTIVA"]] as [string, unknown][]))] },
+  ];
+}
+
 export default function NextDossierMezzoComandoPage() {
   const location = useLocation();
   const { targa } = useParams<{ targa: string }>();
@@ -467,19 +478,136 @@ export default function NextDossierMezzoComandoPage() {
     if (!legacy || !mezzo) return;
     try {
       const preview = await openPreview({
-        source: async () =>
-          generateDossierMezzoPDFBlob({
-            mezzo,
+        source: async () => {
+          const revDaysL = revisioneInfo.days;
+          const revToneL: "ok" | "warn" | "danger" | "info" =
+            revDaysL == null ? "info" : revDaysL < 0 ? "danger" : revDaysL <= 30 ? "warn" : "ok";
+          const totalStr = (t: { chf: number; eur: number; unknown: number }) => {
+            const parts = [`CHF ${t.chf.toFixed(2)}`];
+            if (t.eur > 0) parts.push(`EUR ${t.eur.toFixed(2)}`);
+            if (t.unknown > 0) parts.push(`${t.unknown} da verif.`);
+            return parts.join(" · ");
+          };
+          const docAmount = (item: NextDossierFatturaPreventivoLegacyItem) =>
+            typeof item.importo === "number" ? renderAmount(item.importo, resolveCurrency(item)) : "n/d";
+          return generateDossierComandoPDFBlob({
+            targa: mezzo.targa,
+            headerTitle: `${mezzo.marca || "-"} ${mezzo.modello || "-"}`.trim(),
+            categoria: mezzo.categoria,
+            autista: mezzo.autistaNome,
             mezzoFotoUrl: mezzo.fotoUrl ?? null,
             mezzoFotoStoragePath: mezzo.fotoStoragePath ?? mezzo.fotoPath ?? null,
-            lavoriDaEseguire: legacy.lavoriDaEseguire,
-            lavoriInAttesa: legacy.lavoriInAttesa,
-            lavoriEseguiti: legacy.lavoriEseguiti,
-            rifornimenti: legacy.rifornimenti,
-            segnalazioni: [],
-            controlli: [],
-            targa: mezzo.targa,
-          }),
+            kpis: [
+              {
+                label: "Prossima revisione",
+                value: revDaysL == null ? "-" : revDaysL < 0 ? "scaduta" : `${revDaysL} giorni`,
+                sub: `${revisioneInfo.date}${revDaysL != null && revDaysL < 0 ? ` · ${-revDaysL} gg fa` : ""}`,
+                tone: revToneL,
+              },
+              {
+                label: `Costo anno ${costoAnno.year}`,
+                value: `${costoAnno.chf.toFixed(0)} CHF`,
+                sub: `${costoAnno.eur > 0 ? `+ ${costoAnno.eur.toFixed(0)} EUR ` : ""}${costoAnno.unknown > 0 ? `· ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}`,
+                tone: "info",
+              },
+              {
+                label: "Consumo medio",
+                value: consumoMedio == null ? "n/d" : `${consumoMedio.toFixed(2)} km/L`,
+                sub: "mediana sui rifornimenti",
+                tone: "info",
+              },
+              {
+                label: "Manutenzioni da fare",
+                value: String(legacy.lavoriInAttesa.length),
+                sub: "lavori in attesa",
+                tone: legacy.lavoriInAttesa.length > 0 ? "warn" : "ok",
+              },
+            ],
+            scadenze: [
+              {
+                titolo: "Revisione",
+                sub: revisioneInfo.date,
+                right: revDaysL == null ? "-" : revDaysL < 0 ? `scaduta ${-revDaysL} gg` : `tra ${revDaysL} gg`,
+                tone: revToneL,
+              },
+              {
+                titolo: "Manutenzione programmata",
+                sub: mezzo.manutenzioneProgrammata ? mezzo.manutenzioneContratto || "attiva" : "non attiva",
+                tone: mezzo.manutenzioneProgrammata ? "ok" : "muted",
+              },
+            ],
+            lavoriDaFare: legacy.lavoriInAttesa.map((item) => ({
+              descrizione: item.descrizione || "-",
+              meta: item.dettagli || formatDossierDate(item.dataInserimento),
+            })),
+            costi: [
+              { k: `Fatture (${fatture.length})`, v: totalStr(fattureTotals) },
+              { k: `Preventivi (${preventivi.length})`, v: totalStr(preventiviTotals) },
+              {
+                k: `Costo anno ${costoAnno.year}`,
+                v: `CHF ${costoAnno.chf.toFixed(2)}${costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}`,
+                nota: costoAnno.unknown > 0 ? `${costoAnno.unknown} senza valuta` : undefined,
+              },
+            ],
+            timeline: timeline.map((e) => ({
+              data: e.ts == null ? "senza data" : e.date,
+              tipo: e.type,
+              testo: `${e.text}${e.meta ? ` · ${e.meta}` : ""}`,
+              importo: e.amount ? `${e.amount.value.toFixed(2)} ${e.amount.cur === "UNKNOWN" ? "?" : e.amount.cur}` : "",
+            })),
+            datiTecnici: buildTechBlocks(mezzo).map((b) => ({
+              title: b.title,
+              rows: b.rows.map(([k, v]) => ({ k, v: String(v ?? "-") || "-" })),
+            })),
+            manutenzioniDaFare: legacy.lavoriInAttesa.map((item) => ({
+              stato: workBadge(item, "DA FARE", "").label,
+              descrizione: item.descrizione || "-",
+              data: formatDossierDate(item.dataInserimento),
+            })),
+            manutenzioniEseguite: legacy.lavoriEseguiti.map((item) => ({
+              stato: workBadge(item, "ESEGUITA", "").label,
+              descrizione: item.descrizione || "-",
+              data: formatDossierDate(item.dataInserimento),
+            })),
+            storicoManutenzioni: legacy.manutenzioni.map((item) => ({
+              descrizione: item.descrizione || "-",
+              data: formatDossierDate(item.data),
+              kmOre: formatKmOre(item),
+            })),
+            gommePerAsse: legacy.gommePerAsse.map((item) => ({
+              asse: item.asseLabel,
+              meta: formatGommePerAsseMeta(item),
+            })),
+            gommeStraordinarie: legacy.gommeStraordinarie.map((item) => ({
+              motivo: item.motivo || "Evento gomme straordinario",
+              meta: formatGommeStraordinarieMeta(item),
+            })),
+            materiali: legacy.movimentiMateriali.map((item) => ({
+              data: formatDossierDate(item.data),
+              descrizione: item.descrizione || item.materialeLabel || "-",
+              qta: `${item.quantita ?? "-"} ${item.unita ?? ""}`.trim(),
+              destinatario: item.destinatario?.label || "-",
+              fornitore: item.fornitore || item.fornitoreLabel || "-",
+              motivo: item.motivo || "-",
+              costo:
+                item.costoTotale !== null && item.costoTotale !== undefined
+                  ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN")
+                  : "-",
+            })),
+            preventivi: preventivi.map((item) => ({
+              descrizione: item.descrizione || "-",
+              fornitore: item.fornitoreLabel || "-",
+              data: formatDossierDate(item.data),
+              importo: docAmount(item),
+            })),
+            fatture: fatture.map((item) => ({
+              descrizione: item.descrizione || "-",
+              fornitore: item.fornitoreLabel || "-",
+              data: formatDossierDate(item.data),
+              importo: docAmount(item),
+            })),
+          });
+        },
       });
       revokePdfPreviewUrl(pdfUrl);
       setPdfBlob(preview.blob);
@@ -582,12 +710,7 @@ export default function NextDossierMezzoComandoPage() {
   const revDays = revisioneInfo.days;
   const revTone = revDays == null ? "#2f6bd6" : revDays < 0 ? "#cf3b3b" : revDays <= 30 ? "#c9820a" : "#1f9457";
 
-  const techBlocks: { title: string; rows: [string, unknown][] }[] = [
-    { title: "Identificazione", rows: [["Proprietario", mezzo.proprietario], ["Targa", mezzo.targa], ["Autista abituale", mezzo.autistaNome], ["Telaio / VIN", mezzo.telaio], ["Assicurazione", mezzo.assicurazione]] },
-    { title: "Caratteristiche", rows: [["Marca", mezzo.marca], ["Modello", mezzo.modello], ["Categoria", mezzo.categoria], ["Colore", mezzo.colore]] },
-    { title: "Motore e massa", rows: [["Cilindrata", mezzo.cilindrata], ["Potenza", mezzo.potenza], ["Massa complessiva", mezzo.massaComplessiva], ["Anno", mezzo.anno]] },
-    { title: "Scadenze", rows: [["Immatricolazione", formatDateUI(parseDateFlexible(mezzo.dataImmatricolazione))], ["Revisione", formatDateUI(parseDateFlexible(mezzo.dataScadenzaRevisione))], ["Note", mezzo.note], ...(mezzo.manutenzioneProgrammata ? ([["Manut. programmata", "ATTIVA"], ["Contratto", mezzo.manutenzioneContratto], ["Periodo", `${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataInizio))} - ${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataFine))}`], ["KM massimi", mezzo.manutenzioneKmMax]] as [string, unknown][]) : ([["Manut. programmata", "NON ATTIVA"]] as [string, unknown][]))] },
-  ];
+  const techBlocks = buildTechBlocks(mezzo);
 
   const renderWork = (item: NextDossierLegacyWorkItem, fallbackLabel: string, fallbackCls: string) => {
     const badge = workBadge(item, fallbackLabel, fallbackCls);

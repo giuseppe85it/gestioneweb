@@ -27,7 +27,6 @@ import NextShell from "./next/NextShell";
 import NextAutistiEventoModal from "./next/components/NextAutistiEventoModal";
 import { createManutenzioneDaFareFromEvento } from "./next/writers/nextManutenzioneDaFareCreateWriter";
 import type { HomeEvent } from "./utils/homeEvents";
-import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
 import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
 import NextDossierMezzoComandoPage from "./next/NextDossierMezzoComandoPage";
@@ -440,7 +439,7 @@ function App() {
           path="dossiermezzi/:targa"
           element={
             <NextRoleGuard areaId="mezzi-dossier">
-              <NextDossierMezzoPage />
+              <NextDossierMezzoComandoPage />
             </NextRoleGuard>
           }
         />
@@ -448,7 +447,7 @@ function App() {
           path="dossier/:targa"
           element={
             <NextRoleGuard areaId="mezzi-dossier">
-              <NextDossierMezzoPage />
+              <NextDossierMezzoComandoPage />
             </NextRoleGuard>
           }
         />

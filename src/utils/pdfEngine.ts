@@ -2448,6 +2448,500 @@ export async function generateDossierMezzoPDFBlob(
   return { blob: doc.output("blob") as Blob, fileName };
 }
 
+// =====================================================================
+// Dossier mezzo "Centro di comando" — PDF dedicato (arricchito + grafica
+// nuova). NON tocca il motore del vecchio dossier (buildDossierMezzoPdfDocument).
+// Riceve un payload già pronto e formattato dalla pagina, così pdfEngine
+// non dipende dai tipi di dominio NEXT.
+// =====================================================================
+
+type ComandoTone = "ok" | "warn" | "danger" | "info" | "muted";
+
+export type DossierComandoPdfData = {
+  targa: string;
+  headerTitle: string; // es. "RENAULT T460"
+  categoria?: string | null;
+  autista?: string | null;
+  mezzoFotoUrl?: string | null;
+  mezzoFotoStoragePath?: string | null;
+  kpis: Array<{ label: string; value: string; sub?: string; tone?: ComandoTone }>;
+  scadenze: Array<{ titolo: string; sub?: string; right?: string; tone?: ComandoTone }>;
+  lavoriDaFare: Array<{ descrizione: string; meta?: string }>;
+  costi: Array<{ k: string; v: string; nota?: string }>;
+  timeline: Array<{ data: string; tipo: string; testo: string; importo?: string }>;
+  datiTecnici: Array<{ title: string; rows: Array<{ k: string; v: string }> }>;
+  manutenzioniDaFare: Array<{ stato: string; descrizione: string; data: string }>;
+  manutenzioniEseguite: Array<{ stato: string; descrizione: string; data: string }>;
+  storicoManutenzioni: Array<{ descrizione: string; data: string; kmOre: string }>;
+  gommePerAsse: Array<{ asse: string; meta: string }>;
+  gommeStraordinarie: Array<{ motivo: string; meta: string }>;
+  materiali: Array<{
+    data: string;
+    descrizione: string;
+    qta: string;
+    destinatario: string;
+    fornitore: string;
+    motivo: string;
+    costo: string;
+  }>;
+  preventivi: Array<{ descrizione: string; fornitore: string; data: string; importo: string }>;
+  fatture: Array<{ descrizione: string; fornitore: string; data: string; importo: string }>;
+};
+
+const COMANDO_PDF_COLORS = {
+  bandBg: [22, 36, 58] as [number, number, number],
+  bandPhoto: [38, 52, 75] as [number, number, number],
+  bandText: [238, 242, 248] as [number, number, number],
+  bandFaint: [159, 176, 196] as [number, number, number],
+  ink: [24, 34, 47] as [number, number, number],
+  soft: [90, 102, 117] as [number, number, number],
+  faint: [138, 148, 162] as [number, number, number],
+  cardLine: [210, 217, 226] as [number, number, number],
+  ok: [31, 148, 87] as [number, number, number],
+  warn: [201, 130, 10] as [number, number, number],
+  danger: [207, 59, 59] as [number, number, number],
+  info: [47, 107, 214] as [number, number, number],
+  muted: [120, 132, 148] as [number, number, number],
+};
+
+function comandoToneColor(tone?: ComandoTone): [number, number, number] {
+  switch (tone) {
+    case "ok":
+      return COMANDO_PDF_COLORS.ok;
+    case "warn":
+      return COMANDO_PDF_COLORS.warn;
+    case "danger":
+      return COMANDO_PDF_COLORS.danger;
+    case "muted":
+      return COMANDO_PDF_COLORS.muted;
+    default:
+      return COMANDO_PDF_COLORS.info;
+  }
+}
+
+async function buildDossierComandoPdfDocument(
+  data: DossierComandoPdfData
+): Promise<{ doc: jsPDF; fileName: string }> {
+  const docId = buildDocId("DOS");
+  const targa = fmtTarga(data?.targa || "");
+  const model: PdfDocModel = {
+    docId,
+    title: "Dossier mezzo",
+    dateTimeLabel: formatDateTime(new Date()),
+    headerRight: targa ? `Targa: ${targa}` : undefined,
+    blocks: [],
+    footerSign: { leftLabel: "Firma Autista", rightLabel: "Firma Admin" },
+  };
+
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - PDF_MARGIN_X * 2;
+  let currentY = await drawStandardHeader(doc, model);
+
+  const ensureSpace = async (needed: number) => {
+    if (currentY + needed > pageHeight - PDF_BOTTOM_MARGIN) {
+      doc.addPage();
+      currentY = await drawStandardHeader(doc, model);
+    }
+  };
+
+  const runTable = (
+    head: string[],
+    body: string[][],
+    columnStyles?: Record<number, any>
+  ) => {
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: PDF_MARGIN_X, right: PDF_MARGIN_X },
+      head: [head],
+      body,
+      styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.4, textColor: COLORS.textBlack, valign: "top" },
+      headStyles: { fillColor: COLORS.tableHeaderBg, textColor: COLORS.tableHeaderText, fontStyle: "bold", fontSize: 8.5 },
+      alternateRowStyles: { fillColor: COLORS.rowAlt },
+      columnStyles,
+    });
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY) + 7;
+  };
+
+  const sectionBand = async (title: string, sub?: string) => {
+    await ensureSpace(12);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+    doc.text(title, PDF_MARGIN_X, currentY);
+    let lineStartX = PDF_MARGIN_X + doc.getTextWidth(title) + 4;
+    if (sub) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...COMANDO_PDF_COLORS.faint);
+      doc.text(sub, lineStartX, currentY);
+      lineStartX += doc.getTextWidth(sub) + 4;
+    }
+    doc.setDrawColor(...COMANDO_PDF_COLORS.cardLine);
+    doc.line(lineStartX, currentY - 1.5, pageWidth - PDF_MARGIN_X, currentY - 1.5);
+    currentY += 6;
+  };
+
+  const emptyLine = async (text: string) => {
+    await ensureSpace(8);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(...COMANDO_PDF_COLORS.faint);
+    doc.text(text, PDF_MARGIN_X, currentY);
+    currentY += 8;
+  };
+
+  // ---- Fascia identità (scura) + foto -------------------------------
+  const bandH = 30;
+  await ensureSpace(bandH + 4);
+  const bandY = currentY;
+  doc.setFillColor(...COMANDO_PDF_COLORS.bandBg);
+  doc.roundedRect(PDF_MARGIN_X, bandY, contentWidth, bandH, 3, 3, "F");
+
+  const photoW = 40;
+  const photoH = 24;
+  const photoX = PDF_MARGIN_X + contentWidth - photoW - 6;
+  const photoY = bandY + 3;
+  const fotoDataUrl = await resolvePhotoDataUrl(data?.mezzoFotoUrl ?? null, data?.mezzoFotoStoragePath ?? null);
+  if (fotoDataUrl) {
+    const fit = containBox(photoW, photoH, fotoDataUrl.width, fotoDataUrl.height);
+    doc.addImage(
+      fotoDataUrl.dataUrl,
+      getImageFormatFromDataUrl(fotoDataUrl.dataUrl),
+      photoX + fit.offsetX,
+      photoY + fit.offsetY,
+      fit.width,
+      fit.height,
+      undefined,
+      "FAST"
+    );
+  } else {
+    doc.setFillColor(...COMANDO_PDF_COLORS.bandPhoto);
+    doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, "F");
+    doc.setTextColor(...COMANDO_PDF_COLORS.bandFaint);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("FOTO N/D", photoX + photoW / 2, photoY + photoH / 2 + 1, { align: "center" });
+  }
+
+  doc.setTextColor(...COMANDO_PDF_COLORS.bandText);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(targa || "-", PDF_MARGIN_X + 8, bandY + 13);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(safeStr(data?.headerTitle) || "-", PDF_MARGIN_X + 8, bandY + 20);
+  const chips = [safeStr(data?.categoria), safeStr(data?.autista)].filter(Boolean).join("  ·  ");
+  if (chips) {
+    doc.setFontSize(9);
+    doc.setTextColor(...COMANDO_PDF_COLORS.bandFaint);
+    doc.text(chips, PDF_MARGIN_X + 8, bandY + 26);
+  }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...COMANDO_PDF_COLORS.bandFaint);
+  doc.text("DOSSIER MEZZO · CENTRO DI COMANDO", photoX - 4, bandY + 5, { align: "right" });
+  currentY = bandY + bandH + 8;
+
+  // ---- KPI cards ----------------------------------------------------
+  const kpis = (data?.kpis ?? []).slice(0, 4);
+  if (kpis.length) {
+    const gap = 6;
+    const cardH = 22;
+    const cardW = (contentWidth - gap * (kpis.length - 1)) / kpis.length;
+    await ensureSpace(cardH + 6);
+    kpis.forEach((kpi, i) => {
+      const x = PDF_MARGIN_X + i * (cardW + gap);
+      const tone = comandoToneColor(kpi.tone);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(...COMANDO_PDF_COLORS.cardLine);
+      doc.roundedRect(x, currentY, cardW, cardH, 2, 2, "FD");
+      doc.setFillColor(...tone);
+      doc.rect(x + 3, currentY + 0.6, cardW - 6, 1.4, "F");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+      doc.text(String(kpi.label || "").toUpperCase(), x + 4, currentY + 7);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(...tone);
+      const valueLine = doc.splitTextToSize(safeStr(kpi.value) || "-", cardW - 8)[0] || "-";
+      doc.text(valueLine, x + 4, currentY + 14);
+      if (kpi.sub) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...COMANDO_PDF_COLORS.faint);
+        const subLine = doc.splitTextToSize(safeStr(kpi.sub), cardW - 8)[0] || "";
+        doc.text(subLine, x + 4, currentY + 19);
+      }
+    });
+    currentY += cardH + 10;
+  }
+
+  // ---- Scadenze & allerte ------------------------------------------
+  await sectionBand("Scadenze & allerte");
+  const scadenze = data?.scadenze ?? [];
+  if (!scadenze.length) {
+    await emptyLine("Nessuna scadenza o allerta.");
+  } else {
+    for (const s of scadenze) {
+      await ensureSpace(8);
+      const tone = comandoToneColor(s.tone);
+      doc.setFillColor(...tone);
+      doc.circle(PDF_MARGIN_X + 1.6, currentY - 1.3, 1.4, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+      doc.text(safeStr(s.titolo), PDF_MARGIN_X + 6, currentY);
+      const titoloW = doc.getTextWidth(safeStr(s.titolo));
+      if (s.sub) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(...COMANDO_PDF_COLORS.faint);
+        doc.text(safeStr(s.sub), PDF_MARGIN_X + 6 + titoloW + 6, currentY);
+      }
+      if (s.right) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(...tone);
+        doc.text(safeStr(s.right), pageWidth - PDF_MARGIN_X, currentY, { align: "right" });
+      }
+      currentY += 6.5;
+    }
+    const lavori = data?.lavoriDaFare ?? [];
+    if (lavori.length) {
+      currentY += 1;
+      await ensureSpace(7);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+      doc.text("LAVORI DA FARE", PDF_MARGIN_X, currentY);
+      currentY += 5;
+      runTable(
+        ["Descrizione", "Dettagli"],
+        lavori.map((l) => [safeStr(l.descrizione) || "-", safeStr(l.meta) || "-"]),
+        { 0: { cellWidth: contentWidth * 0.62 } }
+      );
+    }
+  }
+
+  // ---- Costi (riepilogo) -------------------------------------------
+  await sectionBand("Costi (riepilogo)");
+  const costi = data?.costi ?? [];
+  if (!costi.length) {
+    await emptyLine("Nessun costo registrato.");
+  } else {
+    for (const c of costi) {
+      await ensureSpace(7);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+      doc.text(safeStr(c.k), PDF_MARGIN_X, currentY);
+      const kW = doc.getTextWidth(safeStr(c.k));
+      if (c.nota) {
+        doc.setFontSize(8);
+        doc.setTextColor(...COMANDO_PDF_COLORS.warn);
+        doc.text(safeStr(c.nota), PDF_MARGIN_X + kW + 6, currentY);
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+      doc.text(safeStr(c.v), pageWidth - PDF_MARGIN_X, currentY, { align: "right" });
+      currentY += 6.5;
+    }
+    currentY += 2;
+  }
+
+  // ---- Storia del mezzo (timeline) ---------------------------------
+  await sectionBand("Storia del mezzo", data?.timeline?.length ? `${data.timeline.length} eventi` : undefined);
+  if (!data?.timeline?.length) {
+    await emptyLine("Nessun evento da mostrare.");
+  } else {
+    runTable(
+      ["Data", "Tipo", "Descrizione", "Importo"],
+      data.timeline.map((e) => [safeStr(e.data) || "-", safeStr(e.tipo), safeStr(e.testo) || "-", safeStr(e.importo) || ""]),
+      { 0: { cellWidth: 20 }, 1: { cellWidth: 22 }, 3: { cellWidth: 26, halign: "right" } }
+    );
+  }
+
+  // ---- Dettaglio completo: banner ----------------------------------
+  await sectionBand("Dettaglio completo", "tutte le sezioni del dossier");
+
+  // ---- Dati tecnici -------------------------------------------------
+  await ensureSpace(10);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+  doc.text("Dati tecnici", PDF_MARGIN_X, currentY);
+  currentY += 6;
+  const tecnici = data?.datiTecnici ?? [];
+  if (tecnici.length) {
+    const colW = contentWidth / 2;
+    doc.setFontSize(9);
+    for (let i = 0; i < tecnici.length; i += 2) {
+      const pair = [tecnici[i], tecnici[i + 1]].filter(Boolean) as Array<{ title: string; rows: Array<{ k: string; v: string }> }>;
+      const blockHeight = 6 + Math.max(...pair.map((b) => b.rows.length)) * 5 + 4;
+      await ensureSpace(blockHeight);
+      const rowStartY = currentY;
+      pair.forEach((block, idx) => {
+        const x = PDF_MARGIN_X + idx * colW;
+        let y = rowStartY;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+        doc.text(String(block.title).toUpperCase(), x, y);
+        y += 5;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        block.rows.forEach((r) => {
+          doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+          doc.text(`${r.k}:`, x, y);
+          doc.setTextColor(...COMANDO_PDF_COLORS.ink);
+          const valLines = doc.splitTextToSize(safeStr(r.v) || "-", colW - 32);
+          doc.text(valLines, x + 30, y);
+          y += Math.max(1, valLines.length) * 5;
+        });
+      });
+      currentY = rowStartY + blockHeight;
+    }
+    currentY += 2;
+  }
+
+  // ---- Manutenzioni: da fare / eseguite ----------------------------
+  await sectionBand("Manutenzioni");
+  await ensureSpace(7);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+  doc.text("DA FARE", PDF_MARGIN_X, currentY);
+  currentY += 5;
+  if (!data?.manutenzioniDaFare?.length) {
+    await emptyLine("Nessuna manutenzione da fare.");
+  } else {
+    runTable(
+      ["Stato", "Descrizione", "Data"],
+      data.manutenzioniDaFare.map((m) => [safeStr(m.stato), safeStr(m.descrizione) || "-", safeStr(m.data) || "-"]),
+      { 0: { cellWidth: 28 }, 2: { cellWidth: 26 } }
+    );
+  }
+  await ensureSpace(7);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+  doc.text("ESEGUITE", PDF_MARGIN_X, currentY);
+  currentY += 5;
+  if (!data?.manutenzioniEseguite?.length) {
+    await emptyLine("Nessuna manutenzione eseguita.");
+  } else {
+    runTable(
+      ["Stato", "Descrizione", "Data"],
+      data.manutenzioniEseguite.map((m) => [safeStr(m.stato), safeStr(m.descrizione) || "-", safeStr(m.data) || "-"]),
+      { 0: { cellWidth: 28 }, 2: { cellWidth: 26 } }
+    );
+  }
+
+  // ---- Storico manutenzioni ----------------------------------------
+  await sectionBand("Storico manutenzioni");
+  if (!data?.storicoManutenzioni?.length) {
+    await emptyLine("Nessuna manutenzione registrata per questo mezzo.");
+  } else {
+    runTable(
+      ["Descrizione", "Data", "Km / Ore"],
+      data.storicoManutenzioni.map((m) => [safeStr(m.descrizione) || "-", safeStr(m.data) || "-", safeStr(m.kmOre) || "-"]),
+      { 1: { cellWidth: 26 }, 2: { cellWidth: 34 } }
+    );
+  }
+
+  // ---- Gomme --------------------------------------------------------
+  await sectionBand("Gomme", "per asse + straordinari");
+  await ensureSpace(7);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+  doc.text("STATO GOMME PER ASSE", PDF_MARGIN_X, currentY);
+  currentY += 5;
+  if (!data?.gommePerAsse?.length) {
+    await emptyLine("Nessun cambio gomme ordinario strutturato disponibile.");
+  } else {
+    runTable(
+      ["Asse", "Dettagli"],
+      data.gommePerAsse.map((g) => [safeStr(g.asse) || "-", safeStr(g.meta) || "-"]),
+      { 0: { cellWidth: 50 } }
+    );
+  }
+  await ensureSpace(7);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COMANDO_PDF_COLORS.soft);
+  doc.text("EVENTI GOMME STRAORDINARI", PDF_MARGIN_X, currentY);
+  currentY += 5;
+  if (!data?.gommeStraordinarie?.length) {
+    await emptyLine("Nessun evento gomme straordinario registrato.");
+  } else {
+    runTable(
+      ["Motivo", "Dettagli"],
+      data.gommeStraordinarie.map((g) => [safeStr(g.motivo) || "-", safeStr(g.meta) || "-"]),
+      { 0: { cellWidth: 60 } }
+    );
+  }
+
+  // ---- Materiali ----------------------------------------------------
+  await sectionBand("Materiali e movimenti inventario");
+  if (!data?.materiali?.length) {
+    await emptyLine("Nessun movimento materiali registrato per questo mezzo.");
+  } else {
+    runTable(
+      ["Data", "Descrizione", "Q.tà", "Destinatario", "Fornitore", "Motivo", "Costo"],
+      data.materiali.map((m) => [
+        safeStr(m.data) || "-",
+        safeStr(m.descrizione) || "-",
+        safeStr(m.qta) || "-",
+        safeStr(m.destinatario) || "-",
+        safeStr(m.fornitore) || "-",
+        safeStr(m.motivo) || "-",
+        safeStr(m.costo) || "-",
+      ]),
+      { 0: { cellWidth: 17 }, 2: { cellWidth: 13 }, 6: { cellWidth: 24, halign: "right" } }
+    );
+  }
+
+  // ---- Preventivi ---------------------------------------------------
+  await sectionBand("Preventivi");
+  if (!data?.preventivi?.length) {
+    await emptyLine("Nessun preventivo registrato.");
+  } else {
+    runTable(
+      ["Descrizione", "Fornitore", "Data", "Importo"],
+      data.preventivi.map((p) => [safeStr(p.descrizione) || "-", safeStr(p.fornitore) || "-", safeStr(p.data) || "-", safeStr(p.importo) || "-"]),
+      { 2: { cellWidth: 24 }, 3: { cellWidth: 30, halign: "right" } }
+    );
+  }
+
+  // ---- Fatture ------------------------------------------------------
+  await sectionBand("Fatture");
+  if (!data?.fatture?.length) {
+    await emptyLine("Nessuna fattura registrata.");
+  } else {
+    runTable(
+      ["Descrizione", "Fornitore", "Data", "Importo"],
+      data.fatture.map((f) => [safeStr(f.descrizione) || "-", safeStr(f.fornitore) || "-", safeStr(f.data) || "-", safeStr(f.importo) || "-"]),
+      { 2: { cellWidth: 24 }, 3: { cellWidth: 30, halign: "right" } }
+    );
+  }
+
+  addStandardFooter(doc, model.footerSign);
+  const name = sanitizeFileName(`Dossier_Comando_${targa || ""}_${docId}`);
+  return { doc, fileName: `${name}.pdf` };
+}
+
+export async function generateDossierComandoPDFBlob(
+  data: DossierComandoPdfData
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildDossierComandoPdfDocument(data);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
 export type InternalAiOperationalReportPdfMedia = {
   label: string;
   targa: string;
