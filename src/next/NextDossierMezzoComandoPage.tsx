@@ -268,6 +268,44 @@ export default function NextDossierMezzoComandoPage() {
   const preventiviTotals = useMemo(() => buildTotals(preventivi), [preventivi]);
   const fattureTotals = useMemo(() => buildTotals(fatture), [fatture]);
 
+  // --- Calcoli per la fascia "Centro di comando" (solo da dati gia caricati) ---
+  const revisioneInfo = useMemo(() => {
+    const d = parseDateFlexible(legacy?.mezzo?.dataScadenzaRevisione);
+    if (!d) return { date: "-", days: null as number | null };
+    const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+    return { date: formatDateUI(d), days };
+  }, [legacy]);
+
+  const costoAnno = useMemo(() => {
+    const year = new Date().getFullYear();
+    let chf = 0;
+    let eur = 0;
+    let unknown = 0;
+    for (const item of docs) {
+      const d = parseDateFlexible(item.data);
+      if (!d || d.getFullYear() !== year) continue;
+      const amount = typeof item.importo === "number" && Number.isFinite(item.importo) ? item.importo : 0;
+      const cur = resolveCurrency(item);
+      if (cur === "CHF") chf += amount;
+      else if (cur === "EUR") eur += amount;
+      else if (amount > 0) unknown += 1;
+    }
+    return { chf, eur, unknown, year };
+  }, [docs]);
+
+  const consumoMedio = useMemo(() => {
+    const rows = (legacy?.rifornimenti ?? [])
+      .filter((r) => typeof r.km === "number" && typeof r.litri === "number" && (r.km as number) > 0 && (r.litri as number) > 0)
+      .map((r) => ({ km: r.km as number, litri: r.litri as number }))
+      .sort((a, b) => a.km - b.km);
+    if (rows.length < 2) return null;
+    const kmTot = rows[rows.length - 1].km - rows[0].km;
+    if (kmTot <= 0) return null;
+    const litriTot = rows.slice(1).reduce((s, r) => s + r.litri, 0);
+    if (litriTot <= 0) return null;
+    return (litriTot / kmTot) * 100;
+  }, [legacy]);
+
   const closePdf = () => {
     revokePdfPreviewUrl(pdfUrl);
     setPdfOpen(false);
@@ -451,6 +489,10 @@ export default function NextDossierMezzoComandoPage() {
     manutenzioni: legacy.manutenzioni,
   } as const;
 
+  const revDays = revisioneInfo.days;
+  const revTone = revDays == null ? "#2f6bd6" : revDays < 0 ? "#cf3b3b" : revDays <= 30 ? "#c9820a" : "#1f9457";
+  const lavoriDaFare = legacy.lavoriInAttesa;
+
   const renderWorkItem = (item: NextDossierLegacyWorkItem, badge: string, label: string) => (
     <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}>
       <div className="dossier-list-main">
@@ -528,14 +570,84 @@ export default function NextDossierMezzoComandoPage() {
         onDeleted={handleMezzoDeleted}
       />
 
-      <div className="dossier-header-bar">
-        <button className="dossier-button ghost" type="button" onClick={back}>Mezzi</button>
-        <div className="dossier-header-center"><img src="/logo.png" alt="Logo" className="dossier-logo" /><div className="dossier-header-text"><span className="dossier-header-label">DOSSIER MEZZO - CENTRO DI COMANDO</span><h1 className="dossier-header-title">{headerTitle} - {mezzo.targa}</h1></div></div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button className="dossier-button" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi Economica</button>
-          <button className="dossier-button" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
-          <button className="dossier-button" type="button" onClick={() => setModal("libretto")}>LIBRETTO</button>
-          <button className="dossier-button primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
+      <style>{`
+        .cmd-top{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;background:linear-gradient(180deg,#16243a,#0f1a2b);color:#eef2f8;border-radius:10px;padding:16px 18px;margin-bottom:14px;}
+        .cmd-idleft{display:flex;gap:14px;align-items:center;}
+        .cmd-photo{width:96px;height:70px;border-radius:7px;flex:none;background:#26344b;background-size:cover;background-position:center;border:1px solid #38496685;display:flex;align-items:center;justify-content:center;color:#8294b3;font-size:10px;text-transform:uppercase;}
+        .cmd-plate{font-size:26px;font-weight:700;letter-spacing:.04em;line-height:1;}
+        .cmd-model{font-size:14px;color:#c4d0e0;margin-top:3px;}
+        .cmd-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+        .cmd-chip{font-size:12px;padding:3px 9px;border-radius:20px;background:#ffffff14;border:1px solid #ffffff26;color:#d8e2f0;}
+        .cmd-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:440px;}
+        .cmd-btn{font-size:12.5px;padding:8px 12px;border-radius:7px;cursor:pointer;background:#ffffff12;border:1px solid #ffffff2b;color:#e7eef8;white-space:nowrap;}
+        .cmd-btn.primary{background:#2f6bd6;border-color:#2f6bd6;color:#fff;font-weight:600;}
+        .cmd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
+        .cmd-kpi{background:#fff;border:1px solid #e0e5ec;border-radius:10px;padding:14px 16px;position:relative;box-shadow:0 1px 2px rgba(20,30,45,.06);}
+        .cmd-kpi .top{position:absolute;top:0;left:16px;right:16px;height:3px;border-radius:0 0 3px 3px;}
+        .cmd-kpi .lab{font-size:12px;color:#5a6675;text-transform:uppercase;letter-spacing:.03em;}
+        .cmd-kpi .val{font-size:25px;font-weight:700;margin-top:6px;line-height:1.05;}
+        .cmd-kpi .val small{font-size:14px;font-weight:600;color:#5a6675;}
+        .cmd-kpi .sub{font-size:12px;color:#8a94a2;margin-top:5px;}
+        .cmd-summary{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+        .cmd-card{background:#fff;border:1px solid #e0e5ec;border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;}
+        .cmd-card h3{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#5a6675;margin:0;padding:13px 16px;border-bottom:1px solid #eef1f5;}
+        .cmd-row{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid #f1f4f8;align-items:flex-start;}
+        .cmd-row:last-child{border-bottom:none;}
+        .cmd-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;}
+        .cmd-main{flex:1;min-width:0;}
+        .cmd-title{font-size:13.5px;font-weight:600;}
+        .cmd-sub{font-size:12px;color:#8a94a2;margin-top:2px;}
+        .cmd-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
+        @media(max-width:1080px){.cmd-top{grid-template-columns:1fr}.cmd-kpis{grid-template-columns:repeat(2,1fr)}.cmd-summary{grid-template-columns:1fr}.cmd-actions{justify-content:flex-start;max-width:none}}
+      `}</style>
+
+      <div className="cmd-top">
+        <div className="cmd-idleft">
+          <div className="cmd-photo" style={mezzo.fotoUrl ? { backgroundImage: `url(${mezzo.fotoUrl})` } : undefined}>{mezzo.fotoUrl ? "" : "foto"}</div>
+          <div>
+            <div className="cmd-plate">{mezzo.targa}</div>
+            <div className="cmd-model">{headerTitle}</div>
+            <div className="cmd-chips">
+              {mezzo.categoria ? <span className="cmd-chip">{mezzo.categoria}</span> : null}
+              {mezzo.autistaNome ? <span className="cmd-chip">{mezzo.autistaNome}</span> : null}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: "center", fontSize: 11, letterSpacing: ".06em", color: "#9fb0c4" }}>DOSSIER MEZZO · CENTRO DI COMANDO</div>
+        <div className="cmd-actions">
+          <button className="cmd-btn" type="button" onClick={back}>&#8249; Mezzi</button>
+          <button className="cmd-btn" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi economica</button>
+          <button className="cmd-btn" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
+          <button className="cmd-btn" type="button" onClick={() => setModal("libretto")}>Libretto</button>
+          <button className="cmd-btn primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
+        </div>
+      </div>
+
+      <div className="cmd-kpis">
+        <div className="cmd-kpi"><span className="top" style={{ background: revTone }} /><div className="lab">Prossima revisione</div><div className="val" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? "scaduta" : revDays}{revDays != null && revDays >= 0 ? <small> giorni</small> : null}</div><div className="sub">{revisioneInfo.date}{revDays != null && revDays < 0 ? ` · ${-revDays} gg fa` : ""}</div></div>
+        <div className="cmd-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Costo anno {costoAnno.year}</div><div className="val">{costoAnno.chf.toFixed(0)} <small>CHF</small>{costoAnno.eur > 0 ? <small> + {costoAnno.eur.toFixed(0)} &euro;</small> : null}</div><div className="sub">{costoAnno.unknown > 0 ? `parziale · ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}</div></div>
+        <div className="cmd-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Consumo medio</div><div className="val">{consumoMedio == null ? "n/d" : consumoMedio.toFixed(1)}{consumoMedio != null ? <small> l/100 km</small> : null}</div><div className="sub">stima da rifornimenti</div></div>
+        <div className="cmd-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
+      </div>
+
+      <div className="cmd-summary">
+        <div className="cmd-card">
+          <h3>Scadenze &amp; Allerte</h3>
+          <div className="cmd-row"><span className="cmd-dot" style={{ background: revTone }} /><div className="cmd-main"><div className="cmd-title">Revisione</div><div className="cmd-sub">{revisioneInfo.date}</div></div><div className="cmd-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
+          <div className="cmd-row"><span className="cmd-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="cmd-main"><div className="cmd-title">Manutenzione programmata</div><div className="cmd-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
+          {lavoriDaFare.length === 0 ? (
+            <div className="cmd-row"><div className="cmd-main"><div className="cmd-sub">Nessun lavoro da fare.</div></div></div>
+          ) : (
+            lavoriDaFare.slice(0, 4).map((item) => (
+              <div className="cmd-row" key={item.id}><span className="cmd-dot" style={{ background: "#c9820a" }} /><div className="cmd-main"><div className="cmd-title">{item.descrizione}</div><div className="cmd-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
+            ))
+          )}
+        </div>
+        <div className="cmd-card">
+          <h3>Costi (riepilogo)</h3>
+          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Fatture</div><div className="cmd-sub">{fatture.length} documenti</div></div><div className="cmd-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}</div></div>
+          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Preventivi</div><div className="cmd-sub">{preventivi.length} documenti</div></div><div className="cmd-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}</div></div>
+          <div className="cmd-row"><div className="cmd-main"><div className="cmd-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="cmd-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="cmd-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
         </div>
       </div>
 
