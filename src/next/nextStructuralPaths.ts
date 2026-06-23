@@ -83,6 +83,14 @@ export function buildNextDossierRifornimentiPath(targa: string) {
   return `${buildNextDossierPath(targa)}/rifornimenti`;
 }
 
+export function buildNextDossierComandoPath(targa: string) {
+  return `${buildNextDossierPath(targa)}/comando`;
+}
+
+export function buildNextCentroControlloRifornimentiPath(targa: string) {
+  return `${NEXT_CENTRO_CONTROLLO_PATH}?tab=rifornimenti&targa=${encodeURIComponent(targa)}`;
+}
+
 export function buildNextAnalisiEconomicaPath(targa: string) {
   return `${NEXT_ANALISI_ECONOMICA_PREFIX}/${encodeURIComponent(targa)}`;
 }

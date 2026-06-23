@@ -30,6 +30,7 @@ import type { HomeEvent } from "./utils/homeEvents";
 import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
 import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
+import NextDossierMezzoComandoPage from "./next/NextDossierMezzoComandoPage";
 import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
 import NextDossierListaPage from "./next/NextDossierListaPage";
 import NextSchedaMezzoPage from "./next/scheda/NextSchedaMezzoPage";
@@ -448,6 +449,14 @@ function App() {
           element={
             <NextRoleGuard areaId="mezzi-dossier">
               <NextDossierMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossier/:targa/comando"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierMezzoComandoPage />
             </NextRoleGuard>
           }
         />

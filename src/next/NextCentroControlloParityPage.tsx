@@ -380,6 +380,24 @@ export default function NextCentroControlloParityPage() {
   const [selectedYear, setSelectedYear] = useState<YearFilter>(now.getFullYear());
   const [targaFilterInput, setTargaFilterInput] = useState("");
   const [targaFilterSelected, setTargaFilterSelected] = useState<string | null>(null);
+
+  // Deep-link: arrivando con ?tab=rifornimenti&targa=... pre-seleziona il filtro targa del Report rifornimenti.
+  useEffect(() => {
+    const targaParam = searchParams.get("targa");
+    if (!targaParam) return;
+    const value = targaParam.trim().toUpperCase();
+    if (!value) return;
+    setTargaFilterInput(value);
+    setTargaFilterSelected(value);
+    setSearchParams(
+      (prev: URLSearchParams) => {
+        const next = new URLSearchParams(prev);
+        next.delete("targa");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
   const [targaDropdownOpen, setTargaDropdownOpen] = useState(false);
   const [autistaFilterInput, setAutistaFilterInput] = useState("");
   const [autistaFilterSelected, setAutistaFilterSelected] = useState<string | null>(null);

@@ -27,10 +27,8 @@ import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
   buildNextAnalisiEconomicaPath,
-  buildNextDossierComandoPath,
-  buildNextDossierGommePath,
+  buildNextCentroControlloRifornimentiPath,
   buildNextManutenzioniPath,
-  buildNextDossierRifornimentiPath,
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_IA_DOCUMENTI_PATH,
 } from "./nextStructuralPaths";
@@ -172,7 +170,14 @@ function formatGommeStraordinarieMeta(
   return parts.join(" | ");
 }
 
-export default function NextDossierMezzoPage() {
+const COMANDO_BAND_STYLE: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  margin: "26px 2px 14px",
+};
+
+export default function NextDossierMezzoComandoPage() {
   const location = useLocation();
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
@@ -375,40 +380,20 @@ export default function NextDossierMezzoPage() {
         const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
         if (nextSnapshot) {
           setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
-          setLegacy((current) =>
-            current
-              ? {
-                  ...current,
-                  documentiCosti: current.documentiCosti.filter(
-                    (item) => item.id !== fatturaToDelete.id,
-                  ),
-                }
-              : current,
-          );
-        } else {
-          setLegacy((current) =>
-            current
-              ? {
-                  ...current,
-                  documentiCosti: current.documentiCosti.filter(
-                    (item) => item.id !== fatturaToDelete.id,
-                  ),
-                }
-              : current,
-          );
         }
       } catch {
-        setLegacy((current) =>
-          current
-            ? {
-                ...current,
-                documentiCosti: current.documentiCosti.filter(
-                  (item) => item.id !== fatturaToDelete.id,
-                ),
-              }
-            : current,
-        );
+        /* fallback gestito sotto */
       }
+      setLegacy((current) =>
+        current
+          ? {
+              ...current,
+              documentiCosti: current.documentiCosti.filter(
+                (item) => item.id !== fatturaToDelete.id,
+              ),
+            }
+          : current,
+      );
 
       setShowDeleteConfirm(false);
       setFatturaToDelete(null);
@@ -510,27 +495,14 @@ export default function NextDossierMezzoPage() {
       ) : null}
       {showDeleteConfirm && fatturaToDelete ? (
         <div className="dossier-modal-overlay" onClick={closeFatturaDeleteConfirm}>
-          <div
-            className="dossier-modal"
-            style={{ maxWidth: 620 }}
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="dossier-modal" style={{ maxWidth: 620 }} onClick={(event) => event.stopPropagation()}>
             <div className="dossier-modal-header">
               <h2>Conferma eliminazione fattura</h2>
-              <button
-                className="dossier-button"
-                type="button"
-                onClick={closeFatturaDeleteConfirm}
-                disabled={deletePending}
-              >
-                Chiudi
-              </button>
+              <button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Chiudi</button>
             </div>
             <div className="dossier-modal-body" style={{ display: "grid", gap: 12 }}>
               <p>
-                {legacy.manutenzioni.some(
-                  (record) => record.sourceDocumentId === fatturaToDelete.id,
-                )
+                {legacy.manutenzioni.some((record) => record.sourceDocumentId === fatturaToDelete.id)
                   ? DOSSIER_DELETE_LINKED_MESSAGE
                   : DOSSIER_DELETE_SIMPLE_MESSAGE}
               </p>
@@ -539,28 +511,10 @@ export default function NextDossierMezzoPage() {
                 <span>{formatDossierDate(fatturaToDelete.data)}</span>
                 <span>{renderAmount(fatturaToDelete.importo, resolveCurrency(fatturaToDelete))}</span>
               </div>
-              {deleteError ? (
-                <p className="dossier-empty" style={{ color: "#b42318", margin: 0 }}>
-                  {deleteError}
-                </p>
-              ) : null}
+              {deleteError ? <p className="dossier-empty" style={{ color: "#b42318", margin: 0 }}>{deleteError}</p> : null}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  className="dossier-button"
-                  type="button"
-                  onClick={confirmFatturaDelete}
-                  disabled={deletePending}
-                >
-                  {deletePending ? "Eliminazione..." : "Conferma"}
-                </button>
-                <button
-                  className="dossier-button"
-                  type="button"
-                  onClick={closeFatturaDeleteConfirm}
-                  disabled={deletePending}
-                >
-                  Annulla
-                </button>
+                <button className="dossier-button" type="button" onClick={confirmFatturaDelete} disabled={deletePending}>{deletePending ? "Eliminazione..." : "Conferma"}</button>
+                <button className="dossier-button" type="button" onClick={closeFatturaDeleteConfirm} disabled={deletePending}>Annulla</button>
               </div>
             </div>
           </div>
@@ -576,15 +530,19 @@ export default function NextDossierMezzoPage() {
 
       <div className="dossier-header-bar">
         <button className="dossier-button ghost" type="button" onClick={back}>Mezzi</button>
-        <div className="dossier-header-center"><img src="/logo.png" alt="Logo" className="dossier-logo" /><div className="dossier-header-text"><span className="dossier-header-label">DOSSIER MEZZO</span><h1 className="dossier-header-title">{headerTitle} - {mezzo.targa}</h1></div></div>
+        <div className="dossier-header-center"><img src="/logo.png" alt="Logo" className="dossier-logo" /><div className="dossier-header-text"><span className="dossier-header-label">DOSSIER MEZZO - CENTRO DI COMANDO</span><h1 className="dossier-header-title">{headerTitle} - {mezzo.targa}</h1></div></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button className="dossier-button" type="button" onClick={() => navigate(buildNextDossierComandoPath(mezzo.targa))} style={{ background: "#2f6bd6", color: "#fff", borderColor: "#2f6bd6" }}>Centro di comando (nuovo)</button>
           <button className="dossier-button" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi Economica</button>
-          <button className="dossier-button" type="button" onClick={() => navigate(buildNextDossierGommePath(mezzo.targa))}>Gomme</button>
-          <button className="dossier-button" type="button" onClick={() => navigate(buildNextDossierRifornimentiPath(mezzo.targa))}>Rifornimenti (dettaglio)</button>
+          <button className="dossier-button" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
           <button className="dossier-button" type="button" onClick={() => setModal("libretto")}>LIBRETTO</button>
           <button className="dossier-button primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
         </div>
+      </div>
+
+      <div style={COMANDO_BAND_STYLE}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>Dettaglio completo</h2>
+        <span style={{ fontSize: 12.5, color: "#8a94a2" }}>tutte le sezioni del dossier</span>
+        <span style={{ flex: 1, height: 1, background: "#cfd6e0" }} />
       </div>
 
       <div className="dossier-grid">
@@ -604,13 +562,16 @@ export default function NextDossierMezzoPage() {
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Storico manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Stato gomme per asse</h2></div><div className="dossier-card-body">{legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}</div></section>
-
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Eventi gomme straordinari</h2></div><div className="dossier-card-body">{legacy.gommeStraordinarie.length === 0 ? <p className="dossier-empty">Nessun evento gomme straordinario registrato.</p> : <ul className="dossier-list">{legacy.gommeStraordinarie.slice(0, 5).map((item) => <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>)}</ul>}</div></section>
+        <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Gomme</h2></div><div className="dossier-card-body">
+          <h3 style={{ fontSize: 13, color: "#5a6675", margin: "0 0 8px" }}>Stato gomme per asse</h3>
+          {legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}
+          <h3 style={{ fontSize: 13, color: "#5a6675", margin: "16px 0 8px" }}>Eventi gomme straordinari</h3>
+          {legacy.gommeStraordinarie.length === 0 ? <p className="dossier-empty">Nessun evento gomme straordinario registrato.</p> : <ul className="dossier-list">{legacy.gommeStraordinarie.slice(0, 5).map((item) => <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>)}</ul>}
+        </div></section>
 
         <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Materiali e movimenti inventario</h2></div><div className="dossier-card-body">{legacy.movimentiMateriali.length === 0 ? <p className="dossier-empty">Nessun movimento materiali registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead><tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{formatDossierDate(item.data)}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2><button className="dossier-button" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Apri in Sinottica &#8599;</button></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
         <section ref={preventiviSectionRef} id="preventivi" className="dossier-card" tabIndex={-1}><div className="dossier-card-header"><h2>Preventivi</h2><div className="dossier-chip">Totale preventivi: <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {preventiviTotals.eur.toFixed(2)}</span>{preventiviTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({preventiviTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(preventivi, "preventivo")}</div></section>
         <section className="dossier-card"><div className="dossier-card-header"><div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><h2>Fatture</h2><button className="dossier-button ghost" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>Vai allo storico -&gt;</button></div><div className="dossier-chip">Totale fatture: <strong>CHF {fattureTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {fattureTotals.eur.toFixed(2)}</span>{fattureTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({fattureTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(fatture, "fattura")}</div></section>
@@ -640,4 +601,3 @@ export default function NextDossierMezzoPage() {
     </div>
   );
 }
-
