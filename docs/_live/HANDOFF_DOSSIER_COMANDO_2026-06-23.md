@@ -17,6 +17,23 @@
 > - **RESTANO APERTI:** punti 4 (armonia/card vuote), 5 (segnalazioni/controlli reali), 6 (consumo
 >   identico al Report), 7 (bug date "all'americana" nei moduli materiali/gomme), 9 (Sincronizzare).
 > - `npm run build` verde. **DA SINCRONIZZARE** (commit su master, non pushato).
+>
+> ## AGGIORNAMENTO 2026-06-23 (sessione 3) — commit `a904dc0d` — punti 4-7 FATTI
+> - **Consumo medio (pt 6):** ora usa lo STESSO motore del Report (`computeVehicleMedianKmL` in
+>   `helpers/refuelAnomalies.ts`: km/L per rifornimento con seed per data + filtro outlier, mediana).
+>   Nota: la "Media flotta" del Report è di FLOTTA (non cambia col filtro targa) → non confrontabile
+>   col singolo mezzo. (TI113417 = 2.12 km/L, TI298409 = 2.69.)
+> - **Segnalazioni/controlli (pt 5):** righe "Segnalazioni aperte" e "Controlli KO aperti" nelle
+>   Scadenze & allerte (+ nel PDF), da `readNextMezzoSegnalazioniControlliSnapshot` (lettura separata
+>   non bloccante). "Aperto" = regola di chiusura canonica come la Sinottica. Verificato: TI298409 = 2.
+> - **Armonia/card vuote (pt 4):** `.dc-detail` `align-items:stretch` + stato-vuoto centrato → Gomme/
+>   Preventivi vuoti non lasciano più buchi.
+> - **Bug date "all'americana" (pt 7):** FIXATO in `nextMaterialiMovimentiDomain.ts` e
+>   `nextManutenzioniGommeDomain.ts` (formato gg/mm/aaaa PROVATO PRIMA di `new Date`). Verificato sui
+>   dati reali: 8/8 record ambigui ora corretti (12 05 → maggio, 10 04 → aprile). Impatta in positivo
+>   anche le altre viste che usano questi domini (ordinamento/raggruppamento date).
+> - **RESTANO APERTI:** solo punto 9 (Sincronizzare) e l'eventuale rifinitura di dettaglio non richiesta.
+> - `npm run build` verde. Commit su master, non pushato.
 
 > Leggi questo file PER PRIMO per continuare il lavoro sul nuovo dossier mezzo.
 > Memorie collegate (Claude Code): `dossier-comando-build`, `chat-ia-stato-verdetto-audit`,
