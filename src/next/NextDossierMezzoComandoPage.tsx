@@ -34,6 +34,14 @@ import {
 } from "./nextStructuralPaths";
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 import { toDisplay } from "./helpers/dateUnica";
+import { computeVehicleMedianKmL, normalizeRefuelRecord } from "./helpers/refuelAnomalies";
+import type { RefuelRow } from "./types/centroControlloTypes";
+import {
+  readNextMezzoSegnalazioniControlliSnapshot,
+  type NextMezzoControlloItem,
+  type NextMezzoSegnalazioneItem,
+  type NextMezzoSegnalazioniControlliSnapshot,
+} from "./domain/nextSegnalazioniControlliDomain";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
 
@@ -67,7 +75,7 @@ const COMANDO_CSS = `
   .dc-kpi .sub{font-size:12px;color:var(--faint);margin-top:5px;}
   .dc-grid{display:grid;grid-template-columns:380px 1fr;gap:14px;align-items:start;}
   .dc-leftcol{display:flex;flex-direction:column;gap:14px;min-width:0;}
-  .dc-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;}
+  .dc-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;display:flex;flex-direction:column;}
   .dc-card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:0;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;}
   .dc-card>h2 .count{font-size:12px;color:var(--faint);letter-spacing:0;text-transform:none;font-weight:400;}
   .dc-link{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;font-weight:600;}
@@ -81,6 +89,7 @@ const COMANDO_CSS = `
   .dc-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
   .dc-sub2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:9px 16px 3px;background:#f8fafc;}
   .dc-empty{font-size:12.5px;color:var(--faint);padding:12px 16px;}
+  .dc-detail .dc-empty{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;min-height:52px;}
   .dc-tl-item{display:grid;grid-template-columns:74px 62px 1fr auto;gap:10px;padding:8px 16px;align-items:baseline;border-bottom:1px solid #f3f5f8;}
   .dc-tl-item:last-child{border-bottom:none;}
   .dc-tl-date{font-size:11.5px;color:var(--soft);font-weight:600;white-space:nowrap;}
@@ -92,7 +101,7 @@ const COMANDO_CSS = `
   .dc-band h2{font-size:15px;font-weight:700;margin:0;white-space:nowrap;}
   .dc-band .sub{font-size:12.5px;color:var(--faint);}
   .dc-band .ln{flex:1;height:1px;background:#cfd6e0;}
-  .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
+  .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch;}
   .dc-span2{grid-column:1 / -1;}
   .dc-tech{display:grid;grid-template-columns:repeat(4,1fr);}
   .dc-techb{padding:13px 16px;border-right:1px solid #eef1f5;}
@@ -274,12 +283,42 @@ function buildTechBlocks(
   ];
 }
 
+// Regola di chiusura canonica (come la Sinottica, vedi nextAutistiDomain): un segnale è "chiuso"
+// se ha un flag/stato di chiusura, i timbri di chiusura, oppure è agganciato a un lavoro.
+function hasClosingStamp(
+  raw: Record<string, unknown> | undefined,
+  stato: string | null | undefined,
+  chiusuraData?: number | null,
+  chiusuraRefId?: string | null,
+): boolean {
+  const s = String(stato ?? "").toLowerCase();
+  if (s.includes("chius") || s === "importata" || s === "importato" || s.includes("risolt")) return true;
+  if (chiusuraData || chiusuraRefId) return true;
+  if (!raw) return false;
+  if (raw.chiusa === true || raw.chiuso === true) return true;
+  if (raw.chiusuraData || raw.chiusuraRefId) return true;
+  const single = raw.linkedLavoroId;
+  if (typeof single === "string" && single.trim()) return true;
+  const many = raw.linkedLavoroIds;
+  if (Array.isArray(many) && many.some((v) => typeof v === "string" && v.trim())) return true;
+  return false;
+}
+
+function isSegnalazioneAperta(item: NextMezzoSegnalazioneItem): boolean {
+  return !hasClosingStamp(item.raw, item.stato, item.chiusuraData, item.chiusuraRefId);
+}
+
+function isControlloKoAperto(item: NextMezzoControlloItem): boolean {
+  return item.esito === "ko" && !hasClosingStamp(item.raw, item.stato, item.chiusuraData, item.chiusuraRefId);
+}
+
 export default function NextDossierMezzoComandoPage() {
   const location = useLocation();
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
   const preventiviSectionRef = useRef<HTMLElement | null>(null);
   const [legacy, setLegacy] = useState<NextDossierMezzoLegacyViewState | null>(null);
+  const [segnalazioniControlli, setSegnalazioniControlli] = useState<NextMezzoSegnalazioniControlliSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto" | "timeline">(null);
@@ -326,6 +365,25 @@ export default function NextDossierMezzoComandoPage() {
       }
     };
     void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [targa]);
+
+  // Segnalazioni/controlli del mezzo: lettura SEPARATA e non bloccante (se fallisce, il dossier
+  // resta usabile e le righe allerte semplicemente non compaiono). Stessa fonte della Sinottica.
+  useEffect(() => {
+    let cancelled = false;
+    setSegnalazioniControlli(null);
+    if (!targa) return undefined;
+    void (async () => {
+      try {
+        const snapshot = await readNextMezzoSegnalazioniControlliSnapshot(targa);
+        if (!cancelled) setSegnalazioniControlli(snapshot);
+      } catch {
+        if (!cancelled) setSegnalazioniControlli(null);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -380,26 +438,42 @@ export default function NextDossierMezzoComandoPage() {
     return { chf, eur, unknown, year };
   }, [docs]);
 
-  // Consumo medio km/L (come nel Report rifornimenti): mediana dei km/L tra rifornimenti
-  // consecutivi (km crescente), scartando i valori implausibili. Robusto agli outlier.
+  // Consumo medio km/L con LO STESSO motore del Report rifornimenti: per ogni rifornimento il km/L
+  // è km(vs rifornimento precedente per data) / litri (readRefuelConsumption + seed per data), si
+  // scartano i pieni parziali/pienoni (stesse costanti del Report) e si prende la mediana. Così il
+  // numero è coerente con la colonna "Media km/L" del Report. (La "Media flotta" del Report è invece
+  // l'intera flotta e non è confrontabile col singolo mezzo.)
   const consumoMedio = useMemo(() => {
     const rows = (legacy?.rifornimenti ?? [])
-      .filter((r) => typeof r.km === "number" && typeof r.litri === "number" && (r.km as number) > 0 && (r.litri as number) > 0)
-      .map((r) => ({ km: r.km as number, litri: r.litri as number }))
-      .sort((a, b) => a.km - b.km);
-    const ratios: number[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const kmDiff = rows[i].km - rows[i - 1].km;
-      const litri = rows[i].litri;
-      if (kmDiff <= 0 || litri <= 0) continue;
-      const kmL = kmDiff / litri;
-      if (kmL >= 0.3 && kmL <= 8) ratios.push(kmL);
-    }
-    if (ratios.length === 0) return null;
-    ratios.sort((a, b) => a - b);
-    const mid = Math.floor(ratios.length / 2);
-    return ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
+      .map((r, idx) =>
+        normalizeRefuelRecord(
+          {
+            id: r.id,
+            mezzoTarga: r.targaCamion,
+            timestamp: r.data,
+            litri: r.litri,
+            km: r.km,
+            tipo: r.tipo,
+            autistaNome: r.autistaNome,
+            badgeAutista: r.badgeAutista,
+          },
+          idx,
+          "dossier",
+        ),
+      )
+      .filter((row): row is RefuelRow => Boolean(row));
+    return computeVehicleMedianKmL(rows);
   }, [legacy]);
+
+  // Allerte da segnalazioni autisti + controlli mezzo (solo gli APERTI, regola di chiusura canonica).
+  // null = snapshot non ancora pronto/non leggibile → le righe allerte non si mostrano.
+  const allerte = useMemo(() => {
+    if (!segnalazioniControlli) return null;
+    const segnalazioniAperte = segnalazioniControlli.segnalazioni.filter(isSegnalazioneAperta);
+    const controlliKoAperti = segnalazioniControlli.controlli.filter(isControlloKoAperto);
+    const segnalazioniCritiche = segnalazioniAperte.filter((item) => item.severita === "critical").length;
+    return { segnalazioniAperte, controlliKoAperti, segnalazioniCritiche };
+  }, [segnalazioniControlli]);
 
   type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
   const timeline = useMemo<TimelineEvent[]>(() => {
@@ -535,6 +609,22 @@ export default function NextDossierMezzoComandoPage() {
                 sub: mezzo.manutenzioneProgrammata ? mezzo.manutenzioneContratto || "attiva" : "non attiva",
                 tone: mezzo.manutenzioneProgrammata ? "ok" : "muted",
               },
+              ...(allerte
+                ? ([
+                    {
+                      titolo: "Segnalazioni aperte",
+                      sub: allerte.segnalazioniAperte.length === 0 ? "nessuna" : allerte.segnalazioniAperte.slice(0, 2).map((item) => item.titolo).join(" · "),
+                      right: String(allerte.segnalazioniAperte.length),
+                      tone: allerte.segnalazioniAperte.length === 0 ? ("ok" as const) : allerte.segnalazioniCritiche > 0 ? ("danger" as const) : ("warn" as const),
+                    },
+                    {
+                      titolo: "Controlli KO aperti",
+                      sub: allerte.controlliKoAperti.length === 0 ? "nessuno" : allerte.controlliKoAperti.slice(0, 2).map((item) => item.titolo).join(" · "),
+                      right: String(allerte.controlliKoAperti.length),
+                      tone: allerte.controlliKoAperti.length === 0 ? ("ok" as const) : ("danger" as const),
+                    },
+                  ])
+                : []),
             ],
             lavoriDaFare: legacy.lavoriInAttesa.map((item) => ({
               descrizione: item.descrizione || "-",
@@ -832,6 +922,12 @@ export default function NextDossierMezzoComandoPage() {
               <h2>Scadenze &amp; Allerte</h2>
               <div className="dc-row"><span className="dc-dot" style={{ background: revTone }} /><div className="dc-main"><div className="dc-title">Revisione</div><div className="dc-sub">{revisioneInfo.date}</div></div><div className="dc-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
               <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
+              {allerte ? (
+                <div className="dc-row"><span className="dc-dot" style={{ background: allerte.segnalazioniAperte.length === 0 ? "#cfd6e0" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }} /><div className="dc-main"><div className="dc-title">Segnalazioni aperte</div><div className="dc-sub">{allerte.segnalazioniAperte.length === 0 ? "nessuna" : allerte.segnalazioniAperte.slice(0, 2).map((item) => item.titolo).join(" · ")}</div></div><div className="dc-right" style={{ color: allerte.segnalazioniAperte.length === 0 ? "#1f9457" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }}>{allerte.segnalazioniAperte.length}</div></div>
+              ) : null}
+              {allerte ? (
+                <div className="dc-row"><span className="dc-dot" style={{ background: allerte.controlliKoAperti.length === 0 ? "#cfd6e0" : "#cf3b3b" }} /><div className="dc-main"><div className="dc-title">Controlli KO aperti</div><div className="dc-sub">{allerte.controlliKoAperti.length === 0 ? "nessuno" : allerte.controlliKoAperti.slice(0, 2).map((item) => item.titolo).join(" · ")}</div></div><div className="dc-right" style={{ color: allerte.controlliKoAperti.length === 0 ? "#1f9457" : "#cf3b3b" }}>{allerte.controlliKoAperti.length}</div></div>
+              ) : null}
               <div className="dc-sub2">Lavori da fare</div>
               {lavoriDaFare.length === 0 ? <div className="dc-empty">Nessun lavoro da fare.</div> : lavoriDaFare.slice(0, 5).map((item) => (
                 <div className="dc-row click" key={item.id} onClick={() => openManutenzioneWorkItem(item)}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.descrizione}</div><div className="dc-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>

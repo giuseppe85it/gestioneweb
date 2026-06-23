@@ -466,22 +466,25 @@ function parseDateFlexible(value: unknown): Date | null {
   const raw = value.trim();
   if (!raw) return null;
 
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
-
+  // Formato italiano gg/mm/aaaa PRIMA di new Date: in JS "12/05/2026" (e "12 05 2026") viene letto
+  // all'americana (→ 5 dicembre invece del 12 maggio) per i giorni <= 12. Confermato sui dati reali
+  // di @materialiconsegnati (40/41 record in gg/mm). new Date resta come fallback per ISO ecc.
   const dmyMatch = raw.match(
     /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
   );
-  if (!dmyMatch) return null;
+  if (dmyMatch) {
+    const yearRaw = Number(dmyMatch[3]);
+    const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
+    const month = Number(dmyMatch[2]) - 1;
+    const day = Number(dmyMatch[1]);
+    const hours = Number(dmyMatch[4] ?? "12");
+    const minutes = Number(dmyMatch[5] ?? "00");
+    const date = new Date(year, month, day, hours, minutes, 0, 0);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
 
-  const yearRaw = Number(dmyMatch[3]);
-  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const month = Number(dmyMatch[2]) - 1;
-  const day = Number(dmyMatch[1]);
-  const hours = Number(dmyMatch[4] ?? "12");
-  const minutes = Number(dmyMatch[5] ?? "00");
-  const date = new Date(year, month, day, hours, minutes, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  const direct = new Date(raw);
+  return Number.isNaN(direct.getTime()) ? null : direct;
 }
 
 function toTimestamp(value: unknown): number | null {

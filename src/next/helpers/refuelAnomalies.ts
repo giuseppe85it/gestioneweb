@@ -352,6 +352,28 @@ const median = (values: number[]): number | null => {
     : sorted[mid];
 };
 
+// Consumo tipico (km/L) di UN mezzo, calcolato con lo stesso motore del Report rifornimenti:
+// per ogni rifornimento il km/L è km(percorsi vs rifornimento precedente per data) / litri
+// (readRefuelConsumption + seed per data), poi si scartano i pieni parziali/pienoni (km/L troppo
+// lontano dalla mediana del mezzo, stesse costanti del Report) e si prende la mediana dei valori
+// rimasti. Robusto agli outlier e coerente con la colonna "Media km/L" del Report.
+export function computeVehicleMedianKmL(refuelRows: RefuelRow[]): number | null {
+  if (refuelRows.length < 2) return null;
+  const seedIndex = buildRefuelSeedIndex(refuelRows);
+  const kmLs: number[] = [];
+  for (const row of refuelRows) {
+    const consumption = readRefuelConsumption(row, seedIndex.findSeed(row));
+    if (consumption) kmLs.push(consumption.kmL);
+  }
+  if (kmLs.length === 0) return null;
+  const med = median(kmLs);
+  if (med === null || med <= 0) return med;
+  const low = med * CONSUMPTION_OUTLIER_LOW;
+  const high = med * CONSUMPTION_OUTLIER_HIGH;
+  const filtered = kmLs.filter((value) => value >= low && value <= high);
+  return median(filtered.length ? filtered : kmLs);
+}
+
 export function buildRefuelConsumptionIndex(
   refuelRows: RefuelRow[],
   refuelSeedIndex: RefuelSeedIndex,
