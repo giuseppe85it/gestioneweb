@@ -65,7 +65,8 @@ const COMANDO_CSS = `
   .dc-kpi .val{font-size:25px;font-weight:700;margin-top:6px;line-height:1.05;}
   .dc-kpi .val small{font-size:14px;font-weight:600;color:var(--soft);}
   .dc-kpi .sub{font-size:12px;color:var(--faint);margin-top:5px;}
-  .dc-grid{display:grid;grid-template-columns:330px 1fr 350px;gap:14px;align-items:start;}
+  .dc-grid{display:grid;grid-template-columns:380px 1fr;gap:14px;align-items:start;}
+  .dc-leftcol{display:flex;flex-direction:column;gap:14px;min-width:0;}
   .dc-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,45,.06);overflow:hidden;}
   .dc-card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:0;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;}
   .dc-card>h2 .count{font-size:12px;color:var(--faint);letter-spacing:0;text-transform:none;font-weight:400;}
@@ -367,17 +368,25 @@ export default function NextDossierMezzoComandoPage() {
     return { chf, eur, unknown, year };
   }, [docs]);
 
-  const ultimoRifornimento = useMemo(() => {
-    let best: number | null = null;
-    let label = "-";
-    for (const r of legacy?.rifornimenti ?? []) {
-      const ts = timelineTimestamp(r.data);
-      if (ts != null && (best == null || ts > best)) {
-        best = ts;
-        label = formatDossierDate(r.data);
-      }
+  // Consumo medio km/L (come nel Report rifornimenti): mediana dei km/L tra rifornimenti
+  // consecutivi (km crescente), scartando i valori implausibili. Robusto agli outlier.
+  const consumoMedio = useMemo(() => {
+    const rows = (legacy?.rifornimenti ?? [])
+      .filter((r) => typeof r.km === "number" && typeof r.litri === "number" && (r.km as number) > 0 && (r.litri as number) > 0)
+      .map((r) => ({ km: r.km as number, litri: r.litri as number }))
+      .sort((a, b) => a.km - b.km);
+    const ratios: number[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const kmDiff = rows[i].km - rows[i - 1].km;
+      const litri = rows[i].litri;
+      if (kmDiff <= 0 || litri <= 0) continue;
+      const kmL = kmDiff / litri;
+      if (kmL >= 0.3 && kmL <= 8) ratios.push(kmL);
     }
-    return { label, ts: best };
+    if (ratios.length === 0) return null;
+    ratios.sort((a, b) => a - b);
+    const mid = Math.floor(ratios.length / 2);
+    return ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
   }, [legacy]);
 
   type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
@@ -691,31 +700,32 @@ export default function NextDossierMezzoComandoPage() {
         <div className="dc-kpis">
           <div className="dc-kpi"><span className="top" style={{ background: revTone }} /><div className="lab">Prossima revisione</div><div className="val" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? "scaduta" : revDays}{revDays != null && revDays >= 0 ? <small> giorni</small> : null}</div><div className="sub">{revisioneInfo.date}{revDays != null && revDays < 0 ? ` · ${-revDays} gg fa` : ""}</div></div>
           <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Costo anno {costoAnno.year}</div><div className="val">{costoAnno.chf.toFixed(0)} <small>CHF</small>{costoAnno.eur > 0 ? <small> + {costoAnno.eur.toFixed(0)} &euro;</small> : null}</div><div className="sub">{costoAnno.unknown > 0 ? `parziale · ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}</div></div>
-          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Ultimo rifornimento</div><div className="val" style={{ fontSize: 20 }}>{ultimoRifornimento.label}</div><div className="sub">consumi nel Report rifornimenti</div></div>
+          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Consumo medio</div><div className="val">{consumoMedio == null ? "n/d" : consumoMedio.toFixed(2)}{consumoMedio != null ? <small> km/L</small> : null}</div><div className="sub">mediana sui rifornimenti</div></div>
           <div className="dc-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
         </div>
 
         <div className="dc-grid">
-          <div className="dc-card">
-            <h2>Scadenze &amp; Allerte</h2>
-            <div className="dc-row"><span className="dc-dot" style={{ background: revTone }} /><div className="dc-main"><div className="dc-title">Revisione</div><div className="dc-sub">{revisioneInfo.date}</div></div><div className="dc-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
-            <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
-            <div className="dc-sub2">Lavori da fare</div>
-            {lavoriDaFare.length === 0 ? <div className="dc-empty">Nessun lavoro da fare.</div> : lavoriDaFare.slice(0, 5).map((item) => (
-              <div className="dc-row click" key={item.id} onClick={() => openManutenzioneWorkItem(item)}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.descrizione}</div><div className="dc-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
-            ))}
+          <div className="dc-leftcol">
+            <div className="dc-card">
+              <h2>Scadenze &amp; Allerte</h2>
+              <div className="dc-row"><span className="dc-dot" style={{ background: revTone }} /><div className="dc-main"><div className="dc-title">Revisione</div><div className="dc-sub">{revisioneInfo.date}</div></div><div className="dc-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
+              <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
+              <div className="dc-sub2">Lavori da fare</div>
+              {lavoriDaFare.length === 0 ? <div className="dc-empty">Nessun lavoro da fare.</div> : lavoriDaFare.slice(0, 5).map((item) => (
+                <div className="dc-row click" key={item.id} onClick={() => openManutenzioneWorkItem(item)}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.descrizione}</div><div className="dc-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
+              ))}
+            </div>
+            <div className="dc-card">
+              <h2>Costi (riepilogo)</h2>
+              <div className="dc-row"><div className="dc-main"><div className="dc-title">Fatture</div><div className="dc-sub">{fatture.length} documenti</div></div><div className="dc-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} ?` : ""}</div></div>
+              <div className="dc-row"><div className="dc-main"><div className="dc-title">Preventivi</div><div className="dc-sub">{preventivi.length} documenti</div></div><div className="dc-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} ?` : ""}</div></div>
+              <div className="dc-row"><div className="dc-main"><div className="dc-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="dc-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="dc-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
+            </div>
           </div>
 
           <div className="dc-card">
             <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
             {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
-          </div>
-
-          <div className="dc-card">
-            <h2>Costi (riepilogo)</h2>
-            <div className="dc-row"><div className="dc-main"><div className="dc-title">Fatture</div><div className="dc-sub">{fatture.length} documenti</div></div><div className="dc-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} ?` : ""}</div></div>
-            <div className="dc-row"><div className="dc-main"><div className="dc-title">Preventivi</div><div className="dc-sub">{preventivi.length} documenti</div></div><div className="dc-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} ?` : ""}</div></div>
-            <div className="dc-row"><div className="dc-main"><div className="dc-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="dc-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="dc-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
           </div>
         </div>
 
