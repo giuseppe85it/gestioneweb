@@ -2468,6 +2468,7 @@ export type DossierComandoPdfData = {
   scadenze: Array<{ titolo: string; sub?: string; right?: string; tone?: ComandoTone }>;
   lavoriDaFare: Array<{ descrizione: string; meta?: string }>;
   costi: Array<{ k: string; v: string; nota?: string }>;
+  timelineLabel?: string;
   timeline: Array<{ data: string; tipo: string; testo: string; importo?: string }>;
   datiTecnici: Array<{ title: string; rows: Array<{ k: string; v: string }> }>;
   manutenzioniDaFare: Array<{ stato: string; descrizione: string; data: string }>;
@@ -2754,9 +2755,12 @@ async function buildDossierComandoPdfDocument(
   }
 
   // ---- Storia del mezzo (timeline) ---------------------------------
-  await sectionBand("Storia del mezzo", data?.timeline?.length ? `${data.timeline.length} eventi` : undefined);
+  const timelineSub = data?.timeline?.length
+    ? [data?.timelineLabel, `${data.timeline.length} eventi`].filter(Boolean).join(" · ")
+    : data?.timelineLabel || undefined;
+  await sectionBand("Storia del mezzo", timelineSub);
   if (!data?.timeline?.length) {
-    await emptyLine("Nessun evento da mostrare.");
+    await emptyLine(data?.timelineLabel ? `Nessun evento negli ${data.timelineLabel}.` : "Nessun evento da mostrare.");
   } else {
     runTable(
       ["Data", "Tipo", "Descrizione", "Importo"],

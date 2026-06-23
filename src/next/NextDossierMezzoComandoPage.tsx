@@ -476,15 +476,13 @@ export default function NextDossierMezzoComandoPage() {
   }, [segnalazioniControlli]);
 
   type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
+  // Storia del mezzo = storia periodica: manutenzioni + materiali + documenti. I RIFORNIMENTI sono
+  // ESCLUSI (sono tanti e ripetitivi, già coperti dal Report rifornimenti / PDF Report).
   const timeline = useMemo<TimelineEvent[]>(() => {
     if (!legacy) return [];
     const events: TimelineEvent[] = [];
     for (const m of legacy.manutenzioni) {
       events.push({ ts: timelineTimestamp(m.data), date: formatDossierDate(m.data), type: "Manut.", cls: "t-manut", text: m.descrizione || "Manutenzione", meta: formatKmOre(m) !== "-" ? formatKmOre(m) : undefined });
-    }
-    for (const r of legacy.rifornimenti) {
-      const meta = [r.tipo, r.autistaNome].filter(Boolean).join(" · ") || undefined;
-      events.push({ ts: timelineTimestamp(r.data), date: formatDossierDate(r.data), type: "Riforn.", cls: "t-rifor", text: typeof r.litri === "number" ? `Rifornimento ${r.litri} L` : "Rifornimento", meta });
     }
     for (const mat of legacy.movimentiMateriali) {
       events.push({ ts: timelineTimestamp(mat.data), date: formatDossierDate(mat.data), type: "Materiale", cls: "t-mat", text: mat.descrizione || mat.materialeLabel || "Materiale", meta: mat.fornitore || mat.fornitoreLabel || undefined });
@@ -564,6 +562,14 @@ export default function NextDossierMezzoComandoPage() {
           };
           const docAmount = (item: NextDossierFatturaPreventivoLegacyItem) =>
             typeof item.importo === "number" ? renderAmount(item.importo, resolveCurrency(item)) : "n/d";
+          // Nel PDF la Storia del mezzo è limitata agli ultimi 6 mesi (per lo storico completo si usa
+          // il PDF di Manutenzioni). I rifornimenti sono già esclusi dalla timeline.
+          const seiMesiFa = (() => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - 6);
+            return d.getTime();
+          })();
+          const timelinePdf = timeline.filter((e) => e.ts != null && e.ts >= seiMesiFa);
           return generateDossierComandoPDFBlob({
             targa: mezzo.targa,
             headerTitle: `${mezzo.marca || "-"} ${mezzo.modello || "-"}`.trim(),
@@ -639,7 +645,8 @@ export default function NextDossierMezzoComandoPage() {
                 nota: costoAnno.unknown > 0 ? `${costoAnno.unknown} senza valuta` : undefined,
               },
             ],
-            timeline: timeline.map((e) => ({
+            timelineLabel: "ultimi 6 mesi",
+            timeline: timelinePdf.map((e) => ({
               data: e.ts == null ? "senza data" : e.date,
               tipo: e.type,
               testo: `${e.text}${e.meta ? ` · ${e.meta}` : ""}`,
