@@ -1,1 +1,0 @@
-settore cisterna - placeholder ossatura

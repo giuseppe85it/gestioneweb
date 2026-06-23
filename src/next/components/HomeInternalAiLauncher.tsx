@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { NEXT_IA_DOCUMENTI_PATH } from "../nextStructuralPaths";
 import "../internal-ai/internal-ai.css";
@@ -55,7 +55,6 @@ type ArchivistaQuickAction = {
   contesto: ArchivistaContesto;
 };
 
-const NEXT_IA_REPORT_PATH = "/next/chat";
 const NEXT_IA_ARCHIVISTA_PATH = "/next/ia/archivista";
 const NEXT_CISTERNA_IA_PATH = "/next/cisterna/ia";
 
@@ -92,7 +91,6 @@ const ARCHIVISTA_V1_ACTIONS: ArchivistaQuickAction[] = [
 
 export default function HomeInternalAiLauncher() {
   const navigate = useNavigate();
-  const [prompt, setPrompt] = useState("");
   const ingressiAttivi = useMemo(() => ARCHIVISTA_V1_ACTIONS.length, []);
 
   const [backendStatus, setBackendStatus] = useState<BackendStatus>("checking");
@@ -148,18 +146,6 @@ export default function HomeInternalAiLauncher() {
 
   const statusMeta = getBackendStatusMeta(backendStatus);
 
-  const handlePromptSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const initialPrompt = prompt.trim();
-    if (!initialPrompt) {
-      return;
-    }
-
-    navigate(NEXT_IA_REPORT_PATH, {
-      state: { initialPrompt },
-    });
-  };
-
   const handleOpenArchivista = (tipo?: ArchivistaTipo, contesto?: ArchivistaContesto) => {
     navigate(NEXT_IA_ARCHIVISTA_PATH, {
       state: tipo && contesto ? { archivistaPreset: { tipo, contesto } } : undefined,
@@ -169,56 +155,6 @@ export default function HomeInternalAiLauncher() {
   return (
     <div className="home-ia-launcher">
       <div className="home-ia-launcher__split">
-        <section className="home-ia-launcher__panel">
-          <div className="home-ia-launcher__section-head">
-            <div className="home-ia-launcher__title-wrap">
-              <span className="home-ia-launcher__status-dot" aria-hidden="true" />
-              <div>
-                <p className="home-ia-launcher__eyebrow">IA 1</p>
-                <strong className="home-ia-launcher__title">IA Report</strong>
-              </div>
-            </div>
-            <span className="home-ia-launcher__status-pill">Sola lettura</span>
-          </div>
-
-          <p className="home-ia-launcher__intro">
-            Chiedi report, controlli o sintesi. Questa area resta la parte chat e non e
-            l&apos;archivista documenti.
-          </p>
-
-          <form className="home-ia-launcher__composer" onSubmit={handlePromptSubmit}>
-            <div className="home-ia-launcher__composer-row">
-              <input
-                type="text"
-                className="home-ia-launcher__input"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Chiedi un report, una targa, un fornitore..."
-                aria-label="Scrivi una richiesta per IA Report"
-              />
-
-              <button
-                type="submit"
-                className="home-ia-launcher__submit"
-                aria-label="Apri IA Report con il prompt scritto"
-              >
-                Apri
-              </button>
-            </div>
-          </form>
-
-          <div className="home-ia-launcher__panel-footer">
-            <span className="home-ia-launcher__footnote">Chat e report senza scritture business</span>
-            <button
-              type="button"
-              className="home-ia-launcher__history-link"
-              onClick={() => navigate(NEXT_IA_REPORT_PATH)}
-            >
-              Apri IA Report
-            </button>
-          </div>
-        </section>
-
         <section className="home-ia-launcher__panel home-ia-launcher__panel--archivista">
           <div className="home-ia-launcher__section-head">
             <div className="home-ia-launcher__title-wrap">

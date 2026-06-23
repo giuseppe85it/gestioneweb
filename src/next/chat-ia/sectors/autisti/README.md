@@ -1,1 +1,0 @@
-settore autisti - placeholder ossatura

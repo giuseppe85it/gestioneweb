@@ -265,10 +265,6 @@ const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set([
 ]);
 const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
 const ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES = ["mezzi/"] as const;
-const CHAT_IA_ALLOWED_WRITE_PATHS = ["/next/chat", "/next/chat-tool"] as const;
-const CHAT_IA_REPORTS_COLLECTION = "chat_ia_reports";
-const CHAT_IA_REPORTS_STORAGE_PREFIX = "chat_ia_reports/";
-const CHAT_IA_TOOL_USE_ENDPOINT_PATH = "/internal-ai-backend/chat/tool-use";
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -541,21 +537,6 @@ function isAllowedIaDocumentiCloneWritePath(pathname: string): boolean {
   return pathname === IA_DOCUMENTI_ALLOWED_WRITE_PATH;
 }
 
-function isAllowedChatIaCloneWritePath(pathname: string): boolean {
-  return CHAT_IA_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
-}
-
-function isAllowedChatIaToolUseFetch(meta: unknown): boolean {
-  if (readMetaMethod(meta) !== "POST") return false;
-
-  try {
-    const parsed = new URL(readMetaUrl(meta), window.location.origin);
-    return parsed.pathname === CHAT_IA_TOOL_USE_ENDPOINT_PATH;
-  } catch {
-    return false;
-  }
-}
-
 function hasCloneWriteScopedAllowance(scope: string): boolean {
   return (cloneWriteScopedAllowances.get(scope) ?? 0) > 0;
 }
@@ -776,26 +757,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
 
     if (kind === "fetch.runtime") {
       return isAllowedCisternaSchedeAnalyzeFetch(pathname, meta);
-    }
-
-    return false;
-  }
-
-  if (isAllowedChatIaCloneWritePath(pathname)) {
-    if (kind === "firestore.addDoc") {
-      return readMetaPath(meta) === CHAT_IA_REPORTS_COLLECTION;
-    }
-
-    if (kind === "firestore.setDoc" || kind === "firestore.updateDoc") {
-      return readMetaPath(meta).startsWith(`${CHAT_IA_REPORTS_COLLECTION}/`);
-    }
-
-    if (kind === "storage.uploadBytes") {
-      return readMetaPath(meta).startsWith(CHAT_IA_REPORTS_STORAGE_PREFIX);
-    }
-
-    if (kind === "fetch.runtime") {
-      return isAllowedChatIaToolUseFetch(meta);
     }
 
     return false;

@@ -7,8 +7,6 @@ import "./App.css";
 import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
 import NextScadenzeCollaudiPage from "./next/NextScadenzeCollaudiPage";
-import ChatIaPage from "./next/chat-ia/ChatIaPage";
-import ChatIaToolUsePage from "./next/chat-ia/ChatIaToolUsePage";
 import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
 import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
@@ -506,22 +504,6 @@ function App() {
           element={
             <NextRoleGuard areaId="mezzi-dossier">
               <NextAnalisiEconomicaPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="chat"
-          element={
-            <NextRoleGuard areaId="ia">
-              <ChatIaPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="/next/chat-tool"
-          element={
-            <NextRoleGuard areaId="ia">
-              <ChatIaToolUsePage />
             </NextRoleGuard>
           }
         />
