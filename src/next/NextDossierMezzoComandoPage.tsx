@@ -167,10 +167,6 @@ function timelineTimestamp(value: string | number | null | undefined): number | 
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
-function formatDateTime(value: string | number | null | undefined) {
-  return formatDateTimeUI(parseDateFlexible(value));
-}
-
 function formatDossierDate(value: string | number | null | undefined): string {
   return toDisplay(value) || String(value ?? "").trim() || "-";
 }
@@ -273,7 +269,7 @@ export default function NextDossierMezzoComandoPage() {
   const [legacy, setLegacy] = useState<NextDossierMezzoLegacyViewState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto">(null);
+  const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto" | "timeline">(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -371,17 +367,17 @@ export default function NextDossierMezzoComandoPage() {
     return { chf, eur, unknown, year };
   }, [docs]);
 
-  const consumoMedio = useMemo(() => {
-    const rows = (legacy?.rifornimenti ?? [])
-      .filter((r) => typeof r.km === "number" && typeof r.litri === "number" && (r.km as number) > 0 && (r.litri as number) > 0)
-      .map((r) => ({ km: r.km as number, litri: r.litri as number }))
-      .sort((a, b) => a.km - b.km);
-    if (rows.length < 2) return null;
-    const kmTot = rows[rows.length - 1].km - rows[0].km;
-    if (kmTot <= 0) return null;
-    const litriTot = rows.slice(1).reduce((s, r) => s + r.litri, 0);
-    if (litriTot <= 0) return null;
-    return (litriTot / kmTot) * 100;
+  const ultimoRifornimento = useMemo(() => {
+    let best: number | null = null;
+    let label = "-";
+    for (const r of legacy?.rifornimenti ?? []) {
+      const ts = timelineTimestamp(r.data);
+      if (ts != null && (best == null || ts > best)) {
+        best = ts;
+        label = formatDossierDate(r.data);
+      }
+    }
+    return { label, ts: best };
   }, [legacy]);
 
   type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
@@ -617,7 +613,24 @@ export default function NextDossierMezzoComandoPage() {
       })
     );
 
-  let lastDay = "";
+  const renderTimelineList = (events: TimelineEvent[]) => {
+    let last = "";
+    return events.map((ev, i) => {
+      const key = ev.ts == null ? "senza data" : ev.date;
+      const showDay = key !== last;
+      last = key;
+      return (
+        <div key={i}>
+          {showDay ? <div className="dc-tl-day" style={ev.ts == null ? { color: "#8a94a2" } : undefined}>{ev.ts == null ? "senza data" : ev.date}</div> : null}
+          <div className="dc-tl-item">
+            <span className={`dc-type ${ev.cls}`}>{ev.type}</span>
+            <span className="dc-tl-text">{ev.text}{ev.meta ? <span className="dc-tl-meta"> · {ev.meta}</span> : null}</span>
+            <span className="dc-tl-amt">{ev.amount ? <>{ev.amount.value.toFixed(2)} {curBadge(ev.amount.cur)}</> : null}</span>
+          </div>
+        </div>
+      );
+    });
+  };
 
   return (
     <div className="dossier-wrapper">
@@ -626,6 +639,14 @@ export default function NextDossierMezzoComandoPage() {
       ) : null}
       {modal === "foto" && mezzo.fotoUrl ? (
         <div className="dossier-modal-overlay" onClick={() => setModal(null)}><div className="dossier-modal" style={{ maxWidth: 920 }} onClick={(event) => event.stopPropagation()}><div className="dossier-modal-header"><h2>Foto mezzo</h2><button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button></div><div className="dossier-modal-body"><img src={mezzo.fotoUrl} alt={mezzo.targa} className="dossier-photo-modal-img" /></div></div></div>
+      ) : null}
+      {modal === "timeline" ? (
+        <div className="dossier-modal-overlay" onClick={() => setModal(null)}>
+          <div className="dossier-modal" style={{ maxWidth: 760 }} onClick={(event) => event.stopPropagation()}>
+            <div className="dossier-modal-header"><h2>Storia del mezzo - {mezzo.targa}</h2><button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button></div>
+            <div className="dossier-modal-body"><div className="dc" style={{ padding: 0, maxWidth: "none" }}>{renderTimelineList(timeline)}</div></div>
+          </div>
+        </div>
       ) : null}
       {showDeleteConfirm && fatturaToDelete ? (
         <div className="dossier-modal-overlay" onClick={closeFatturaDeleteConfirm}>
@@ -670,7 +691,7 @@ export default function NextDossierMezzoComandoPage() {
         <div className="dc-kpis">
           <div className="dc-kpi"><span className="top" style={{ background: revTone }} /><div className="lab">Prossima revisione</div><div className="val" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? "scaduta" : revDays}{revDays != null && revDays >= 0 ? <small> giorni</small> : null}</div><div className="sub">{revisioneInfo.date}{revDays != null && revDays < 0 ? ` · ${-revDays} gg fa` : ""}</div></div>
           <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Costo anno {costoAnno.year}</div><div className="val">{costoAnno.chf.toFixed(0)} <small>CHF</small>{costoAnno.eur > 0 ? <small> + {costoAnno.eur.toFixed(0)} &euro;</small> : null}</div><div className="sub">{costoAnno.unknown > 0 ? `parziale · ${costoAnno.unknown} senza valuta` : "fatture + preventivi"}</div></div>
-          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Consumo medio</div><div className="val">{consumoMedio == null ? "n/d" : consumoMedio.toFixed(1)}{consumoMedio != null ? <small> l/100 km</small> : null}</div><div className="sub">stima da rifornimenti</div></div>
+          <div className="dc-kpi"><span className="top" style={{ background: "#2f6bd6" }} /><div className="lab">Ultimo rifornimento</div><div className="val" style={{ fontSize: 20 }}>{ultimoRifornimento.label}</div><div className="sub">consumi nel Report rifornimenti</div></div>
           <div className="dc-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
         </div>
 
@@ -686,21 +707,8 @@ export default function NextDossierMezzoComandoPage() {
           </div>
 
           <div className="dc-card">
-            <h2>Storia del mezzo <span className="count">timeline unica</span></h2>
-            {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : timeline.map((ev, i) => {
-              const showDay = ev.date !== lastDay;
-              lastDay = ev.date;
-              return (
-                <div key={i}>
-                  {showDay ? <div className="dc-tl-day" style={ev.ts == null ? { color: "#8a94a2" } : undefined}>{ev.ts == null ? "senza data" : ev.date}</div> : null}
-                  <div className="dc-tl-item">
-                    <span className={`dc-type ${ev.cls}`}>{ev.type}</span>
-                    <span className="dc-tl-text">{ev.text}{ev.meta ? <span className="dc-tl-meta"> · {ev.meta}</span> : null}</span>
-                    <span className="dc-tl-amt">{ev.amount ? <>{ev.amount.value.toFixed(2)} {curBadge(ev.amount.cur)}</> : null}</span>
-                  </div>
-                </div>
-              );
-            })}
+            <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
+            {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
           </div>
 
           <div className="dc-card">
@@ -769,22 +777,6 @@ export default function NextDossierMezzoComandoPage() {
                 <tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{formatDossierDate(item.data)}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody>
               </table>
             )}
-          </div>
-
-          <div className="dc-card">
-            <h2>Rifornimenti <span className="count">ultimi movimenti</span></h2>
-            {legacy.rifornimenti.length === 0 ? <div className="dc-empty">Nessun rifornimento registrato per questo mezzo.</div> : (
-              <table className="dc-dtable">
-                <thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead>
-                <tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody>
-              </table>
-            )}
-            <div className="dc-cta"><span style={{ fontSize: 12.5, color: "#5a6675" }}>Analisi completa rifornimenti</span><button className="dc-mini" type="button" style={{ background: "#2f6bd6", color: "#fff", borderColor: "#2f6bd6" }} onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Apri in Sinottica &#8599;</button></div>
-          </div>
-
-          <div className="dc-card">
-            <h2>Foto mezzo</h2>
-            <div className="dc-photo-big" style={mezzo.fotoUrl ? { backgroundImage: `url(${mezzo.fotoUrl})` } : undefined} onClick={() => mezzo.fotoUrl && setModal("foto")}>{mezzo.fotoUrl ? "" : "Nessuna foto caricata"}</div>
           </div>
 
           <section className="dc-card" ref={preventiviSectionRef} id="preventivi">
