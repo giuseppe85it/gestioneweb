@@ -81,8 +81,9 @@ const COMANDO_CSS = `
   .dc-right{font-size:12.5px;font-weight:600;white-space:nowrap;}
   .dc-sub2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:9px 16px 3px;background:#f8fafc;}
   .dc-empty{font-size:12.5px;color:var(--faint);padding:12px 16px;}
-  .dc-tl-day{font-size:11.5px;font-weight:700;color:var(--soft);padding:9px 16px 4px;letter-spacing:.03em;}
-  .dc-tl-item{display:grid;grid-template-columns:88px 1fr auto;gap:10px;padding:8px 16px;align-items:baseline;}
+  .dc-tl-item{display:grid;grid-template-columns:74px 62px 1fr auto;gap:10px;padding:8px 16px;align-items:baseline;border-bottom:1px solid #f3f5f8;}
+  .dc-tl-item:last-child{border-bottom:none;}
+  .dc-tl-date{font-size:11.5px;color:var(--soft);font-weight:600;white-space:nowrap;}
   .dc-type{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap;}
   .t-manut{background:#eaf1fb;color:#2f6bd6;} .t-rifor{background:#e9f6ef;color:#1f9457;} .t-doc{background:#f1edfb;color:#6b46c1;} .t-mat{background:#fff4e3;color:#b07a12;}
   .dc-tl-text{font-size:13px;} .dc-tl-meta{color:var(--faint);}
@@ -625,17 +626,15 @@ export default function NextDossierMezzoComandoPage() {
   const renderTimelineList = (events: TimelineEvent[]) => {
     let last = "";
     return events.map((ev, i) => {
-      const key = ev.ts == null ? "senza data" : ev.date;
-      const showDay = key !== last;
-      last = key;
+      const dayLabel = ev.ts == null ? "senza data" : ev.date;
+      const showDate = dayLabel !== last;
+      last = dayLabel;
       return (
-        <div key={i}>
-          {showDay ? <div className="dc-tl-day" style={ev.ts == null ? { color: "#8a94a2" } : undefined}>{ev.ts == null ? "senza data" : ev.date}</div> : null}
-          <div className="dc-tl-item">
-            <span className={`dc-type ${ev.cls}`}>{ev.type}</span>
-            <span className="dc-tl-text">{ev.text}{ev.meta ? <span className="dc-tl-meta"> · {ev.meta}</span> : null}</span>
-            <span className="dc-tl-amt">{ev.amount ? <>{ev.amount.value.toFixed(2)} {curBadge(ev.amount.cur)}</> : null}</span>
-          </div>
+        <div className="dc-tl-item" key={i}>
+          <span className="dc-tl-date" style={ev.ts == null ? { color: "#8a94a2" } : undefined}>{showDate ? dayLabel : ""}</span>
+          <span className={`dc-type ${ev.cls}`}>{ev.type}</span>
+          <span className="dc-tl-text">{ev.text}{ev.meta ? <span className="dc-tl-meta"> · {ev.meta}</span> : null}</span>
+          <span className="dc-tl-amt">{ev.amount ? <>{ev.amount.value.toFixed(2)} {curBadge(ev.amount.cur)}</> : null}</span>
         </div>
       );
     });
