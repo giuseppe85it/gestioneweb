@@ -42,6 +42,11 @@ import {
   type NextMezzoSegnalazioneItem,
   type NextMezzoSegnalazioniControlliSnapshot,
 } from "./domain/nextSegnalazioniControlliDomain";
+import {
+  normalizeScadenzaTarga,
+  readNextManutenzioniScadenzeSnapshot,
+  type NextManutenzioneScadenzaItem,
+} from "./domain/nextManutenzioniScadenzeDomain";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
 
@@ -312,6 +317,41 @@ function isControlloKoAperto(item: NextMezzoControlloItem): boolean {
   return item.esito === "ko" && !hasClosingStamp(item.raw, item.stato, item.chiusuraData, item.chiusuraRefId);
 }
 
+// Scadenze ricorrenti del mezzo (cronotachigrafo, tagliando, estintore, ...): colore/etichetta/ordine.
+const SCADENZA_SEVERITA: Record<string, number> = { scaduta: 4, in_scadenza: 3, data_mancante: 2, valore_non_disponibile: 1, ok: 0 };
+
+function scadenzaDotColor(item: NextManutenzioneScadenzaItem): string {
+  if (item.stato === "scaduta") return "#cf3b3b";
+  if (item.stato === "in_scadenza") return "#c9820a";
+  if (item.stato === "ok") return "#1f9457";
+  return "#8a94a2";
+}
+
+function scadenzaPdfTone(item: NextManutenzioneScadenzaItem): "ok" | "warn" | "danger" | "muted" {
+  if (item.stato === "scaduta") return "danger";
+  if (item.stato === "in_scadenza") return "warn";
+  if (item.stato === "ok") return "ok";
+  return "muted";
+}
+
+function scadenzaRightLabel(item: NextManutenzioneScadenzaItem): string {
+  if (item.giorniMin != null) {
+    const g = item.giorniMin;
+    if (g === 0) return "oggi";
+    const abs = Math.abs(g);
+    const base = abs === 1 ? "1 giorno" : `${abs} gg`;
+    return g < 0 ? `${base} fa` : `tra ${base}`;
+  }
+  const km = item.componenti.find((c) => c.base === "km");
+  if (km) {
+    if (km.stato === "valore_non_disponibile") return "km sconosciuti";
+    if (km.stato === "data_mancante") return "km non impostati";
+    if (typeof km.residuo === "number") return km.residuo < 0 ? `oltre di ${-km.residuo} km` : `residuo ${km.residuo} km`;
+  }
+  if (item.stato === "data_mancante") return "data mancante";
+  return "-";
+}
+
 export default function NextDossierMezzoComandoPage() {
   const location = useLocation();
   const { targa } = useParams<{ targa: string }>();
@@ -319,6 +359,7 @@ export default function NextDossierMezzoComandoPage() {
   const preventiviSectionRef = useRef<HTMLElement | null>(null);
   const [legacy, setLegacy] = useState<NextDossierMezzoLegacyViewState | null>(null);
   const [segnalazioniControlli, setSegnalazioniControlli] = useState<NextMezzoSegnalazioniControlliSnapshot | null>(null);
+  const [scadenzeMezzo, setScadenzeMezzo] = useState<NextManutenzioneScadenzaItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto" | "timeline">(null);
@@ -382,6 +423,29 @@ export default function NextDossierMezzoComandoPage() {
         if (!cancelled) setSegnalazioniControlli(snapshot);
       } catch {
         if (!cancelled) setSegnalazioniControlli(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targa]);
+
+  // Scadenze ricorrenti del mezzo (estintore, tagliando, cronotachigrafo, ...): lettura SEPARATA e
+  // non bloccante, stessa fonte della pagina "Scadenze" (@manutenzioni_scadenze). Filtrate per targa.
+  useEffect(() => {
+    let cancelled = false;
+    setScadenzeMezzo(null);
+    if (!targa) return undefined;
+    const targaKey = normalizeScadenzaTarga(targa);
+    void (async () => {
+      try {
+        const snapshot = await readNextManutenzioniScadenzeSnapshot();
+        if (cancelled) return;
+        setScadenzeMezzo(
+          snapshot.items.filter((item) => item.attiva && normalizeScadenzaTarga(item.targa) === targaKey),
+        );
+      } catch {
+        if (!cancelled) setScadenzeMezzo(null);
       }
     })();
     return () => {
@@ -474,6 +538,18 @@ export default function NextDossierMezzoComandoPage() {
     const segnalazioniCritiche = segnalazioniAperte.filter((item) => item.severita === "critical").length;
     return { segnalazioniAperte, controlliKoAperti, segnalazioniCritiche };
   }, [segnalazioniControlli]);
+
+  // Scadenze ricorrenti del mezzo ordinate: prima le peggiori (scaduta, in scadenza), poi per giorni.
+  const scadenzeRicorrenti = useMemo(() => {
+    if (!scadenzeMezzo) return null;
+    return [...scadenzeMezzo].sort((a, b) => {
+      const sev = (SCADENZA_SEVERITA[b.stato] ?? 0) - (SCADENZA_SEVERITA[a.stato] ?? 0);
+      if (sev !== 0) return sev;
+      const ag = a.giorniMin ?? Number.POSITIVE_INFINITY;
+      const bg = b.giorniMin ?? Number.POSITIVE_INFINITY;
+      return ag - bg;
+    });
+  }, [scadenzeMezzo]);
 
   type TimelineEvent = { ts: number | null; date: string; type: string; cls: string; text: string; meta?: string; amount?: { value: number; cur: Currency } };
   // Storia del mezzo = storia periodica: manutenzioni + materiali + documenti. I RIFORNIMENTI sono
@@ -610,6 +686,11 @@ export default function NextDossierMezzoComandoPage() {
                 right: revDaysL == null ? "-" : revDaysL < 0 ? `scaduta ${-revDaysL} gg` : `tra ${revDaysL} gg`,
                 tone: revToneL,
               },
+              ...((scadenzeRicorrenti ?? []).map((item) => ({
+                titolo: item.label,
+                right: scadenzaRightLabel(item),
+                tone: scadenzaPdfTone(item),
+              }))),
               {
                 titolo: "Manutenzione programmata",
                 sub: mezzo.manutenzioneProgrammata ? mezzo.manutenzioneContratto || "attiva" : "non attiva",
@@ -928,6 +1009,12 @@ export default function NextDossierMezzoComandoPage() {
             <div className="dc-card">
               <h2>Scadenze &amp; Allerte</h2>
               <div className="dc-row"><span className="dc-dot" style={{ background: revTone }} /><div className="dc-main"><div className="dc-title">Revisione</div><div className="dc-sub">{revisioneInfo.date}</div></div><div className="dc-right" style={{ color: revTone }}>{revDays == null ? "-" : revDays < 0 ? `scaduta ${-revDays} gg` : `tra ${revDays} gg`}</div></div>
+              {scadenzeRicorrenti?.map((item) => {
+                const col = scadenzaDotColor(item);
+                return (
+                  <div className="dc-row" key={item.id}><span className="dc-dot" style={{ background: col }} /><div className="dc-main"><div className="dc-title">{item.label}</div></div><div className="dc-right" style={{ color: col }}>{scadenzaRightLabel(item)}</div></div>
+                );
+              })}
               <div className="dc-row"><span className="dc-dot" style={{ background: mezzo.manutenzioneProgrammata ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">Manutenzione programmata</div><div className="dc-sub">{mezzo.manutenzioneProgrammata ? (mezzo.manutenzioneContratto || "attiva") : "non attiva"}</div></div></div>
               {allerte ? (
                 <div className="dc-row"><span className="dc-dot" style={{ background: allerte.segnalazioniAperte.length === 0 ? "#cfd6e0" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }} /><div className="dc-main"><div className="dc-title">Segnalazioni aperte</div><div className="dc-sub">{allerte.segnalazioniAperte.length === 0 ? "nessuna" : allerte.segnalazioniAperte.slice(0, 2).map((item) => item.titolo).join(" · ")}</div></div><div className="dc-right" style={{ color: allerte.segnalazioniAperte.length === 0 ? "#1f9457" : allerte.segnalazioniCritiche > 0 ? "#cf3b3b" : "#c9820a" }}>{allerte.segnalazioniAperte.length}</div></div>
