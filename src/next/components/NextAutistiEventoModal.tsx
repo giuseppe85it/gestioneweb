@@ -11,12 +11,14 @@ type NextAutistiEventoModalProps = {
   onCreateManutenzioneDaFare?: (
     input: CreateManutenzioneDaFareSubmitInput,
   ) => Promise<CreateManutenzioneDaFareSubmitResult>;
+  onImportGommeDossier?: (event: HomeEvent) => void | Promise<void>;
 };
 
 function NextAutistiEventoModal({
   event,
   onClose,
   onCreateManutenzioneDaFare,
+  onImportGommeDossier,
 }: NextAutistiEventoModalProps) {
   return (
     <NextHomeAutistiEventoModal
@@ -24,6 +26,7 @@ function NextAutistiEventoModal({
       onClose={onClose}
       editable
       onCreateManutenzioneDaFare={onCreateManutenzioneDaFare}
+      onImportGommeDossier={onImportGommeDossier}
     />
   );
 }

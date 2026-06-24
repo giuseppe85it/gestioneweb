@@ -17,6 +17,7 @@ import {
   sharePdfFile,
 } from "../../utils/pdfPreview";
 import { parseAnyDate, toDisplayDateTime, toISO } from "../helpers/dateUnica";
+import { isGommeEventoImportato } from "../writers/nextGommeImportManutenzioneWriter";
 import "../../autistiInbox/AutistiInboxHome.css";
 
 type CreateManutenzioneDaFareOrigineTipo = "segnalazione" | "controllo";
@@ -53,6 +54,12 @@ type NextHomeAutistiEventoModalProps = {
   eventIndex?: number;
   onPrevEvent?: () => void;
   onNextEvent?: () => void;
+  /**
+   * BUG 54 — quando fornita (es. Autisti Inbox), il pulsante "IMPORTA IN DOSSIER"
+   * degli eventi gomme apre il flusso reale di import (crea una manutenzione gomme
+   * eseguita) invece del blocco read-only del clone. Se assente, resta bloccato.
+   */
+  onImportGommeDossier?: (event: HomeEvent) => void | Promise<void>;
 };
 
 type DetailRow = {
@@ -343,6 +350,7 @@ export default function NextHomeAutistiEventoModal({
   eventIndex,
   onPrevEvent,
   onNextEvent,
+  onImportGommeDossier,
 }: NextHomeAutistiEventoModalProps) {
   const [marking, setMarking] = useState<boolean>(false);
   const [markError, setMarkError] = useState<string | null>(null);
@@ -936,14 +944,28 @@ export default function NextHomeAutistiEventoModal({
                   <strong>DOSSIER</strong>
                 </div>
                 <div className="aix-row-bot">
-                  <button
-                    type="button"
-                    className="aix-create-btn"
-                    title="Clone read-only: importazione disponibile solo nella madre"
-                    onClick={handleImportDossierBlocked}
-                  >
-                    IMPORTA IN DOSSIER
-                  </button>
+                  {isGommeEventoImportato(payload) ? (
+                    <button type="button" className="aix-create-btn" disabled>
+                      GIÀ IMPORTATO
+                    </button>
+                  ) : onImportGommeDossier ? (
+                    <button
+                      type="button"
+                      className="aix-create-btn"
+                      onClick={() => void onImportGommeDossier(event)}
+                    >
+                      IMPORTA IN DOSSIER
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="aix-create-btn"
+                      title="Clone read-only: importazione disponibile solo nella madre"
+                      onClick={handleImportDossierBlocked}
+                    >
+                      IMPORTA IN DOSSIER
+                    </button>
+                  )}
                 </div>
               </div>
             ) : null}

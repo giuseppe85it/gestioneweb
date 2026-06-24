@@ -26,6 +26,8 @@ import NextDettaglioOrdinePage from "./next/NextDettaglioOrdinePage";
 import NextShell from "./next/NextShell";
 import NextAutistiEventoModal from "./next/components/NextAutistiEventoModal";
 import { createManutenzioneDaFareFromEvento } from "./next/writers/nextManutenzioneDaFareCreateWriter";
+import { importGommeEventoComeManutenzioneEseguita } from "./next/writers/nextGommeImportManutenzioneWriter";
+import GommeImportModal from "./autistiInbox/components/GommeImportModal";
 import type { HomeEvent } from "./utils/homeEvents";
 import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
@@ -153,19 +155,56 @@ function NextAutistiInboxEventoModal({
   onClose: () => void;
   onAfterGommeImport?: () => void | Promise<void>;
 }) {
+  // BUG 54 — "IMPORTA IN DOSSIER" sugli eventi gomme: apre la schermata di
+  // conferma e crea una manutenzione gomme "eseguita" nello storico (writer
+  // dedicato). `/next/autisti-inbox` e' nel perimetro autorizzato dal barrier
+  // per @manutenzioni e @cambi_gomme_autisti_tmp.
+  const [gommeImportPayload, setGommeImportPayload] = useState<any | null>(null);
+  const [gommeImportSaving, setGommeImportSaving] = useState(false);
+
+  const handleConfirmGommeImport = async (
+    input: Parameters<typeof importGommeEventoComeManutenzioneEseguita>[0],
+  ) => {
+    setGommeImportSaving(true);
+    try {
+      const res = await importGommeEventoComeManutenzioneEseguita(input);
+      if (!res.ok) {
+        window.alert(res.error ?? "Errore import gomme.");
+        return;
+      }
+      setGommeImportPayload(null);
+      if (onAfterGommeImport) await onAfterGommeImport();
+      onClose();
+      window.alert("Manutenzione gomme creata nello storico.");
+    } finally {
+      setGommeImportSaving(false);
+    }
+  };
+
   return (
-    <NextAutistiEventoModal
-      event={event}
-      onClose={onClose}
-      onAfterGommeImport={onAfterGommeImport}
-      onCreateManutenzioneDaFare={async (input) => {
-        const result = await createManutenzioneDaFareFromEvento(input);
-        if (result.ok && onAfterGommeImport) {
-          await onAfterGommeImport();
-        }
-        return result;
-      }}
-    />
+    <>
+      <NextAutistiEventoModal
+        event={event}
+        onClose={onClose}
+        onAfterGommeImport={onAfterGommeImport}
+        onCreateManutenzioneDaFare={async (input) => {
+          const result = await createManutenzioneDaFareFromEvento(input);
+          if (result.ok && onAfterGommeImport) {
+            await onAfterGommeImport();
+          }
+          return result;
+        }}
+        onImportGommeDossier={(ev) => setGommeImportPayload(ev?.payload ?? null)}
+      />
+      <GommeImportModal
+        evento={gommeImportPayload}
+        saving={gommeImportSaving}
+        onClose={() => {
+          if (!gommeImportSaving) setGommeImportPayload(null);
+        }}
+        onConfirm={handleConfirmGommeImport}
+      />
+    </>
   );
 }
 
