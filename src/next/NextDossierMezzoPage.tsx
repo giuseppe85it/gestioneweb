@@ -57,14 +57,17 @@ function parseDateFlexible(value: string | number | null | undefined): Date | nu
   }
   const raw = String(value).trim();
   if (!raw) return null;
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
+  // PRIMA il formato italiano gg/mm/aaaa (sep . / - o spazio): evita la lettura "all'americana" di new Date.
   const dmy = raw.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})$/);
-  if (!dmy) return null;
-  const yearRaw = Number(dmy[3]);
-  const year = dmy[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const date = new Date(year, Number(dmy[2]) - 1, Number(dmy[1]), 12, 0, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (dmy) {
+    const yearRaw = Number(dmy[3]);
+    const year = dmy[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
+    const date = new Date(year, Number(dmy[2]) - 1, Number(dmy[1]), 12, 0, 0, 0);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  // Fallback: lettura nativa (ISO aaaa-mm-gg, ISO con ora, timestamp testuali).
+  const direct = new Date(raw);
+  return Number.isNaN(direct.getTime()) ? null : direct;
 }
 
 function formatDateTime(value: string | number | null | undefined) {
