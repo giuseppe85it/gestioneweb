@@ -172,6 +172,47 @@ export default function NextGommeEconomiaSection({
     [sortedGommeItems],
   );
 
+  // Km percorsi dalle gomme precedenti su quell'asse, cioe' quanto sono durate
+  // fino a questo cambio: differenza km tra questo cambio e il precedente dello
+  // stesso asse. Mostrato per rendere intuitiva la durata di un set di gomme.
+  const durataByItemId = useMemo(() => {
+    const result = new Map<string, number>();
+    const byAsse = new Map<string, NextGommeReadOnlyItem[]>();
+    for (const item of gommeItems) {
+      if (item.modalita === "straordinario") continue;
+      const asse = String(item.asseLabel || item.posizione || "").trim().toLowerCase();
+      if (!asse) continue;
+      const list = byAsse.get(asse);
+      if (list) list.push(item);
+      else byAsse.set(asse, [item]);
+    }
+    byAsse.forEach((list) => {
+      const asc = [...list].sort((a, b) => {
+        const ta = a.timestamp ?? parseLegacyDate(a.dataLabel ?? a.data);
+        const tb = b.timestamp ?? parseLegacyDate(b.dataLabel ?? b.data);
+        return ta - tb;
+      });
+      for (let i = 1; i < asc.length; i += 1) {
+        const prev = asc[i - 1];
+        const cur = asc[i];
+        if (cur.km != null && prev.km != null && cur.km > prev.km) {
+          result.set(cur.id, cur.km - prev.km);
+        }
+      }
+    });
+    return result;
+  }, [gommeItems]);
+
+  // Storico in ordine cronologico: dalla piu' vecchia alla piu' recente.
+  const storicoCronologico = useMemo(() => {
+    return [...gommeItems].sort((a, b) => {
+      const ta = a.timestamp ?? parseLegacyDate(a.dataLabel ?? a.data);
+      const tb = b.timestamp ?? parseLegacyDate(b.dataLabel ?? b.data);
+      if (ta !== tb) return ta - tb;
+      return a.id.localeCompare(b.id, "it", { sensitivity: "base" });
+    });
+  }, [gommeItems]);
+
   if (!targa) return null;
 
   if (loading) {
@@ -274,19 +315,36 @@ export default function NextGommeEconomiaSection({
             <p className="dossier-empty">Ancora nessuna sostituzione.</p>
           ) : (
             <ul className="dossier-list">
-              {sortedGommeItems.map((item) => (
-                <li key={item.id} className="dossier-list-item">
-                  <div className="dossier-list-main">
-                    <strong>{item.evento}</strong>
-                  </div>
-                  <div className="dossier-list-meta">
-                    <span>{formatGommeDate(item.dataLabel || item.data)}</span>
-                    <span>{item.asseLabel || item.posizione || "-"}</span>
-                    <span>{item.km != null ? `${item.km} km` : "km n/d"}</span>
-                    <span>{item.fornitore || "-"}</span>
-                  </div>
-                </li>
-              ))}
+              {storicoCronologico.map((item) => {
+                const durata = durataByItemId.get(item.id);
+                return (
+                  <li key={item.id} className="dossier-list-item">
+                    <div className="dossier-list-main">
+                      <strong>{item.evento}</strong>
+                      {durata != null ? (
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            color: "#6b6b6b",
+                            fontWeight: 400,
+                            marginTop: 2,
+                          }}
+                        >
+                          🛞 le gomme precedenti hanno percorso{" "}
+                          {durata.toLocaleString("it-CH")} km
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="dossier-list-meta">
+                      <span>{formatGommeDate(item.dataLabel || item.data)}</span>
+                      <span>{item.asseLabel || item.posizione || "-"}</span>
+                      <span>{item.km != null ? `${item.km} km` : "km n/d"}</span>
+                      <span>{item.fornitore || "-"}</span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

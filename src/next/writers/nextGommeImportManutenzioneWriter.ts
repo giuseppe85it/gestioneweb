@@ -32,7 +32,10 @@ export type GommeImportManutenzioneInput = {
   /** data esecuzione in formato yyyy-mm-dd */
   data: string;
   km: number | null;
-  asseId: NextManutenzioneAsseCoinvoltoId | null;
+  /** assi effettivamente cambiati (uno o piu') */
+  assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
+  /** numero gomme effettivamente cambiate (totale) */
+  numeroGomme?: number | null;
   marca?: string | null;
   interventoTipo: GommeImportInterventoTipo;
   /** motivo per gli interventi straordinari */
@@ -79,20 +82,35 @@ export function isGommeEventoImportato(record: unknown): boolean {
   return normalizeText(record.linkedManutenzioneId).length > 0;
 }
 
+function uniqueAssi(
+  assi: readonly NextManutenzioneAsseCoinvoltoId[],
+): NextManutenzioneAsseCoinvoltoId[] {
+  return Array.from(new Set(assi.filter((id) => Boolean(id))));
+}
+
+function buildAssiLabel(assi: readonly NextManutenzioneAsseCoinvoltoId[]): string | null {
+  const labels = uniqueAssi(assi).map((id) => ASSE_LABELS[id]);
+  return labels.length ? labels.join(", ") : null;
+}
+
 function buildDescrizione(input: GommeImportManutenzioneInput): string {
-  const asseLabel = input.asseId ? ASSE_LABELS[input.asseId] : null;
+  const assiLabel = buildAssiLabel(input.assiCoinvolti);
+  const parts: string[] = [];
   if (input.interventoTipo === "straordinario") {
+    parts.push(assiLabel ? `CAMBIO GOMME STRAORDINARIO - ${assiLabel}` : "CAMBIO GOMME STRAORDINARIO");
     const motivo = normalizeText(input.motivo);
-    const base = asseLabel
-      ? `CAMBIO GOMME STRAORDINARIO - ${asseLabel}`
-      : "CAMBIO GOMME STRAORDINARIO";
-    return motivo ? `${base} - ${motivo}` : base;
+    if (motivo) parts.push(motivo);
+  } else {
+    parts.push(assiLabel ? `CAMBIO GOMME ORDINARIO - ${assiLabel}` : "CAMBIO GOMME ORDINARIO");
+    const marca = normalizeText(input.marca);
+    if (marca) parts.push(marca);
   }
-  const base = asseLabel
-    ? `CAMBIO GOMME ORDINARIO - ${asseLabel}`
-    : "CAMBIO GOMME ORDINARIO";
-  const marca = normalizeText(input.marca);
-  return marca ? `${base} - ${marca}` : base;
+  const base = parts.join(" - ");
+  const numero =
+    typeof input.numeroGomme === "number" && Number.isFinite(input.numeroGomme) && input.numeroGomme > 0
+      ? input.numeroGomme
+      : null;
+  return numero ? `${base} (${numero} gomme)` : base;
 }
 
 export async function importGommeEventoComeManutenzioneEseguita(
@@ -104,8 +122,9 @@ export async function importGommeEventoComeManutenzioneEseguita(
   if (!targa) return { ok: false, error: "Targa mancante." };
   const data = normalizeText(input.data);
   if (!data) return { ok: false, error: "Data mancante." };
-  if (input.interventoTipo === "ordinario" && !input.asseId) {
-    return { ok: false, error: "Asse obbligatorio per un cambio gomme ordinario." };
+  const assi = uniqueAssi(input.assiCoinvolti ?? []);
+  if (input.interventoTipo === "ordinario" && assi.length === 0) {
+    return { ok: false, error: "Seleziona almeno un asse per un cambio gomme ordinario." };
   }
 
   // Guardia idempotente: se l'evento e' gia' stato importato non si ricrea.
@@ -128,19 +147,24 @@ export async function importGommeEventoComeManutenzioneEseguita(
     segnalatoDa,
     eseguitoDa: segnalatoDa,
     materiali: [],
-    ...(input.interventoTipo === "ordinario" && input.asseId
+    ...(input.interventoTipo === "ordinario" && assi.length > 0
       ? {
           gommeInterventoTipo: "ordinario" as const,
-          assiCoinvolti: [input.asseId],
-          gommePerAsse: [
-            { asseId: input.asseId, dataCambio: data, kmCambio: input.km },
-          ],
+          assiCoinvolti: assi,
+          gommePerAsse: assi.map((asseId) => ({
+            asseId,
+            dataCambio: data,
+            kmCambio: input.km,
+          })),
         }
       : {
           gommeInterventoTipo: "straordinario" as const,
           gommeStraordinario: {
-            asseId: input.asseId,
-            quantita: null,
+            asseId: assi[0] ?? null,
+            quantita:
+              typeof input.numeroGomme === "number" && Number.isFinite(input.numeroGomme)
+                ? input.numeroGomme
+                : null,
             motivo: normalizeText(input.motivo) || null,
           },
         }),

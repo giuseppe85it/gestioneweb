@@ -68,7 +68,8 @@ describe("nextGommeImportManutenzioneWriter", () => {
       targa: "TI178456",
       data: "2026-06-10",
       km: 120000,
-      asseId: "asse2",
+      assiCoinvolti: ["asse2"],
+      numeroGomme: 4,
       marca: "Michelin",
       interventoTipo: "ordinario",
       segnalatoDa: "Mario Rossi",
@@ -82,6 +83,7 @@ describe("nextGommeImportManutenzioneWriter", () => {
     expect(created.dataEsecuzione).toBe("2026-06-10");
     expect(created.targa).toBe("TI178456");
     expect(created.km).toBe(120000);
+    expect(created.descrizione).toContain("4 gomme");
     expect(created.gommeInterventoTipo).toBe("ordinario");
     expect(created.assiCoinvolti).toEqual(["asse2"]);
     expect(created.gommePerAsse).toEqual([
@@ -109,7 +111,7 @@ describe("nextGommeImportManutenzioneWriter", () => {
       targa: "TI178456",
       data: "2026-06-10",
       km: null,
-      asseId: "asse1",
+      assiCoinvolti: ["asse1"],
       interventoTipo: "ordinario",
     });
 
@@ -125,12 +127,37 @@ describe("nextGommeImportManutenzioneWriter", () => {
       targa: "TI178456",
       data: "2026-06-10",
       km: null,
-      asseId: null,
+      assiCoinvolti: [],
       interventoTipo: "ordinario",
     });
 
     expect(result.ok).toBe(false);
     expect(readManutenzioni()).toHaveLength(0);
+  });
+
+  it("crea una manutenzione ordinaria su piu' assi", async () => {
+    seed([{ id: "G-5", targetTarga: "TI178456", stato: "nuovo" }]);
+
+    const result = await importGommeEventoComeManutenzioneEseguita({
+      eventoId: "G-5",
+      targa: "TI178456",
+      data: "2026-06-10",
+      km: 200000,
+      assiCoinvolti: ["anteriore", "posteriore"],
+      numeroGomme: 6,
+      marca: "Michelin",
+      interventoTipo: "ordinario",
+    });
+
+    expect(result.ok).toBe(true);
+    const created = readManutenzioni()[0];
+    expect(created.assiCoinvolti).toEqual(["anteriore", "posteriore"]);
+    expect(created.gommePerAsse).toEqual([
+      { asseId: "anteriore", dataCambio: "2026-06-10", kmCambio: 200000 },
+      { asseId: "posteriore", dataCambio: "2026-06-10", kmCambio: 200000 },
+    ]);
+    expect(created.descrizione).toContain("Anteriore, Posteriore");
+    expect(created.descrizione).toContain("6 gomme");
   });
 
   it("crea una manutenzione gomme straordinaria con motivo", async () => {
@@ -141,7 +168,7 @@ describe("nextGommeImportManutenzioneWriter", () => {
       targa: "TI178456",
       data: "2026-06-10",
       km: null,
-      asseId: "asse1",
+      assiCoinvolti: ["asse1"],
       interventoTipo: "straordinario",
       motivo: "foratura",
     });

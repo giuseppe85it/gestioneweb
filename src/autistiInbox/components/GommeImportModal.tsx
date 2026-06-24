@@ -48,9 +48,10 @@ function normalizeAsseId(value: unknown): NextManutenzioneAsseCoinvoltoId | "" {
 
 /**
  * BUG 54 — schermata di conferma per importare un evento gomme come manutenzione
- * UFFICIALE "eseguita". L'admin rivede/corregge asse, km, marca, data e sceglie
- * ordinario/straordinario prima della scrittura nello storico. Nessuna scrittura
- * qui: il modale raccoglie i campi e li passa via `onConfirm`.
+ * UFFICIALE "eseguita". L'admin segna ESATTAMENTE cosa è stato cambiato: uno o
+ * più assi (caselle) + numero gomme + km/marca/data e ordinario/straordinario,
+ * prima della scrittura nello storico. Nessuna scrittura qui: il modale raccoglie
+ * i campi e li passa via `onConfirm`.
  */
 export default function GommeImportModal({ evento, saving, onClose, onConfirm }: Props) {
   const categoria = evento?.categoria ?? null;
@@ -61,13 +62,21 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
     () => getNextAssiOptionsForCategoria(categoria),
     [categoria],
   );
+  const wheelsById = useMemo(
+    () => new Map(assiOptions.map((opt) => [opt.id, opt.wheelsCount] as const)),
+    [assiOptions],
+  );
 
   const [data, setData] = useState("");
   const [km, setKm] = useState("");
   const [marca, setMarca] = useState("");
-  const [asseId, setAsseId] = useState<NextManutenzioneAsseCoinvoltoId | "">("");
+  const [assi, setAssi] = useState<NextManutenzioneAsseCoinvoltoId[]>([]);
+  const [numeroGomme, setNumeroGomme] = useState("");
   const [interventoTipo, setInterventoTipo] = useState<GommeImportInterventoTipo>("ordinario");
   const [motivo, setMotivo] = useState("");
+
+  const sumWheels = (ids: NextManutenzioneAsseCoinvoltoId[]) =>
+    ids.reduce((tot, id) => tot + (wheelsById.get(id) ?? 0), 0);
 
   // Prefill dei campi quando si apre un nuovo evento.
   useEffect(() => {
@@ -80,22 +89,44 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
     );
     setMarca(String(evento.marca ?? "").trim());
     const prefAsse = normalizeAsseId(evento.asseId);
-    // tiene l'asse precompilato solo se valido per la categoria del mezzo
-    setAsseId(
-      prefAsse && assiOptions.some((opt) => opt.id === prefAsse) ? prefAsse : "",
-    );
+    const prefilled =
+      prefAsse && assiOptions.some((opt) => opt.id === prefAsse) ? [prefAsse] : [];
+    setAssi(prefilled);
+    const wheels = prefilled.reduce((tot, id) => tot + (wheelsById.get(id) ?? 0), 0);
+    setNumeroGomme(wheels > 0 ? String(wheels) : "");
     setInterventoTipo("ordinario");
     setMotivo("");
-  }, [evento, assiOptions]);
+  }, [evento, assiOptions, wheelsById]);
 
   if (!evento) return null;
 
+  const toggleAsse = (id: NextManutenzioneAsseCoinvoltoId) => {
+    setAssi((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((entry) => entry !== id)
+        : [...prev, id];
+      // ricalcola il numero gomme suggerito in base agli assi spuntati
+      const wheels = sumWheels(next);
+      setNumeroGomme(wheels > 0 ? String(wheels) : "");
+      return next;
+    });
+  };
+
   const kmTrim = km.trim();
   const kmValue =
-    kmTrim === "" ? null : Number.isFinite(Number(kmTrim.replace(",", "."))) ? Number(kmTrim.replace(",", ".")) : NaN;
+    kmTrim === ""
+      ? null
+      : Number.isFinite(Number(kmTrim.replace(",", ".")))
+        ? Number(kmTrim.replace(",", "."))
+        : NaN;
   const kmInvalid = kmValue !== null && Number.isNaN(kmValue);
-  const asseMancante = interventoTipo === "ordinario" && !asseId;
-  const canConfirm = Boolean(data) && !kmInvalid && !asseMancante && !saving;
+
+  const numTrim = numeroGomme.trim();
+  const numValue = numTrim === "" ? null : Math.trunc(Number(numTrim));
+  const numInvalid = numValue !== null && (!Number.isFinite(numValue) || numValue < 0);
+
+  const assiMancanti = interventoTipo === "ordinario" && assi.length === 0;
+  const canConfirm = Boolean(data) && !kmInvalid && !numInvalid && !assiMancanti && !saving;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -104,7 +135,8 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
       targa,
       data,
       km: kmValue,
-      asseId: asseId || null,
+      assiCoinvolti: assi,
+      numeroGomme: numValue,
       marca: marca.trim() || null,
       interventoTipo,
       motivo: motivo.trim() || null,
@@ -127,8 +159,8 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
             <div className="admin-edit-section">
               <p className="aa-td-sub" style={{ marginTop: 0 }}>
                 Mezzo <strong>{targa || "—"}</strong>
-                {autistaNome ? ` · autista ${autistaNome}` : ""}. Controlla i dati e
-                conferma: verrà creata una manutenzione gomme <strong>eseguita</strong> nello
+                {autistaNome ? ` · autista ${autistaNome}` : ""}. Segna cosa è stato cambiato
+                e conferma: verrà creata una manutenzione gomme <strong>eseguita</strong> nello
                 storico ufficiale.
               </p>
 
@@ -150,24 +182,55 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
                     <option value="straordinario">Straordinario (guasto/foratura)</option>
                   </select>
                 </label>
+              </div>
 
-                <label>
-                  Asse
-                  <select
-                    value={asseId}
-                    onChange={(e) =>
-                      setAsseId(e.target.value as NextManutenzioneAsseCoinvoltoId | "")
-                    }
-                  >
-                    <option value="">
-                      {interventoTipo === "ordinario" ? "Seleziona asse…" : "(facoltativo)"}
-                    </option>
-                    {assiOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
+              <label style={{ display: "block", marginTop: 12 }}>
+                Assi cambiati{interventoTipo === "ordinario" ? " (spunta tutti quelli cambiati)" : " (facoltativo)"}
+              </label>
+              {assiOptions.length === 0 ? (
+                <p className="aa-td-sub">
+                  Nessun asse configurato per questa categoria mezzo: puoi importare come
+                  straordinario.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    margin: "6px 0 4px",
+                  }}
+                >
+                  {assiOptions.map((opt) => {
+                    const checked = assi.includes(opt.id);
+                    return (
+                      <button
+                        type="button"
+                        key={opt.id}
+                        className={checked ? "edit aa-crow-primary" : "edit"}
+                        onClick={() => toggleAsse(opt.id)}
+                        style={{ minWidth: 130, textAlign: "left" }}
+                      >
+                        {checked ? "☑ " : "☐ "}
                         {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                        <span className="aa-td-sub" style={{ display: "block", fontWeight: 400 }}>
+                          {opt.wheelsCount} gomme
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="admin-edit-grid" style={{ marginTop: 12 }}>
+                <label>
+                  Numero gomme cambiate
+                  <input
+                    inputMode="numeric"
+                    value={numeroGomme}
+                    onChange={(e) => setNumeroGomme(e.target.value)}
+                    placeholder="(es. 6)"
+                  />
                 </label>
 
                 <label>
@@ -201,9 +264,9 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
                 )}
               </div>
 
-              {asseMancante ? (
+              {assiMancanti ? (
                 <p className="aa-td-sub" style={{ color: "#b4232a" }}>
-                  Per un cambio gomme ordinario l'asse è obbligatorio.
+                  Per un cambio gomme ordinario spunta almeno un asse.
                 </p>
               ) : null}
               {kmInvalid ? (
@@ -211,10 +274,9 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
                   KM non valido.
                 </p>
               ) : null}
-              {assiOptions.length === 0 ? (
-                <p className="aa-td-sub">
-                  Nessun asse configurato per questa categoria mezzo: puoi importare come
-                  straordinario.
+              {numInvalid ? (
+                <p className="aa-td-sub" style={{ color: "#b4232a" }}>
+                  Numero gomme non valido.
                 </p>
               ) : null}
             </div>
