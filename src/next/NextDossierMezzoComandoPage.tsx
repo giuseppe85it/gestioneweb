@@ -254,17 +254,28 @@ function formatKmOre(item: NextDossierManutenzioneLegacyItem) {
 }
 
 function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerAsse"][number]) {
+  // Descrive le gomme ATTUALI dell'asse: quando sono state montate (data + km al
+  // montaggio) e quanti km hanno percorso da allora. Etichette esplicite per non
+  // confondere il km al montaggio con i km percorsi (le gomme sono ancora su).
   const parts: string[] = [];
-  parts.push(item.dataCambio ? `Cambio ${formatDossierDate(item.dataCambio)}` : "Data cambio n/d");
-  if (item.isMotorizzato) {
-    parts.push(
-      typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio) ? `${item.kmCambio} km` : "km cambio n/d",
-    );
-    if (typeof item.kmPercorsi === "number" && Number.isFinite(item.kmPercorsi)) {
-      parts.push(`Percorsi ${item.kmPercorsi} km`);
-    }
+  const dataLabel = item.dataCambio ? formatDossierDate(item.dataCambio) : null;
+  const kmCambio =
+    typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio)
+      ? item.kmCambio.toLocaleString("it-CH")
+      : null;
+  if (item.isMotorizzato && kmCambio) {
+    parts.push(dataLabel ? `Montate il ${dataLabel} a ${kmCambio} km` : `Montate a ${kmCambio} km`);
+  } else {
+    parts.push(dataLabel ? `Montate il ${dataLabel}` : "Data cambio n/d");
   }
-  return parts.join(" | ");
+  if (
+    item.isMotorizzato &&
+    typeof item.kmPercorsi === "number" &&
+    Number.isFinite(item.kmPercorsi)
+  ) {
+    parts.push(`${item.kmPercorsi.toLocaleString("it-CH")} km percorsi da allora`);
+  }
+  return parts.join(" · ");
 }
 
 function formatGommeStraordinarieMeta(item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number]) {
