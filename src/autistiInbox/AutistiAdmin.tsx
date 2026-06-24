@@ -36,6 +36,12 @@ import {
   createManutenzioneDaFareFromSegnalazione,
   createManutenzioneDaFareFromControllo,
 } from "../next/writers/nextManutenzioneDaFareCreateWriter";
+import {
+  importGommeEventoComeManutenzioneEseguita,
+  isGommeEventoImportato,
+  type GommeImportManutenzioneInput,
+} from "../next/writers/nextGommeImportManutenzioneWriter";
+import GommeImportModal from "./components/GommeImportModal";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -354,6 +360,8 @@ export default function AutistiAdmin() {
   const [ctrlOnlyKo, setCtrlOnlyKo] = useState(true);
   const [gommeFilterTarga, setGommeFilterTarga] = useState("");
   const [gommeOnlyNuove, setGommeOnlyNuove] = useState(true);
+  const [gommeImportEvent, setGommeImportEvent] = useState<any | null>(null);
+  const [gommeImportSaving, setGommeImportSaving] = useState(false);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
@@ -1887,6 +1895,26 @@ export default function AutistiAdmin() {
     await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
   }
 
+  // BUG 54 — Opzione B: l'import gomme crea una manutenzione UFFICIALE "eseguita"
+  // (tramite la schermata di conferma), cosi' compare nel Dossier Gomme.
+  async function handleConfirmGommeImport(input: GommeImportManutenzioneInput) {
+    setGommeImportSaving(true);
+    try {
+      const res = await importGommeEventoComeManutenzioneEseguita(input);
+      if (!res.ok) {
+        window.alert(res.error ?? "Errore import gomme.");
+        return;
+      }
+      const raw = (await getItemSync(KEY_GOMME_TMP)) || [];
+      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [];
+      setGommeRaw(list);
+      setGommeImportEvent(null);
+      window.alert("Manutenzione gomme creata nello storico.");
+    } finally {
+      setGommeImportSaving(false);
+    }
+  }
+
   function normalizeValue(v: any) {
     if (v === undefined || v === "") return null;
     return v;
@@ -2704,7 +2732,7 @@ export default function AutistiAdmin() {
       const hasLinked = hasLinkedLavoro(r);
       const acts: ActionItem[] = [
         { label: "Anteprima PDF", onClick: () => { void openSegnalazionePdfPreview(r, fotoList); } },
-        { label: isClone ? "Crea manutenzione" : "Crea lavoro", disabled: hasLinked, onClick: () => handleCreaDaSegnalazione(r) },
+        { label: isClone ? "Crea manutenzione" : "Crea lavoro", hidden: hasLinked, onClick: () => handleCreaDaSegnalazione(r) },
         { label: "Elimina", danger: true, separatorBefore: true, onClick: () => deleteSegnalazione(r) },
       ];
       return (
@@ -2798,7 +2826,7 @@ export default function AutistiAdmin() {
       const hasLinked = hasLinkedLavoro(r);
       const acts: ActionItem[] = [
         { label: "Anteprima PDF", onClick: () => { void openControlloPdfPreview(r); } },
-        { label: isClone ? "Crea manutenzione" : "Crea lavoro", disabled: hasLinked, onClick: () => handleCreaDaControllo(r) },
+        { label: isClone ? "Crea manutenzione" : "Crea lavoro", hidden: hasLinked, onClick: () => handleCreaDaControllo(r) },
       ];
       const mezzoParts: string[] = [];
       if (target !== "RIMORCHIO") mezzoParts.push(`M: ${String(targaCamion)}`);
@@ -2865,7 +2893,11 @@ export default function AutistiAdmin() {
           label: "Preso in carico",
           onClick: () => updateGommeRecord(String(r?.id ?? ""), { stato: "presa_in_carico" }),
         },
-        { label: "Importa", onClick: () => void importGommeRecord(r) },
+        {
+          label: "Importa",
+          hidden: isGommeEventoImportato(r),
+          onClick: () => setGommeImportEvent(r),
+        },
       ];
       return (
         <SchemaRow
@@ -4995,6 +5027,14 @@ export default function AutistiAdmin() {
           onShare={handleSharePDF}
           onCopyLink={handleCopyPDFText}
           onWhatsApp={handleWhatsAppPDF}
+        />
+        <GommeImportModal
+          evento={gommeImportEvent}
+          saving={gommeImportSaving}
+          onClose={() => {
+            if (!gommeImportSaving) setGommeImportEvent(null);
+          }}
+          onConfirm={handleConfirmGommeImport}
         />
         {lightboxSrc ? (
           <div className="admin-lightbox" onClick={() => setLightboxSrc(null)}>
