@@ -233,6 +233,14 @@ export type NextGommePerAsseStatus = {
   kmPercorsi: number | null;
   isMotorizzato: boolean;
   sourceMaintenanceId: string;
+  /** Data del cambio precedente sullo stesso asse (se esiste). */
+  dataCambioPrecedente: string | null;
+  /**
+   * Km percorsi dal set di gomme PRECEDENTE su questo asse, cioe' quanto e'
+   * durato fino all'ultimo cambio (kmCambio - kmCambioPrecedente). Null se non
+   * c'e' un cambio precedente o i km non sono disponibili.
+   */
+  kmDurataSetPrecedente: number | null;
 };
 
 export type NextGommeStraordinarioEvent = {
@@ -527,33 +535,57 @@ export function buildNextGommeStateByAsse(args: {
     return rightTs - leftTs;
   });
   const byAsse = new Map<NextManutenzioneAsseCoinvoltoId, NextGommePerAsseStatus>();
+  const prevSeen = new Set<NextManutenzioneAsseCoinvoltoId>();
 
   for (const item of sortedItems) {
     const entries = deriveGommePerAsseFromMaintenance(item);
     if (!entries.length) continue;
 
     for (const entry of entries) {
-      if (byAsse.has(entry.asseId)) continue;
       const asse = assiById.get(entry.asseId);
       if (!asse) continue;
 
-      const kmCambio = isMotorizzato ? entry.kmCambio : null;
-      const kmAttuali = isMotorizzato ? args.kmAttuali ?? null : null;
-      const kmPercorsi =
-        kmCambio !== null && kmAttuali !== null && kmAttuali >= kmCambio
-          ? kmAttuali - kmCambio
-          : null;
+      if (!byAsse.has(entry.asseId)) {
+        // Ultimo cambio sull'asse (set di gomme ATTUALE).
+        const kmCambio = isMotorizzato ? entry.kmCambio : null;
+        const kmAttuali = isMotorizzato ? args.kmAttuali ?? null : null;
+        const kmPercorsi =
+          kmCambio !== null && kmAttuali !== null && kmAttuali >= kmCambio
+            ? kmAttuali - kmCambio
+            : null;
 
-      byAsse.set(entry.asseId, {
-        asseId: entry.asseId,
-        asseLabel: asse.label,
-        dataCambio: entry.dataCambio,
-        kmCambio,
-        kmAttuali,
-        kmPercorsi,
-        isMotorizzato,
-        sourceMaintenanceId: item.id,
-      });
+        byAsse.set(entry.asseId, {
+          asseId: entry.asseId,
+          asseLabel: asse.label,
+          dataCambio: entry.dataCambio,
+          kmCambio,
+          kmAttuali,
+          kmPercorsi,
+          isMotorizzato,
+          sourceMaintenanceId: item.id,
+          dataCambioPrecedente: null,
+          kmDurataSetPrecedente: null,
+        });
+        continue;
+      }
+
+      if (!prevSeen.has(entry.asseId)) {
+        // Penultimo cambio sull'asse = quando fu montato il set sostituito
+        // all'ultimo cambio. Durata di quel set = kmCambio - kmCambioPrecedente.
+        prevSeen.add(entry.asseId);
+        const status = byAsse.get(entry.asseId);
+        if (status) {
+          status.dataCambioPrecedente = entry.dataCambio;
+          const kmPrecedente = isMotorizzato ? entry.kmCambio : null;
+          if (
+            status.kmCambio !== null &&
+            kmPrecedente !== null &&
+            status.kmCambio > kmPrecedente
+          ) {
+            status.kmDurataSetPrecedente = status.kmCambio - kmPrecedente;
+          }
+        }
+      }
     }
   }
 

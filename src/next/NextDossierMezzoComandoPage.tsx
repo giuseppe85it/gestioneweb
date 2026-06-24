@@ -34,6 +34,10 @@ import {
 } from "./nextStructuralPaths";
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 import { toDisplay } from "./helpers/dateUnica";
+import {
+  gommePerAsseSetAttualeMeta,
+  gommePerAsseSetPrecedenteMeta,
+} from "./helpers/gommePerAsseFormat";
 import { computeVehicleMedianKmL, normalizeRefuelRecord } from "./helpers/refuelAnomalies";
 import type { RefuelRow } from "./types/centroControlloTypes";
 import {
@@ -253,29 +257,17 @@ function formatKmOre(item: NextDossierManutenzioneLegacyItem) {
   return parts.join(" | ") || "-";
 }
 
+// Card "Stato gomme per asse": stesse funzioni usate dalla Scheda mezzo, cosi'
+// le due pagine mostrano LA STESSA card. Il set attuale usa la data formattata
+// del dossier.
 function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerAsse"][number]) {
-  // Descrive le gomme ATTUALI dell'asse: quando sono state montate (data + km al
-  // montaggio) e quanti km hanno percorso da allora. Etichette esplicite per non
-  // confondere il km al montaggio con i km percorsi (le gomme sono ancora su).
-  const parts: string[] = [];
-  const dataLabel = item.dataCambio ? formatDossierDate(item.dataCambio) : null;
-  const kmCambio =
-    typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio)
-      ? item.kmCambio.toLocaleString("it-CH")
-      : null;
-  if (item.isMotorizzato && kmCambio) {
-    parts.push(dataLabel ? `Montate il ${dataLabel} a ${kmCambio} km` : `Montate a ${kmCambio} km`);
-  } else {
-    parts.push(dataLabel ? `Montate il ${dataLabel}` : "Data cambio n/d");
-  }
-  if (
-    item.isMotorizzato &&
-    typeof item.kmPercorsi === "number" &&
-    Number.isFinite(item.kmPercorsi)
-  ) {
-    parts.push(`${item.kmPercorsi.toLocaleString("it-CH")} km percorsi da allora`);
-  }
-  return parts.join(" · ");
+  return gommePerAsseSetAttualeMeta(item, formatDossierDate);
+}
+
+function formatGommeSetPrecedente(
+  item: NextDossierMezzoLegacyViewState["gommePerAsse"][number],
+): string | null {
+  return gommePerAsseSetPrecedenteMeta(item);
 }
 
 function formatGommeStraordinarieMeta(item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number]) {
@@ -768,7 +760,9 @@ export default function NextDossierMezzoComandoPage() {
             })),
             gommePerAsse: legacy.gommePerAsse.map((item) => ({
               asse: item.asseLabel,
-              meta: formatGommePerAsseMeta(item),
+              meta: [formatGommePerAsseMeta(item), formatGommeSetPrecedente(item)]
+                .filter(Boolean)
+                .join(" — "),
             })),
             gommeStraordinarie: legacy.gommeStraordinarie.map((item) => ({
               motivo: item.motivo || "Evento gomme straordinario",
@@ -1099,9 +1093,12 @@ export default function NextDossierMezzoComandoPage() {
           <div className="dc-card">
             <h2>Gomme <span className="count">per asse + straordinari</span></h2>
             <div className="dc-sub2">Stato gomme per asse</div>
-            {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => (
-              <div className="dc-row" key={item.asseId}><div className="dc-main"><div className="dc-title">{item.asseLabel}</div><div className="dc-sub">{formatGommePerAsseMeta(item)}</div></div></div>
-            ))}
+            {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => {
+              const setPrecedente = formatGommeSetPrecedente(item);
+              return (
+                <div className="dc-row" key={item.asseId}><div className="dc-main"><div className="dc-title">{item.asseLabel}</div><div className="dc-sub">{formatGommePerAsseMeta(item)}</div>{setPrecedente ? <div className="dc-sub">{setPrecedente}</div> : null}</div></div>
+              );
+            })}
             <div className="dc-sub2">Eventi gomme straordinari</div>
             {legacy.gommeStraordinarie.length === 0 ? <div className="dc-empty">Nessun evento gomme straordinario registrato.</div> : legacy.gommeStraordinarie.slice(0, 5).map((item) => (
               <div className="dc-row" key={item.sourceMaintenanceId}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.motivo || "Evento gomme straordinario"}</div><div className="dc-sub">{formatGommeStraordinarieMeta(item)}</div></div></div>

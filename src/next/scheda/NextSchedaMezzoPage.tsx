@@ -29,6 +29,10 @@ import {
 import { buildNextDossierPath } from "../nextStructuralPaths";
 import { buildNextPathWithRole, getNextRoleFromSearch } from "../nextAccess";
 import { toDisplay } from "../helpers/dateUnica";
+import {
+  gommePerAsseSetAttualeMeta,
+  gommePerAsseSetPrecedenteMeta,
+} from "../helpers/gommePerAsseFormat";
 import "./next-scheda.css";
 
 type LoadStatus = "loading" | "ready" | "notfound" | "error";
@@ -458,15 +462,20 @@ function NextSchedaMezzoPage() {
   if (view.gommePerAsse.length > 0) {
     colDx.push(
       <Card key="gomme" title="Gomme per asse" count={view.gommePerAsse.length}>
-        {view.gommePerAsse.map((asse) => (
-          <div className="kv" key={asse.asseId}>
-            <div className="kv__key"><span className="kv__name">{asse.asseLabel}</span></div>
-            <div className="kv__val">
-              <span className="kv__strong">{asse.dataCambio ? toDisplay(asse.dataCambio) : "—"}</span>
-              {asse.kmPercorsi !== null ? <span className="kv__meta">{num(asse.kmPercorsi)} km</span> : null}
+        {view.gommePerAsse.map((asse) => {
+          const setPrecedente = gommePerAsseSetPrecedenteMeta(asse);
+          return (
+            <div className="kv" key={asse.asseId}>
+              <div className="kv__key"><span className="kv__name">{asse.asseLabel}</span></div>
+              <div className="kv__val">
+                <span className="kv__strong">
+                  {gommePerAsseSetAttualeMeta(asse, (v) => toDisplay(v) || v)}
+                </span>
+                {setPrecedente ? <span className="kv__meta">{setPrecedente}</span> : null}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Card>,
     );
   }
