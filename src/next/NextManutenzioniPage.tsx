@@ -64,6 +64,7 @@ import {
   type CandidatoAggancioUniversale,
 } from "./helpers/candidatiAggancioUniversale";
 import { agganciaUniversaleDaManutenzione } from "./writers/agganciaUniversaleWriter";
+import { readNextMezzoDocumentiSnapshot } from "./domain/nextDocumentiMezzoDomain";
 import type { EventoCompatibile } from "./helpers/eventiCompatibili";
 import {
   getManutenzioniPerAggancio,
@@ -7006,6 +7007,81 @@ export default function NextManutenzioniPage() {
     );
   }
 
+  // BUG 65 — apre il PDF di un documento agganciato (campo collegamenti), risolto
+  // dalla collezione documenti del mezzo via la sua targa.
+  async function handleOpenCollegamentoDoc(refId: string) {
+    const targa = normalizeText(selectedDetailRecord?.targa ?? "");
+    if (!targa) {
+      setError("Targa non disponibile per aprire il documento collegato.");
+      return;
+    }
+    try {
+      const snap = await readNextMezzoDocumentiSnapshot(targa);
+      const docu = snap.items.find(
+        (item) => item.sourceDocId === refId || item.id.endsWith(`:${refId}`),
+      );
+      if (docu?.fileUrl) {
+        window.open(docu.fileUrl, "_blank", "noopener,noreferrer");
+      } else {
+        setError("Documento collegato non trovato o senza file.");
+      }
+    } catch (openError) {
+      console.error("Errore apertura documento collegato:", openError);
+      setError("Apertura documento collegato non riuscita.");
+    }
+  }
+
+  function renderCollegamentiPanel() {
+    const collegamenti = selectedDetailRecord?.collegamenti ?? [];
+    const documenti = collegamenti.filter((entry) => entry.tipo === "documento");
+    const manutenzioni = collegamenti.filter((entry) => entry.tipo === "manutenzione");
+    if (documenti.length === 0 && manutenzioni.length === 0) {
+      return null;
+    }
+    return (
+      <section className="man2-screen">
+        <div className="man2-origine-head">
+          <h2 className="man2-screen-title">Collegati ({documenti.length + manutenzioni.length})</h2>
+          <span className="man2-origine-note">Documenti e manutenzioni agganciati a questa manutenzione</span>
+        </div>
+        <div className="man2-origine-cards">
+          {documenti.map((entry, index) => (
+            <article key={`coll-doc:${entry.refId}:${index}`} className="man2-origine-card">
+              <div className="man2-origine-card__top">
+                <span className="man2-origine-chip man2-origine-chip--doc">Documento</span>
+                <div className="man2-origine-card__actions">
+                  <button
+                    type="button"
+                    className="man2-origine-btn"
+                    onClick={() => void handleOpenCollegamentoDoc(entry.refId)}
+                  >
+                    Apri PDF
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+          {manutenzioni.map((entry, index) => (
+            <article key={`coll-man:${entry.refId}:${index}`} className="man2-origine-card">
+              <div className="man2-origine-card__top">
+                <span className="man2-origine-chip man2-origine-chip--man">Manutenzione</span>
+                <div className="man2-origine-card__actions">
+                  <button
+                    type="button"
+                    className="man2-origine-btn"
+                    onClick={() => setSelectedDetailRecordId(entry.refId)}
+                  >
+                    Apri
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   function renderPdfDeleteModal() {
     const record = pdfDeleteCandidate;
     if (!record) return null;
@@ -7502,6 +7578,7 @@ export default function NextManutenzioniPage() {
       {view === "mappa" ? (
         <Fragment>
           {renderOriginePanel()}
+          {renderCollegamentiPanel()}
           <NextMappaStoricoPage
             targa={activeTarga}
             embedded={true}
