@@ -943,10 +943,6 @@ export default function NextDossierMezzoComandoPage() {
   const openManutenzioneWorkItem = (item: { id: string; targa?: string | null; mezzoTarga?: string | null }) => {
     navigate(buildNextManutenzioniPath(item.targa ?? item.mezzoTarga ?? mezzo?.targa, item.id));
   };
-  const openManutenzione = (item: NextDossierManutenzioneLegacyItem) => {
-    setModal(null);
-    navigate(buildNextManutenzioniPath(item.targa, item.id));
-  };
   const reloadDossierSnapshot = async () => {
     if (!targa) return;
     const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
@@ -1183,14 +1179,7 @@ export default function NextDossierMezzoComandoPage() {
             </div>
           </div>
 
-          <div className="dc-card">
-            <h2>Storico manutenzioni <button className="dc-link" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutto</button></h2>
-            {legacy.manutenzioni.length === 0 ? <div className="dc-empty">Nessuna manutenzione registrata per questo mezzo.</div> : legacy.manutenzioni.slice(0, 5).map((item) => (
-              <div className="dc-row click" key={item.id} onClick={() => openManutenzione(item)}><div className="dc-main"><div className="dc-title">{item.descrizione || "-"}</div></div><div className="dc-right" style={{ color: "#8a94a2", fontWeight: 400 }}>{formatDossierDate(item.data)} · {formatKmOre(item)}</div></div>
-            ))}
-          </div>
-
-          <div className="dc-card">
+          <div className="dc-card dc-span2">
             <h2>Gomme <span className="count">per asse + straordinari</span></h2>
             <div className="dc-sub2">Stato gomme per asse</div>
             {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => {
@@ -1227,20 +1216,16 @@ export default function NextDossierMezzoComandoPage() {
         </div>
       </div>
 
-      {(["attesa", "eseguiti", "manutenzioni"] as const).map((key) =>
+      {(["attesa", "eseguiti"] as const).map((key) =>
         modal === key ? (
           <div key={key} className="dossier-modal-overlay">
             <div className="dossier-modal">
               <div className="dossier-modal-header">
-                <h2>{key === "attesa" ? "Manutenzioni da fare" : key === "eseguiti" ? "Manutenzioni eseguite" : "Storico manutenzioni"} - {mezzo.targa}</h2>
+                <h2>{key === "attesa" ? "Manutenzioni da fare" : "Manutenzioni eseguite"} - {mezzo.targa}</h2>
                 <button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button>
               </div>
               <div className="dossier-modal-body">
-                {key === "manutenzioni" ? (
-                  lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{formatDossierDate(item.data)}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
-                ) : (
-                  lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => { const b = workBadge(item, key === "attesa" ? "DA FARE" : "ESEGUITA", ""); return <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className="dossier-badge" title={b.title}>{b.label}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{formatDossierDate(item.dataInserimento)}</span></div></li>; })}</ul>
-                )}
+                {lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessuna manutenzione da fare." : "Nessuna manutenzione eseguita."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => { const b = workBadge(item, key === "attesa" ? "DA FARE" : "ESEGUITA", ""); return <li key={item.id} className="dossier-list-item" onClick={() => openManutenzioneWorkItem(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className="dossier-badge" title={b.title}>{b.label}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{formatDossierDate(item.dataInserimento)}</span></div></li>; })}</ul>}
               </div>
             </div>
           </div>
