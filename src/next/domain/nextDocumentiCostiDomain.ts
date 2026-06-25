@@ -2652,3 +2652,62 @@ export async function updateNextDocumentoCurrency(
 
   throw new Error(`Collection non supportata per eliminazione: ${sourceKey}`);
 }
+
+/**
+ * Corregge il tipo documento (fattura/preventivo/ddt/libretto/altro) di un
+ * documento gia' archiviato. Scrive il valore canonico cosi' la vista lo
+ * classifica nel filtro giusto. Stessa meccanica di updateNextDocumentoCurrency.
+ */
+export async function updateNextDocumentoTipo(
+  item: NextDocumentiCostiLegacyViewItem,
+  newTipo: string,
+): Promise<void> {
+  const sourceKey = String(item.sourceKey ?? "").trim();
+  const nextTipo = String(newTipo ?? "").trim().toLowerCase() || "altro";
+
+  if (sourceKey === COSTI_DATASET_KEY) {
+    const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, COSTI_DATASET_KEY));
+    if (!snapshot.exists()) {
+      throw new Error("Dataset @costiMezzo non disponibile.");
+    }
+    const rawDoc = snapshot.data() as Record<string, unknown>;
+    const items = Array.isArray(rawDoc.items)
+      ? rawDoc.items
+      : Array.isArray((rawDoc.value as { items?: unknown[] } | undefined)?.items)
+      ? (rawDoc.value as { items: unknown[] }).items
+      : Array.isArray(rawDoc.value)
+      ? (rawDoc.value as unknown[])
+      : null;
+    if (!items) {
+      throw new Error("Dataset @costiMezzo non leggibile per aggiornamento tipo.");
+    }
+
+    const rawId = String(item.sourceDocId ?? "").trim();
+    const nextItems = items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      const entryId = String((entry as Record<string, unknown>).id ?? "").trim();
+      if (!rawId || entryId !== rawId) return entry;
+      return { ...(entry as Record<string, unknown>), tipoDocumento: nextTipo };
+    });
+
+    const { setItemSync } = await import("../../utils/storageSync");
+    await setItemSync(COSTI_DATASET_KEY, nextItems);
+    return;
+  }
+
+  if (
+    sourceKey === "@documenti_mezzi" ||
+    sourceKey === "@documenti_magazzino" ||
+    sourceKey === "@documenti_generici"
+  ) {
+    const normalizedId = String(item.sourceDocId ?? "").trim();
+    if (!normalizedId) {
+      throw new Error("Documento non valido.");
+    }
+    const { updateDoc } = await import("../../utils/firestoreWriteOps");
+    await updateDoc(doc(db, sourceKey, normalizedId), { tipoDocumento: nextTipo });
+    return;
+  }
+
+  throw new Error(`Tipo non modificabile per questa origine: ${sourceKey}`);
+}

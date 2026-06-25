@@ -5254,6 +5254,16 @@
   color: #3b6d11;
 }
 
+.doc-costi-badge.is-libretto {
+  background: #fdf2e0;
+  color: #92600b;
+}
+
+.doc-costi-badge.is-altro {
+  background: #eef0f2;
+  color: #4b5563;
+}
+
 .doc-costi-targa {
   font-size: 11px;
   padding: 2px 7px;

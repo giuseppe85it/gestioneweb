@@ -13,8 +13,10 @@ import {
   type NextDocumentiCostiLegacyViewItem,
   type NextIADocumentiArchiveItem,
   updateNextDocumentoCurrency,
+  updateNextDocumentoTipo,
 } from "./domain/nextDocumentiCostiDomain";
 import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+import { TIPO_DOCUMENTO_OPZIONI, mapTipoDocumentoToOption } from "./internal-ai/tipoDocumentoOptions";
 import {
   readNextOfficineSnapshot,
   type NextOfficinaReadOnlyItem,
@@ -255,7 +257,9 @@ function getItemKindLabel(item: NextIADocumentiArchiveItem) {
 function getItemBadgeClass(item: NextIADocumentiArchiveItem) {
   if (isPreventivo(item)) return "is-preventivo";
   if (isDdt(item)) return "is-ddt";
-  return "is-fattura";
+  if (isFattura(item)) return "is-fattura";
+  if (isLibretto(item)) return "is-libretto";
+  return "is-altro";
 }
 
 function buildSupplierLabel(item: NextIADocumentiArchiveItem) {
@@ -423,6 +427,10 @@ export default function NextIADocumentiPage() {
   const [editingCurrencyValue, setEditingCurrencyValue] = useState<NextDocumentiCostiCurrency>("EUR");
   const [savingCurrencyId, setSavingCurrencyId] = useState<string | null>(null);
   const [currencyErrorMessage, setCurrencyErrorMessage] = useState<string | null>(null);
+  // Correzione tipo documento (es. una fattura archiviata come "altro").
+  const [editingTipoId, setEditingTipoId] = useState<string | null>(null);
+  const [editingTipoValue, setEditingTipoValue] = useState<string>("altro");
+  const [savingTipoId, setSavingTipoId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
   const [fornitori, setFornitori] = useState<NextFornitoreReadOnlyItem[]>([]);
@@ -795,6 +803,41 @@ export default function NextIADocumentiPage() {
     }
   };
 
+  const openTipoEditor = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    setEditingTipoId(item.id);
+    setEditingTipoValue(mapTipoDocumentoToOption(item.tipoDocumento));
+  };
+
+  const cancelTipoEditor = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingTipoId(null);
+    setSavingTipoId(null);
+  };
+
+  const handleSaveTipo = async (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    try {
+      setSavingTipoId(item.id);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => updateNextDocumentoTipo(mapArchiveItemToLegacyDocument(item), editingTipoValue),
+      );
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === item.id ? { ...entry, tipoDocumento: editingTipoValue } : entry,
+        ),
+      );
+      setEditingTipoId(null);
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Aggiornamento tipo non completato.",
+      );
+    } finally {
+      setSavingTipoId(null);
+    }
+  };
+
   const renderMiniDossier = (targa: string) => {
     const mezzo = mezziByTarga.get(targa) ?? null;
     const sessione = sessioniByTarga.get(targa) ?? null;
@@ -1051,9 +1094,44 @@ export default function NextIADocumentiPage() {
                               )}
                             </td>
                             <td>
-                              <span className={`doc-costi-badge ${getItemBadgeClass(item)}`}>
-                                {getItemKindLabel(item)}
-                              </span>
+                              {editingTipoId === item.id ? (
+                                <span
+                                  style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <select
+                                    value={editingTipoValue}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) => setEditingTipoValue(event.target.value)}
+                                  >
+                                    {TIPO_DOCUMENTO_OPZIONI.map((opzione) => (
+                                      <option key={opzione.value} value={opzione.value}>
+                                        {opzione.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={(event) => void handleSaveTipo(event, item)}
+                                    disabled={savingTipoId === item.id}
+                                  >
+                                    {savingTipoId === item.id ? "Salvataggio..." : "Salva"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={cancelTipoEditor}
+                                    disabled={savingTipoId === item.id}
+                                  >
+                                    Annulla
+                                  </button>
+                                </span>
+                              ) : (
+                                <span className={`doc-costi-badge ${getItemBadgeClass(item)}`}>
+                                  {getItemKindLabel(item)}
+                                </span>
+                              )}
                             </td>
                             <td>{formatDate(item)}</td>
                             <td>{normalizeText(item.numeroDocumento) || "-"}</td>
@@ -1181,6 +1259,17 @@ export default function NextIADocumentiPage() {
                                     }}
                                   >
                                     Modifica valuta
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="doc-costi-menu-item"
+                                    onClick={(event) => {
+                                      openTipoEditor(event, item);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    Cambia tipo
                                   </button>
                                   <button
                                     type="button"
