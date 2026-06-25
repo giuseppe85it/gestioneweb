@@ -16,6 +16,7 @@ import {
   writeLegamiOrigine,
   type LegameOrigineRef,
 } from "../helpers/cicloLegame";
+import { readCollegamenti, writeCollegamenti } from "../helpers/legamiUniversali";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -181,6 +182,16 @@ export type NextManutenzioniLegacyDatasetRecord = {
   importo?: number | null;
   sourceDocumentFileUrl?: string | null;
   sourceDocumentCurrency?: "EUR" | "CHF" | "UNKNOWN" | null;
+  // BUG 65 — "Aggancia universale": collegamenti additivi e bidirezionali verso
+  // altri record (manutenzioni, segnalazioni, controlli, documenti/fatture).
+  // Campo dedicato e separato dagli schemi legame esistenti (vedi legamiUniversali.ts).
+  collegamenti?: NextLegameUniversaleRef[];
+};
+
+export type NextLegameUniversaleRef = {
+  tipo: "manutenzione" | "segnalazione" | "controllo" | "documento";
+  refId: string;
+  refKey: string | null;
 };
 
 export type NextManutenzioniMezzoOption = {
@@ -294,6 +305,7 @@ export type NextManutenzioneBusinessSavePayload = {
   gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   sourceDocumentId?: string | null;
   importo?: number | null;
+  collegamenti?: NextLegameUniversaleRef[];
 };
 
 type NextLegacyInventarioRecord = Record<string, unknown>;
@@ -759,6 +771,7 @@ function toLegacyDatasetRecord(
   const chiusuraRefId = optionalTextField(raw, "chiusuraRefId");
   const chiusuraData = optionalNumberField(raw, "chiusuraData");
   const gruppoManutenzioneId = optionalTextField(raw, "gruppoManutenzioneId");
+  const collegamenti = readCollegamenti(raw);
 
   return {
     id: buildHistoryId(raw, index, targa),
@@ -800,6 +813,7 @@ function toLegacyDatasetRecord(
     ...(normalizeOptionalText(raw.sourceDocumentId) != null
       ? { sourceDocumentId: normalizeOptionalText(raw.sourceDocumentId) }
       : {}),
+    ...(collegamenti.length > 0 ? { collegamenti } : {}),
   };
 }
 
@@ -1226,6 +1240,9 @@ function sanitizeBusinessRecord(
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
     ...(payload.sourceDocumentId != null ? { sourceDocumentId: payload.sourceDocumentId } : {}),
+    // BUG 65 — preserva i collegamenti universali nel salvataggio business, cosi'
+    // non dipendono solo dal merge con existingRaw (robusto anche in creazione).
+    ...(hasOwnField(payloadRaw, "collegamenti") ? writeCollegamenti(readCollegamenti(payloadRaw)) : {}),
   };
 }
 

@@ -4190,6 +4190,38 @@
   white-space: nowrap;
 }
 
+/* BUG 53 — card segnalazione "Da fare": targa in evidenza + riga info leggibile. */
+.man2-dafare-item__targa {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #166534;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.man2-dafare-item__info {
+  margin-top: 8px;
+  color: #2f3a2c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.man2-dafare-item__info strong {
+  color: #172016;
+  font-weight: 800;
+}
+
+.man2-dafare-item__info-when {
+  color: #4b5747;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .man2-dafare-item__badges {
   display: flex;
   flex-wrap: wrap;

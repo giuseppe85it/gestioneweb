@@ -55,6 +55,15 @@ import {
   NextProponiAgganciaSegnaliModal,
   type ProponiAgganciaSegnaleItem,
 } from "./components/NextProponiAgganciaSegnaliModal";
+import {
+  NextAgganciaUniversaleModal,
+  type AgganciaUniversaleScelta,
+} from "./components/NextAgganciaUniversaleModal";
+import {
+  getCandidatiAggancioUniversale,
+  type CandidatoAggancioUniversale,
+} from "./helpers/candidatiAggancioUniversale";
+import { agganciaUniversaleDaManutenzione } from "./writers/agganciaUniversaleWriter";
 import type { EventoCompatibile } from "./helpers/eventiCompatibili";
 import {
   getManutenzioniPerAggancio,
@@ -1336,6 +1345,18 @@ function controlloTargaPrincipale(record: Record<string, unknown>): string {
   return motrice || rimorchio;
 }
 
+// Asse gia' indicato nell'origine (segnalazione gomme: posizioneGomma; controllo
+// KO gomme: posizioneGomma/asseId/asse). Restituisce l'id canonico se valido,
+// cosi' il modale puo' aprirsi gia' sull'asse segnalato dall'autista.
+function deriveAsseInizialeFromOrigine(record: Record<string, unknown>): string | null {
+  const candidates = [record.posizioneGomma, record.asseId, record.asse, record.asseLabel];
+  for (const candidate of candidates) {
+    const [asse] = normalizeNextAssiCoinvolti([candidate]);
+    if (asse) return asse;
+  }
+  return null;
+}
+
 // Selezione assi reale dal modale → payload gomme per il writer (stessi campi
 // che il form scrive per una manutenzione gomme daFare).
 function buildGommeSelezioneOrigine(
@@ -1619,6 +1640,12 @@ export default function NextManutenzioniPage() {
   const [proponiAgganciaModal, setProponiAgganciaModal] =
     useState<ProponiAgganciaModalState | null>(null);
   const [proponiAgganciaBusy, setProponiAgganciaBusy] = useState(false);
+  // BUG 65 — "Aggancia universale" da una manutenzione esistente.
+  const [agganciaUniversaleModal, setAgganciaUniversaleModal] = useState<{
+    manutenzione: { id: string; targa: string; categoria: string | null; descrizione: string };
+    candidati: CandidatoAggancioUniversale[];
+    busy: boolean;
+  } | null>(null);
   const [creaManutenzioneSegnalazioneModal, setCreaManutenzioneSegnalazioneModal] =
     useState<CreaManutenzioneSegnalazioneModalState | null>(null);
   const [selectedManutenzioneLiberaIds, setSelectedManutenzioneLiberaIds] = useState<string[]>([]);
@@ -1661,6 +1688,10 @@ export default function NextManutenzioniPage() {
     segnalazioneItemId?: string;
     targa: string;
     categoria: string | null;
+    // Asse gia' indicato nell'origine (segnalazione/controllo): pre-seleziona il
+    // modale su quell'asse invece del primo di default, cosi' non si crea la
+    // manutenzione sull'asse sbagliato.
+    asseIniziale?: string | null;
   } | null>(null);
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -4686,6 +4717,61 @@ export default function NextManutenzioniPage() {
     }
   }
 
+  // BUG 65 — apre il modale "Aggancia universale" da una manutenzione: carica i
+  // candidati della stessa targa (segnalazioni, controlli KO, altre manutenzioni).
+  async function handleOpenAgganciaUniversale(item: NextManutenzioniLegacyDatasetRecord) {
+    const targa = normalizeText(item.targa);
+    if (!targa) {
+      setError("Targa manutenzione non disponibile per l'aggancio.");
+      return;
+    }
+    const manutenzione = {
+      id: item.id,
+      targa,
+      categoria: categoriaTecnicaPerTarga(targa),
+      descrizione: buildDescrizioneSnippet(item.descrizione ?? "", 90),
+    };
+    setAgganciaUniversaleModal({ manutenzione, candidati: [], busy: true });
+    setError(null);
+    setNotice(null);
+    try {
+      const candidati = await getCandidatiAggancioUniversale({ targa, escludiId: item.id });
+      setAgganciaUniversaleModal({ manutenzione, candidati, busy: false });
+    } catch (loadError) {
+      console.error("Errore caricamento candidati aggancio universale:", loadError);
+      setError("Caricamento candidati per l'aggancio non riuscito.");
+      setAgganciaUniversaleModal(null);
+    }
+  }
+
+  async function handleConfirmAgganciaUniversale(scelta: AgganciaUniversaleScelta) {
+    const modal = agganciaUniversaleModal;
+    if (!modal) return;
+    setAgganciaUniversaleModal({ ...modal, busy: true });
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await agganciaUniversaleDaManutenzione({
+        manutenzioneId: modal.manutenzione.id,
+        target: { tipo: scelta.tipo, refId: scelta.refId, refKey: scelta.refKey },
+      });
+      if (!result.ok) {
+        throw new Error(result.error || "Aggancio non riuscito.");
+      }
+      await refreshData();
+      setNotice(
+        result.alreadyLinked
+          ? "Record gia' agganciato a questa manutenzione."
+          : "Record agganciato alla manutenzione.",
+      );
+      setAgganciaUniversaleModal(null);
+    } catch (attachError) {
+      console.error("Errore aggancio universale:", attachError);
+      setError(attachError instanceof Error ? attachError.message : "Aggancio non riuscito.");
+      setAgganciaUniversaleModal({ ...modal, busy: false });
+    }
+  }
+
   async function handleOpenCreaManutenzioneSegnalazione(item: NextAutistiSegnalazioneSectionItem) {
     const fallbackRecord = buildSegnalazioneWriterRecord(item, null, "media");
     let sourceRecord = fallbackRecord;
@@ -4742,6 +4828,7 @@ export default function NextManutenzioniPage() {
         segnalazioneItemId: modal.item.id,
         targa,
         categoria: categoriaTecnicaPerTarga(targa),
+        asseIniziale: deriveAsseInizialeFromOrigine(sourceRecord),
       });
       setCreaManutenzioneSegnalazioneModal(null);
       setError(null);
@@ -4800,6 +4887,7 @@ export default function NextManutenzioniPage() {
         sourceRecord: rawRecord,
         targa,
         categoria: categoriaTecnicaPerTarga(targa),
+        asseIniziale: deriveAsseInizialeFromOrigine(rawRecord),
       });
       setError(null);
       setNotice(null);
@@ -5029,9 +5117,6 @@ export default function NextManutenzioniPage() {
         ? item.descrizione
         : "(senza descrizione)";
     const menuId = `segnalazione-card:${item.id}`;
-    const meta = [formatSegnalazioneAutore(item), formatSegnalazioneDateLabel(item)].filter(
-      Boolean,
-    );
     const checkbox = opts?.checkbox;
     const menuItems = opts?.menuItems ?? [
       {
@@ -5064,13 +5149,12 @@ export default function NextManutenzioniPage() {
           )}
           <div className="man2-dafare-item__content">
             <div className="man2-dafare-item__title-row">
+              <span className="man2-dafare-item__targa">{normalizeText(item.targa ?? "") || "—"}</span>
               <span className="man2-dafare-item__title">{buildDescrizioneSnippet(title, 96)}</span>
             </div>
-            <div className="man2-dafare-item__meta">
-              <span>{normalizeText(item.targa ?? "")}</span>
-              {meta.map((entry) => (
-                <span key={entry}>{entry}</span>
-              ))}
+            <div className="man2-dafare-item__info">
+              Segnalato da <strong>{formatSegnalazioneAutore(item)}</strong>
+              {item.timestamp ? <span className="man2-dafare-item__info-when"> · {formatSegnalazioneDateLabel(item)}</span> : null}
             </div>
             <div className="man2-dafare-item__badges">
               <span className="man2-badge man2-dafare-badge--origin">Segnalazione</span>
@@ -5275,6 +5359,17 @@ export default function NextManutenzioniPage() {
                   }}
                 >
                   Modifica
+                </button>
+                <button
+                  type="button"
+                  className="man2-row-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setDaFareMenuId(null);
+                    void handleOpenAgganciaUniversale(item);
+                  }}
+                >
+                  Aggancia a…
                 </button>
                 <button
                   type="button"
@@ -7457,6 +7552,7 @@ export default function NextManutenzioniPage() {
               handleCompleteDaFare(fullRecord);
             }}
             onAgganciaEvento={(record) => setAggancioManutenzioneRecord(record as NextManutenzioniLegacyDatasetRecord)}
+            onAgganciaRecord={(record) => void handleOpenAgganciaUniversale(record as NextManutenzioniLegacyDatasetRecord)}
             onSganciaEvento={(record) => void handleSganciaManutenzione(record)}
           />
         </Fragment>
@@ -7474,6 +7570,17 @@ export default function NextManutenzioniPage() {
             if (!agganciaSegnalazioneModal.busy) setAgganciaSegnalazioneModal(null);
           }}
           onConfirm={(id) => void handleConfirmAgganciaSegnalazione(id)}
+        />
+      ) : null}
+      {agganciaUniversaleModal ? (
+        <NextAgganciaUniversaleModal
+          manutenzione={agganciaUniversaleModal.manutenzione}
+          candidati={agganciaUniversaleModal.candidati}
+          busy={agganciaUniversaleModal.busy}
+          onCancel={() => {
+            if (!agganciaUniversaleModal.busy) setAgganciaUniversaleModal(null);
+          }}
+          onConfirm={(scelta) => void handleConfirmAgganciaUniversale(scelta)}
         />
       ) : null}
       {proponiAgganciaModal ? (
@@ -7520,7 +7627,7 @@ export default function NextManutenzioniPage() {
         <NextModalGomme
           key={
             creaGommeOrigine
-              ? `origine:${creaGommeOrigine.origineTipo}:${creaGommeOrigine.targa}`
+              ? `origine:${creaGommeOrigine.origineTipo}:${creaGommeOrigine.targa}:${creaGommeOrigine.asseIniziale ?? "auto"}`
               : `${completionModalRecord?.id ?? "form"}:${gommeSelezioneDraft?.asseId ?? "nuova"}:${gommeSelezioneDraft?.numeroGomme ?? 0}`
           }
           open={gommeModalOpen}
@@ -7538,7 +7645,25 @@ export default function NextManutenzioniPage() {
           }
           initialData={
             creaGommeOrigine
-              ? null
+              ? creaGommeOrigine.asseIniziale
+                ? {
+                    // Pre-seleziona l'asse gia' indicato nell'origine: il modale
+                    // si apre su quell'asse (ruote complete) invece del primo di
+                    // default, evitando di salvare l'asse sbagliato.
+                    targa: creaGommeOrigine.targa,
+                    categoria: creaGommeOrigine.categoria ?? undefined,
+                    modalita: "ordinario",
+                    asseId: creaGommeOrigine.asseIniziale,
+                    asseLabel: null,
+                    assiIds: [creaGommeOrigine.asseIniziale],
+                    assiLabels: [],
+                    numeroGomme: 0,
+                    gommeIds: [],
+                    marca: "",
+                    km: "",
+                    selezioneGommeV2: null,
+                  }
+                : null
               : toModalGommeData(gommeSelezioneDraft, {
                   targa: completionModalRecord?.targa ?? activeTarga,
                   categoria: completionCategoriaTecnica ?? categoriaTecnica,

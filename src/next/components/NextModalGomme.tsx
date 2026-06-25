@@ -282,7 +282,14 @@ export default function NextModalGomme({
     return { dx, sx, all: [...dx, ...sx] };
   }, [config, geomKey]);
 
-  const initialAxisId = initialData?.asseId ?? config.assi[0]?.id ?? null;
+  // L'asse richiesto (da segnalazione/controllo) vale solo se esiste davvero
+  // nella config della categoria: altrimenti si ricade sul primo asse, cosi'
+  // il modale non si apre mai vuoto (categorie senza quell'asse, es. rimorchi).
+  const requestedAxisId =
+    initialData?.asseId && config.assi.some((item) => item.id === initialData.asseId)
+      ? initialData.asseId
+      : null;
+  const initialAxisId = requestedAxisId ?? config.assi[0]?.id ?? null;
   const initialSelectedIds = normalizeInitialIds(initialData);
   const [modalita, setModalita] = useState<NextModalitaCambioGomme>(initialData?.modalita ?? defaultModalita);
   const [selectedAxisId, setSelectedAxisId] = useState<string | null>(initialAxisId);

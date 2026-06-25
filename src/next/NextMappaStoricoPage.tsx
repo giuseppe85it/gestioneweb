@@ -70,6 +70,8 @@ type NextMappaStoricoPageProps = {
   onCompleteMaintenance?: (record: SelectedMaintenance) => void;
   onAgganciaEvento?: (record: SelectedMaintenance) => void;
   onSganciaEvento?: (record: SelectedMaintenance) => void;
+  // BUG 65 — aggancia universale: collega questa manutenzione a un altro record.
+  onAgganciaRecord?: (record: SelectedMaintenance) => void;
   onSelectMaintenance?: (recordId: string | null) => void;
   onOpenDocument?: (record: ManutenzioneLegacy) => void;
   onDownloadPdfSingle?: (record: ManutenzioneLegacy) => void;
@@ -803,6 +805,7 @@ export default function NextMappaStoricoPage({
   onCompleteMaintenance,
   onAgganciaEvento,
   onSganciaEvento,
+  onAgganciaRecord,
   onSelectMaintenance,
   onOpenDocument,
   onDownloadPdfSingle,
@@ -1413,6 +1416,17 @@ export default function NextMappaStoricoPage({
                       ) : null}
                     </div>
                     <div className="man2-detail-v2__actions">
+                      {selectedMaintenance && onAgganciaRecord ? (
+                        <button
+                          type="button"
+                          className="man2-detail-v2__action"
+                          onClick={() => {
+                            if (selectedMaintenance && onAgganciaRecord) onAgganciaRecord(selectedMaintenance);
+                          }}
+                        >
+                          Aggancia a record
+                        </button>
+                      ) : null}
                       {selectedMaintenance &&
                       (selectedMaintenance.stato === "daFare" || selectedMaintenance.stato === "programmata") &&
                       resolveDetailCategory(selectedMaintenance) === "gomme" ? (
