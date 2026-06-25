@@ -10,8 +10,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { readNextAnagraficheFlottaSnapshot } from "../nextAnagraficheFlottaDomain";
 import { readNextColleghiSnapshot } from "../domain/nextColleghiDomain";
 import {
+  buildNextDossierPath,
   buildNextSchedaAutistaPath,
-  buildNextSchedaMezzoPath,
 } from "../nextStructuralPaths";
 
 export type NextGlobalSearchKind = "autista" | "mezzo";
@@ -74,7 +74,7 @@ async function buildIndex(): Promise<GlobalSearchIndex> {
         id: mezzo.id || mezzo.targa,
         label: mezzo.targa,
         sublabel: sublabelParts.join(" · ") || "Mezzo",
-        targetPath: buildNextSchedaMezzoPath(mezzo.targa),
+        targetPath: buildNextDossierPath(mezzo.targa),
         searchTokens: toTokens([
           mezzo.targa,
           categoria,

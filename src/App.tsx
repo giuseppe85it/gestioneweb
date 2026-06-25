@@ -34,7 +34,6 @@ import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
 import NextDossierMezzoComandoPage from "./next/NextDossierMezzoComandoPage";
 import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
 import NextDossierListaPage from "./next/NextDossierListaPage";
-import NextSchedaMezzoPage from "./next/scheda/NextSchedaMezzoPage";
 import NextSchedaAutistaPage from "./next/scheda/NextSchedaAutistaPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
@@ -498,11 +497,13 @@ function App() {
             </NextRoleGuard>
           }
         />
+        {/* Scheda mezzo ritirata: la ricerca e i link aprono il Dossier (Centro di comando).
+            La route resta come redirect cosi' eventuali vecchi link non si rompono. */}
         <Route
           path="scheda-mezzo/:targa"
           element={
             <NextRoleGuard areaId="mezzi-dossier">
-              <NextSchedaMezzoPage />
+              <NextMezziDossierDetailLegacyRedirect />
             </NextRoleGuard>
           }
         />

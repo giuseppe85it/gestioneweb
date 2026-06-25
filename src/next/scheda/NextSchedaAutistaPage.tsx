@@ -16,7 +16,7 @@ import {
 } from "../domain/nextAutistiDomain";
 import { readNextUnifiedStorageDocument } from "../domain/nextUnifiedReadRegistryDomain";
 import {
-  buildNextSchedaMezzoPath,
+  buildNextDossierPath,
 } from "../nextStructuralPaths";
 import { buildNextPathWithRole, getNextRoleFromSearch } from "../nextAccess";
 import { toDisplay } from "../helpers/dateUnica";
@@ -450,7 +450,7 @@ function NextSchedaAutistaPage() {
   }, [data, activeTab]);
 
   const goToMezzo = (targa: string) => {
-    navigate(buildNextPathWithRole(buildNextSchedaMezzoPath(targa), role));
+    navigate(buildNextPathWithRole(buildNextDossierPath(targa), role));
   };
 
   return (
