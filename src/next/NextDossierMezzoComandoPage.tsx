@@ -81,6 +81,14 @@ const COMANDO_CSS = `
   .dc-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
   .dc-chip{font-size:12px;padding:3px 9px;border-radius:20px;background:#ffffff14;border:1px solid #ffffff26;color:#d8e2f0;}
   .dc-eyebrow{text-align:center;font-size:11px;letter-spacing:.06em;color:#9fb0c4;}
+  .dc-now{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center;}
+  .dc-now-tag{font-size:10px;font-weight:700;letter-spacing:.12em;color:#9fb0c4;text-transform:uppercase;}
+  .dc-state{display:inline-flex;flex-direction:column;align-items:center;gap:3px;padding:9px 18px;border-radius:14px;background:#ffffff12;border:1px solid #ffffff24;max-width:340px;}
+  .dc-state.on{background:#1f945722;border-color:#1f945766;}
+  .dc-state-main{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#eef2f8;line-height:1.15;}
+  .dc-state-dot{width:10px;height:10px;border-radius:50%;flex:none;background:#9fb0c4;}
+  .dc-state.on .dc-state-dot{background:#1f9457;box-shadow:0 0 0 3px #1f945733;}
+  .dc-state-sub{font-size:12px;color:#b9c4d4;line-height:1.25;max-width:300px;}
   .dc-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:440px;}
   .dc-btn{font-size:12.5px;padding:8px 12px;border-radius:7px;cursor:pointer;background:#ffffff12;border:1px solid #ffffff2b;color:#e7eef8;white-space:nowrap;}
   .dc-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
@@ -532,8 +540,8 @@ export default function NextDossierMezzoComandoPage() {
       inUso: false,
       titolo: "Non in uso",
       sub: dove
-        ? `fermo · ultimo luogo: ${dove.luogo} (${formatDateUI(dove.ts)})`
-        : "fermo · luogo non impostato",
+        ? `ultimo luogo: ${dove.luogo} (${formatDateUI(dove.ts)})`
+        : "luogo non impostato",
     };
   }, [sessioneAttiva, cronologia, targa]);
 
@@ -1073,11 +1081,14 @@ export default function NextDossierMezzoComandoPage() {
               </div>
             </div>
           </div>
-          <div className="dc-eyebrow">
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
-              <span style={{ width: 9, height: 9, borderRadius: "50%", flex: "none", background: statoAttuale.inUso ? "#39d98a" : "#9fb0c4" }} />
-              <span style={{ color: "#eef2f8", fontWeight: 600, letterSpacing: 0 }}>{statoAttuale.titolo}</span>
-              {statoAttuale.sub ? <span style={{ color: "#9fb0c4" }}>· {statoAttuale.sub}</span> : null}
+          <div className="dc-now">
+            <span className="dc-now-tag">Adesso</span>
+            <span className={`dc-state${statoAttuale.inUso ? " on" : ""}`}>
+              <span className="dc-state-main">
+                <span className="dc-state-dot" />
+                {statoAttuale.titolo}
+              </span>
+              {statoAttuale.sub ? <span className="dc-state-sub">{statoAttuale.sub}</span> : null}
             </span>
           </div>
           <div className="dc-actions">
