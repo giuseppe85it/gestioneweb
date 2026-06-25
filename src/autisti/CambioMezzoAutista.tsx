@@ -9,7 +9,7 @@ import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
-type Modalita = "motrice" | "rimorchio";
+type Modalita = "motrice" | "rimorchio" | "entrambi";
 
 type Luogo = "MEV" | "STABIO" | "ALTRO";
 
@@ -109,7 +109,9 @@ export default function CambioMezzoAutista() {
   }, []);
 
   const titolo = useMemo(() => {
-    return modalita === "rimorchio" ? "Cambio Rimorchio" : "Cambio Motrice";
+    if (modalita === "rimorchio") return "Cambio Rimorchio";
+    if (modalita === "motrice") return "Cambio Motrice";
+    return "Lascio Entrambi";
   }, [modalita]);
 
   function toggle(path: "generali.freni" | "generali.gomme" | "generali.perdite" | "specifiche.botole" | "specifiche.cinghie" | "specifiche.stecche" | "specifiche.tubi") {
@@ -153,9 +155,13 @@ export default function CambioMezzoAutista() {
       setErrore("Nessuna motrice attiva");
       return;
     }
+    if (modalita === "entrambi" && !cur.targaMotrice && !cur.targaRimorchio) {
+      setErrore("Nessun mezzo agganciato");
+      return;
+    }
 
     if (!luogo) {
-      setErrore("Seleziona il luogo");
+      setErrore("Scegli DOVE lasci il mezzo prima di confermare");
       return;
     }
     if (luogo === "ALTRO" && !luogoAltro.trim()) {
@@ -164,7 +170,8 @@ export default function CambioMezzoAutista() {
     }
 
     const now = Date.now();
-    const luogoFinale = luogo === "ALTRO" ? luogoAltro.trim() : luogo;
+    const luogoFinale =
+      luogo === "ALTRO" ? luogoAltro.trim().toUpperCase() : luogo;
 
     // =======================
     // SGANCIO RIMORCHIO
@@ -243,6 +250,33 @@ export default function CambioMezzoAutista() {
         return;
       }
 
+      // registra DOVE viene lasciata la motrice (evento con luogo)
+      await appendEventoOperativo({
+        id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: "CAMBIO_ASSETTO",
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        autista: cur.nomeAutista,
+        autistaNome: cur.nomeAutista,
+        prima: {
+          targaMotrice: prima.targaMotrice,
+          targaRimorchio: prima.targaRimorchio,
+          motrice: prima.targaMotrice,
+          rimorchio: prima.targaRimorchio,
+        },
+        dopo: {
+          targaMotrice: null,
+          targaRimorchio: cur.targaRimorchio || null,
+          motrice: null,
+          rimorchio: cur.targaRimorchio || null,
+        },
+        luogo: luogoFinale,
+        statoCarico: null,
+        condizioni: null,
+        source: "CambioMezzoAutista",
+      });
+
       // aggiorna locale: azzera motrice, mantieni rimorchio
       saveMezzoLocal({
         targaCamion: null,
@@ -253,6 +287,61 @@ export default function CambioMezzoAutista() {
 
       // vai a setup SOLO motrice (rimorchio bloccato)
       navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+      return;
+    }
+
+    // =======================
+    // LASCIO ENTRAMBI (motrice + rimorchio insieme, stesso luogo)
+    // =======================
+    if (modalita === "entrambi") {
+      const dopo = { targaMotrice: null, targaRimorchio: null };
+
+      const sessioneAggiornata = await updateSessioniAtomic((sessioni) => {
+        return sessioni.map((s) => {
+          const sessioneCorrente = s as Partial<SessioneAttiva>;
+          if (sessioneCorrente.badgeAutista !== cur.badgeAutista) return s;
+          return { ...sessioneCorrente, targaMotrice: null, targaRimorchio: null };
+        });
+      });
+      if (!sessioneAggiornata) {
+        setErrore("Impossibile aggiornare la sessione. Riprova.");
+        return;
+      }
+
+      await appendEventoOperativo({
+        id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: "CAMBIO_ASSETTO",
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        autista: cur.nomeAutista,
+        autistaNome: cur.nomeAutista,
+        prima: {
+          targaMotrice: prima.targaMotrice,
+          targaRimorchio: prima.targaRimorchio,
+          motrice: prima.targaMotrice,
+          rimorchio: prima.targaRimorchio,
+        },
+        dopo: {
+          targaMotrice: dopo.targaMotrice,
+          targaRimorchio: dopo.targaRimorchio,
+          motrice: dopo.targaMotrice,
+          rimorchio: dopo.targaRimorchio,
+        },
+        luogo: luogoFinale,
+        statoCarico,
+        condizioni,
+        source: "CambioMezzoAutista",
+      });
+
+      // aggiorna locale: azzera tutto, si riparte da un nuovo aggancio
+      saveMezzoLocal({
+        targaCamion: null,
+        targaRimorchio: null,
+        timestamp: now,
+      });
+
+      navigate("/autisti/setup-mezzo", { replace: true });
       return;
     }
   }
@@ -269,7 +358,9 @@ export default function CambioMezzoAutista() {
           Attuale:{" "}
          {modalita === "rimorchio"
   ? (getMezzoLocal()?.targaRimorchio ?? sessione.targaRimorchio) || "NESSUN RIMORCHIO"
-  : (getMezzoLocal()?.targaCamion ?? sessione.targaMotrice) || "NESSUNA MOTRICE"}
+  : modalita === "motrice"
+  ? (getMezzoLocal()?.targaCamion ?? sessione.targaMotrice) || "NESSUNA MOTRICE"
+  : `${(getMezzoLocal()?.targaCamion ?? sessione.targaMotrice) || "NESSUNA MOTRICE"} + ${(getMezzoLocal()?.targaRimorchio ?? sessione.targaRimorchio) || "NESSUN RIMORCHIO"}`}
 
         </div>
       )}
@@ -288,6 +379,13 @@ export default function CambioMezzoAutista() {
           type="button"
         >
           MOTRICE
+        </button>
+        <button
+          className={modalita === "entrambi" ? "active" : ""}
+          onClick={() => setModalita("entrambi")}
+          type="button"
+        >
+          ENTRAMBI
         </button>
       </div>
 
@@ -314,7 +412,7 @@ export default function CambioMezzoAutista() {
         />
       )}
 
-      {modalita === "rimorchio" && (
+      {(modalita === "rimorchio" || modalita === "entrambi") && (
         <>
           <div className="cm-subtitle" style={{ marginTop: 16 }}>
             Stato carico
@@ -364,7 +462,7 @@ export default function CambioMezzoAutista() {
         </label>
       </div>
 
-      {modalita === "rimorchio" && (
+      {(modalita === "rimorchio" || modalita === "entrambi") && (
         <>
           <div className="cm-subtitle" style={{ marginTop: 18 }}>
             Condizioni specifiche

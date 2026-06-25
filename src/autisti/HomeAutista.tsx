@@ -130,8 +130,8 @@ export default function HomeAutista() {
   const [gommeOpen, setGommeOpen] = useState(false);
   const [sgancioOpen, setSgancioOpen] = useState(false);
   const [sgancioLuogoPreset, setSgancioLuogoPreset] = useState<
-    "STABIO" | "MEV" | "ALTRO"
-  >("STABIO");
+    "STABIO" | "MEV" | "ALTRO" | ""
+  >("");
   const [sgancioLuogoAltro, setSgancioLuogoAltro] = useState("");
   const [sgancioErrore, setSgancioErrore] = useState<string | null>(null);
   const [sgancioLoading, setSgancioLoading] = useState(false);
@@ -352,6 +352,10 @@ export default function HomeAutista() {
 
   async function handleSgancioMotriceConfirm() {
     if (sgancioLoading) return;
+    if (!sgancioLuogoPreset) {
+      setSgancioErrore("Scegli DOVE lasci la motrice prima di confermare.");
+      return;
+    }
     if (sgancioLuogoPreset === "ALTRO" && !sgancioLuogoAltro.trim()) {
       setSgancioErrore("Inserisci dove lasci la motrice.");
       return;
@@ -427,7 +431,7 @@ export default function HomeAutista() {
       saveMezzoLocal(updatedLocal);
       setMezzo(updatedLocal);
       setSgancioOpen(false);
-      setSgancioLuogoPreset("STABIO");
+      setSgancioLuogoPreset("");
       setSgancioLuogoAltro("");
       navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
     } catch (err) {
@@ -591,7 +595,7 @@ export default function HomeAutista() {
                 className="autisti-button secondary"
                 onClick={() => {
                   setSgancioOpen(false);
-                  setSgancioLuogoPreset("STABIO");
+                  setSgancioLuogoPreset("");
                   setSgancioLuogoAltro("");
                   setSgancioErrore(null);
                 }}

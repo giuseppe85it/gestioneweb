@@ -1173,7 +1173,7 @@ function isRimorchioCategoria(categoria: string | null): boolean {
   return classifyMezzoCategoria(categoria) === "rimorchio";
 }
 
-function buildAssetLocationLists(
+export function buildAssetLocationLists(
   mezzi: D10MezzoItem[],
   sessioni: D10SessionItem[],
   eventi: D10StoricoEventoItem[]
@@ -1199,7 +1199,45 @@ function buildAssetLocationLists(
 
   eventi.forEach((evento, index) => {
     const timestamp = evento.timestamp ?? 0;
-    evento.targasCoinvolte.forEach((targa) => {
+    // Il luogo di un evento spetta SOLO alle targhe effettivamente LASCIATE
+    // (presenti "prima" e non piu' "dopo"): cosi' un rimorchio che resta
+    // agganciato non eredita il luogo dove e' stata lasciata la motrice, e una
+    // targa appena agganciata non eredita il luogo dell'altro mezzo.
+    // Eccezione: gli eventi "imposta luogo" scritti a mano dall'ufficio
+    // (prima === dopo, nessun movimento) valgono per la targa indicata.
+    const targheLasciate = new Set<string>();
+    if (
+      evento.targaMotricePrima &&
+      evento.targaMotricePrima !== evento.targaMotriceDopo
+    ) {
+      targheLasciate.add(evento.targaMotricePrima);
+    }
+    if (
+      evento.targaRimorchioPrima &&
+      evento.targaRimorchioPrima !== evento.targaRimorchioDopo
+    ) {
+      targheLasciate.add(evento.targaRimorchioPrima);
+    }
+    const targhePrese = new Set<string>();
+    if (
+      evento.targaMotriceDopo &&
+      evento.targaMotriceDopo !== evento.targaMotricePrima
+    ) {
+      targhePrese.add(evento.targaMotriceDopo);
+    }
+    if (
+      evento.targaRimorchioDopo &&
+      evento.targaRimorchioDopo !== evento.targaRimorchioPrima
+    ) {
+      targhePrese.add(evento.targaRimorchioDopo);
+    }
+    const targheConLuogo =
+      targheLasciate.size > 0
+        ? targheLasciate
+        : targhePrese.size === 0
+          ? new Set(evento.targasCoinvolte) // nessun movimento: imposta-luogo ufficio
+          : new Set<string>(); // solo aggancio: nessun luogo da attribuire
+    targheConLuogo.forEach((targa) => {
       const prev = ultimoLuogo.get(targa);
       if (
         !prev ||
