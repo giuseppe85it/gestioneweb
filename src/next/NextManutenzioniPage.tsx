@@ -1588,6 +1588,7 @@ export default function NextManutenzioniPage() {
   const [view, setView] = useState<ViewTab>("dafare");
   const [origineModalRecord, setOrigineModalRecord] = useState<NextManutenzioneOrigineRecord | null>(null);
   const [origineModalLoading, setOrigineModalLoading] = useState(false);
+  const [openingCollegamentoId, setOpeningCollegamentoId] = useState<string | null>(null);
   const [origineModalError, setOrigineModalError] = useState<string | null>(null);
   // Foto della segnalazione/controllo d'origine ingrandita (lightbox).
   const [origineFotoLightbox, setOrigineFotoLightbox] = useState<string | null>(null);
@@ -7015,6 +7016,7 @@ export default function NextManutenzioniPage() {
       setError("Targa non disponibile per aprire il documento collegato.");
       return;
     }
+    setOpeningCollegamentoId(refId);
     try {
       const snap = await readNextMezzoDocumentiSnapshot(targa);
       const docu = snap.items.find(
@@ -7028,6 +7030,8 @@ export default function NextManutenzioniPage() {
     } catch (openError) {
       console.error("Errore apertura documento collegato:", openError);
       setError("Apertura documento collegato non riuscita.");
+    } finally {
+      setOpeningCollegamentoId(null);
     }
   }
 
@@ -7054,8 +7058,9 @@ export default function NextManutenzioniPage() {
                     type="button"
                     className="man2-origine-btn"
                     onClick={() => void handleOpenCollegamentoDoc(entry.refId)}
+                    disabled={openingCollegamentoId === entry.refId}
                   >
-                    Apri PDF
+                    {openingCollegamentoId === entry.refId ? "Apro..." : "Apri PDF"}
                   </button>
                 </div>
               </div>

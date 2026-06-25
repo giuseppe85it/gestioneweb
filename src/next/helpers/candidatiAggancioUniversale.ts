@@ -53,7 +53,10 @@ function normalizeText(value: unknown): string {
 }
 
 function normalizeTargaUp(value: unknown): string {
-  return normalizeText(value).toUpperCase();
+  // Confronto robusto: oltre a maiuscolo+trim, rimuove separatori/spazi
+  // (es. "TI 178 456" e "TI-178456" combaciano con "TI178456"), cosi' il picker
+  // non risulta vuoto per differenze di formato targa.
+  return normalizeText(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function firstText(record: RawRecord, keys: readonly string[]): string {

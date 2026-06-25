@@ -220,18 +220,29 @@ function buildDescription(item: NextIADocumentiArchiveItem) {
   return "Documento senza descrizione";
 }
 
+// Un tipo scelto ESPLICITAMENTE dall'utente (via selettore al salvataggio o
+// "Cambia tipo") deve vincere sulle euristiche. "ALTRO"/vuoto NON contano come
+// scelta esplicita: restano euristici, per non riclassificare i documenti legacy
+// (es. fatture magazzino salvate senza tipo o come "altro").
+const EXPLICIT_TIPI = new Set(["FATTURA", "PREVENTIVO", "DDT", "LIBRETTO"]);
+
+function hasExplicitTipo(item: NextIADocumentiArchiveItem) {
+  return EXPLICIT_TIPI.has(normalizeType(item));
+}
+
 function isPreventivo(item: NextIADocumentiArchiveItem) {
   return normalizeType(item) === "PREVENTIVO";
 }
 
 function isDdt(item: NextIADocumentiArchiveItem) {
-  const type = normalizeType(item);
+  if (normalizeType(item) === "DDT") return true;
+  // Un altro tipo esplicito (es. l'utente ha scelto Fattura) batte l'euristica testo.
+  if (hasExplicitTipo(item)) return false;
   const archiveCategory = normalizeText(item.categoriaArchivio).toUpperCase();
   const numeroDocumento = normalizeText(item.numeroDocumento).toUpperCase();
   const testo = normalizeText(item.testo).toUpperCase();
 
   return (
-    type === "DDT" ||
     archiveCategory.includes("DDT") ||
     numeroDocumento.includes("DDT") ||
     testo.includes("DDT")
@@ -239,8 +250,10 @@ function isDdt(item: NextIADocumentiArchiveItem) {
 }
 
 function isFattura(item: NextIADocumentiArchiveItem) {
-  const type = normalizeType(item);
-  return type === "FATTURA" || (item.sourceKey === "@documenti_magazzino" && !isPreventivo(item));
+  if (normalizeType(item) === "FATTURA") return true;
+  // Un altro tipo esplicito batte la regola "magazzino = fattura".
+  if (hasExplicitTipo(item)) return false;
+  return item.sourceKey === "@documenti_magazzino" && !isPreventivo(item);
 }
 
 function isLibretto(item: NextIADocumentiArchiveItem) {
