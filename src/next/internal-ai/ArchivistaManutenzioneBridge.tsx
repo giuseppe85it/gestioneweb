@@ -15,6 +15,15 @@ import {
 } from "./ArchivistaArchiveClient";
 import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
 import { TIPO_DOCUMENTO_OPZIONI, mapTipoDocumentoToOption } from "./tipoDocumentoOptions";
+import {
+  NextAgganciaUniversaleModal,
+  type AgganciaUniversaleScelta,
+} from "../components/NextAgganciaUniversaleModal";
+import {
+  getCandidatiAggancioUniversale,
+  type CandidatoAggancioUniversale,
+} from "../helpers/candidatiAggancioUniversale";
+import { agganciaUniversaleDaManutenzione } from "../writers/agganciaUniversaleWriter";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { toDisplay } from "../helpers/dateUnica";
@@ -611,6 +620,10 @@ export default function ArchivistaManutenzioneBridge({
   const [maintenanceValidationError, setMaintenanceValidationError] = useState<string | null>(null);
   const [maintenanceSaveError, setMaintenanceSaveError] = useState<string | null>(null);
   const [createdMaintenanceId, setCreatedMaintenanceId] = useState<string | null>(null);
+  // BUG 65 Fase 5: aggancio del documento a una manutenzione esistente (no nuovo record).
+  const [linkStatus, setLinkStatus] = useState<"idle" | "picking" | "saving" | "done">("idle");
+  const [linkCandidati, setLinkCandidati] = useState<CandidatoAggancioUniversale[]>([]);
+  const [linkedToLabel, setLinkedToLabel] = useState<string | null>(null);
   const [showMateriali, setShowMateriali] = useState(true);
   const [showAvvisi, setShowAvvisi] = useState(false);
 
@@ -1091,6 +1104,51 @@ export default function ArchivistaManutenzioneBridge({
     setMaintenanceCreateStatus("declined");
     setMaintenanceValidationError(null);
     setMaintenanceSaveError(null);
+  };
+
+  // Fase 5: apre il picker delle manutenzioni esistenti della stessa targa,
+  // per agganciare il documento gia' archiviato senza creare un nuovo record.
+  const handleOpenLinkPicker = async () => {
+    const targa = normalizeText(maintenanceDraft?.targa) || normalizeText(analysis?.targa);
+    if (!targa) {
+      setArchiveError("Targa non disponibile per l'aggancio.");
+      return;
+    }
+    setLinkStatus("saving");
+    try {
+      const candidati = await getCandidatiAggancioUniversale({ targa });
+      setLinkCandidati(candidati.filter((entry) => entry.tipo === "manutenzione"));
+      setLinkStatus("picking");
+    } catch (error) {
+      setArchiveError(
+        error instanceof Error ? error.message : "Caricamento manutenzioni non riuscito.",
+      );
+      setLinkStatus("idle");
+    }
+  };
+
+  const handleConfirmLink = async (scelta: AgganciaUniversaleScelta) => {
+    const archiveId = normalizeText(archiveResult?.archiveId) || normalizeText(maintenanceDraft?.sourceDocumentId);
+    if (!archiveId) {
+      setArchiveError("Documento archiviato non disponibile per l'aggancio.");
+      return;
+    }
+    setLinkStatus("saving");
+    try {
+      const result = await agganciaUniversaleDaManutenzione({
+        manutenzioneId: scelta.refId,
+        target: { tipo: "documento", refId: archiveId, refKey: "@documenti_mezzi" },
+      });
+      if (!result.ok) {
+        throw new Error(result.error || "Aggancio non riuscito.");
+      }
+      const scelto = linkCandidati.find((entry) => entry.id === scelta.refId);
+      setLinkedToLabel(scelto ? `${scelto.descrizione} (${scelto.stato})` : scelta.refId);
+      setLinkStatus("done");
+    } catch (error) {
+      setArchiveError(error instanceof Error ? error.message : "Aggancio non riuscito.");
+      setLinkStatus("picking");
+    }
   };
 
   const handleCreateMaintenance = async () => {
@@ -1679,7 +1737,7 @@ export default function ArchivistaManutenzioneBridge({
               {archiveResult?.message || maintenanceStatusCopy}
             </p>
 
-            {maintenanceCreateStatus === "prompt" ? (
+            {maintenanceCreateStatus === "prompt" && linkStatus !== "done" ? (
               <div className="ia-archivista-bridge__success-bar">
                 <div>
                   <strong>Vuoi creare anche la manutenzione?</strong>
@@ -1696,6 +1754,15 @@ export default function ArchivistaManutenzioneBridge({
                   </button>
                   <button
                     type="button"
+                    className="ia-archivista-bridge__ghost-button"
+                    onClick={() => void handleOpenLinkPicker()}
+                    disabled={linkStatus === "saving"}
+                    title="Collega il documento a una manutenzione gia esistente, senza crearne una nuova"
+                  >
+                    {linkStatus === "saving" ? "Carico..." : "Aggancia a manutenzione esistente"}
+                  </button>
+                  <button
+                    type="button"
                     className="internal-ai-search__button ia-archivista__analyze-button iai-btn-conferma"
                     onClick={handleStartMaintenanceCreation}
                     title="Apri il form precompilato per creare la manutenzione"
@@ -1703,6 +1770,16 @@ export default function ArchivistaManutenzioneBridge({
                     Si, crea manutenzione
                   </button>
                 </div>
+              </div>
+            ) : null}
+
+            {linkStatus === "done" ? (
+              <div className="ia-archivista-bridge__callout is-highlight">
+                <strong>Documento agganciato</strong>
+                <p>
+                  Il documento e stato agganciato alla manutenzione esistente
+                  {linkedToLabel ? `: ${linkedToLabel}` : ""}. Nessuna nuova manutenzione creata.
+                </p>
               </div>
             ) : null}
 
@@ -1990,6 +2067,19 @@ export default function ArchivistaManutenzioneBridge({
             </section>
           ) : null}
         </>
+      ) : null}
+      {linkStatus === "picking" ? (
+        <NextAgganciaUniversaleModal
+          manutenzione={{
+            id: normalizeText(archiveResult?.archiveId),
+            targa: normalizeText(maintenanceDraft?.targa) || normalizeText(analysis?.targa),
+            categoria: null,
+            descrizione: "Documento da agganciare",
+          }}
+          candidati={linkCandidati}
+          onCancel={() => setLinkStatus("idle")}
+          onConfirm={(scelta) => void handleConfirmLink(scelta)}
+        />
       ) : null}
     </div>
   );

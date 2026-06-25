@@ -227,7 +227,9 @@ const NEXT_CONTROLLO_DELETE_WRITE_SCOPE = "next_controllo_delete_write_scope";
 // Path autorizzato: SOLO /next/centro-controllo (Archivio Storico interno). Le storage
 // keys includono @manutenzioni (writer T1 patch back-link su target stand-alone) +
 // @segnalazioni_autisti_tmp + @controlli_mezzo_autisti (patch sorgente).
-const CENTRO_CONTROLLO_LEGAME_ALLOWED_WRITE_PATHS = ["/next/centro-controllo", "/next/manutenzioni"] as const;
+// /next/ia/archivista incluso per BUG 65 Fase 5: l'aggancio "documento -> manutenzione"
+// scrive solo @manutenzioni (gia' in allowlist Archivista); il path lo rende esplicito.
+const CENTRO_CONTROLLO_LEGAME_ALLOWED_WRITE_PATHS = ["/next/centro-controllo", "/next/manutenzioni", "/next/ia/archivista"] as const;
 const CENTRO_CONTROLLO_LEGAME_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@manutenzioni",
   "@segnalazioni_autisti_tmp",
