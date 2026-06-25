@@ -51,6 +51,15 @@ import {
   readNextManutenzioniScadenzeSnapshot,
   type NextManutenzioneScadenzaItem,
 } from "./domain/nextManutenzioniScadenzeDomain";
+import NextMezzoCronologiaModal, {
+  describeEvento,
+} from "./components/NextMezzoCronologiaModal";
+import {
+  readNextSessioneAttivaPerTarga,
+  readNextSessioniStoricoPerTarga,
+  type NextSessioneAttiva,
+  type NextSessioneStoricoEvent,
+} from "./domain/nextSessioniStoricoDomain";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
 
@@ -382,6 +391,9 @@ export default function NextDossierMezzoComandoPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [cronologia, setCronologia] = useState<NextSessioneStoricoEvent[]>([]);
+  const [sessioneAttiva, setSessioneAttiva] = useState<NextSessioneAttiva | null>(null);
+  const [cronologiaOpen, setCronologiaOpen] = useState(false);
   const requestedSection = useMemo(() => location.hash.replace(/^#/, "").trim().toLowerCase(), [location.hash]);
 
   useEffect(() => {
@@ -460,7 +472,70 @@ export default function NextDossierMezzoComandoPage() {
     };
   }, [targa]);
 
+  // Conducenti: storia (chi ha preso/lasciato il mezzo) + sessione attiva (chi lo usa adesso).
+  // Sola lettura, non bloccante, per targa.
+  useEffect(() => {
+    let alive = true;
+    if (!targa) {
+      setCronologia([]);
+      setSessioneAttiva(null);
+      return undefined;
+    }
+    void (async () => {
+      try {
+        const [storico, attiva] = await Promise.all([
+          readNextSessioniStoricoPerTarga(targa),
+          readNextSessioneAttivaPerTarga(targa),
+        ]);
+        if (!alive) return;
+        setCronologia(storico);
+        setSessioneAttiva(attiva);
+      } catch {
+        if (!alive) return;
+        setCronologia([]);
+        setSessioneAttiva(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [targa]);
+
   useEffect(() => () => revokePdfPreviewUrl(pdfUrl), [pdfUrl]);
+
+  // Stato attuale del mezzo: chi lo usa ADESSO (sessione attiva) oppure, se fermo,
+  // dove e' stato lasciato l'ultima volta (stesso criterio delle card flotta:
+  // l'ultimo evento in cui la targa risulta "lasciata", con il suo luogo).
+  const statoAttuale = useMemo(() => {
+    const targaUp = String(targa ?? "").trim().toUpperCase();
+    if (sessioneAttiva) {
+      const autista = sessioneAttiva.nomeAutista || "Autista";
+      const dal = sessioneAttiva.timestamp ? formatDateTimeUI(sessioneAttiva.timestamp) : null;
+      return {
+        inUso: true,
+        titolo: `In uso · ${autista}`,
+        sub: dal ? `in viaggio dal ${dal}` : "sessione attiva",
+      };
+    }
+    let dove: { luogo: string; ts: number } | null = null;
+    for (const ev of cronologia) {
+      const lasciataMotrice =
+        ev.prima.targaMotrice === targaUp && ev.dopo.targaMotrice !== targaUp;
+      const lasciataRimorchio =
+        ev.prima.targaRimorchio === targaUp && ev.dopo.targaRimorchio !== targaUp;
+      if ((lasciataMotrice || lasciataRimorchio) && ev.luogo) {
+        dove = { luogo: ev.luogo, ts: ev.timestamp };
+        break;
+      }
+    }
+    return {
+      inUso: false,
+      titolo: "Non in uso",
+      sub: dove
+        ? `fermo · ultimo luogo: ${dove.luogo} (${formatDateUI(dove.ts)})`
+        : "fermo · luogo non impostato",
+    };
+  }, [sessioneAttiva, cronologia, targa]);
 
   useEffect(() => {
     if (requestedSection !== "preventivi" || !legacy) return undefined;
@@ -1050,6 +1125,17 @@ export default function NextDossierMezzoComandoPage() {
 
           <div className="dc-rightcol">
             <div className="dc-card">
+              <h2>Conducenti <span className="count">{cronologia.length > 5 ? <button className="dc-link" type="button" onClick={() => setCronologiaOpen(true)}>Mostra tutto ({cronologia.length})</button> : "storia"}</span></h2>
+              <div className="dc-row"><span className="dc-dot" style={{ background: statoAttuale.inUso ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">{statoAttuale.titolo}</div><div className="dc-sub">{statoAttuale.sub}</div></div></div>
+              {cronologia.length === 0 ? (
+                <div className="dc-empty">Nessuna sessione storica registrata per questo mezzo.</div>
+              ) : (
+                cronologia.slice(0, 5).map((ev) => (
+                  <div className="dc-row" key={ev.id}><div className="dc-main"><div className="dc-title">{describeEvento(ev, mezzo.targa)}</div><div className="dc-sub">{formatDateTimeUI(ev.timestamp)}{ev.luogo ? ` · ${ev.luogo}` : ""}</div></div></div>
+                ))
+              )}
+            </div>
+            <div className="dc-card">
               <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
               {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
             </div>
@@ -1149,6 +1235,8 @@ export default function NextDossierMezzoComandoPage() {
           </div>
         ) : null,
       )}
+
+      <NextMezzoCronologiaModal open={cronologiaOpen} targa={targa ?? null} onClose={() => setCronologiaOpen(false)} />
 
       <PdfPreviewModal open={pdfOpen} title={pdfTitle} pdfUrl={pdfUrl} fileName={pdfFileName} hint={pdfHint} onClose={closePdf} onShare={onSharePdf} onCopyLink={async () => setPdfHint((await copyTextToClipboard(buildShareMessage())) ? "Testo copiato." : "Copia non disponibile.")} onWhatsApp={() => window.open(buildWhatsAppShareUrl(buildShareMessage()), "_blank", "noopener,noreferrer")} />
     </div>

@@ -36,7 +36,7 @@ function describeAssetto(
   return parts.length > 0 ? parts.join(" + ") : "";
 }
 
-function describeEvento(
+export function describeEvento(
   evento: NextSessioneStoricoEvent,
   targaContext: string | null,
 ): string {

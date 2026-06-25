@@ -1,6 +1,7 @@
 import { getItemSync } from "../../utils/storageSync";
 
 const STORICO_EVENTI_KEY = "@storico_eventi_operativi";
+const SESSIONI_ATTIVE_KEY = "@autisti_sessione_attive";
 
 export type NextSessioneStoricoEventTipo =
   | "INIZIO_ASSETTO"
@@ -112,4 +113,45 @@ export async function readNextSessioniStoricoPerTarga(
       b.timestamp - a.timestamp,
   );
   return events;
+}
+
+// Sessione attiva (chi sta usando il mezzo ADESSO) per una targa: legge la lista
+// @autisti_sessione_attive e trova la sessione con motrice o rimorchio = targa.
+// Sola lettura, nessuna scrittura.
+export type NextSessioneAttiva = {
+  nomeAutista: string | null;
+  badgeAutista: string | null;
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
+  timestamp: number | null;
+};
+
+export async function readNextSessioneAttivaPerTarga(
+  targa: string,
+): Promise<NextSessioneAttiva | null> {
+  const targaUp: string = String(targa ?? "").trim().toUpperCase();
+  if (!targaUp) return null;
+  const raw: unknown = await getItemSync(SESSIONI_ATTIVE_KEY);
+  const list: unknown[] = Array.isArray(raw)
+    ? raw
+    : isRecord(raw) && Array.isArray(raw.value)
+      ? raw.value
+      : [];
+  for (const entry of list) {
+    if (!isRecord(entry)) continue;
+    const motrice: string | null =
+      toTargaUpper(entry.targaMotrice) ?? toTargaUpper(entry.targaCamion) ?? toTargaUpper(entry.motrice);
+    const rimorchio: string | null =
+      toTargaUpper(entry.targaRimorchio) ?? toTargaUpper(entry.rimorchio);
+    if (motrice === targaUp || rimorchio === targaUp) {
+      return {
+        nomeAutista: toText(entry.nomeAutista) ?? toText(entry.autistaNome) ?? toText(entry.autista),
+        badgeAutista: toText(entry.badgeAutista) ?? toText(entry.badge),
+        targaMotrice: motrice,
+        targaRimorchio: rimorchio,
+        timestamp: toNumber(entry.timestamp),
+      };
+    }
+  }
+  return null;
 }
