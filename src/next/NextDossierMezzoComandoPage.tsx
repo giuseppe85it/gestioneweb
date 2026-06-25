@@ -1127,16 +1127,11 @@ export default function NextDossierMezzoComandoPage() {
               {allerte ? (
                 <div className="dc-row"><span className="dc-dot" style={{ background: allerte.controlliKoAperti.length === 0 ? "#cfd6e0" : "#cf3b3b" }} /><div className="dc-main"><div className="dc-title">Controlli KO aperti</div><div className="dc-sub">{allerte.controlliKoAperti.length === 0 ? "nessuno" : allerte.controlliKoAperti.slice(0, 2).map((item) => item.titolo).join(" · ")}</div></div><div className="dc-right" style={{ color: allerte.controlliKoAperti.length === 0 ? "#1f9457" : "#cf3b3b" }}>{allerte.controlliKoAperti.length}</div></div>
               ) : null}
-              <div className="dc-sub2">Lavori da fare</div>
-              {lavoriDaFare.length === 0 ? <div className="dc-empty">Nessun lavoro da fare.</div> : lavoriDaFare.slice(0, 5).map((item) => (
-                <div className="dc-row click" key={item.id} onClick={() => openManutenzioneWorkItem(item)}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.descrizione}</div><div className="dc-sub">{item.dettagli || formatDossierDate(item.dataInserimento)}</div></div></div>
-              ))}
             </div>
             <div className="dc-card">
               <h2>Costi (riepilogo)</h2>
               <div className="dc-row"><div className="dc-main"><div className="dc-title">Fatture</div><div className="dc-sub">{fatture.length} documenti</div></div><div className="dc-right">CHF {fattureTotals.chf.toFixed(2)}{fattureTotals.eur > 0 ? ` · EUR ${fattureTotals.eur.toFixed(2)}` : ""}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} ?` : ""}</div></div>
               <div className="dc-row"><div className="dc-main"><div className="dc-title">Preventivi</div><div className="dc-sub">{preventivi.length} documenti</div></div><div className="dc-right">CHF {preventiviTotals.chf.toFixed(2)}{preventiviTotals.eur > 0 ? ` · EUR ${preventiviTotals.eur.toFixed(2)}` : ""}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} ?` : ""}</div></div>
-              <div className="dc-row"><div className="dc-main"><div className="dc-title">Costo anno {costoAnno.year}</div>{costoAnno.unknown > 0 ? <div className="dc-sub" style={{ color: "#b07a12" }}>{costoAnno.unknown} senza valuta</div> : null}</div><div className="dc-right">CHF {costoAnno.chf.toFixed(2)}{costoAnno.eur > 0 ? ` · EUR ${costoAnno.eur.toFixed(2)}` : ""}</div></div>
             </div>
           </div>
 
@@ -1221,12 +1216,12 @@ export default function NextDossierMezzoComandoPage() {
           </div>
 
           <section className="dc-card" ref={preventiviSectionRef} id="preventivi">
-            <h2>Preventivi <span className="count">CHF {preventiviTotals.chf.toFixed(2)} · EUR {preventiviTotals.eur.toFixed(2)}{preventiviTotals.unknown > 0 ? ` · ${preventiviTotals.unknown} da verif.` : ""}</span></h2>
+            <h2>Preventivi</h2>
             {renderDocs(preventivi, "preventivo")}
           </section>
 
           <div className="dc-card">
-            <h2>Fatture <span className="count">CHF {fattureTotals.chf.toFixed(2)} · EUR {fattureTotals.eur.toFixed(2)}{fattureTotals.unknown > 0 ? ` · ${fattureTotals.unknown} da verif.` : ""} <button className="dc-link" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>storico &#8594;</button></span></h2>
+            <h2>Fatture <span className="count"><button className="dc-link" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>storico &#8594;</button></span></h2>
             {renderDocs(fatture, "fattura")}
           </div>
         </div>
