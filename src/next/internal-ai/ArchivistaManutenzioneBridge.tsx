@@ -14,6 +14,7 @@ import {
   type ArchivistaDuplicateChoice,
 } from "./ArchivistaArchiveClient";
 import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
+import { TIPO_DOCUMENTO_OPZIONI, mapTipoDocumentoToOption } from "./tipoDocumentoOptions";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { toDisplay } from "../helpers/dateUnica";
@@ -591,6 +592,8 @@ export default function ArchivistaManutenzioneBridge({
   const [previewScale, setPreviewScale] = useState(1);
   const [previewRotation, setPreviewRotation] = useState(0);
   const [currency, setCurrency] = useState<"EUR" | "CHF">("EUR");
+  // null = usa la proposta dell'IA; valorizzato = scelta esplicita dell'utente.
+  const [selectedTipoDocumento, setSelectedTipoDocumento] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysis, setAnalysis] = useState<ArchivistaManutenzioneAnalysis | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -765,6 +768,9 @@ export default function ArchivistaManutenzioneBridge({
     setAnalysis(null);
     setAnalysisStatus("idle");
     setErrorMessage(null);
+    // Riallinea il tipo alla nuova proposta IA: la scelta manuale non deve
+    // restare "appiccicata" al documento successivo.
+    setSelectedTipoDocumento(null);
     setDuplicateStatus("idle");
     setDuplicateCandidates([]);
     setSelectedDuplicateId("");
@@ -1035,7 +1041,8 @@ export default function ArchivistaManutenzioneBridge({
         duplicateCandidate: duplicateCandidateSelected,
         archivistaAnalysis: analysis,
         basePayload: {
-          tipoDocumento: analysis.tipoDocumento,
+          // Tipo scelto dall'utente al salvataggio (default = proposta IA mappata).
+          tipoDocumento: selectedTipoDocumento ?? mapTipoDocumentoToOption(analysis.tipoDocumento),
           fornitore: analysis.fornitore || null,
           numeroDocumento: analysis.numeroDocumento || null,
           dataDocumento: analysis.dataDocumento || null,
@@ -1332,9 +1339,29 @@ export default function ArchivistaManutenzioneBridge({
           </div>
 
           <dl className="ia-archivista-bridge__step-facts">
-            <div className={!normalizeText(analysis.tipoDocumento) ? "is-missing" : ""}>
+            <div>
               <dt>Tipo</dt>
-              <dd>{formatValue(analysis.tipoDocumento)}</dd>
+              <dd>
+                <select
+                  className="ia-archivista-bridge__compact-select iai-field-select"
+                  value={selectedTipoDocumento ?? mapTipoDocumentoToOption(analysis.tipoDocumento)}
+                  onChange={(event) => setSelectedTipoDocumento(event.target.value)}
+                  title="Scegli come archiviare il documento: l'IA propone, decidi tu"
+                >
+                  {TIPO_DOCUMENTO_OPZIONI.map((opzione) => (
+                    <option key={opzione.value} value={opzione.value}>
+                      {opzione.label}
+                    </option>
+                  ))}
+                </select>
+                {normalizeText(analysis.tipoDocumento) ? (
+                  <span
+                    style={{ display: "block", fontSize: 11, color: "#64748b", marginTop: 2 }}
+                  >
+                    Proposta IA: {formatValue(analysis.tipoDocumento)}
+                  </span>
+                ) : null}
+              </dd>
             </div>
             <div className={!normalizeText(analysis.numeroDocumento) ? "is-missing" : ""}>
               <dt>Numero</dt>
