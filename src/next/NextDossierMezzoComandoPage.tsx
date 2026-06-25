@@ -1073,7 +1073,13 @@ export default function NextDossierMezzoComandoPage() {
               </div>
             </div>
           </div>
-          <div className="dc-eyebrow">DOSSIER MEZZO · CENTRO DI COMANDO</div>
+          <div className="dc-eyebrow">
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", flex: "none", background: statoAttuale.inUso ? "#39d98a" : "#9fb0c4" }} />
+              <span style={{ color: "#eef2f8", fontWeight: 600, letterSpacing: 0 }}>{statoAttuale.titolo}</span>
+              {statoAttuale.sub ? <span style={{ color: "#9fb0c4" }}>· {statoAttuale.sub}</span> : null}
+            </span>
+          </div>
           <div className="dc-actions">
             <button className="dc-btn" type="button" onClick={back}>&#8249; Mezzi</button>
             <button className="dc-btn" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi economica</button>
@@ -1125,12 +1131,11 @@ export default function NextDossierMezzoComandoPage() {
 
           <div className="dc-rightcol">
             <div className="dc-card">
-              <h2>Conducenti <span className="count">{cronologia.length > 5 ? <button className="dc-link" type="button" onClick={() => setCronologiaOpen(true)}>Mostra tutto ({cronologia.length})</button> : "storia"}</span></h2>
-              <div className="dc-row"><span className="dc-dot" style={{ background: statoAttuale.inUso ? "#1f9457" : "#cfd6e0" }} /><div className="dc-main"><div className="dc-title">{statoAttuale.titolo}</div><div className="dc-sub">{statoAttuale.sub}</div></div></div>
+              <h2>Conducenti <span className="count">{cronologia.length > 4 ? <button className="dc-link" type="button" onClick={() => setCronologiaOpen(true)}>Mostra tutto ({cronologia.length})</button> : "storia"}</span></h2>
               {cronologia.length === 0 ? (
                 <div className="dc-empty">Nessuna sessione storica registrata per questo mezzo.</div>
               ) : (
-                cronologia.slice(0, 5).map((ev) => (
+                cronologia.slice(0, 4).map((ev) => (
                   <div className="dc-row" key={ev.id}><div className="dc-main"><div className="dc-title">{describeEvento(ev, mezzo.targa)}</div><div className="dc-sub">{formatDateTimeUI(ev.timestamp)}{ev.luogo ? ` · ${ev.luogo}` : ""}</div></div></div>
                 ))
               )}
