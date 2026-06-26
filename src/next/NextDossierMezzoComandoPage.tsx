@@ -128,7 +128,7 @@ const COMANDO_CSS = `
   .dc-band h2{font-size:15px;font-weight:700;margin:0;white-space:nowrap;}
   .dc-band .sub{font-size:12.5px;color:var(--faint);}
   .dc-band .ln{flex:1;height:1px;background:#cfd6e0;}
-  .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch;}
+  .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
   .dc-span2{grid-column:1 / -1;}
   .dc-tech{display:grid;grid-template-columns:repeat(4,1fr);}
   .dc-techb{padding:13px 16px;border-right:1px solid #eef1f5;}
@@ -1103,6 +1103,18 @@ export default function NextDossierMezzoComandoPage() {
           <div className="dc-kpi"><span className="top" style={{ background: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }} /><div className="lab">Manutenzioni da fare</div><div className="val" style={{ color: lavoriDaFare.length > 0 ? "#c9820a" : "#1f9457" }}>{lavoriDaFare.length}</div><div className="sub">lavori in attesa</div></div>
         </div>
 
+        <div className="dc-card" style={{ marginBottom: 14 }}>
+          <h2><span>Dati tecnici</span><button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
+          <div className="dc-tech">
+            {techBlocks.map((block) => (
+              <div className="dc-techb" key={block.title}>
+                <h3>{block.title}</h3>
+                <ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="dc-grid">
           <div className="dc-leftcol">
             <div className="dc-card">
@@ -1146,17 +1158,6 @@ export default function NextDossierMezzoComandoPage() {
               <h2>Storia del mezzo <span className="count">{timeline.length > 10 ? <button className="dc-link" type="button" onClick={() => setModal("timeline")}>Mostra tutto ({timeline.length})</button> : "ultimi eventi"}</span></h2>
               {timeline.length === 0 ? <div className="dc-empty">Nessun evento da mostrare.</div> : renderTimelineList(timeline.slice(0, 10))}
             </div>
-            <div className="dc-card">
-              <h2><span>Dati tecnici</span><button className="dc-link" type="button" onClick={() => setShowEditModal(true)}>+ Modifica</button></h2>
-              <div className="dc-tech">
-                {techBlocks.map((block) => (
-                  <div className="dc-techb" key={block.title}>
-                    <h3>{block.title}</h3>
-                    <ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1179,7 +1180,7 @@ export default function NextDossierMezzoComandoPage() {
             </div>
           </div>
 
-          <div className="dc-card dc-span2">
+          <div className="dc-card">
             <h2>Gomme <span className="count">per asse + straordinari</span></h2>
             <div className="dc-sub2">Stato gomme per asse</div>
             {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => {
