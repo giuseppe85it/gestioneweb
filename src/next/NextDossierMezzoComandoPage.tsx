@@ -129,6 +129,9 @@ const COMANDO_CSS = `
   .dc-band .sub{font-size:12.5px;color:var(--faint);}
   .dc-band .ln{flex:1;height:1px;background:#cfd6e0;}
   .dc-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
+  .dc-card-click{cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .12s;}
+  .dc-card-click:hover{border-color:var(--accent);box-shadow:0 6px 18px rgba(47,107,214,.16);transform:translateY(-1px);}
+  .dc-card-click>h2 .count{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-weight:600;}
   .dc-span2{grid-column:1 / -1;}
   .dc-tech{display:grid;grid-template-columns:repeat(4,1fr);}
   .dc-techb{padding:13px 16px;border-right:1px solid #eef1f5;}
@@ -386,7 +389,7 @@ export default function NextDossierMezzoComandoPage() {
   const [scadenzeMezzo, setScadenzeMezzo] = useState<NextManutenzioneScadenzaItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto" | "timeline">(null);
+  const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto" | "timeline" | "gomme">(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -1180,19 +1183,20 @@ export default function NextDossierMezzoComandoPage() {
             </div>
           </div>
 
-          <div className="dc-card">
-            <h2>Gomme <span className="count">per asse + straordinari</span></h2>
-            <div className="dc-sub2">Stato gomme per asse</div>
-            {legacy.gommePerAsse.length === 0 ? <div className="dc-empty">Nessun cambio gomme ordinario strutturato disponibile.</div> : legacy.gommePerAsse.map((item) => {
-              const setPrecedente = formatGommeSetPrecedente(item);
-              return (
-                <div className="dc-row" key={item.asseId}><div className="dc-main"><div className="dc-title">{item.asseLabel}</div><div className="dc-sub">{formatGommePerAsseMeta(item)}</div>{setPrecedente ? <div className="dc-sub">{setPrecedente}</div> : null}</div></div>
-              );
-            })}
-            <div className="dc-sub2">Eventi gomme straordinari</div>
-            {legacy.gommeStraordinarie.length === 0 ? <div className="dc-empty">Nessun evento gomme straordinario registrato.</div> : legacy.gommeStraordinarie.slice(0, 5).map((item) => (
-              <div className="dc-row" key={item.sourceMaintenanceId}><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{item.motivo || "Evento gomme straordinario"}</div><div className="dc-sub">{formatGommeStraordinarieMeta(item)}</div></div></div>
-            ))}
+          <div className="dc-card dc-card-click" role="button" tabIndex={0} onClick={() => setModal("gomme")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal("gomme"); } }}>
+            <h2>Gomme <span className="count">espandi &#8250;</span></h2>
+            {legacy.gommePerAsse.length === 0 && legacy.gommeStraordinarie.length === 0 ? (
+              <div className="dc-empty">Nessun cambio gomme registrato.</div>
+            ) : (
+              <>
+                {legacy.gommePerAsse.slice(0, 3).map((item) => (
+                  <div className="dc-row" key={item.asseId}><div className="dc-main"><div className="dc-title">{item.asseLabel}</div><div className="dc-sub">{formatGommePerAsseMeta(item)}</div></div></div>
+                ))}
+                {legacy.gommeStraordinarie.length > 0 ? (
+                  <div className="dc-row"><span className="dc-dot" style={{ background: "#c9820a" }} /><div className="dc-main"><div className="dc-title">{legacy.gommeStraordinarie.length} {legacy.gommeStraordinarie.length === 1 ? "evento straordinario" : "eventi straordinari"}</div></div></div>
+                ) : null}
+              </>
+            )}
           </div>
 
           <div className="dc-card dc-span2">
@@ -1232,6 +1236,31 @@ export default function NextDossierMezzoComandoPage() {
           </div>
         ) : null,
       )}
+
+      {modal === "gomme" ? (
+        <div className="dossier-modal-overlay" onClick={() => setModal(null)}>
+          <div className="dossier-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="dossier-modal-header">
+              <h2>Gomme - {mezzo.targa}</h2>
+              <button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button>
+            </div>
+            <div className="dossier-modal-body">
+              <h3 style={{ margin: "0 0 8px", fontSize: 13, color: "#475467" }}>Stato gomme per asse</h3>
+              {legacy.gommePerAsse.length === 0 ? <p>Nessun cambio gomme ordinario strutturato disponibile.</p> : (
+                <ul className="dossier-list">{legacy.gommePerAsse.map((item) => { const setPrecedente = formatGommeSetPrecedente(item); return (
+                  <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span>{setPrecedente ? <span>{setPrecedente}</span> : null}</div></li>
+                ); })}</ul>
+              )}
+              <h3 style={{ margin: "16px 0 8px", fontSize: 13, color: "#475467" }}>Eventi gomme straordinari</h3>
+              {legacy.gommeStraordinarie.length === 0 ? <p>Nessun evento gomme straordinario registrato.</p> : (
+                <ul className="dossier-list">{legacy.gommeStraordinarie.map((item) => (
+                  <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>
+                ))}</ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <NextMezzoCronologiaModal open={cronologiaOpen} targa={targa ?? null} onClose={() => setCronologiaOpen(false)} />
 
