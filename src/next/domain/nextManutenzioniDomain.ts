@@ -92,6 +92,12 @@ export type NextMaintenanceHistoryItem = {
   descrizione: string | null;
   tipo: string | null;
   km: number | null;
+  /**
+   * Km del mezzo al momento della SEGNALAZIONE (non del cambio). Distinto da `km`,
+   * che resta il km dell'intervento/cambio effettivo. Vedi memoria di dominio
+   * "km segnalazione vs km cambio gomme".
+   */
+  kmSegnalazione?: number | null;
   ore: number | null;
   eseguitoLabel: string | null;
   fornitoreLabel: string | null;
@@ -150,6 +156,8 @@ export type NextManutenzioniLegacyDatasetRecord = {
   id: string;
   targa: string;
   km: number | null;
+  /** Km al momento della segnalazione (≠ km del cambio). Vedi `NextMaintenanceHistoryItem.kmSegnalazione`. */
+  kmSegnalazione?: number | null;
   ore: number | null;
   sottotipo: SottoTipo | null;
   descrizione: string;
@@ -736,6 +744,7 @@ function toLegacyDatasetRecord(
     normalizeOptionalText(raw.data) ??
     formatRecordDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
   const kmCambio = normalizeNumber(raw.km);
+  const kmSegnalazione = normalizeNumber(raw.kmSegnalazione);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, data, kmCambio);
   const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
   const gommeSelezione = sanitizeGommeSelezione(raw.gommeSelezione);
@@ -777,6 +786,7 @@ function toLegacyDatasetRecord(
     id: buildHistoryId(raw, index, targa),
     targa,
     km: kmCambio,
+    ...(kmSegnalazione !== null ? { kmSegnalazione } : {}),
     ore: normalizeNumber(raw.ore),
     sottotipo: tipo === "compressore" ? normalizeLegacySottotipo(raw.sottotipo) : null,
     descrizione,
@@ -855,6 +865,7 @@ function toHistoryItem(
   const materiali = Array.isArray(raw.materiali) ? raw.materiali : [];
   const dataRaw = normalizeOptionalText(raw.data);
   const km = normalizeNumber(raw.km);
+  const kmSegnalazione = normalizeNumber(raw.kmSegnalazione);
   const stato = resolveLegacyManutenzioneStato(raw);
   const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, dataRaw, km);
@@ -887,6 +898,7 @@ function toHistoryItem(
     descrizione,
     tipo: normalizeOptionalText(raw.tipo),
     km,
+    ...(kmSegnalazione !== null ? { kmSegnalazione } : {}),
     ore: normalizeNumber(raw.ore),
     eseguitoLabel: normalizeOptionalText(raw.eseguito),
     fornitoreLabel:

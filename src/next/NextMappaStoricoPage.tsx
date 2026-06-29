@@ -1556,12 +1556,23 @@ export default function NextMappaStoricoPage({
                   ) : null}
 
                   {selectedRecord.km != null ||
+                  selectedRecord.kmSegnalazione != null ||
                   selectedDeltaKm != null ||
                   (selectedRecord.importo != null && Number.isFinite(selectedRecord.importo)) ? (
                     <div className="man2-detail-v2__kpi-strip">
+                      {selectedRecord.kmSegnalazione != null ? (
+                        <div className="man2-detail-v2__kpi-item">
+                          <span className="man2-detail-v2__kpi-label">Km segnalazione</span>
+                          <strong className="man2-detail-v2__kpi-value">
+                            {`${formatNumberOptional(selectedRecord.kmSegnalazione)} km`}
+                          </strong>
+                        </div>
+                      ) : null}
                       {selectedRecord.km != null ? (
                         <div className="man2-detail-v2__kpi-item">
-                          <span className="man2-detail-v2__kpi-label">Km intervento</span>
+                          <span className="man2-detail-v2__kpi-label">
+                            {selectedRecord.kmSegnalazione != null ? "Km cambio" : "Km intervento"}
+                          </span>
                           <strong className="man2-detail-v2__kpi-value">
                             {`${formatNumberOptional(selectedRecord.km)} km`}
                           </strong>
@@ -1675,8 +1686,14 @@ export default function NextMappaStoricoPage({
                                 <span>Data intervento</span>
                                 <strong>{formatMaintenanceDateDisplay(selectedRecord.dataEsecuzione ?? selectedRecord.data)}</strong>
                               </div>
+                              {selectedRecord.kmSegnalazione != null ? (
+                                <div className="man2-detail-v2__gomme-data-card">
+                                  <span>Km segnalazione</span>
+                                  <strong>{`${formatNumberOptional(selectedRecord.kmSegnalazione)} km`}</strong>
+                                </div>
+                              ) : null}
                               <div className="man2-detail-v2__gomme-data-card">
-                                <span>Km mezzo</span>
+                                <span>{selectedRecord.kmSegnalazione != null ? "Km cambio" : "Km mezzo"}</span>
                                 <strong>{selectedRecord.km != null ? `${formatNumberOptional(selectedRecord.km)} km` : "non indicati"}</strong>
                               </div>
                               <div className="man2-detail-v2__gomme-data-card">
