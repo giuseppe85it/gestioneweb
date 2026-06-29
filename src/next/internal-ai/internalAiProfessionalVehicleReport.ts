@@ -205,9 +205,11 @@ function buildConfig(categoria?: string | null): ConfigGomme {
   if (cat.includes("biga")) {
     return {
       tipoLabel: "Rimorchio 2 assi",
+      // Rimorchi/semirimorchi = gomme single (2 per asse), come da disegno ruote
+      // in wheels.ts (1 punto per lato per asse). NON gemellate: non mettere 4.
       assi: [
-        { id: "asse1", label: "1 asse", wheelsCount: 4 },
-        { id: "asse2", label: "2 asse", wheelsCount: 4 },
+        { id: "asse1", label: "1 asse", wheelsCount: 2 },
+        { id: "asse2", label: "2 asse", wheelsCount: 2 },
       ],
     };
   }
@@ -221,10 +223,12 @@ function buildConfig(categoria?: string | null): ConfigGomme {
   ) {
     return {
       tipoLabel: "Rimorchio 3 assi",
+      // Rimorchi/semirimorchi (cisterna, pianale, vasca, centina, porta silo) =
+      // gomme single, 2 per asse, come da disegno ruote in wheels.ts. NON 4.
       assi: [
-        { id: "asse1", label: "1 asse", wheelsCount: 4 },
-        { id: "asse2", label: "2 asse", wheelsCount: 4 },
-        { id: "asse3", label: "3 asse", wheelsCount: 4 },
+        { id: "asse1", label: "1 asse", wheelsCount: 2 },
+        { id: "asse2", label: "2 asse", wheelsCount: 2 },
+        { id: "asse3", label: "3 asse", wheelsCount: 2 },
       ],
     };
   }
