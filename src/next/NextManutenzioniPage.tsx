@@ -1099,7 +1099,9 @@ function deriveUiSubtype(item: {
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   assiCoinvolti?: string[];
   rabboccoOlio?: boolean | null;
+  interventoSubtype?: InterventoUiSubtype | null;
 }): InterventoUiSubtype {
+  // Le gomme strutturate (dati reali) hanno sempre la precedenza.
   if (item.gommeInterventoTipo === "straordinario") return "gomme-straordinario";
   if (
     item.gommeInterventoTipo === "ordinario" ||
@@ -1108,6 +1110,10 @@ function deriveUiSubtype(item: {
   ) {
     return "gomme";
   }
+
+  // Poi il sottotipo persistito (scelto nel form): è la verità per
+  // riparazione/tagliando/olio/altro. Solo come fallback si deduce dalla descrizione.
+  if (item.interventoSubtype) return item.interventoSubtype;
 
   // NB: il flag `rabboccoOlio` NON implica più il tipo "olio": una manutenzione di
   // altro tipo (es. vaschetta) può includere un rabbocco accessorio senza perdere il
@@ -3401,6 +3407,9 @@ export default function NextManutenzioniPage() {
         // record smette di essere "olio", il flag venga azzerato (no residui).
         rabboccoOlio: isOlioEvento,
         olioLitri: isOlioEvento ? olioLitriValue : null,
+        // Persisto il sottotipo scelto, così alla riapertura non viene più dedotto
+        // (e degradato a "altro") dalla descrizione.
+        interventoSubtype: uiSubtype,
         ...(sourceRecord
           ? {
               // Per le manutenzioni ESEGUITE la data di esecuzione deve seguire

@@ -194,6 +194,8 @@ export type NextManutenzioniLegacyDatasetRecord = {
   // Usati dalla scheda "Consumo olio" per il calcolo litri/1000 km. Vedi nextManutenzioniOlioDomain.
   rabboccoOlio?: boolean | null;
   olioLitri?: number | null;
+  // Sottotipo di intervento scelto nel form, persistito (non più dedotto dalla descrizione).
+  interventoSubtype?: NextInterventoSubtype | null;
   sourceDocumentFileUrl?: string | null;
   sourceDocumentCurrency?: "EUR" | "CHF" | "UNKNOWN" | null;
   // BUG 65 — "Aggancia universale": collegamenti additivi e bidirezionali verso
@@ -323,6 +325,7 @@ export type NextManutenzioneBusinessSavePayload = {
   importo?: number | null;
   rabboccoOlio?: boolean | null;
   olioLitri?: number | null;
+  interventoSubtype?: NextInterventoSubtype | null;
   collegamenti?: NextLegameUniversaleRef[];
 };
 
@@ -709,6 +712,41 @@ function optionalUrgenzaField(raw: RawRecord): NextManutenzioneUrgenza | null | 
   return sanitizeManutenzioneUrgenza(raw.urgenza);
 }
 
+// Sottotipo di intervento scelto nel form (persistito, così non viene più
+// ridotto a "altro" deducendolo dalla descrizione). Stessi valori di
+// InterventoUiSubtype in NextManutenzioniPage.
+export type NextInterventoSubtype =
+  | "tagliando"
+  | "tagliando completo"
+  | "gomme"
+  | "gomme-straordinario"
+  | "olio"
+  | "riparazione"
+  | "altro";
+
+function sanitizeInterventoSubtype(value: unknown): NextInterventoSubtype | null {
+  const normalized = normalizeLowerText(value);
+  if (
+    normalized === "tagliando" ||
+    normalized === "tagliando completo" ||
+    normalized === "gomme" ||
+    normalized === "gomme-straordinario" ||
+    normalized === "olio" ||
+    normalized === "riparazione" ||
+    normalized === "altro"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function optionalInterventoSubtypeField(
+  raw: RawRecord,
+): NextInterventoSubtype | null | undefined {
+  if (!hasOwnField(raw, "interventoSubtype")) return undefined;
+  return sanitizeInterventoSubtype(raw.interventoSubtype);
+}
+
 async function readSourceDocumentMetadataByIds(sourceDocumentIds: string[]): Promise<
   Map<string, { fileUrl: string | null; currency: "EUR" | "CHF" | "UNKNOWN" | null }>
 > {
@@ -790,6 +828,7 @@ function toLegacyDatasetRecord(
   const chiusuraRefId = optionalTextField(raw, "chiusuraRefId");
   const chiusuraData = optionalNumberField(raw, "chiusuraData");
   const gruppoManutenzioneId = optionalTextField(raw, "gruppoManutenzioneId");
+  const interventoSubtype = optionalInterventoSubtypeField(raw);
   const collegamenti = readCollegamenti(raw);
 
   return {
@@ -827,6 +866,7 @@ function toLegacyDatasetRecord(
     importo: normalizeNumber(raw.importo),
     ...(raw.rabboccoOlio === true ? { rabboccoOlio: true } : {}),
     ...(normalizeNumber(raw.olioLitri) !== null ? { olioLitri: normalizeNumber(raw.olioLitri) } : {}),
+    ...(interventoSubtype !== undefined ? { interventoSubtype } : {}),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario ? { gommeStraordinario } : {}),
     ...(gommeSelezione ? { gommeSelezione } : {}),
@@ -1245,6 +1285,9 @@ function sanitizeBusinessRecord(
   const olioLitri = hasOwnField(payloadRaw, "olioLitri")
     ? normalizeNumber(payload.olioLitri)
     : undefined;
+  const interventoSubtype = hasOwnField(payloadRaw, "interventoSubtype")
+    ? sanitizeInterventoSubtype(payload.interventoSubtype)
+    : undefined;
   return {
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
@@ -1272,6 +1315,7 @@ function sanitizeBusinessRecord(
     importo: typeof payload.importo === "number" ? payload.importo : null,
     ...(rabboccoOlio !== undefined ? { rabboccoOlio } : {}),
     ...(olioLitri !== undefined ? { olioLitri } : {}),
+    ...(interventoSubtype !== undefined ? { interventoSubtype } : {}),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
     ...(gommeSelezione && gommeInterventoTipo ? { gommeSelezione } : {}),
