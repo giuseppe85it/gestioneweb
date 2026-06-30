@@ -526,6 +526,13 @@ const URGENZA_BADGE_STYLE: Record<NextManutenzioneUrgenza, CSSProperties> = {
   },
 };
 
+// Badge "Collegata (N)": indigo tenue, in linea con la tavolozza pastello degli
+// altri badge della card; tenuto come costante come gli altri stili badge.
+const COLLEGATA_BADGE_STYLE: CSSProperties = {
+  background: "#e0e7ff",
+  color: "#3730a3",
+};
+
 function resolveMaintenanceStato(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneStato {
   if (
     item.stato === "programmata" ||
@@ -5398,6 +5405,15 @@ export default function NextManutenzioniPage() {
               </span>
               <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
               <span className="man2-badge man2-dafare-badge--origin">{formatMaintenanceOrigineLabel(origine)}</span>
+              {item.collegamenti && item.collegamenti.length > 0 ? (
+                <span
+                  className="man2-badge"
+                  style={COLLEGATA_BADGE_STYLE}
+                  title="Questa manutenzione è collegata ad altre voci (es. lo stesso problema ricorrente, o un documento). Aprila per vederne i collegamenti."
+                >
+                  Collegata ({item.collegamenti.length})
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -5432,6 +5448,7 @@ export default function NextManutenzioniPage() {
                         type="button"
                         className="man2-row-menu__item"
                         role="menuitem"
+                        title="Aggiunge le manutenzioni selezionate (solo quelle «Da fare») a questo gruppo già esistente dello stesso mezzo."
                         onClick={() => {
                           setDaFareMenuId(null);
                           void handleAggiungiAGruppoManutenzioni(gruppo.gruppoId, gruppo.targa, selectedIds);
@@ -5446,6 +5463,7 @@ export default function NextManutenzioniPage() {
                     type="button"
                     className="man2-row-menu__item"
                     role="menuitem"
+                    title="Unisce in un'unica scheda più lavori ANCORA DA FARE dello stesso mezzo. Le manutenzioni già chiuse non si possono raggruppare: per quelle usa «Collega…». Seleziona almeno due voci con le caselle."
                     onClick={() => {
                       setDaFareMenuId(null);
                       void handleCreaGruppoManutenzioni(item.targa, selectedIds);
@@ -5482,6 +5500,7 @@ export default function NextManutenzioniPage() {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
+                  title="Lega questa manutenzione a un'altra, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo)."
                   onClick={() => {
                     setDaFareMenuId(null);
                     void handleOpenAgganciaUniversale(item);
@@ -7532,11 +7551,18 @@ export default function NextManutenzioniPage() {
             <p className="man2-screen-copy">
               Consumo calcolato dai rabbocchi registrati (litri ogni 1.000 km, tra un
               rabbocco e il successivo). Servono almeno due rabbocchi con i KM per avere
-              il consumo.
+              il consumo. Hai fatto un rabbocco durante un altro intervento (anche già
+              chiuso)? Registralo qui come evento a sé con la data di quel giorno; se
+              vuoi, poi collegalo all'intervento con il comando «Collega…».
               {activeKey ? " Mostro solo il mezzo selezionato." : " Mostro tutti i mezzi con rabbocchi."}
             </p>
           </div>
-          <button type="button" className="man2-btn man2-btn--primary" onClick={startNuovoRabboccoOlio}>
+          <button
+            type="button"
+            className="man2-btn man2-btn--primary"
+            title="Registra un rabbocco d'olio come evento a sé, con la sua data. Entra nel calcolo del Consumo olio. Va bene anche se l'olio è stato fatto durante un intervento per altro motivo."
+            onClick={startNuovoRabboccoOlio}
+          >
             + Rabbocco olio
           </button>
         </div>

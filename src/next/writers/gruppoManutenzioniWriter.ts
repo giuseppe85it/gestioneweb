@@ -118,7 +118,11 @@ function assertSelectedRecords(args: {
     if (!hasRealRecordId(record)) return { ok: false, error: `ID manutenzione reale mancante: ${id || "(senza id)"}` };
     const stato = recordStato(record);
     if (stato !== "daFare") {
-      return { ok: false, error: `Manutenzione non raggruppabile (${stato || "stato mancante"}): ${id}` };
+      return {
+        ok: false,
+        error:
+          "Questa manutenzione non è «Da fare» e non si può raggruppare. Per legarla allo stesso problema (anche se è già chiusa) usa il comando «Collega…».",
+      };
     }
     const recordTargaValue = recordTarga(record);
     if (!recordTargaValue) return { ok: false, error: `Targa mancante sulla manutenzione ${id}.` };
@@ -147,7 +151,11 @@ function assertGroupTarget(
     if (!hasRealRecordId(record)) return { ok: false, error: `ID manutenzione reale mancante nel gruppo: ${id || "(senza id)"}` };
     const stato = recordStato(record);
     if (stato !== "daFare") {
-      return { ok: false, error: "Gruppo target non valido: contiene manutenzioni non da fare." };
+      return {
+        ok: false,
+        error:
+          "Il gruppo contiene una manutenzione già chiusa: il raggruppamento vale solo per i lavori «Da fare». Per legare manutenzioni di stati diversi usa il comando «Collega…».",
+      };
     }
     const targa = recordTarga(record);
     if (!targa) return { ok: false, error: "Targa gruppo non disponibile." };
