@@ -2242,6 +2242,21 @@
   resize: vertical;
 }
 
+/* Riga con checkbox + testo (es. "anche un rabbocco olio"): allinea spunta e
+   testo senza stili inline e tiene la checkbox a dimensione normale (la regola
+   generale .man2-field input la stirerebbe a tutta larghezza). */
+.man2-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.man2-check-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
 .man2-tagliando-box {
   display: flex;
   flex-direction: column;

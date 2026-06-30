@@ -6482,10 +6482,8 @@ export default function NextManutenzioniPage() {
 
           {uiSubtype !== "olio" ? (
             <section className="man2-form-block">
-              <label
-                className="man2-field__label"
-                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-              >
+              <div className="man2-section-title">Rabbocco olio</div>
+              <label className="man2-field__label man2-check-label">
                 <input
                   type="checkbox"
                   checked={rabboccoOlioManuale}
@@ -6494,7 +6492,7 @@ export default function NextManutenzioniPage() {
                 In questo intervento è stato fatto anche un rabbocco olio
               </label>
               {rabboccoOlioManuale ? (
-                <div className="man2-field" style={{ marginTop: 10 }}>
+                <div className="man2-field">
                   <label className="man2-field__label">Olio rabboccato (litri)</label>
                   <input
                     type="number"
@@ -6505,12 +6503,12 @@ export default function NextManutenzioniPage() {
                     onChange={(event) => setOlioLitriInput(event.target.value)}
                     placeholder="Es. 11"
                   />
-                  <small style={{ color: "#64748b", display: "block", marginTop: 4 }}>
+                  <p className="man2-form-copy">
                     Compila il campo <strong>KM</strong> qui sopra con i km del mezzo a questo
                     intervento: senza km il rabbocco non entra nel calcolo del Consumo olio.
                     (Non vengono presi in automatico dall&apos;ultimo rifornimento.) Non cambia
                     il tipo della manutenzione.
-                  </small>
+                  </p>
                 </div>
               ) : null}
             </section>
@@ -6530,11 +6528,11 @@ export default function NextManutenzioniPage() {
                   onChange={(event) => setOlioLitriInput(event.target.value)}
                   placeholder="Es. 2"
                 />
-                <small style={{ color: "#64748b", display: "block", marginTop: 4 }}>
+                <p className="man2-form-copy">
                   Compila qui SOLO se non scarichi l'olio dal magazzino. Per scalare il
                   magazzino, aggiungi "OLIO MOTORE" nei Materiali qui sotto: i litri per il
                   consumo verranno presi automaticamente da lì. Servono anche i KM.
-                </small>
+                </p>
               </div>
             </section>
           ) : null}
