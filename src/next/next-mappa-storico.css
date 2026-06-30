@@ -2877,6 +2877,9 @@
   padding: 8px;
   border-bottom: 1px solid #ede7d9;
   vertical-align: top;
+  /* Le celle ereditavano il testo chiaro del tema (crema su crema = invisibile):
+     colore scuro esplicito come le intestazioni, così le righe si leggono. */
+  color: #1a1a1a;
 }
 
 .man2-pdf-list__table tbody tr:last-child td,
