@@ -1557,6 +1557,12 @@
 .man2-field select,
 .man2-field textarea {
   width: 100%;
+  /* border-box: con width:100% + padding evita che il campo sfori il contenitore
+     (causava la barra di scorrimento orizzontale nei modali stretti).
+     font-family: inherit così la textarea usa il font dell'app, non il monospace
+     di default del browser. */
+  box-sizing: border-box;
+  font-family: inherit;
   border-radius: 18px;
   border: 1px solid rgba(231, 224, 212, 0.2);
   background: #f3eee4;
