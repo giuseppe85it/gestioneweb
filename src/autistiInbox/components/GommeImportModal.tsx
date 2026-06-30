@@ -3,9 +3,11 @@ import {
   getNextAssiOptionsForCategoria,
   type NextManutenzioneAsseCoinvoltoId,
 } from "../../next/domain/nextManutenzioniGommeDomain";
-import type {
-  GommeImportInterventoTipo,
-  GommeImportManutenzioneInput,
+import {
+  findManutenzioniGommeDaCompletare,
+  type GommeImportInterventoTipo,
+  type GommeImportManutenzioneInput,
+  type ManutenzioneDaCompletare,
 } from "../../next/writers/nextGommeImportManutenzioneWriter";
 
 type Props = {
@@ -74,6 +76,10 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
   const [numeroGomme, setNumeroGomme] = useState("");
   const [interventoTipo, setInterventoTipo] = useState<GommeImportInterventoTipo>("ordinario");
   const [motivo, setMotivo] = useState("");
+  // BUG doppione gomme — scelta esplicita: completare una manutenzione esistente
+  // (segnalazione/da fare) invece di crearne una nuova. Default = crea nuovo.
+  const [candidati, setCandidati] = useState<ManutenzioneDaCompletare[]>([]);
+  const [completaTargetId, setCompletaTargetId] = useState<string | null>(null);
 
   const sumWheels = (ids: NextManutenzioneAsseCoinvoltoId[]) =>
     ids.reduce((tot, id) => tot + (wheelsById.get(id) ?? 0), 0);
@@ -96,7 +102,35 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
     setNumeroGomme(wheels > 0 ? String(wheels) : "");
     setInterventoTipo("ordinario");
     setMotivo("");
+    setCompletaTargetId(null);
   }, [evento, assiOptions, wheelsById]);
+
+  // Cerca manutenzioni gomme aperte per questo mezzo+asse: se esistono, il modale
+  // OFFRE all'admin di completarle invece di creare un doppione (scelta esplicita).
+  useEffect(() => {
+    if (!evento || assi.length === 0) {
+      setCandidati([]);
+      return;
+    }
+    let active = true;
+    findManutenzioniGommeDaCompletare(targa, assi)
+      .then((found) => {
+        if (active) setCandidati(found);
+      })
+      .catch(() => {
+        if (active) setCandidati([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [evento, assi, targa]);
+
+  // Se l'opzione scelta non e' piu' tra i candidati, torna a "crea nuovo".
+  useEffect(() => {
+    if (completaTargetId && !candidati.some((c) => c.id === completaTargetId)) {
+      setCompletaTargetId(null);
+    }
+  }, [candidati, completaTargetId]);
 
   if (!evento) return null;
 
@@ -141,6 +175,7 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
       interventoTipo,
       motivo: motivo.trim() || null,
       segnalatoDa: autistaNome ? String(autistaNome) : null,
+      completaManutenzioneId: completaTargetId,
     });
   };
 
@@ -221,6 +256,68 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
                   })}
                 </div>
               )}
+
+              {candidati.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: "block" }}>
+                    Esiste già una manutenzione aperta per questo mezzo e asse — scegli:
+                  </label>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      margin: "6px 0 4px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={completaTargetId === null ? "edit aa-crow-primary" : "edit"}
+                      onClick={() => setCompletaTargetId(null)}
+                      style={{ textAlign: "left" }}
+                    >
+                      {completaTargetId === null ? "◉ " : "○ "}
+                      Crea un NUOVO record (cambio separato)
+                    </button>
+                    {candidati.map((cand) => {
+                      const meta = [
+                        cand.data,
+                        cand.km != null ? `segnalato a ${cand.km} km` : null,
+                        cand.stato,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <button
+                          type="button"
+                          key={cand.id}
+                          className={completaTargetId === cand.id ? "edit aa-crow-primary" : "edit"}
+                          onClick={() => setCompletaTargetId(cand.id)}
+                          style={{ textAlign: "left" }}
+                        >
+                          {completaTargetId === cand.id ? "◉ " : "○ "}
+                          Completa questa: {cand.descrizione.slice(0, 70)}
+                          {cand.descrizione.length > 70 ? "…" : ""}
+                          {meta ? (
+                            <span
+                              className="aa-td-sub"
+                              style={{ display: "block", fontWeight: 400 }}
+                            >
+                              {meta}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {completaTargetId ? (
+                    <p className="aa-td-sub" style={{ margin: "2px 0 0" }}>
+                      Verrà completata la manutenzione scelta: il km di prima resta come
+                      «km segnalazione», questi km diventano il «km cambio». Niente doppione.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="admin-edit-grid" style={{ marginTop: 12 }}>
                 <label>

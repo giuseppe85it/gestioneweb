@@ -1909,7 +1909,7 @@ export default function AutistiAdmin() {
       const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [];
       setGommeRaw(list);
       setGommeImportEvent(null);
-      window.alert("Manutenzione gomme creata nello storico.");
+      window.alert("Manutenzione gomme registrata nello storico.");
     } finally {
       setGommeImportSaving(false);
     }
