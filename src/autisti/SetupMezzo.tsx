@@ -5,11 +5,19 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./SetupMezzo.css";
 import { getItemSync, setItemSync, updateSessioniAtomic } from "../utils/storageSync";
-import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
+import {
+  clearLastHandledRevokedAt,
+  getAutistaLocal,
+  getMezzoLocal,
+  removeAutistaLocal,
+  removeMezzoLocal,
+  saveMezzoLocal,
+} from "./autistiStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+const KEY_PERMESSI_AUTISTI = "@permessi_autisti";
 
 type Mode = "rimorchio" | "motrice" | "none";
 
@@ -114,6 +122,20 @@ async function appendEventoOperativo(evt: EventoOperativo) {
   await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
 }
 
+// Visibilità "Oggi non guido": stesso criterio della Home per il modulo "orari-note"
+// (AUTISTI_MODULI in HomeAutista.tsx). orari-note ha defaultOn=false: se il badge non
+// ha un permesso esplicito a true, il pulsante resta nascosto.
+function isOrariNoteAttivo(raw: unknown, badge: string): boolean {
+  const badgeKey = String(badge ?? "").trim();
+  if (!badgeKey || !raw || typeof raw !== "object") return false;
+  const permessi = (raw as { permessi?: unknown }).permessi;
+  if (!permessi || typeof permessi !== "object" || Array.isArray(permessi)) return false;
+  const perBadge = (permessi as Record<string, unknown>)[badgeKey];
+  if (!perBadge || typeof perBadge !== "object" || Array.isArray(perBadge)) return false;
+  const value = (perBadge as Record<string, unknown>)["orari-note"];
+  return typeof value === "boolean" ? value : false;
+}
+
 export default function SetupMezzo() {
   const nav = useNavigate();
   const loc = useLocation();
@@ -140,6 +162,7 @@ export default function SetupMezzo() {
 
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState("");
+  const [orariAttivo, setOrariAttivo] = useState(false);
 
   const [mezziAll, setMezziAll] = useState<Mezzo[]>([]);
   const [sessioni, setSessioni] = useState<SessioneAttiva[]>([]);
@@ -209,6 +232,13 @@ export default function SetupMezzo() {
         const sessArr: SessioneAttiva[] = Array.isArray(rawSess) ? rawSess : [];
         if (!alive) return;
         setSessioni(sessArr);
+
+        // Permesso modulo orari per il badge: decide se mostrare "Oggi non guido".
+        // Letto qui (insieme a mezzi/sessioni) così il pulsante è già pronto quando
+        // la schermata appare, senza lampeggi.
+        const rawPermessi = await getItemSync(KEY_PERMESSI_AUTISTI);
+        if (!alive) return;
+        setOrariAttivo(isOrariNoteAttivo(rawPermessi, autista?.badge ?? ""));
 
         // preselect coerente
         const preCamion = fmtTarga(
@@ -464,6 +494,25 @@ export default function SetupMezzo() {
     nav(`/autisti/controllo?target=${encodeURIComponent(target)}`, { replace: true });
   }
 
+  // Logout dalla "Selezione mezzo": un autista senza assetto (es. a casa/ferie) deve
+  // poter uscire senza scegliere un mezzo. Replica il logout della Home (rimuove la
+  // sessione del badge e pulisce il locale), ma procede SEMPRE fino a /autisti/login:
+  // qui di norma non c'è un mezzo attivo da liberare, quindi non blocco l'uscita su un
+  // eventuale errore di aggiornamento sessione.
+  async function handleLogout() {
+    const a = getAutistaLocal();
+    if (a?.badge) {
+      await updateSessioniAtomic((currentValue) => {
+        const current = currentValue as SessioneAttiva[];
+        return current.filter((s) => s?.badgeAutista !== a.badge);
+      });
+      clearLastHandledRevokedAt(a.badge);
+    }
+    removeAutistaLocal();
+    removeMezzoLocal();
+    nav("/autisti/login", { replace: true });
+  }
+
   if (loading) {
     return (
       <div className="setup-container">
@@ -474,7 +523,34 @@ export default function SetupMezzo() {
 
   return (
     <div className="setup-container">
+      {autista && (
+        <div className="autisti-header">
+          <div>
+            <div className="autisti-sub">
+              {autista.nome} - Badge {autista.badge}
+            </div>
+          </div>
+          <button className="autisti-logout" onClick={handleLogout}>
+            Esci
+          </button>
+        </div>
+      )}
+
       <h1 className="setup-title">Selezione Mezzo</h1>
+
+      {orariAttivo && (
+        <div style={{ marginBottom: 18 }}>
+          <button
+            className="autisti-button secondary"
+            onClick={() => nav("/autisti/orari-note")}
+          >
+            Oggi non guido
+          </button>
+          <div className="targa-note">
+            Sei a casa, in ferie o in malattia? Vai al registro orari senza scegliere un mezzo.
+          </div>
+        </div>
+      )}
 
       <h2 className="setup-subtitle">Motrice / Trattore</h2>
 

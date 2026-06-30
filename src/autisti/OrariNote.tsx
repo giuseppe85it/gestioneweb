@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./OrariNote.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { getAutistaLocal } from "../autisti/autistiStorage";
+import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 import {
   addDaysISO,
   aggregatiMese,
@@ -235,6 +235,14 @@ export default function OrariNote() {
     const d = new Date(year, month1, 1);
     setYear(d.getFullYear());
     setMonth1(d.getMonth() + 1);
+  }
+
+  // "Indietro": chi ha un mezzo agganciato torna alla Home; chi è entrato senza
+  // mezzo (autista a casa/ferie/malattia via "Oggi non guido") torna alla selezione
+  // mezzo, perché la Home pretende un mezzo e lo rimbalzerebbe a setup-mezzo.
+  function goBack() {
+    const hasMezzo = Boolean(getMezzoLocal()?.targaCamion);
+    navigate(hasMezzo ? "/autisti/home" : "/autisti/setup-mezzo");
   }
 
   // Ogni modifica al form invalida il feedback "Salvato" (INT3): il tasto torna "Salva".
@@ -551,7 +559,7 @@ export default function OrariNote() {
             {saving ? "Salvataggio…" : savedClean ? "Salvato ✓" : "Salva"}
           </button>
         )}
-        <button className="autisti-button secondary" onClick={() => navigate("/autisti/home")}>
+        <button className="autisti-button secondary" onClick={goBack}>
           Indietro
         </button>
 
@@ -800,7 +808,7 @@ export default function OrariNote() {
       )}
       {meseChiuso && <div className="orari-chiuso-banner">Cartellino CHIUSO.</div>}
 
-      <button className="autisti-button secondary" onClick={() => navigate("/autisti/home")}>
+      <button className="autisti-button secondary" onClick={goBack}>
         Indietro
       </button>
 
