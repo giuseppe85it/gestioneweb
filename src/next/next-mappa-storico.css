@@ -1854,6 +1854,24 @@
   color: #171717;
 }
 
+/* Bottoni colorati dei modali (primario verde / danger rosso). Gli stessi valori
+   stavano in next-manutenzioni.css, che però non è importato: qui sono nel foglio
+   attivo, così i bottoni dei modali ricevono davvero il colore. */
+.man2-btn--primary {
+  background: #166534;
+  border-color: #166534;
+  color: #fff;
+}
+.man2-btn--danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+.man2-btn--danger:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
 .man2-last-list,
 .man2-pdf-results,
 .man2-detail-history-list {
@@ -2924,7 +2942,9 @@
   overflow: auto;
   padding: 24px 24px 28px;
   border-radius: 24px;
-  background: #fffdf8;
+  /* Stesso crema-gradiente dei pannelli della pagina (man2-form-shell), così il
+     modale non stona col resto della UI Manutenzioni. */
+  background: linear-gradient(180deg, #f4efe6, #ece5d8);
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
 }
 
