@@ -25,6 +25,7 @@ import {
   type NextManutenzioniLegacyMaterialRecord,
   type NextManutenzioniMezzoOption,
 } from "./domain/nextManutenzioniDomain";
+import { buildConsumoOlioPerMezzo } from "./domain/nextManutenzioniOlioDomain";
 import {
   buildNextGommeStraordinarieEvents,
   buildNextGommeStateByAsse,
@@ -133,7 +134,7 @@ import "../pages/Manutenzioni.css";
 type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 type PdfSubjectSelection = TipoVoce | "tutti";
 type SottoTipo = "motrice" | "trattore";
-type ViewTab = "dafare" | "dashboard" | "form" | "pdf" | "mappa";
+type ViewTab = "dafare" | "dashboard" | "consumo-olio" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
 type PdfStatusScope = "tutte" | "solo-da-fare" | "solo-eseguite";
 type DaFareUrgenzaFilter = "tutte" | NextManutenzioneUrgenza;
@@ -143,6 +144,7 @@ type InterventoUiSubtype =
   | "tagliando completo"
   | "gomme"
   | "gomme-straordinario"
+  | "olio"
   | "riparazione"
   | "altro";
 
@@ -153,6 +155,7 @@ type CompletionSaveOverrides = {
   completionFornitore?: string;
   completionData?: string;
   completionKm?: string;
+  completionOlioLitri?: string;
 };
 
 const COMPLETION_KM_REQUIRED_CATEGORIES = new Set([
@@ -1073,11 +1076,22 @@ function isGommeStraordinarieKeyword(value: string) {
   );
 }
 
+// Riconosce se un materiale di magazzino è olio MOTORE (per derivare i litri del
+// rabbocco dal materiale scaricato). Esclude olio compressore/idraulico/cambio e i
+// filtri olio, che non sono rabbocchi motore.
+function isMaterialeOlioMotore(label: string): boolean {
+  const n = String(label ?? "").toUpperCase();
+  if (!n.includes("OLIO")) return false;
+  if (/FILTRO|IDRAULIC|COMPRESSOR|CAMBIO|TRASMISSION|DIFFERENZIAL/.test(n)) return false;
+  return true;
+}
+
 function deriveUiSubtype(item: {
   descrizione: string;
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   assiCoinvolti?: string[];
+  rabboccoOlio?: boolean | null;
 }): InterventoUiSubtype {
   if (item.gommeInterventoTipo === "straordinario") return "gomme-straordinario";
   if (
@@ -1087,6 +1101,9 @@ function deriveUiSubtype(item: {
   ) {
     return "gomme";
   }
+
+  // Marcatore esplicito e persistito del rabbocco olio (non dipende dalla descrizione).
+  if (item.rabboccoOlio === true) return "olio";
 
   const normalized = item.descrizione.toUpperCase();
   if ((normalized.includes("GOMME") || normalized.includes("PNEUM")) && isGommeStraordinarieKeyword(normalized)) {
@@ -1676,6 +1693,8 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioMotivo, setGommeStraordinarioMotivo] = useState("");
   const [gommeStraordinarioAsseId, setGommeStraordinarioAsseId] = useState<AsseCoinvoltoId | "">("");
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
+  // Litri di olio rabboccato (solo per uiSubtype "olio"). Usato dalla scheda Consumo olio.
+  const [olioLitriInput, setOlioLitriInput] = useState("");
   const [gommeSelezioneDraft, setGommeSelezioneDraft] =
     useState<NextManutenzioneGommeSelezioneRecord | null>(null);
   const [gommeModalOpen, setGommeModalOpen] = useState(false);
@@ -1706,6 +1725,8 @@ export default function NextManutenzioniPage() {
   const [completionDraftFornitore, setCompletionDraftFornitore] = useState("");
   const [completionDraftData, setCompletionDraftData] = useState(todayLabel());
   const [completionDraftKm, setCompletionDraftKm] = useState("");
+  // Litri olio rabboccato indicati in fase di completamento rapido (modale "Eseguita").
+  const [completionDraftOlioLitri, setCompletionDraftOlioLitri] = useState("");
   // PROMPT 42 — T2: officine dell'anagrafica per i suggerimenti dell'autocomplete.
   const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
   const [autisti, setAutisti] = useState<NextCollegaReadOnlyItem[]>([]);
@@ -1984,6 +2005,7 @@ export default function NextManutenzioniPage() {
       ),
     [storicoMezzoVisibile],
   );
+  const consumoOlioPerMezzo = useMemo(() => buildConsumoOlioPerMezzo(storico), [storico]);
   const materialiSuggeriti = useMemo(() => {
     const query = normalizeFreeText(materialeSearch).toUpperCase();
     if (!query) return [];
@@ -2743,6 +2765,7 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioMotivo("");
     setGommeStraordinarioAsseId("");
     setGommeStraordinarioQuantita("");
+    setOlioLitriInput("");
     setGommeSelezioneDraft(null);
     setGommeModalOpen(false);
     setQuantitaTemp("");
@@ -2752,7 +2775,24 @@ export default function NextManutenzioniPage() {
     setCompletionDraftFornitore("");
     setCompletionDraftData(todayLabel());
     setCompletionDraftKm("");
+    setCompletionDraftOlioLitri("");
     setTarga(currentTarga);
+  }
+
+  function startNuovoRabboccoOlio() {
+    const targaContesto = activeTarga;
+    resetForm(targaContesto);
+    setTipo("mezzo");
+    setUiSubtype("olio");
+    setDescrizione("Rabbocco olio motore");
+    // Registrazione diretta come "eseguita": è un rabbocco già fatto.
+    setCreateAsDaFare(false);
+    setView("form");
+    setNotice(
+      targaContesto
+        ? "Nuovo rabbocco olio: indica KM e litri rabboccati, poi salva."
+        : "Nuovo rabbocco olio: seleziona la targa, indica KM e litri, poi salva.",
+    );
   }
 
   function handleAddMateriale(
@@ -2819,6 +2859,7 @@ export default function NextManutenzioniPage() {
       item.gommeStraordinario?.quantita != null ? String(item.gommeStraordinario.quantita) : "",
     );
     setGommeSelezioneDraft(item.gommeSelezione ?? null);
+    setOlioLitriInput(item.olioLitri != null ? String(item.olioLitri) : "");
   }
 
   function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
@@ -2837,6 +2878,9 @@ export default function NextManutenzioniPage() {
     setCompletionDraftFornitore(item.fornitore ?? "");
     setCompletionDraftData(todayLabel());
     setCompletionDraftKm(item.km != null ? String(item.km) : "");
+    setCompletionDraftOlioLitri(
+      item.rabboccoOlio === true && item.olioLitri != null ? String(item.olioLitri) : "",
+    );
     setEseguito(item.eseguitoDa ?? item.eseguito ?? "");
     setNotice(null);
   }
@@ -2853,6 +2897,7 @@ export default function NextManutenzioniPage() {
       completionFornitore: completionDraftFornitore,
       completionData: completionDraftData,
       completionKm: completionDraftKm,
+      completionOlioLitri: completionDraftOlioLitri,
     });
   }
 
@@ -2977,12 +3022,15 @@ export default function NextManutenzioniPage() {
   }
 
   function handleUiSubtypeChange(nextSubtype: InterventoUiSubtype) {
-    if (isUiSubtypeGomme(nextSubtype)) {
+    if (isUiSubtypeGomme(nextSubtype) || nextSubtype === "olio") {
       setTipo("mezzo");
     }
     setUiSubtype(nextSubtype);
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
       setDescrizione("TAGLIANDO - ");
+    }
+    if (nextSubtype === "olio" && !descrizione.trim()) {
+      setDescrizione("Rabbocco olio motore");
     }
     if (!isUiSubtypeGommeOrdinario(nextSubtype)) {
       setAssiCoinvolti([]);
@@ -3176,6 +3224,31 @@ export default function NextManutenzioniPage() {
         ? "daFare"
         : "eseguita";
 
+    // Rabbocco olio. L'evento è "olio" se: scelto il sottotipo, indicati i litri nel
+    // modale di completamento, OPPURE è stato scaricato olio motore dal magazzino
+    // (materiale fromInventario). In quest'ultimo caso i litri si DERIVANO dal
+    // materiale scaricato (niente doppia digitazione, niente doppio scarico).
+    const materialiPerSalvataggio = createAsDaFare ? [] : materialiTemp;
+    const olioLitriDaMateriali = materialiPerSalvataggio
+      .filter((m) => isMaterialeOlioMotore(m.label))
+      .reduce((sum, m) => sum + (Number.isFinite(m.quantita) ? m.quantita : 0), 0);
+    const hasOlioMateriale = olioLitriDaMateriali > 0;
+
+    const isOlioCompletion = isCompletionSave && Boolean(overrides.completionOlioLitri?.trim());
+    const isOlioEvento = uiSubtype === "olio" || isOlioCompletion || hasOlioMateriale;
+    const olioLitriManualeRaw = isOlioCompletion
+      ? overrides.completionOlioLitri ?? ""
+      : uiSubtype === "olio"
+        ? olioLitriInput
+        : "";
+    const olioLitriManuale = olioLitriManualeRaw.trim()
+      ? Number(olioLitriManualeRaw.replace(",", "."))
+      : null;
+    // I litri dal magazzino (scarico reale) hanno la precedenza sul valore manuale.
+    const olioLitriValue = hasOlioMateriale
+      ? Math.round(olioLitriDaMateriali * 10) / 10
+      : olioLitriManuale;
+
     if (!normalizedTarga) {
       window.alert("Targa manutenzione non disponibile. Seleziona una targa prima di salvare.");
       return;
@@ -3203,6 +3276,41 @@ export default function NextManutenzioniPage() {
     if (isCompletionSave && completionRequiresKm && effectiveKmNumber === null) {
       window.alert("Per completare un intervento gomme su motrice o trattore devi inserire i KM.");
       return;
+    }
+
+    if (isOlioEvento && selectedStato === "eseguita" && effectiveKmNumber === null) {
+      const confirmed = window.confirm(
+        "Non hai inserito i KM del rabbocco olio.\n\n"
+        + "Senza KM questo rabbocco non entrera' nel calcolo del consumo (litri/1.000 km).\n"
+        + "Vuoi continuare lo stesso?",
+      );
+      if (!confirmed) return;
+    }
+
+    // Salvaguardia anti-doppione: solo per un NUOVO rabbocco olio eseguito (non in
+    // modifica ne' in chiusura di un record esistente). Se esiste gia' un rabbocco
+    // olio eseguito sulla stessa targa con lo stesso KM (o, in assenza di KM, la
+    // stessa data), chiedo conferma per evitare di registrare due volte lo stesso.
+    if (isOlioEvento && selectedStato === "eseguita" && !sourceRecord) {
+      const targaKey = (value: unknown) =>
+        String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
+      const targaNuovo = targaKey(normalizedTarga);
+      const duplicato = storico.find((item) => {
+        if (item.rabboccoOlio !== true) return false;
+        if (item.stato !== "eseguita") return false;
+        if (targaKey(item.targa) !== targaNuovo) return false;
+        if (effectiveKmNumber !== null && item.km != null) {
+          return item.km === effectiveKmNumber;
+        }
+        return Boolean(normalizedData) && item.data === normalizedData;
+      });
+      if (duplicato) {
+        const confirmed = window.confirm(
+          "Esiste gia' un rabbocco olio registrato su questo mezzo con lo stesso "
+          + "KM/data.\n\nVuoi registrarne comunque un altro?",
+        );
+        if (!confirmed) return;
+      }
     }
 
     if (!isCompletionSave && !createAsDaFare && tipo === "mezzo" && categoriaMotorizzata && !km) {
@@ -3268,6 +3376,10 @@ export default function NextManutenzioniPage() {
           : null,
         gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
         gommeSelezione: isUiSubtypeGomme(uiSubtype) ? gommeSelezioneDraft : null,
+        // Rabbocco olio: marcatore esplicito + litri. Passati sempre cosi' che, se un
+        // record smette di essere "olio", il flag venga azzerato (no residui).
+        rabboccoOlio: isOlioEvento,
+        olioLitri: isOlioEvento ? olioLitriValue : null,
         ...(sourceRecord
           ? {
               // Per le manutenzioni ESEGUITE la data di esecuzione deve seguire
@@ -5767,6 +5879,9 @@ export default function NextManutenzioniPage() {
           <button type="button" className="man2-nav-btn man2-nav-btn--primary" onClick={() => setView("form")}>
             + Nuova manutenzione
           </button>
+          <button type="button" className="man2-nav-btn" onClick={startNuovoRabboccoOlio}>
+            + Rabbocco olio
+          </button>
           <button type="button" className="man2-nav-btn" onClick={() => setView("mappa")} disabled={!activeTarga}>
             Dettaglio mezzo
           </button>
@@ -5939,6 +6054,7 @@ export default function NextManutenzioniPage() {
                   <option value="tagliando completo">Tagliando completo</option>
                   <option value="gomme">Gomme ordinarie per asse</option>
                   <option value="gomme-straordinario">Gomme straordinarie</option>
+                  <option value="olio">Rabbocco olio motore</option>
                   <option value="riparazione">Riparazione</option>
                   <option value="altro">Altro</option>
                 </select>
@@ -6319,6 +6435,29 @@ export default function NextManutenzioniPage() {
                     </span>
                   ))}
                 </div>
+              </div>
+            </section>
+          ) : null}
+
+          {uiSubtype === "olio" ? (
+            <section className="man2-form-block man2-form-block--accent">
+              <div className="man2-section-title">Rabbocco olio motore</div>
+              <div className="man2-field">
+                <label className="man2-field__label">Olio rabboccato (litri)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="0"
+                  value={olioLitriInput}
+                  onChange={(event) => setOlioLitriInput(event.target.value)}
+                  placeholder="Es. 2"
+                />
+                <small style={{ color: "#64748b", display: "block", marginTop: 4 }}>
+                  Compila qui SOLO se non scarichi l'olio dal magazzino. Per scalare il
+                  magazzino, aggiungi "OLIO MOTORE" nei Materiali qui sotto: i litri per il
+                  consumo verranno presi automaticamente da lì. Servono anche i KM.
+                </small>
               </div>
             </section>
           ) : null}
@@ -7374,12 +7513,116 @@ export default function NextManutenzioniPage() {
     );
   }
 
+  function renderConsumoOlio() {
+    const targaKey = (value: unknown) =>
+      String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
+    const activeKey = targaKey(activeTarga);
+    const mezzi = activeKey
+      ? consumoOlioPerMezzo.filter((mezzo) => targaKey(mezzo.targa) === activeKey)
+      : consumoOlioPerMezzo;
+
+    return (
+      <div className="man2-form-shell">
+        <div className="man2-screen-head man2-screen-head--form">
+          <div>
+            <h2 className="man2-screen-title">Consumo olio motore</h2>
+            <p className="man2-screen-copy">
+              Consumo calcolato dai rabbocchi registrati (litri ogni 1.000 km, tra un
+              rabbocco e il successivo). Servono almeno due rabbocchi con i KM per avere
+              il consumo.
+              {activeKey ? " Mostro solo il mezzo selezionato." : " Mostro tutti i mezzi con rabbocchi."}
+            </p>
+          </div>
+          <button type="button" className="man2-btn man2-btn--primary" onClick={startNuovoRabboccoOlio}>
+            + Rabbocco olio
+          </button>
+        </div>
+
+        {mezzi.length === 0 ? (
+          <div className="man-empty">
+            Nessun rabbocco olio registrato{activeKey ? " per questo mezzo" : ""}. Usa "+
+            Rabbocco olio" oppure chiudi una segnalazione indicando i litri d'olio.
+          </div>
+        ) : (
+          mezzi.map((mezzo) => (
+            <section key={mezzo.targa} className="man2-form-block">
+              <div className="man2-section-title">{mezzo.targa}</div>
+              <div className="man2-dash-kpis" style={{ marginBottom: 12 }}>
+                <article className="man2-kpi">
+                  <div className="man2-kpi__label">Consumo medio</div>
+                  <div className="man2-kpi__value">
+                    {mezzo.consumoMedioL1000 != null
+                      ? `${mezzo.consumoMedioL1000} L / 1.000 km`
+                      : "—"}
+                  </div>
+                  <div className="man2-kpi__sub">
+                    {mezzo.consumoMedioL1000 != null
+                      ? `su ${mezzo.kmCoperti.toLocaleString("it-CH")} km`
+                      : "servono 2 rabbocchi con KM"}
+                  </div>
+                </article>
+                <article className="man2-kpi">
+                  <div className="man2-kpi__label">Olio totale rabboccato</div>
+                  <div className="man2-kpi__value">{mezzo.totaleLitri} L</div>
+                  <div className="man2-kpi__sub">{mezzo.eventi.length} rabbocchi</div>
+                </article>
+              </div>
+
+              <div className="man2-pdf-list__table-wrap" style={{ overflowX: "auto" }}>
+                <table className="man2-pdf-list__table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", padding: "6px 8px" }}>Data</th>
+                      <th style={{ textAlign: "right", padding: "6px 8px" }}>KM</th>
+                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Litri</th>
+                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Km percorsi</th>
+                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Consumo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mezzo.eventi.map((evento) => (
+                      <tr key={evento.id} style={{ borderTop: "1px solid #e2e8f0" }}>
+                        <td style={{ padding: "6px 8px" }}>
+                          {evento.data ? formatDateShort(evento.data) : "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {evento.km != null ? evento.km.toLocaleString("it-CH") : "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {evento.litri != null ? `${evento.litri} L` : "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {evento.kmPercorsi != null ? evento.kmPercorsi.toLocaleString("it-CH") : "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>
+                          {evento.consumoL1000 != null ? `${evento.consumoL1000} L/1.000 km` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {mezzo.rabbocchiSenzaKm > 0 ? (
+                <small style={{ color: "#b45309", display: "block", marginTop: 8 }}>
+                  {mezzo.rabbocchiSenzaKm} rabbocco/i senza KM: esclusi dal calcolo del
+                  consumo. Aggiungi i KM per includerli.
+                </small>
+              ) : null}
+            </section>
+          ))
+        )}
+      </div>
+    );
+  }
+
   function renderActiveSurface() {
     if (loading) {
       return <div className="man-empty">Caricamento manutenzioni in corso...</div>;
     }
     if (view === "dafare") return renderDaFare();
     if (view === "dashboard") return renderDashboard();
+    if (view === "consumo-olio") return renderConsumoOlio();
     if (view === "form") return renderForm();
     if (view === "pdf") return renderPdfPanel();
     return null;
@@ -7472,15 +7715,36 @@ export default function NextManutenzioniPage() {
                   onChange={(event) => setCompletionDraftData(formatDateDigitsInput(event.target.value))}
                 />
               </div>
-              {completionKmRequired ? (
+              {completionKmRequired || completionDraftOlioLitri.trim() ? (
                 <div className="man2-field">
-                  <label className="man2-field__label">KM</label>
+                  <label className="man2-field__label">
+                    {completionDraftOlioLitri.trim() && !completionKmRequired ? "KM (per il consumo olio)" : "KM"}
+                  </label>
                   <input
                     type="number"
                     value={completionDraftKm}
                     onChange={(event) => setCompletionDraftKm(event.target.value)}
                     inputMode="numeric"
                   />
+                </div>
+              ) : null}
+              {completionModalRecord.tipo === "mezzo"
+                && !isStructuredGommeInterventoTipo(completionModalRecord.gommeInterventoTipo) ? (
+                <div className="man2-field">
+                  <label className="man2-field__label">Olio rabboccato (litri) — facoltativo</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={completionDraftOlioLitri}
+                    onChange={(event) => setCompletionDraftOlioLitri(event.target.value)}
+                    placeholder="Es. 2"
+                  />
+                  <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+                    Compila solo se questa chiusura include un rabbocco d'olio. Con KM e litri
+                    entra nel calcolo del consumo (litri/1.000 km).
+                  </small>
                 </div>
               ) : null}
               {isStructuredGommeInterventoTipo(completionModalRecord.gommeInterventoTipo) ? (
@@ -7554,6 +7818,7 @@ export default function NextManutenzioniPage() {
         {[
           { key: "dafare", label: "Da fare" },
           { key: "dashboard", label: "Dashboard" },
+          { key: "consumo-olio", label: "Consumo olio" },
           { key: "form", label: "Nuova / Modifica" },
           { key: "mappa", label: "Dettaglio" },
           { key: "pdf", label: "Quadro manutenzioni PDF" },

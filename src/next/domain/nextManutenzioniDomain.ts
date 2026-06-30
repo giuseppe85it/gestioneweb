@@ -188,6 +188,11 @@ export type NextManutenzioniLegacyDatasetRecord = {
   gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   sourceDocumentId?: string | null;
   importo?: number | null;
+  // Tracciamento rabbocco olio motore (additivo, indipendente dai materiali/magazzino).
+  // `rabboccoOlio` marca l'evento come rabbocco; `olioLitri` sono i litri rabboccati.
+  // Usati dalla scheda "Consumo olio" per il calcolo litri/1000 km. Vedi nextManutenzioniOlioDomain.
+  rabboccoOlio?: boolean | null;
+  olioLitri?: number | null;
   sourceDocumentFileUrl?: string | null;
   sourceDocumentCurrency?: "EUR" | "CHF" | "UNKNOWN" | null;
   // BUG 65 — "Aggancia universale": collegamenti additivi e bidirezionali verso
@@ -315,6 +320,8 @@ export type NextManutenzioneBusinessSavePayload = {
   gommeSelezione?: NextManutenzioneGommeSelezioneRecord | null;
   sourceDocumentId?: string | null;
   importo?: number | null;
+  rabboccoOlio?: boolean | null;
+  olioLitri?: number | null;
   collegamenti?: NextLegameUniversaleRef[];
 };
 
@@ -817,6 +824,8 @@ function toLegacyDatasetRecord(
       undefined,
     materiali,
     importo: normalizeNumber(raw.importo),
+    ...(raw.rabboccoOlio === true ? { rabboccoOlio: true } : {}),
+    ...(normalizeNumber(raw.olioLitri) !== null ? { olioLitri: normalizeNumber(raw.olioLitri) } : {}),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario ? { gommeStraordinario } : {}),
     ...(gommeSelezione ? { gommeSelezione } : {}),
@@ -1228,6 +1237,12 @@ function sanitizeBusinessRecord(
     payload.tipo === "mezzo" && hasOwnField(payloadRaw, "kmSegnalazione")
       ? normalizeNumber(payload.kmSegnalazione)
       : undefined;
+  const rabboccoOlio = hasOwnField(payloadRaw, "rabboccoOlio")
+    ? payload.rabboccoOlio === true
+    : undefined;
+  const olioLitri = hasOwnField(payloadRaw, "olioLitri")
+    ? normalizeNumber(payload.olioLitri)
+    : undefined;
   return {
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
@@ -1253,6 +1268,8 @@ function sanitizeBusinessRecord(
     ...(urgenza !== undefined ? { urgenza } : {}),
     materiali: sanitizeMaterialiForWrite(payload.materiali),
     importo: typeof payload.importo === "number" ? payload.importo : null,
+    ...(rabboccoOlio !== undefined ? { rabboccoOlio } : {}),
+    ...(olioLitri !== undefined ? { olioLitri } : {}),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
     ...(gommeSelezione && gommeInterventoTipo ? { gommeSelezione } : {}),
