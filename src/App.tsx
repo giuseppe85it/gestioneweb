@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth } from "./firebase";
 
-import { Routes, Route, Outlet, Navigate } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate, useParams } from "react-router-dom";
 import "./App.css";
 import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
@@ -49,7 +49,11 @@ import NextColleghiPage from "./next/NextColleghiPage";
 import NextFornitoriPage from "./next/NextFornitoriPage";
 import NextAnagrafichePage from "./next/NextAnagrafichePage";
 import NextEuromeccPage from "./next/NextEuromeccPage";
-import { buildNextMagazzinoPath } from "./next/nextStructuralPaths";
+import {
+  buildNextMagazzinoPath,
+  buildNextDossierPath,
+  buildNextDossierGommePath,
+} from "./next/nextStructuralPaths";
 
 /* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
@@ -60,8 +64,6 @@ import GestioneOperativa from "./pages/GestioneOperativa";
 import CentroControllo from "./pages/CentroControllo";
 
 import DossierLista from "./pages/DossierLista";
-import DossierMezzo from "./pages/DossierMezzo";
-import DossierGomme from "./pages/DossierGomme";
 import DossierRifornimenti from "./pages/DossierRifornimenti";
 import AnalisiEconomica from "./pages/AnalisiEconomica";
 import Mezzo360 from "./pages/Mezzo360";
@@ -216,6 +218,17 @@ function NextAnagraficheAliasRedirect({
 }) {
   void legacyFallback;
   return <Navigate to={to} replace />;
+}
+
+// Rimanda i vecchi URL dossier (legacy, senza /next) verso le pagine NEXT,
+// così i preferiti/link storici non finiscono su una pagina vuota.
+function LegacyTargaRedirect({
+  build,
+}: {
+  build: (targa: string) => string;
+}) {
+  const { targa } = useParams();
+  return <Navigate to={build(targa ?? "")} replace />;
 }
 
 function App() {
@@ -637,10 +650,19 @@ function App() {
 
         {/* DOSSIER */}
         <Route path="/dossiermezzi" element={<DossierLista />} />
-        <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
-        <Route path="/dossier/:targa" element={<DossierMezzo />} />
+        <Route
+          path="/dossiermezzi/:targa"
+          element={<LegacyTargaRedirect build={buildNextDossierPath} />}
+        />
+        <Route
+          path="/dossier/:targa"
+          element={<LegacyTargaRedirect build={buildNextDossierPath} />}
+        />
         <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
-        <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
+        <Route
+          path="/dossier/:targa/gomme"
+          element={<LegacyTargaRedirect build={buildNextDossierGommePath} />}
+        />
         <Route path="/dossier/:targa/rifornimenti" element={<DossierRifornimenti />} />
         <Route path="/mezzo-360/:targa" element={<Mezzo360 />} />
         <Route path="/autista-360" element={<Autista360 />} />

@@ -2,7 +2,6 @@ import {
   NEXT_ATTREZZATURE_CANTIERI_PATH,
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_PATH,
-  NEXT_DOSSIER_LISTA_PATH,
   NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
   NEXT_MAGAZZINO_PATH,
@@ -136,7 +135,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
         label: "Scadenze",
         path: "/next/scadenze-collaudi",
       },
-      { id: "dossier", label: "Dossier mezzo", path: NEXT_DOSSIER_LISTA_PATH },
     ],
   },
   {

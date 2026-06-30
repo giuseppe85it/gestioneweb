@@ -7,7 +7,6 @@ import { uploadBytes } from "../utils/storageWriteOps";
 import {
   buildNextDossierPath,
   buildNextMagazzinoPath,
-  buildNextAnalisiEconomicaPath,
   buildNextDettaglioOrdinePath,
   type NextMagazzinoTab,
 } from "./nextStructuralPaths";
@@ -5383,13 +5382,6 @@ export default function NextMagazzinoPage() {
                                 onClick={() => navigate(buildNextDossierPath(link.targa!))}
                               >
                                 Dossier
-                              </button>
-                              <button
-                                type="button"
-                                className="mag-btn mag-btn--sm"
-                                onClick={() => navigate(buildNextAnalisiEconomicaPath(link.targa!))}
-                              >
-                                Analisi
                               </button>
                             </>
                           ) : null}

@@ -26,7 +26,6 @@ import {
 import { recordChiusoFromRaw } from "./helpers/frasestoriaRecord";
 import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
-  buildNextAnalisiEconomicaPath,
   buildNextCentroControlloRifornimentiPath,
   buildNextManutenzioniPath,
   NEXT_DOSSIER_LISTA_PATH,
@@ -1092,7 +1091,6 @@ export default function NextDossierMezzoComandoPage() {
           </div>
           <div className="dc-actions">
             <button className="dc-btn" type="button" onClick={back}>&#8249; Mezzi</button>
-            <button className="dc-btn" type="button" onClick={() => navigate(buildNextAnalisiEconomicaPath(mezzo.targa))}>Analisi economica</button>
             <button className="dc-btn" type="button" onClick={() => navigate(buildNextCentroControlloRifornimentiPath(mezzo.targa))}>Rifornimenti &#8599; Sinottica</button>
             <button className="dc-btn" type="button" onClick={() => setModal("libretto")}>Libretto</button>
             <button className="dc-btn primary" type="button" onClick={openDossierPdf}>Anteprima PDF</button>
