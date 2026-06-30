@@ -3523,7 +3523,9 @@ export default function NextManutenzioniPage() {
       }
     } catch (saveError) {
       console.error("Errore salvataggio manutenzione:", saveError);
-      setError("Salvataggio manutenzione non riuscito.");
+      // Mostra la causa reale (es. "Stock insufficiente per X") invece del generico.
+      const dettaglio = saveError instanceof Error && saveError.message ? saveError.message.trim() : "";
+      setError(dettaglio ? `Salvataggio non riuscito: ${dettaglio}` : "Salvataggio manutenzione non riuscito.");
     } finally {
       setSaving(false);
     }
@@ -6571,11 +6573,18 @@ export default function NextManutenzioniPage() {
                           key={item.id}
                           className="man-autosuggest-item"
                           onClick={() => {
-                            if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+                            const qta = Number(quantitaTemp);
+                            if (!quantitaTemp || qta <= 0) {
                               window.alert("Inserisci prima la quantita.");
                               return;
                             }
-                            handleAddMateriale(item.label, Number(quantitaTemp), item.unita || "pz", true, item.id);
+                            if (qta > item.quantitaTotale) {
+                              window.alert(
+                                `Disponibili solo ${item.quantitaTotale} ${item.unita} di ${item.label}. Riduci la quantità.\n\nSe l'olio non è a magazzino, registra i litri nel campo "Olio rabboccato (litri)" invece di aggiungerlo come materiale.`,
+                              );
+                              return;
+                            }
+                            handleAddMateriale(item.label, qta, item.unita || "pz", true, item.id);
                           }}
                         >
                           <div className="man-autosuggest-main man2-material-suggest-main">
