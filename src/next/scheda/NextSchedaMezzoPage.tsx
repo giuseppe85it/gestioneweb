@@ -65,6 +65,7 @@ function urgencyTone(urgenza: string | null | undefined): "danger" | "warning" |
 }
 
 function scadenzaBadge(item: NextManutenzioneScadenzaItem): { tone: string; label: string } {
+  if (item.assente) return { tone: "danger", label: "ASSENTE" };
   switch (item.stato) {
     case "scaduta":
       return { tone: "danger", label: "scaduta" };

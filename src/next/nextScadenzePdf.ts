@@ -8,6 +8,7 @@ export type ScadenzePdfStatus =
   | "ok"
   | "in_scadenza"
   | "scaduta"
+  | "assente"
   | "data_mancante"
   | "valore_non_disponibile";
 
@@ -49,6 +50,7 @@ export const SCADENZE_PDF_CATEGORY_OPTIONS: ReadonlyArray<{
 ];
 
 const STATUS_ORDER: Record<ScadenzePdfStatus, number> = {
+  assente: 5, // >= scaduta: in PDF la riga viene colorata di rosso
   scaduta: 4,
   in_scadenza: 3,
   ok: 2,

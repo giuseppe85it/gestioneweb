@@ -1937,7 +1937,10 @@ export default function NextManutenzioniPage() {
   const scadenzeDelMezzo = useMemo(
     () =>
       scadenzeAll.filter(
-        (s) => s.attiva && normTargaCompare(s.targa) === normTargaCompare(activeTarga),
+        (s) =>
+          s.attiva &&
+          !s.record.assente &&
+          normTargaCompare(s.targa) === normTargaCompare(activeTarga),
       ),
     [scadenzeAll, activeTarga],
   );
@@ -3442,6 +3445,7 @@ export default function NextManutenzioniPage() {
               prossimaScadenzaKmManuale: null,
               prossimaScadenzaOreManuale: null,
               note: rec.note ?? null,
+              assente: rec.assente ?? false,
               attiva: rec.attiva,
             });
             await reloadScadenze();

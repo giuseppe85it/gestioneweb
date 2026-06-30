@@ -201,9 +201,51 @@ const basePayload = {
   label: "Cronotachigrafo",
 };
 
+describe("evaluateScadenzaManutenzione — assente", () => {
+  it("voce assente: nessun calcolo, stato neutro e flag assente=true anche con data passata", () => {
+    const record = makeRecord({
+      base: ["tempo"],
+      assente: true,
+      // anche con una scadenza palesemente passata non deve risultare 'scaduta'
+      prossimaScadenzaDataManuale: "2020-01-01",
+    });
+    const item = evaluateScadenzaManutenzione(record, { kmAttuali: null, oreAttuali: null }, NOW);
+    expect(item.assente).toBe(true);
+    expect(item.componenti).toHaveLength(0);
+    expect(item.stato).toBe("data_mancante");
+    expect(item.tone).toBe("neutral");
+    expect(item.giorniMin).toBeNull();
+  });
+
+  it("voce non assente: il flag resta false", () => {
+    const record = makeRecord({ base: ["tempo"], prossimaScadenzaDataManuale: "2027-06-01" });
+    const item = evaluateScadenzaManutenzione(record, { kmAttuali: null, oreAttuali: null }, NOW);
+    expect(item.assente).toBe(false);
+  });
+});
+
 describe("saveScadenzaManutenzione", () => {
   beforeEach(() => {
     store.clear();
+  });
+
+  it("conserva il flag assente tra salvataggio e ri-lettura (round-trip)", async () => {
+    const created = await saveScadenzaManutenzione({
+      ...basePayload,
+      base: ["tempo"],
+      assente: true,
+    });
+    expect(created.assente).toBe(true);
+    expect(readSaved()[0]?.assente).toBe(true);
+
+    const updated = await saveScadenzaManutenzione({
+      ...basePayload,
+      id: created.id,
+      base: ["tempo"],
+      assente: false,
+    });
+    expect(updated.assente).toBe(false);
+    expect(readSaved()[0]?.assente).toBe(false);
   });
 
   it("crea un nuovo record con id generato e updatedAt numerico", async () => {

@@ -319,6 +319,15 @@ function pillLabelForStato(stato: NextScadenzaStato): string {
   return labels[stato];
 }
 
+// Badge della riga: una voce "assente" prevale e mostra ASSENTE in rosso.
+function pillClassForItem(item: NextManutenzioneScadenzaItem): string {
+  return item.assente ? "pill pill-danger" : pillClassForStato(item.stato);
+}
+
+function pillLabelForItem(item: NextManutenzioneScadenzaItem): string {
+  return item.assente ? "ASSENTE" : pillLabelForStato(item.stato);
+}
+
 // Stato di un collaudo (revisione) coerente col mockup, SENZA toccare la logica del dominio.
 function statoCollaudo(item: D10RevisionItem): NextScadenzaStato {
   if (item.giorni === null) return "data_mancante";
@@ -394,6 +403,7 @@ type ManutFormState = {
   intervalloOre: string;
   ultimaEsecuzioneOre: string;
   note: string;
+  assente: boolean;
 };
 
 const TIPI_SCADENZA: { value: string; label: string }[] = [
@@ -420,6 +430,7 @@ function emptyManutForm(): ManutFormState {
     intervalloOre: "",
     ultimaEsecuzioneOre: "",
     note: "",
+    assente: false,
   };
 }
 
@@ -758,6 +769,7 @@ export default function NextScadenzeCollaudiPage() {
       intervalloOre: record.intervalloOre != null ? String(record.intervalloOre) : "",
       ultimaEsecuzioneOre: record.ultimaEsecuzioneOre != null ? String(record.ultimaEsecuzioneOre) : "",
       note: record.note ?? "",
+      assente: record.assente ?? false,
     });
   };
 
@@ -820,7 +832,8 @@ export default function NextScadenzeCollaudiPage() {
 
   const salvaManut = async () => {
     if (!manutForm) return;
-    if (manutForm.base.length === 0) {
+    // Una voce "assente" non ha date da calcolare: la base non è obbligatoria.
+    if (!manutForm.assente && manutForm.base.length === 0) {
       showValidationError("Seleziona almeno una base (tempo, km o ore).");
       return;
     }
@@ -841,6 +854,7 @@ export default function NextScadenzeCollaudiPage() {
         intervalloOre: numOrNull(manutForm.intervalloOre),
         ultimaEsecuzioneOre: numOrNull(manutForm.ultimaEsecuzioneOre),
         note: manutForm.note || null,
+        assente: manutForm.assente,
       });
       setManutForm(null);
       await loadSnapshot();
@@ -908,6 +922,7 @@ export default function NextScadenzeCollaudiPage() {
         prossimaScadenzaKmManuale: null,
         prossimaScadenzaOreManuale: null,
         note: rec.note ?? null,
+        assente: rec.assente ?? false,
         attiva: rec.attiva,
       });
       setEseguitaForm(null);
@@ -1470,14 +1485,14 @@ export default function NextScadenzeCollaudiPage() {
       mezzoLabel: labels.mezzoLabel,
       autistaLabel: labels.autistaLabel,
       tipoLabel: item.label,
-      stato: item.stato,
-      statoLabel: pillLabelForStato(item.stato),
-      scadenzaLabel: item.componenti.map(formatComponenteTesto).join(" | "),
-      dettaglioLabel: item.base.length ? `Base: ${item.base.join(", ")}` : "",
+      stato: item.assente ? "assente" : item.stato,
+      statoLabel: item.assente ? "ASSENTE" : pillLabelForStato(item.stato),
+      scadenzaLabel: item.assente ? "" : item.componenti.map(formatComponenteTesto).join(" | "),
+      dettaglioLabel: item.assente ? "Non presente sul mezzo" : item.base.length ? `Base: ${item.base.join(", ")}` : "",
       prenotazioneLabel: "",
       preCollaudoLabel: "",
       note: item.note ?? "",
-      sortSeverity: STATO_SEVERITA[item.stato],
+      sortSeverity: item.assente ? 5 : STATO_SEVERITA[item.stato],
       sortValue: item.giorniMin ?? 1_000_000,
     };
   };
@@ -1680,7 +1695,7 @@ export default function NextScadenzeCollaudiPage() {
         {item.note ? <div className="cell-sub">{item.note}</div> : null}
       </div>
       <div className="cell">
-        <span className={pillClassForStato(item.stato)}>{pillLabelForStato(item.stato)}</span>
+        <span className={pillClassForItem(item)}>{pillLabelForItem(item)}</span>
       </div>
       <div className="cell cell-bases">
         {item.base.map((base) => (
@@ -1707,9 +1722,11 @@ export default function NextScadenzeCollaudiPage() {
         <button type="button" className="btn" onClick={() => openModificaManut(item)}>
           Modifica
         </button>
-        <button type="button" className="btn primary" onClick={() => openEseguita(item)}>
-          Segna eseguita
-        </button>
+        {item.assente ? null : (
+          <button type="button" className="btn primary" onClick={() => openEseguita(item)}>
+            Segna eseguita
+          </button>
+        )}
         <button type="button" className="btn danger" onClick={() => void eliminaManut(item)}>
           Elimina
         </button>
@@ -1737,7 +1754,7 @@ export default function NextScadenzeCollaudiPage() {
 
   // Anteprima stato nel modal regola.
   let previewItem: NextManutenzioneScadenzaItem | null = null;
-  if (manutForm && manutForm.base.length) {
+  if (manutForm && (manutForm.base.length || manutForm.assente)) {
     const previewRecord: NextManutenzioneScadenzaRecord = {
       id: manutForm.editingId ?? "preview",
       targa: manutForm.targa,
@@ -1753,6 +1770,7 @@ export default function NextScadenzeCollaudiPage() {
       intervalloOre: numOrNull(manutForm.intervalloOre),
       ultimaEsecuzioneOre: numOrNull(manutForm.ultimaEsecuzioneOre),
       note: manutForm.note || null,
+      assente: manutForm.assente,
       attiva: true,
     };
     const km = kmByTarga.get(normTarga(manutForm.targa)) ?? null;
@@ -2122,6 +2140,25 @@ export default function NextScadenzeCollaudiPage() {
               </div>
 
               <div className="field full" style={{ marginTop: 14 }}>
+                <div className="bases">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={manutForm.assente}
+                      onChange={(event) => patchManut({ assente: event.target.checked })}
+                    />{" "}
+                    Assente sul mezzo (es. estintore non presente)
+                  </label>
+                </div>
+                {manutForm.assente ? (
+                  <div className="help">
+                    Marcata come ASSENTE: comparirà con un badge rosso nell'elenco e le date di
+                    scadenza non vengono calcolate.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="field full" style={{ marginTop: 14 }}>
                 <label>Su cosa si basa la scadenza</label>
                 <div className="bases">
                   <label>
@@ -2250,7 +2287,7 @@ export default function NextScadenzeCollaudiPage() {
               <div className="preview">
                 {previewItem ? (
                   <>
-                    Anteprima: <span className={pillClassForStato(previewItem.stato)}>{pillLabelForStato(previewItem.stato)}</span>
+                    Anteprima: <span className={pillClassForItem(previewItem)}>{pillLabelForItem(previewItem)}</span>
                     {previewItem.componenti.map((componente, index) => (
                       <span key={index}>
                         <span className="chip">{componente.base}</span> {formatComponenteTesto(componente)}

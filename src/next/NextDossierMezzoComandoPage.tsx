@@ -354,6 +354,7 @@ function scadenzaDotColor(item: NextManutenzioneScadenzaItem): string {
 }
 
 function scadenzaPdfTone(item: NextManutenzioneScadenzaItem): "ok" | "warn" | "danger" | "muted" {
+  if (item.assente) return "danger";
   if (item.stato === "scaduta") return "danger";
   if (item.stato === "in_scadenza") return "warn";
   if (item.stato === "ok") return "ok";
@@ -361,6 +362,7 @@ function scadenzaPdfTone(item: NextManutenzioneScadenzaItem): "ok" | "warn" | "d
 }
 
 function scadenzaRightLabel(item: NextManutenzioneScadenzaItem): string {
+  if (item.assente) return "ASSENTE";
   if (item.giorniMin != null) {
     const g = item.giorniMin;
     if (g === 0) return "oggi";

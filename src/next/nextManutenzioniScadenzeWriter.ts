@@ -37,6 +37,7 @@ export type ScadenzaManutenzionePayload = {
   prossimaScadenzaKmManuale?: number | null;
   prossimaScadenzaOreManuale?: number | null;
   note?: string | null;
+  assente?: boolean;
   attiva?: boolean;
 };
 
@@ -125,6 +126,7 @@ function buildRecord(
     prossimaScadenzaKmManuale: normalizeNumber(payload.prossimaScadenzaKmManuale),
     prossimaScadenzaOreManuale: normalizeNumber(payload.prossimaScadenzaOreManuale),
     note: String(payload.note ?? "").trim() || null,
+    assente: payload.assente === true,
     attiva: payload.attiva !== false,
     updatedAt: now,
   };
@@ -142,7 +144,8 @@ export async function saveScadenzaManutenzione(
     throw new Error("Targa mancante.");
   }
   const base = normalizeBase(payload.base);
-  if (base.length === 0) {
+  // Una voce marcata "assente" non calcola scadenze: la base non è richiesta.
+  if (base.length === 0 && payload.assente !== true) {
     throw new Error("Seleziona almeno una base (tempo, km o ore).");
   }
 

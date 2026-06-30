@@ -84,6 +84,9 @@ export type NextManutenzioneScadenzaRecord = {
   prossimaScadenzaKmManuale?: number | null;
   prossimaScadenzaOreManuale?: number | null;
   note?: string | null;
+  // Marca la voce come "assente" sul mezzo (es. estintore non presente):
+  // non si calcolano date/km di scadenza e nell'elenco compare un badge rosso.
+  assente?: boolean;
   attiva: boolean;
   updatedAt?: number;
 };
@@ -117,6 +120,7 @@ export type NextManutenzioneScadenzaItem = {
   label: string;
   attiva: boolean;
   note: string | null;
+  assente: boolean; // voce marcata come non presente sul mezzo
   base: ScadenzaBase[];
   componenti: NextScadenzaComponente[];
   stato: NextScadenzaStato; // peggiore tra le componenti
@@ -285,6 +289,25 @@ export function evaluateScadenzaManutenzione(
   contesto: NextScadenzaContestoMezzo,
   now: number,
 ): NextManutenzioneScadenzaItem {
+  // Voce marcata "assente": non si calcola nulla, si mostra solo lo stato ASSENTE.
+  if (record.assente) {
+    return {
+      id: record.id,
+      targa: record.targa,
+      tipo: record.tipo,
+      label: record.label,
+      attiva: record.attiva,
+      note: record.note ?? null,
+      assente: true,
+      base: record.base,
+      componenti: [],
+      stato: "data_mancante",
+      tone: "neutral",
+      giorniMin: null,
+      record,
+    };
+  }
+
   const componenti: NextScadenzaComponente[] = [];
 
   for (const base of record.base) {
@@ -332,6 +355,7 @@ export function evaluateScadenzaManutenzione(
     label: record.label,
     attiva: record.attiva,
     note: record.note ?? null,
+    assente: false,
     base: record.base,
     componenti,
     stato: componenti.length ? peggiore : "data_mancante",
@@ -401,7 +425,8 @@ export function normalizeScadenzaRecord(raw: unknown): NextManutenzioneScadenzaR
     prossimaScadenzaKmManuale: toFiniteNumber(raw.prossimaScadenzaKmManuale),
     prossimaScadenzaOreManuale: toFiniteNumber(raw.prossimaScadenzaOreManuale),
     note: normalizeStringOrNull(raw.note),
-    attiva: raw.attiva !== false, // default true se assente
+    assente: raw.assente === true,
+    attiva: raw.attiva !== false, // default true se non specificato
     updatedAt: toFiniteNumber(raw.updatedAt) ?? undefined,
   };
 }
