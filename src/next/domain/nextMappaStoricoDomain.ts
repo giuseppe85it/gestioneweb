@@ -53,6 +53,7 @@ export type NextMappaStoricoIntervento = {
   areaLabels: string[];
   kmLabel: string | null;
   fornitoreLabel: string | null;
+  collegamentiCount: number;
   searchText: string;
 };
 
@@ -380,6 +381,7 @@ function buildIntervento(
     timestamp: number | null;
     km: number | null;
     fornitore: string | null;
+    collegamentiCount?: number;
   },
   sourceKind: "manutenzione" | "gomme",
 ): NextMappaStoricoIntervento | null {
@@ -401,6 +403,7 @@ function buildIntervento(
     areaLabels,
     kmLabel,
     fornitoreLabel: normalizeOptionalText(raw.fornitore),
+    collegamentiCount: raw.collegamentiCount ?? 0,
     searchText: buildInterventoSearchText({
       title,
       descrizione,
@@ -545,6 +548,7 @@ export async function readNextMappaStoricoSnapshot(
           timestamp: item.timestamp,
           km: item.km,
           fornitore: item.fornitore,
+          collegamentiCount: item.collegamentiCount,
         },
         "manutenzione",
       ),

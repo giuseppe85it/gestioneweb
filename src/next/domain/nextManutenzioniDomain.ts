@@ -120,6 +120,7 @@ export type NextMaintenanceHistoryItem = {
   chiusuraRefId?: string | null;
   chiusuraData?: number | null;
   gruppoManutenzioneId?: string | null;
+  collegamentiCount?: number;
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
   quality: NextManutenzioneQuality;
@@ -935,6 +936,7 @@ function toHistoryItem(
     chiusuraRefId: normalizeOptionalText(raw.chiusuraRefId),
     chiusuraData: normalizeNumber(raw.chiusuraData),
     gruppoManutenzioneId: normalizeOptionalText(raw.gruppoManutenzioneId),
+    collegamentiCount: Array.isArray(raw.collegamenti) ? raw.collegamenti.length : 0,
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
     quality: isGomme ? "derived_acceptable" : "source_direct",

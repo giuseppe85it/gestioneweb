@@ -2169,6 +2169,15 @@ export default function NextMappaStoricoPage({
                       <span className="ms-intervento-kind">
                         {intervento.sourceKind === "gomme" ? "Gomme" : "Manutenzione"}
                       </span>
+                      {intervento.collegamentiCount > 0 ? (
+                        <span
+                          className="ms-intervento-kind"
+                          style={{ background: "#e0e7ff", color: "#3730a3" }}
+                          title="Collegata ad altre voci (es. lo stesso problema ricorrente, o un documento)."
+                        >
+                          Collegata ({intervento.collegamentiCount})
+                        </span>
+                      ) : null}
                     </div>
                     <div className="ms-intervento-meta">{formatInterventoMeta(intervento)}</div>
                     <div className="ms-intervento-text">{intervento.descrizione}</div>

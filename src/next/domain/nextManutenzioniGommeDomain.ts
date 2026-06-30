@@ -130,6 +130,7 @@ export type NextManutenzioneReadOnlyItem = {
   ore: number | null;
   fornitore: string | null;
   materialiCount: number;
+  collegamentiCount?: number;
   assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
   gommePerAsse: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
@@ -1047,6 +1048,7 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     ore: item.ore,
     fornitore: item.fornitoreLabel,
     materialiCount: item.materialiCount,
+    collegamentiCount: item.collegamentiCount ?? 0,
     assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
     gommePerAsse: item.gommePerAsse,
     gommeInterventoTipo: item.gommeInterventoTipo,
