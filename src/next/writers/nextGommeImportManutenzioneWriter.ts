@@ -32,6 +32,8 @@ export type GommeImportManutenzioneInput = {
   /** data esecuzione in formato yyyy-mm-dd */
   data: string;
   km: number | null;
+  /** km al momento della SEGNALAZIONE (facoltativo): mostrato come "segnalato a X km". */
+  kmSegnalazione?: number | null;
   /** assi effettivamente cambiati (uno o piu') */
   assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
   /** numero gomme effettivamente cambiate (totale) */
@@ -269,7 +271,10 @@ async function completaManutenzioneEsistente(
   const assi = uniqueAssi(input.assiCoinvolti ?? []);
   // Il km gia' presente sul record e' il km al momento della SEGNALAZIONE: lo
   // spostiamo in kmSegnalazione, mentre km diventa il km del cambio effettivo.
-  const kmSegnalazione = toNumberOrNull(target.km) ?? toNumberOrNull(target.kmSegnalazione);
+  const kmSegnalazione =
+    toNumberOrNull(input.kmSegnalazione) ??
+    toNumberOrNull(target.km) ??
+    toNumberOrNull(target.kmSegnalazione);
   const marca = normalizeText(input.marca);
   const baseDesc = normalizeText(target.descrizione);
   const descrizione =
@@ -369,6 +374,9 @@ export async function importGommeEventoComeManutenzioneEseguita(
     dataEsecuzione: data,
     stato: "eseguita",
     km: input.km,
+    ...(typeof input.kmSegnalazione === "number" && input.kmSegnalazione > 0
+      ? { kmSegnalazione: input.kmSegnalazione }
+      : {}),
     segnalatoDa,
     eseguitoDa: segnalatoDa,
     materiali: [],

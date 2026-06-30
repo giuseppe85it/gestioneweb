@@ -286,6 +286,8 @@ export type NextManutenzioneBusinessSavePayload = {
   tipo: TipoVoce;
   fornitore?: string | null;
   km?: number | null;
+  /** Km al momento della segnalazione (≠ km del cambio). Vedi NextMaintenanceHistoryItem.kmSegnalazione. */
+  kmSegnalazione?: number | null;
   ore?: number | null;
   sottotipo?: SottoTipo | null;
   descrizione: string;
@@ -1222,12 +1224,17 @@ function sanitizeBusinessRecord(
   const fornitore = hasOwnField(payloadRaw, "fornitore")
     ? normalizeOptionalText(payload.fornitore)
     : undefined;
+  const kmSegnalazione =
+    payload.tipo === "mezzo" && hasOwnField(payloadRaw, "kmSegnalazione")
+      ? normalizeNumber(payload.kmSegnalazione)
+      : undefined;
   return {
     id: normalizeOptionalText(forcedRecordId) ?? buildGeneratedId(),
     targa,
     tipo: payload.tipo,
     ...(fornitore !== undefined ? { fornitore } : {}),
     km,
+    ...(kmSegnalazione !== undefined ? { kmSegnalazione } : {}),
     ore: payload.tipo === "compressore" || payload.tipo === "attrezzature" ? normalizeNumber(payload.ore) : null,
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
     descrizione: normalizeOptionalText(payload.descrizione) ?? "Manutenzione",

@@ -71,6 +71,7 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
 
   const [data, setData] = useState("");
   const [km, setKm] = useState("");
+  const [kmSegnalazione, setKmSegnalazione] = useState("");
   const [marca, setMarca] = useState("");
   const [assi, setAssi] = useState<NextManutenzioneAsseCoinvoltoId[]>([]);
   const [numeroGomme, setNumeroGomme] = useState("");
@@ -94,6 +95,7 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
         : String(evento.km),
     );
     setMarca(String(evento.marca ?? "").trim());
+    setKmSegnalazione("");
     const prefAsse = normalizeAsseId(evento.asseId);
     const prefilled =
       prefAsse && assiOptions.some((opt) => opt.id === prefAsse) ? [prefAsse] : [];
@@ -155,6 +157,14 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
         : NaN;
   const kmInvalid = kmValue !== null && Number.isNaN(kmValue);
 
+  const kmSegTrim = kmSegnalazione.trim();
+  const kmSegValue =
+    kmSegTrim === ""
+      ? null
+      : Number.isFinite(Number(kmSegTrim.replace(",", ".")))
+        ? Math.trunc(Number(kmSegTrim.replace(",", ".")))
+        : null;
+
   const numTrim = numeroGomme.trim();
   const numValue = numTrim === "" ? null : Math.trunc(Number(numTrim));
   const numInvalid = numValue !== null && (!Number.isFinite(numValue) || numValue < 0);
@@ -169,6 +179,7 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
       targa,
       data,
       km: kmValue,
+      kmSegnalazione: kmSegValue,
       assiCoinvolti: assi,
       numeroGomme: numValue,
       marca: marca.trim() || null,
@@ -331,12 +342,22 @@ export default function GommeImportModal({ evento, saving, onClose, onConfirm }:
                 </label>
 
                 <label>
-                  KM
+                  KM cambio
                   <input
                     inputMode="numeric"
                     value={km}
                     onChange={(e) => setKm(e.target.value)}
                     placeholder="(facoltativo)"
+                  />
+                </label>
+
+                <label>
+                  Km alla segnalazione
+                  <input
+                    inputMode="numeric"
+                    value={kmSegnalazione}
+                    onChange={(e) => setKmSegnalazione(e.target.value)}
+                    placeholder="(facoltativo, se diverso)"
                   />
                 </label>
 
