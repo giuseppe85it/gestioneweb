@@ -12,8 +12,10 @@
  *  3. Riporta lo stato:
  *     - segnalazione: stato="nuova", letta=false
  *     - controllo: letta=false (no campo stato)
- *  4. NON tocca `chiusuraDi/chiusuraRefId/chiusuraData` (campi separati di traccia chiusura,
- *     non gestiti da questo writer)
+ *  4. In riapertura COMPLETA (nessun legame residuo) azzera anche il timbro di
+ *     chiusura (`chiusuraDi/chiusuraRefId/chiusuraData`, `chiusa/dataChiusura`):
+ *     senza questo la sorgente resterebbe nascosta dai filtri pur essendo "nuova"
+ *     (BUG A — sparizione silenziosa dopo cancellazione manutenzione).
  *  5. NON tocca descrizione, targa, autistaNome, ecc.
  *
  * Idempotente: se la sorgente non ha legami, ritorna `alreadyClean: true`.
@@ -120,9 +122,16 @@ function patchSourceAfterSgancio(
   };
   if (remainingIds.length === 0) {
     next.dataPresaInCarico = null;
-    if (sorgenteTipo === "segnalazione") {
-      next.stato = "nuova";
-    }
+    next.stato = "nuova";
+    // BUG A — riapertura COMPLETA: azzera anche il TIMBRO DI CHIUSURA. Senza questo
+    // la sorgente torna "nuova" ma i filtri la considerano ancora chiusa (chiuso =
+    // chiusa/stato:"chiusa"/chiusuraData/chiusuraRefId) e resta NASCOSTA per sempre.
+    // Vale per segnalazioni E controlli. Coerente con buildRiaperturaSegnalazionePatch.
+    next.chiusuraDi = null;
+    next.chiusuraRefId = null;
+    next.chiusuraData = null;
+    next.chiusa = false;
+    next.dataChiusura = null;
   } else if (sorgenteTipo === "segnalazione") {
     next.stato = "presa_in_carico";
   }

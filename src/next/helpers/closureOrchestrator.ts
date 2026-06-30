@@ -13,7 +13,8 @@
  * dalle chiusure native da `gomme_evento`.
  */
 
-import { readLegamiOrigine, type LegameOrigineRef } from "./cicloLegame";
+import { getItemSync } from "../../utils/storageSync";
+import { readLegameLavoro, readLegamiOrigine, type LegameOrigineRef } from "./cicloLegame";
 import {
   chiudiControlloDaEvento,
   chiudiSegnalazioneDaEvento,
@@ -22,12 +23,55 @@ import {
 
 type RawRecord = Record<string, unknown>;
 
+const CONTROLLI_KEY = "@controlli_mezzo_autisti";
+const MANUTENZIONI_KEY = "@manutenzioni";
+
 function isRecord(value: unknown): value is RawRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function unwrapList(raw: unknown): RawRecord[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(isRecord);
+  if (isRecord(raw) && Array.isArray(raw.value)) return (raw.value as unknown[]).filter(isRecord);
+  if (isRecord(raw) && Array.isArray(raw.items)) return (raw.items as unknown[]).filter(isRecord);
+  return [];
+}
+
+function isManutenzioneFatta(record: RawRecord): boolean {
+  const stato = normalizeText(record.stato).toLowerCase();
+  if (stato === "eseguita" || stato === "chiusa_da_evento" || stato === "chiusa") return true;
+  return normalizeText(record.chiusuraDi).length > 0;
+}
+
+/**
+ * BUG B — un controllo "entrambi"/multi-KO ha N manutenzioni collegate e va chiuso
+ * SOLO quando TUTTE sono fatte. La manutenzione che innesca la propagazione
+ * (`justClosedId`) conta come fatta anche se non ancora persistita. Se una collegata
+ * non esiste piu' (cancellata) non blocca. Reader puro.
+ */
+async function tutteLeManutenzioniDelControlloChiuse(
+  controlloId: string,
+  justClosedId: string,
+): Promise<boolean> {
+  const controllo = unwrapList(await getItemSync(CONTROLLI_KEY)).find(
+    (c) => normalizeText(c.id) === controlloId,
+  );
+  if (!controllo) return true;
+  const altriIds = readLegameLavoro(controllo).filter((id) => id && id !== justClosedId);
+  if (altriIds.length === 0) return true;
+  const byId = new Map(
+    unwrapList(await getItemSync(MANUTENZIONI_KEY)).map((m) => [normalizeText(m.id), m] as const),
+  );
+  for (const id of altriIds) {
+    const rec = byId.get(id);
+    if (rec && !isManutenzioneFatta(rec)) return false;
+  }
+  return true;
 }
 
 export type PropagazioneEsito =
@@ -121,6 +165,12 @@ export async function propagateChiusuraToLegame(
         chiusuraData,
       );
     } else {
+      // BUG B — chiudi il controllo SOLO se tutte le sue manutenzioni collegate sono
+      // fatte: un controllo "entrambi" (motrice+rimorchio) non deve sparire quando si
+      // esegue solo una delle due manutenzioni (l'altra resterebbe da fare e orfana).
+      if (!(await tutteLeManutenzioniDelControlloChiuse(legame.refId, manutenzioneId))) {
+        continue;
+      }
       result = await chiudiControlloDaEvento(
         legame.refId,
         "manutenzione",
