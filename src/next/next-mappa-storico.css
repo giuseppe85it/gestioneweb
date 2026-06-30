@@ -2257,6 +2257,36 @@
   flex: 0 0 auto;
 }
 
+/* Card per-mezzo del tab "Consumo olio": scheda leggera dentro la cornice
+   man2-screen, con targa + metriche compatte in testata (no KPI giganti). */
+.man2-olio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(199, 189, 173, 0.5);
+  background: #fbf8f3;
+}
+.man2-olio-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.man2-olio-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 0.82rem;
+  color: #5f564b;
+}
+.man2-olio-card__meta strong {
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
 .man2-tagliando-box {
   display: flex;
   flex-direction: column;

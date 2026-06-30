@@ -7603,8 +7603,8 @@ export default function NextManutenzioniPage() {
       : consumoOlioPerMezzo;
 
     return (
-      <div className="man2-form-shell">
-        <div className="man2-screen-head man2-screen-head--form">
+      <section className="man2-screen">
+        <div className="man2-screen-head">
           <div>
             <h2 className="man2-screen-title">Consumo olio motore</h2>
             <p className="man2-screen-copy">
@@ -7633,56 +7633,46 @@ export default function NextManutenzioniPage() {
           </div>
         ) : (
           mezzi.map((mezzo) => (
-            <section key={mezzo.targa} className="man2-form-block">
-              <div className="man2-section-title">{mezzo.targa}</div>
-              <div className="man2-dash-kpis" style={{ marginBottom: 12 }}>
-                <article className="man2-kpi">
-                  <div className="man2-kpi__label">Consumo medio</div>
-                  <div className="man2-kpi__value">
-                    {mezzo.consumoMedioL1000 != null
-                      ? `${mezzo.consumoMedioL1000} L / 1.000 km`
-                      : "—"}
-                  </div>
-                  <div className="man2-kpi__sub">
-                    {mezzo.consumoMedioL1000 != null
-                      ? `su ${mezzo.kmCoperti.toLocaleString("it-CH")} km`
-                      : "servono 2 rabbocchi con KM"}
-                  </div>
-                </article>
-                <article className="man2-kpi">
-                  <div className="man2-kpi__label">Olio totale rabboccato</div>
-                  <div className="man2-kpi__value">{mezzo.totaleLitri} L</div>
-                  <div className="man2-kpi__sub">{mezzo.eventi.length} rabbocchi</div>
-                </article>
+            <div key={mezzo.targa} className="man2-olio-card">
+              <div className="man2-olio-card__head">
+                <span className="man2-section-title">{mezzo.targa}</span>
+                <span className="man2-olio-card__meta">
+                  <span>
+                    Consumo medio{" "}
+                    <strong>
+                      {mezzo.consumoMedioL1000 != null
+                        ? `${mezzo.consumoMedioL1000} L/1.000 km`
+                        : "—"}
+                    </strong>
+                  </span>
+                  <span>
+                    Olio totale <strong>{mezzo.totaleLitri} L</strong>
+                  </span>
+                  <span>{mezzo.eventi.length} rabbocchi</span>
+                </span>
               </div>
 
-              <div className="man2-pdf-list__table-wrap" style={{ overflowX: "auto" }}>
-                <table className="man2-pdf-list__table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="man2-pdf-list__table-wrap">
+                <table className="man2-pdf-list__table">
                   <thead>
                     <tr>
-                      <th style={{ textAlign: "left", padding: "6px 8px" }}>Data</th>
-                      <th style={{ textAlign: "right", padding: "6px 8px" }}>KM</th>
-                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Litri</th>
-                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Km percorsi</th>
-                      <th style={{ textAlign: "right", padding: "6px 8px" }}>Consumo</th>
+                      <th>Data</th>
+                      <th>KM</th>
+                      <th>Litri</th>
+                      <th>Km percorsi</th>
+                      <th>Consumo</th>
                     </tr>
                   </thead>
                   <tbody>
                     {mezzo.eventi.map((evento) => (
-                      <tr key={evento.id} style={{ borderTop: "1px solid #e2e8f0" }}>
-                        <td style={{ padding: "6px 8px" }}>
-                          {evento.data ? formatDateShort(evento.data) : "—"}
-                        </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                          {evento.km != null ? evento.km.toLocaleString("it-CH") : "—"}
-                        </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                          {evento.litri != null ? `${evento.litri} L` : "—"}
-                        </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                      <tr key={evento.id}>
+                        <td>{evento.data ? formatDateShort(evento.data) : "—"}</td>
+                        <td>{evento.km != null ? evento.km.toLocaleString("it-CH") : "—"}</td>
+                        <td>{evento.litri != null ? `${evento.litri} L` : "—"}</td>
+                        <td>
                           {evento.kmPercorsi != null ? evento.kmPercorsi.toLocaleString("it-CH") : "—"}
                         </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>
+                        <td>
                           {evento.consumoL1000 != null ? `${evento.consumoL1000} L/1.000 km` : "—"}
                         </td>
                       </tr>
@@ -7692,15 +7682,15 @@ export default function NextManutenzioniPage() {
               </div>
 
               {mezzo.rabbocchiSenzaKm > 0 ? (
-                <small style={{ color: "#b45309", display: "block", marginTop: 8 }}>
+                <p className="man2-form-copy">
                   {mezzo.rabbocchiSenzaKm} rabbocco/i senza KM: esclusi dal calcolo del
                   consumo. Aggiungi i KM per includerli.
-                </small>
+                </p>
               ) : null}
-            </section>
+            </div>
           ))
         )}
-      </div>
+      </section>
     );
   }
 
