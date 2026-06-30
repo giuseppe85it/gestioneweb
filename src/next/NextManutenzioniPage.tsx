@@ -2802,6 +2802,10 @@ export default function NextManutenzioniPage() {
     setDescrizione("Rabbocco olio motore");
     // Registrazione diretta come "eseguita": è un rabbocco già fatto.
     setCreateAsDaFare(false);
+    // Precompilo i KM con l'ultimo km noto del mezzo (modificabile): senza km il
+    // rabbocco non entra nel calcolo del Consumo olio.
+    const ultimoKm = targaContesto ? kmUltimoByTarga[targaContesto] ?? null : null;
+    if (ultimoKm != null) setKm(String(ultimoKm));
     setView("form");
     setNotice(
       targaContesto
@@ -6478,7 +6482,16 @@ export default function NextManutenzioniPage() {
                 <input
                   type="checkbox"
                   checked={rabboccoOlioManuale}
-                  onChange={(event) => setRabboccoOlioManuale(event.target.checked)}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setRabboccoOlioManuale(checked);
+                    // Se attivo l'olio e il campo KM è vuoto, lo precompilo con
+                    // l'ultimo km noto del mezzo (serve al calcolo del Consumo olio).
+                    if (checked && !km.trim()) {
+                      const ultimoKm = targa ? kmUltimoByTarga[targa] ?? null : null;
+                      if (ultimoKm != null) setKm(String(ultimoKm));
+                    }
+                  }}
                 />
                 In questo intervento è stato fatto anche un rabbocco olio
               </label>
@@ -6495,9 +6508,9 @@ export default function NextManutenzioniPage() {
                     placeholder="Es. 11"
                   />
                   <small style={{ color: "#64748b", display: "block", marginTop: 4 }}>
-                    I KM sono quelli di questo intervento; l&apos;olio entra nel calcolo del
-                    Consumo olio. Non cambia il tipo della manutenzione. In alternativa,
-                    aggiungi &quot;OLIO MOTORE&quot; nei Materiali per scalarlo dal magazzino.
+                    Controlla il campo <strong>KM</strong> qui sopra: senza km il rabbocco non
+                    entra nel calcolo del Consumo olio. Lo precompilo con l&apos;ultimo km noto
+                    del mezzo, correggilo se serve. Non cambia il tipo della manutenzione.
                   </small>
                 </div>
               ) : null}
