@@ -1109,9 +1109,9 @@ function deriveUiSubtype(item: {
     return "gomme";
   }
 
-  // Marcatore esplicito e persistito del rabbocco olio (non dipende dalla descrizione).
-  if (item.rabboccoOlio === true) return "olio";
-
+  // NB: il flag `rabboccoOlio` NON implica più il tipo "olio": una manutenzione di
+  // altro tipo (es. vaschetta) può includere un rabbocco accessorio senza perdere il
+  // suo tipo originale in modifica. L'evento olio "puro" si riconosce dalla descrizione.
   const normalized = item.descrizione.toUpperCase();
   if ((normalized.includes("GOMME") || normalized.includes("PNEUM")) && isGommeStraordinarieKeyword(normalized)) {
     return "gomme-straordinario";
@@ -1119,6 +1119,7 @@ function deriveUiSubtype(item: {
   if (normalized.includes("CAMBIO GOMME")) return "gomme";
   if (normalized.includes("TAGLIANDO")) return "tagliando completo";
   if (normalized.includes("RIPARAZ")) return "riparazione";
+  if (normalized.includes("RABBOCCO OLIO")) return "olio";
   return "altro";
 }
 
@@ -1702,6 +1703,9 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
   // Litri di olio rabboccato (solo per uiSubtype "olio"). Usato dalla scheda Consumo olio.
   const [olioLitriInput, setOlioLitriInput] = useState("");
+  // Spunta "in questo intervento è stato fatto anche un rabbocco olio" su una
+  // manutenzione di altro tipo (il flag rabboccoOlio sul record, senza cambiare il tipo).
+  const [rabboccoOlioManuale, setRabboccoOlioManuale] = useState(false);
   const [gommeSelezioneDraft, setGommeSelezioneDraft] =
     useState<NextManutenzioneGommeSelezioneRecord | null>(null);
   const [gommeModalOpen, setGommeModalOpen] = useState(false);
@@ -2776,6 +2780,7 @@ export default function NextManutenzioniPage() {
     setGommeStraordinarioAsseId("");
     setGommeStraordinarioQuantita("");
     setOlioLitriInput("");
+    setRabboccoOlioManuale(false);
     setGommeSelezioneDraft(null);
     setGommeModalOpen(false);
     setQuantitaTemp("");
@@ -2870,6 +2875,7 @@ export default function NextManutenzioniPage() {
     );
     setGommeSelezioneDraft(item.gommeSelezione ?? null);
     setOlioLitriInput(item.olioLitri != null ? String(item.olioLitri) : "");
+    setRabboccoOlioManuale(item.rabboccoOlio === true);
   }
 
   function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
@@ -3245,10 +3251,11 @@ export default function NextManutenzioniPage() {
     const hasOlioMateriale = olioLitriDaMateriali > 0;
 
     const isOlioCompletion = isCompletionSave && Boolean(overrides.completionOlioLitri?.trim());
-    const isOlioEvento = uiSubtype === "olio" || isOlioCompletion || hasOlioMateriale;
+    const isOlioEvento =
+      uiSubtype === "olio" || isOlioCompletion || hasOlioMateriale || rabboccoOlioManuale;
     const olioLitriManualeRaw = isOlioCompletion
       ? overrides.completionOlioLitri ?? ""
-      : uiSubtype === "olio"
+      : uiSubtype === "olio" || rabboccoOlioManuale
         ? olioLitriInput
         : "";
     const olioLitriManuale = olioLitriManualeRaw.trim()
@@ -6459,6 +6466,41 @@ export default function NextManutenzioniPage() {
                   ))}
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {uiSubtype !== "olio" ? (
+            <section className="man2-form-block">
+              <label
+                className="man2-field__label"
+                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={rabboccoOlioManuale}
+                  onChange={(event) => setRabboccoOlioManuale(event.target.checked)}
+                />
+                In questo intervento è stato fatto anche un rabbocco olio
+              </label>
+              {rabboccoOlioManuale ? (
+                <div className="man2-field" style={{ marginTop: 10 }}>
+                  <label className="man2-field__label">Olio rabboccato (litri)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={olioLitriInput}
+                    onChange={(event) => setOlioLitriInput(event.target.value)}
+                    placeholder="Es. 11"
+                  />
+                  <small style={{ color: "#64748b", display: "block", marginTop: 4 }}>
+                    I KM sono quelli di questo intervento; l&apos;olio entra nel calcolo del
+                    Consumo olio. Non cambia il tipo della manutenzione. In alternativa,
+                    aggiungi &quot;OLIO MOTORE&quot; nei Materiali per scalarlo dal magazzino.
+                  </small>
+                </div>
+              ) : null}
             </section>
           ) : null}
 

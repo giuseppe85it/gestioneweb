@@ -76,6 +76,29 @@ describe("buildConsumoOlioPerMezzo", () => {
     expect(mezzo.kmCoperti).toBe(0);
   });
 
+  it("include un rabbocco fatto su una manutenzione di altro tipo (spunta olio universale)", () => {
+    // Caso reale: intervento alla vaschetta refrigerante con anche un rabbocco olio.
+    // Il calcolo guarda solo rabboccoOlio + stato + km + olioLitri, NON il tipo/descrizione.
+    const result = buildConsumoOlioPerMezzo([
+      rec({ id: "1", km: 100000, olioLitri: 1, descrizione: "Rabbocco olio motore" }),
+      rec({
+        id: "2",
+        km: 104000,
+        olioLitri: 11,
+        descrizione: "Sostituzione vaschetta liquido refrigerante",
+        rabboccoOlio: true,
+        stato: "eseguita",
+      }),
+    ]);
+    expect(result).toHaveLength(1);
+    const mezzo = result[0];
+    expect(mezzo.eventi).toHaveLength(2);
+    // 11 L su 4000 km = 2,75 → arrotondato a 1 decimale = 2,8 L/1000 km
+    expect(mezzo.eventi[1].kmPercorsi).toBe(4000);
+    expect(mezzo.eventi[1].consumoL1000).toBe(2.8);
+    expect(mezzo.totaleLitri).toBe(12);
+  });
+
   it("raggruppa per targa normalizzata (spazi/maiuscole)", () => {
     const result = buildConsumoOlioPerMezzo([
       rec({ id: "1", targa: "ab 123", km: 100000, olioLitri: 1 }),
