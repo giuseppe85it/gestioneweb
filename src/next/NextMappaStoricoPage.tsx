@@ -1424,7 +1424,7 @@ export default function NextMappaStoricoPage({
                             if (selectedMaintenance && onAgganciaRecord) onAgganciaRecord(selectedMaintenance);
                           }}
                         >
-                          Aggancia a record
+                          Collega…
                         </button>
                       ) : null}
                       {selectedMaintenance &&

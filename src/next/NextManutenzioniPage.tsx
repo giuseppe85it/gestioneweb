@@ -5086,7 +5086,7 @@ export default function NextManutenzioniPage() {
                     void handleOpenAgganciaControllo(item);
                   }}
                 >
-                  Assegna a manutenzione esistente
+                  Collega a manutenzione…
                 </button>
                 <button
                   type="button"
@@ -5122,7 +5122,7 @@ export default function NextManutenzioniPage() {
     const checkbox = opts?.checkbox;
     const menuItems = opts?.menuItems ?? [
       {
-        label: "Assegna a manutenzione esistente",
+        label: "Collega a manutenzione…",
         onClick: () => void handleOpenAgganciaSegnalazione(item),
       },
       {
@@ -5371,7 +5371,7 @@ export default function NextManutenzioniPage() {
                     void handleOpenAgganciaUniversale(item);
                   }}
                 >
-                  Aggancia a…
+                  Collega…
                 </button>
                 <button
                   type="button"
@@ -5537,7 +5537,7 @@ export default function NextManutenzioniPage() {
                                       onClick: () => void handleRimuoviDaGruppo(gruppo.key, item.id),
                                     },
                                     {
-                                      label: "Assegna a manutenzione esistente",
+                                      label: "Collega a manutenzione…",
                                       onClick: () => void handleOpenAgganciaSegnalazione(item),
                                     },
                                     {
@@ -5605,7 +5605,7 @@ export default function NextManutenzioniPage() {
                                 },
                                 menuItems: [
                                   {
-                                    label: "Assegna a manutenzione esistente",
+                                    label: "Collega a manutenzione…",
                                     onClick: () => void handleOpenAgganciaSegnalazione(item),
                                   },
                                   {

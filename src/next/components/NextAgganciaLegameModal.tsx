@@ -24,10 +24,10 @@ type Props = {
 };
 
 function buildHeader(mode: AgganciaLegameMode, count: number): string {
-  if (count > 1) return "Aggancia sorgenti a manutenzione";
+  if (count > 1) return "Collega sorgenti a manutenzione";
   if (mode === "cambia") return "Cambia legame manutenzione";
   if (mode === "sostituisci-orfano") return "Sostituisci link rotto";
-  return "Aggancia a manutenzione esistente";
+  return "Collega a manutenzione esistente";
 }
 
 function buildSubLabel(c: ManutenzioneCandidataAggancio): string {

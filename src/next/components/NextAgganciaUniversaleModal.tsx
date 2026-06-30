@@ -92,7 +92,7 @@ export function NextAgganciaUniversaleModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="aix-head">
-          <h3>Aggancia a un record esistente</h3>
+          <h3>Collega a un record esistente</h3>
           <button className="aix-close" type="button" onClick={onCancel} disabled={busy}>
             CHIUDI
           </button>
