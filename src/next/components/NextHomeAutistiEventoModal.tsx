@@ -529,7 +529,28 @@ export default function NextHomeAutistiEventoModal({
       );
       return candidate ? candidate.toUpperCase() : "";
     })();
-    setCreateDescrizione("");
+    // Pre-compilo la descrizione col testo dell'evento di origine (segnalazione o
+    // controllo KO): l'operatore non deve riscriverla, al massimo la integra.
+    const descrizioneSuggerita: string = (() => {
+      if (event.tipo === "segnalazione") {
+        const tipo: string = firstText(payload?.tipoProblema, payload?.tipo, payload?.categoria);
+        const testo: string = firstText(payload?.descrizione, payload?.note, payload?.messaggio);
+        if (tipo && testo) return `Segnalazione: ${tipo} - ${testo}`;
+        const unico: string = firstText(tipo, testo);
+        return unico ? `Segnalazione: ${unico}` : "";
+      }
+      const anomalie: string = [
+        ...asArray(payload?.koList),
+        ...asArray(payload?.koItems),
+        ...asArray(payload?.anomalie),
+        ...asArray(payload?.problemi),
+      ]
+        .map((entry) => safeText(entry))
+        .filter(Boolean)
+        .join(", ");
+      return anomalie ? `Controllo KO: ${anomalie}` : "";
+    })();
+    setCreateDescrizione(descrizioneSuggerita);
     setCreateUrgenza("media");
     setCreateTarga(targaSuggerita);
     setCreateNote("");
