@@ -122,16 +122,20 @@ function patchSourceAfterSgancio(
   };
   if (remainingIds.length === 0) {
     next.dataPresaInCarico = null;
-    next.stato = "nuova";
-    // BUG A — riapertura COMPLETA: azzera anche il TIMBRO DI CHIUSURA. Senza questo
-    // la sorgente torna "nuova" ma i filtri la considerano ancora chiusa (chiuso =
-    // chiusa/stato:"chiusa"/chiusuraData/chiusuraRefId) e resta NASCOSTA per sempre.
-    // Vale per segnalazioni E controlli. Coerente con buildRiaperturaSegnalazionePatch.
+    // BUG A — riapertura COMPLETA: azzera anche il TIMBRO DI CHIUSURA, altrimenti la
+    // sorgente resta NASCOSTA (chiuso = chiusa/stato:"chiusa"/chiusuraData/chiusuraRefId)
+    // pur essendo riaperta. La segnalazione torna "nuova"; il controllo non ha uno stato
+    // proprio, quindi si RIMUOVE l'eventuale "chiusa" lasciandolo senza stato.
     next.chiusuraDi = null;
     next.chiusuraRefId = null;
     next.chiusuraData = null;
-    next.chiusa = false;
-    next.dataChiusura = null;
+    if (sorgenteTipo === "segnalazione") {
+      next.stato = "nuova";
+      next.chiusa = false;
+      next.dataChiusura = null;
+    } else {
+      delete next.stato;
+    }
   } else if (sorgenteTipo === "segnalazione") {
     next.stato = "presa_in_carico";
   }
@@ -250,6 +254,8 @@ export async function sganciaLegameOrfano(
         }
 
         // Patch: cancella linkedLavoroId/Ids/Multiple + dataPresaInCarico + ripristina stato.
+        // BUG A (allineato a patchSourceAfterSgancio): azzera ANCHE il timbro di chiusura,
+        // altrimenti la sorgente resterebbe nascosta dai filtri pur essendo riaperta.
         const next: RawRecord = {
           ...sourceRecord,
           linkedLavoroId: null,
@@ -257,9 +263,16 @@ export async function sganciaLegameOrfano(
           linkedMultiple: false,
           dataPresaInCarico: null,
           letta: false,
+          chiusuraDi: null,
+          chiusuraRefId: null,
+          chiusuraData: null,
         };
         if (input.sorgenteTipo === "segnalazione") {
           next.stato = "nuova";
+          next.chiusa = false;
+          next.dataChiusura = null;
+        } else {
+          delete next.stato;
         }
 
         const nextList = [...sourceList];

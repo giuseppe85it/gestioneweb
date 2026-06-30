@@ -158,4 +158,48 @@ describe("closureOrchestrator — propagateChiusuraToLegame (D1)", () => {
     expect(segs[0].stato).toBe("chiusa");
     expect(segs[0].chiusuraData).toBe(2000); // ultima scrittura vince, niente duplicati
   });
+
+  it("BUG B — controllo 'entrambi': NON si chiude se una manutenzione collegata e' ancora da fare", async () => {
+    seed("@controlli_mezzo_autisti", [
+      { id: "ctl-2", targa: "TI1", stato: "presa_in_carico", linkedLavoroIds: ["man-A", "man-B"] },
+    ]);
+    seed("@manutenzioni", [
+      { id: "man-A", stato: "eseguita" }, // questa appena eseguita (innesca la propagazione)
+      { id: "man-B", stato: "daFare" }, // l'altra (es. rimorchio) ancora da fare
+    ]);
+    const esito = await propagateChiusuraToLegame({
+      id: "man-A",
+      stato: "eseguita",
+      origineTipo: "controllo",
+      origineRefId: "ctl-2",
+      origineRefKey: "@controlli_mezzo_autisti",
+    });
+    // il controllo NON deve risultare chiuso: c'e' ancora lavoro aperto (man-B)
+    expect(read("@controlli_mezzo_autisti")[0].stato).not.toBe("chiusa");
+    expect(esito.propagated).toBe(false);
+  });
+
+  it("BUG B — controllo 'entrambi': si chiude quando l'ULTIMA manutenzione collegata viene eseguita", async () => {
+    seed("@controlli_mezzo_autisti", [
+      { id: "ctl-3", targa: "TI1", stato: "presa_in_carico", linkedLavoroIds: ["man-C", "man-D"] },
+    ]);
+    seed("@manutenzioni", [
+      { id: "man-C", stato: "eseguita" }, // gia' fatta prima
+      { id: "man-D", stato: "eseguita" }, // questa appena eseguita (innesca, ultima rimasta)
+    ]);
+    const esito = await propagateChiusuraToLegame({
+      id: "man-D",
+      stato: "eseguita",
+      origineTipo: "controllo",
+      origineRefId: "ctl-3",
+      origineRefKey: "@controlli_mezzo_autisti",
+    });
+    expect(esito).toMatchObject({
+      ok: true,
+      propagated: true,
+      targetTipo: "controllo",
+      targetId: "ctl-3",
+    });
+    expect(read("@controlli_mezzo_autisti")[0].stato).toBe("chiusa");
+  });
 });
