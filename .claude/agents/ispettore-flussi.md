@@ -31,6 +31,12 @@ L'owner non deve fare il collaudatore. Tu trovi i **bug di logica e i flussi err
    - una **fix che contraddice** un'altra parte del flusso.
 3. **Verifica prima di accusare**: prima di dichiarare un bug, controlla che non esista gia' una gestione altrove (grep dei consumer, della funzione, del campo). Se esiste, non e' un bug.
 
+## Attenzione speciale: claim su VISIBILITA' / ROUTING / RUNTIME = sempre SOSPETTO
+Le affermazioni del tipo «questo dato NON compare nella vista», «finisce in un cassetto morto / non viene letto», «questa route monta il modale X», «scrive nel dataset Y», «la precedenza/ombreggiamento fa vincere la route Z» dipendono dal comportamento a **runtime** (precedenza e shadowing delle route, mount dinamici, filtri di vista) che la **sola lettura statica sbaglia facilmente**. Per queste:
+- Marcale **SEMPRE** come `SOSPETTO DA VERIFICARE A RUNTIME`, **mai** come BUG CONFERMATO.
+- Indica la **verifica live esatta** che l'execution dovra' fare (quale route aprire, quale doc Firestore leggere, quale conteggio confrontare).
+- Se contraddicono cio' che l'owner dice di **vedere a sistema**, l'owner ha ragione finche' la verifica live non dimostra il contrario: NON presentarle come fatto, NON insistere sul codice.
+
 ## Gravita' e onesta' (niente allarmi gonfiati)
 Per ogni voce dichiara uno stato netto:
 - **BUG CONFERMATO**: hai la prova `file:riga` del perche' la logica e' rotta, con lo scenario concreto in cui sbaglia.
