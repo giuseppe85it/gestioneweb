@@ -2681,7 +2681,6 @@
   font-weight: 800;
   cursor: pointer;
 }
-
 .man2-pdf-head {
   display: flex;
   justify-content: space-between;
@@ -2946,6 +2945,13 @@
      modale non stona col resto della UI Manutenzioni. */
   background: linear-gradient(180deg, #f4efe6, #ece5d8);
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+}
+
+/* Modale "compatto" (conferme e form brevi come crea-manutenzione): la regola
+   stava nel file CSS non importato, quindi il modale restava largo 1000px e
+   andava in overflow. Qui nel foglio attivo lo teniamo stretto e leggibile. */
+.man2-pdf-modal--confirm {
+  max-width: 560px;
 }
 
 .man2-pdf-modal__head {

@@ -24,6 +24,7 @@ Non serve scomodarti per modifiche puramente di dati/logica senza UI.
 - Leggi il codice reale, cita `file:riga`. Non inventare componenti o classi che non esistono: verificali con grep/glob.
 - Per la continuità NON inventare uno standard a memoria: **deducilo dai componenti esistenti** (apri 2-3 fratelli e confronta).
 - Distingui un problema certo (bottone che chiama una funzione inesistente) da un'osservazione di stile (spaziatura diversa).
+- **Una classe CSS conta solo se è nel foglio EFFETTIVAMENTE importato dal componente.** Apri gli `import "...css"` del file e verifica che ogni classe usata sia definita lì (o in un foglio importato a catena). ⚠️ In Manutenzioni il foglio attivo è `src/next/next-mappa-storico.css`; **`src/next/next-manutenzioni.css` NON è importato (codice morto)**: una classe definita solo lì (es. `man2-btn--primary`, `man2-pdf-modal--confirm` storicamente) **non ha alcun effetto a schermo**. Una classe usata nel JSX ma non definita in nessun foglio attivo (es. un refuso come `man2-pdf-modal-backdrop` invece di `man2-pdf-modal__overlay`) è un **bug**: l'elemento perde stile (un modale senza backdrop fisso finisce in fondo alla pagina). Vedi `[[css-manutenzioni-attivo-vs-morto]]`.
 
 ## Parte 1 — Cablaggio azioni↔bottoni
 
@@ -55,6 +56,15 @@ Non limitarti a criticare: indica **come farlo**. Per un modale nuovo, di':
 3. Le classi/varianti già pronte da usare al posto di stili inventati.
 4. Le convenzioni obbligatorie: titolo + `CHIUDI`, azioni `ANNULLA` + conferma, `busy` che disabilita, chiusura su backdrop, testi italiani.
 Così ogni modale nuovo nasce già in continuità.
+
+## Parte 3 — Checklist dura su modali e bottoni (errori GIÀ visti, da non ripetere)
+Per ogni modale/azione, controlla esplicitamente questi punti e segnalali se sbagliati:
+- **Backdrop = overlay fisso e centrato.** La classe dello sfondo deve essere `position: fixed; inset: 0` con centratura (es. `man2-pdf-modal__overlay`, o `aix-backdrop`). Se usa una classe non definita nel foglio attivo, il modale non galleggia: cade in fondo alla pagina e serve scrollare. Bug, non estetica.
+- **Larghezza adeguata al contenuto.** Una conferma o un form breve devono essere **compatti** (≈460–560px), non `min(1000px, 100%)`: un riquadro enorme e mezzo vuoto sembra "anonimo" e può andare in overflow orizzontale (barra di scorrimento). Verifica che esista e si applichi una variante tipo `man2-pdf-modal--confirm`.
+- **Footer azioni in riga ed equilibrato.** I bottoni (Annulla + conferma) vanno **affiancati e di misura simile**. ⚠️ NON mettere un `man2-btn-full` (larghezza 100%, alto) accanto a un `man2-btn` piccolo: si impilano e sbilanciano (un bottone gigante + uno sperduto sopra). Il riferimento corretto è il footer del modale **Elimina manutenzione** (`NextManutenzioniPage.tsx` `renderPdfDeleteModal`): due `man2-btn` affiancati, la conferma con la variante colore.
+- **Azione principale col colore giusto.** Conferma = verde `man2-btn--primary` (azioni positive) o rosso `man2-btn--danger` (distruttive); secondaria = `man2-btn` neutro. Un bottone d'azione color crema/anonimo è una deviazione.
+- **Niente ID/UUID/timestamp grezzi mostrati all'utente.** Sottotitoli o etichette non devono esporre `item.id` (es. `dc7167af-...`), chiavi tecniche o ms epoch: non servono nel lavoro quotidiano. Mostra info utili (targa, tipo, data leggibile) o nulla.
+- **Titolo del modale visibile.** Usa la classe titolo del guscio (es. `man2-pdf-modal__title`), non un `<h3>` nudo che può risultare invisibile o spinto fuori vista da un overflow.
 
 ## Formato di output
 1. **Esito**: `OK` / `INCOERENZE TROVATE`.

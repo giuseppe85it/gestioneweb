@@ -7449,8 +7449,7 @@ export default function NextManutenzioniPage() {
         <form className="man2-pdf-modal man2-pdf-modal--confirm" onSubmit={handleSubmitCreaManutenzioneSegnalazione}>
           <div className="man2-pdf-modal__head">
             <div>
-              <h3>Crea manutenzione da segnalazione</h3>
-              <p>{modal.item.id}</p>
+              <h3 className="man2-pdf-modal__title">Crea manutenzione da segnalazione</h3>
             </div>
             <button
               type="button"
@@ -7507,7 +7506,7 @@ export default function NextManutenzioniPage() {
               <button type="button" className="man2-btn" onClick={close} disabled={modal.busy}>
                 Annulla
               </button>
-              <button type="submit" className="man2-btn-full" disabled={modal.busy || !modal.descrizione.trim()}>
+              <button type="submit" className="man2-btn man2-btn--primary" disabled={modal.busy || !modal.descrizione.trim()}>
                 {modal.busy ? "Salvataggio..." : "Crea manutenzione"}
               </button>
             </div>
