@@ -7239,7 +7239,7 @@ export default function NextManutenzioniPage() {
     };
     return (
       <div
-        className="man2-pdf-modal-backdrop"
+        className="man2-pdf-modal__overlay"
         role="dialog"
         aria-modal="true"
         aria-label="Elimina manutenzione"
@@ -7311,7 +7311,7 @@ export default function NextManutenzioniPage() {
 
     return (
       <>
-      <div className="man2-pdf-modal-backdrop" role="dialog" aria-modal="true" aria-label="Origine manutenzione">
+      <div className="man2-pdf-modal__overlay" role="dialog" aria-modal="true" aria-label="Origine manutenzione">
         <div className="man2-pdf-modal">
           <div className="man2-pdf-modal__head">
             <div>
@@ -7441,7 +7441,7 @@ export default function NextManutenzioniPage() {
     };
     return (
       <div
-        className="man2-pdf-modal-backdrop"
+        className="man2-pdf-modal__overlay"
         role="dialog"
         aria-modal="true"
         aria-label="Crea manutenzione da segnalazione"
