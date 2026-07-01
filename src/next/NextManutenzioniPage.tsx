@@ -2750,7 +2750,7 @@ export default function NextManutenzioniPage() {
             </td>
           ) : null}
           <td className={descClass}>{buildPdfDescrizione(item) || "—"}</td>
-          {args.showSupplier ? <td>{item.fornitore || "—"}</td> : null}
+          {args.showSupplier ? <td>{resolveNomeOfficinaVivo(item.fornitore, matchIndexOfficine) || "—"}</td> : null}
           {args.showActions ? (
             <td className="man2-pdf-row__delete-cell">
               <button
@@ -6753,7 +6753,7 @@ export default function NextManutenzioniPage() {
                             <span className="man-autosuggest-label man2-material-suggest-label">{item.label}</span>
                             {item.fornitoreLabel ? (
                               <span className="man-autosuggest-supplier man2-material-suggest-supplier">
-                                Officina: {item.fornitoreLabel}
+                                Fornitore: {item.fornitoreLabel}
                               </span>
                             ) : null}
                           </div>
