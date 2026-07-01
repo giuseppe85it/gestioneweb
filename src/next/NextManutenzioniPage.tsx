@@ -26,6 +26,7 @@ import {
   type NextManutenzioniMezzoOption,
 } from "./domain/nextManutenzioniDomain";
 import { buildConsumoOlioPerMezzo, type NextConsumoOlioMezzo } from "./domain/nextManutenzioniOlioDomain";
+import { buildAnagraficaMatchIndex, resolveNomeOfficinaVivo } from "./domain/nextDocumentiAnagraficaMatch";
 import {
   buildNextGommeStraordinarieEvents,
   buildNextGommeStateByAsse,
@@ -2026,6 +2027,10 @@ export default function NextManutenzioniPage() {
     [storicoMezzoVisibile],
   );
   const consumoOlioPerMezzo = useMemo(() => buildConsumoOlioPerMezzo(storico), [storico]);
+  // Indice anagrafica officine per risolvere il nome "vivo" dall'anagrafica nelle
+  // sole viste/PDF (non tocca i dati salvati). Fornitori vuoti: qui il campo è
+  // sempre un'officina, non un fornitore-merce.
+  const matchIndexOfficine = useMemo(() => buildAnagraficaMatchIndex(officine, []), [officine]);
   const materialiSuggeriti = useMemo(() => {
     const query = normalizeFreeText(materialeSearch).toUpperCase();
     if (!query) return [];
@@ -4058,7 +4063,7 @@ export default function NextManutenzioniPage() {
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
             toPdfText(buildPdfDescrizioneWithOrigin(item, pdfOriginNotes), fontReady),
-            toPdfText(item.fornitore || "—", fontReady),
+            toPdfText(resolveNomeOfficinaVivo(item.fornitore, matchIndexOfficine) || "—", fontReady),
           ];
         }),
         styles: {
@@ -4216,7 +4221,7 @@ export default function NextManutenzioniPage() {
             toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
             toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
             toPdfText(buildPdfDescrizioneWithOrigin(item, pdfOriginNotes), fontReady),
-            toPdfText(item.fornitore || "—", fontReady),
+            toPdfText(resolveNomeOfficinaVivo(item.fornitore, matchIndexOfficine) || "—", fontReady),
           ];
         }),
         styles: {
@@ -4363,7 +4368,7 @@ export default function NextManutenzioniPage() {
           toPdfText(fmtKm(evento.kmPercorsi), fontReady),
           toPdfText(evento.litri != null ? `${evento.litri} L` : "—", fontReady),
           toPdfText(evento.consumoL1000 != null ? `${evento.consumoL1000}` : "—", fontReady),
-          toPdfText(evento.eseguitoDa || "—", fontReady),
+          toPdfText(resolveNomeOfficinaVivo(evento.eseguitoDa, matchIndexOfficine) || "—", fontReady),
         ]),
         styles: {
           font: pdfBodyFont,

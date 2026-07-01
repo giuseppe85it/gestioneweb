@@ -9,9 +9,9 @@
  *     contenute nell'altro (es. anagrafica "SCIURBA" ⊆ documento "SCIURBA AUTOTRUCK"),
  *     è la stessa entità. Precedenza alle officine.
  *
- * Limite noto: errori di battitura ("Agustoni" vs "Augustoni") NON vengono abbinati
- * (servirebbe un confronto fuzzy). È la fase 1 concordata; il collegamento salvato
- * per id (officinaId/fornitoreId) resta una fase futura.
+ * Errori di battitura ("Agustoni" vs "Augustoni") vengono abbinati dal match fuzzy
+ * (Levenshtein, step 3 di `matchFornitoreText`). Il collegamento salvato per id
+ * (officinaId/fornitoreId) resta una fase futura: qui il match è calcolato al volo.
  */
 import type { NextOfficinaReadOnlyItem } from "./nextOfficineDomain";
 import type { NextFornitoreReadOnlyItem } from "./nextFornitoriDomain";
@@ -184,4 +184,23 @@ export function matchFornitoreText(
   if (frnFuzzy) return { kind: "fornitore", id: frnFuzzy.item.id, nome: frnFuzzy.item.nome };
 
   return { kind: "nessuno", nome: raw || null };
+}
+
+/**
+ * Nome "vivo" dell'officina per la sola VISUALIZZAZIONE/stampa. Dato il testo
+ * officina salvato in un record (denormalizzato, a volte con refuso), restituisce
+ * il nome CANONICO dell'anagrafica `@officine` se il testo vi corrisponde (match
+ * esatto/morbido/fuzzy, così "Augustoni" → "Agustoni"). Se il testo NON corrisponde
+ * a un'officina — incluso il caso in cui corrisponda solo a un FORNITORE-merce —
+ * mantiene il testo salvato: non forza abbinamenti verso l'anagrafica sbagliata né
+ * inventa nomi. Sola lettura, nessuna scrittura: il record resta invariato.
+ */
+export function resolveNomeOfficinaVivo(
+  testo: string | null | undefined,
+  index: AnagraficaMatchIndex,
+): string | null {
+  const raw = String(testo ?? "").trim();
+  if (!raw) return null;
+  const match = matchFornitoreText(raw, index);
+  return match.kind === "officina" ? match.nome : raw;
 }
