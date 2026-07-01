@@ -71,9 +71,16 @@ Per ogni modale/azione, controlla esplicitamente questi punti e segnalali se sba
 - **⚠️ Testo invisibile (colore ereditato dal tema).** Segnala celle/testi che NON hanno un `color` esplicito e stanno su sfondo chiaro: nel tema man2 il colore di testo di default è chiaro (crema), quindi un elemento senza `color` proprio può risultare **crema su crema = invisibile**. Caso reale (2026-06-30): le `td` di `.man2-pdf-list__table` non avevano `color` (le `th` sì) → righe presenti nel DOM ma illeggibili nel tab Consumo olio. Controlla in particolare: `td`/`li`/`span` dentro tabelle o card che ereditano il colore, testo su sfondi `#f...`/crema, e ogni nuovo blocco che non riusa una classe con `color` già definito. Regola: se scrivi testo su fondo chiaro e non c'è un `color` esplicito nella catena, è un rischio da segnalare.
 - **Presenza nel codice ≠ visibile a schermo.** Tu leggi il codice: puoi dire se un elemento è renderizzato e con quali classi, NON se è visivamente leggibile. Quando il dubbio è di visibilità reale (colori, overflow, clipping), dichiaralo esplicitamente: la verifica va fatta con uno screenshot del browser, non dalla sola lettura. Non affermare mai "si vede" basandoti solo sul fatto che l'elemento è nel markup.
 
+## Parte 4 — Collocazione dell'azione (è nel posto giusto?)
+Un bottone può essere cablato bene E visivamente coerente, ma stare nel **posto sbagliato**: anche questa è un'incoerenza e va segnalata (è un errore già capitato — un "Esporta PDF" messo dentro il tab "Consumo olio" invece che nel pannello di esportazione). Prima di approvare una nuova azione — soprattutto **export/PDF/stampa, creazione, impostazioni** — chiediti: *esiste già nel modulo un punto d'ingresso canonico per questa famiglia di azioni?*
+- **Export/PDF/stampa nel modulo Manutenzioni**: si esportano TUTTI dal pannello unico **"Esporta PDF"** (`NextManutenzioniPage.tsx` → `renderPdfPanel`, tab PDF), che ha i suoi filtri (soggetto/periodo/stato). Una nuova esportazione va aggiunta LÌ come nuovo **soggetto/filtro** del pannello, **non** come bottone separato dentro un altro tab. Un "Esporta PDF" spuntato in un tab diverso è una deviazione: va ricondotto al pannello. Segnalalo **anche se il bottone funziona**.
+- **Regola generale**: se per una famiglia di azioni esiste già un "centro" (esportazioni, creazione, filtri, impostazioni), la nuova azione della stessa famiglia va ricondotta a quel centro. Sparpagliare gli ingressi rende il modulo **confusionario** (lamentela ricorrente dell'owner sul modulo Manutenzioni).
+- **Come verificarlo**: `grep` nel modulo delle azioni della stessa famiglia (`PDF`, `Esporta`, `openPreview`, `generate...PDF`, `handleCreate...`) e controlla se esiste un pannello/menu dedicato. Se sì e la nuova azione è altrove, **segnala con la ricetta**: "spostala nel pannello X come nuovo filtro/voce", indicando il punto esatto (`file:riga`).
+
 ## Formato di output
 1. **Esito**: `OK` / `INCOERENZE TROVATE`.
 2. **Cablaggio**: elenco problemi con `file:riga`, tipo (bottone orfano / handler orfano / modale non disegnato / prop mancante / doppione) e gravità (`critica` se rompe una funzione, `normale` se è un buco UX).
-3. **Continuità**: deviazioni dallo standard, con il fratello di riferimento da imitare (`file:riga`).
-4. **Ricetta di continuità** (se c'è un componente/modale nuovo): i 4 punti sopra.
-5. **Raccomandazione**: cosa sistemare, in parole semplici. Niente patch: descrivi, l'execution corregge.
+3. **Collocazione**: l'azione è nel punto d'ingresso canonico del modulo? Se no, indica dove va spostata (`file:riga` del pannello/menu di destinazione).
+4. **Continuità**: deviazioni dallo standard, con il fratello di riferimento da imitare (`file:riga`).
+5. **Ricetta di continuità** (se c'è un componente/modale nuovo): i 4 punti sopra.
+6. **Raccomandazione**: cosa sistemare, in parole semplici. Niente patch: descrivi, l'execution corregge.

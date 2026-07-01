@@ -29,6 +29,7 @@
 6. **Niente dati tecnici grezzi a schermo** (UUID, id, timestamp ms): solo info utili (targa, data leggibile) o nulla.
 7. **Comandi complessi spiegati** con tooltip (`title`) al passaggio del mouse.
 8. **Verifica a schermo (screenshot)** prima di dichiarare "fatto" su qualsiasi cosa visiva.
+9. **Un solo punto d'ingresso per famiglia di azioni**: le esportazioni PDF/stampe di un modulo vivono nel suo pannello unico (in Manutenzioni: il pannello **"Esporta PDF"** = `renderPdfPanel`), aggiunte come nuovo **soggetto/filtro** — non bottoni "Esporta" sparsi nei singoli tab.
 
 ## 3. Token (valori canonici — usare questi, non varianti a caso)
 Finché non esiste un file di variabili globali, questi sono i valori di riferimento.
@@ -74,6 +75,7 @@ Oggi coesistono ~6 "mondi" grafici. Vanno convogliati sullo standard sopra **man
 - Testo/celle senza `color` esplicito su fondo chiaro (crema-su-crema, invisibile).
 - Stili inline sparsi su `<table>/<th>/<td>`, `<small style>`, `marginTop` a mano.
 - Dichiarare "si vede" avendo controllato solo il DOM/markup, non uno screenshot.
+- Bottone di export/PDF/stampa messo dentro un tab qualsiasi invece che nel pannello unico di esportazione del modulo (in Manutenzioni: "Esporta PDF"). → aggiungilo lì come soggetto/filtro.
 
 ## Fonti (verificato dal codice)
 `src/next/next-shell.css`, `src/next/next-mappa-storico.css` (sistema man2, il più completo),

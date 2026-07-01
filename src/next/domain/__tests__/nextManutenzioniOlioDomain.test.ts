@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildConsumoOlioPerMezzo } from "../nextManutenzioniOlioDomain";
 import type { NextManutenzioniLegacyDatasetRecord } from "../nextManutenzioniDomain";
 
-// La funzione usa solo: rabboccoOlio, stato, targa, km, olioLitri, data, id.
+// La funzione usa: rabboccoOlio, stato, targa, km, olioLitri, data, id, fornitore (officina).
 // Costruisco record minimi con cast, evitando di replicare tutti i campi del type.
 function rec(
   partial: Partial<NextManutenzioniLegacyDatasetRecord>,
@@ -106,5 +106,24 @@ describe("buildConsumoOlioPerMezzo", () => {
     ]);
     expect(result).toHaveLength(1);
     expect(result[0].eventi).toHaveLength(2);
+  });
+
+  it("popola 'eseguito da' con l'officina (campo fornitore), null se vuoto", () => {
+    const result = buildConsumoOlioPerMezzo([
+      rec({ id: "1", km: 100000, olioLitri: 1, fornitore: "Agustoni" }),
+      rec({ id: "2", km: 104000, olioLitri: 2, fornitore: "   " }),
+      // Il vecchio snapshot `eseguitoDa` NON deve essere usato: conta solo `fornitore`.
+      rec({ id: "3", km: 108000, olioLitri: 1, fornitore: "Rossi", eseguitoDa: "Augustoni" }),
+    ]);
+    const mezzo = result[0];
+    const e1 = mezzo.eventi.find((e) => e.km === 100000);
+    const e2 = mezzo.eventi.find((e) => e.km === 104000);
+    const e3 = mezzo.eventi.find((e) => e.km === 108000);
+    // officina presente → usata
+    expect(e1?.eseguitoDa).toBe("Agustoni");
+    // officina vuota/spazi → null (non stringa vuota)
+    expect(e2?.eseguitoDa).toBeNull();
+    // ignora il vecchio snapshot `eseguitoDa`, usa `fornitore`
+    expect(e3?.eseguitoDa).toBe("Rossi");
   });
 });

@@ -25,7 +25,7 @@ import {
   type NextManutenzioniLegacyMaterialRecord,
   type NextManutenzioniMezzoOption,
 } from "./domain/nextManutenzioniDomain";
-import { buildConsumoOlioPerMezzo } from "./domain/nextManutenzioniOlioDomain";
+import { buildConsumoOlioPerMezzo, type NextConsumoOlioMezzo } from "./domain/nextManutenzioniOlioDomain";
 import {
   buildNextGommeStraordinarieEvents,
   buildNextGommeStateByAsse,
@@ -132,7 +132,7 @@ import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
 type TipoVoce = "mezzo" | "compressore" | "attrezzature";
-type PdfSubjectSelection = TipoVoce | "tutti";
+type PdfSubjectSelection = TipoVoce | "tutti" | "olio";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dafare" | "dashboard" | "consumo-olio" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
@@ -3533,6 +3533,10 @@ export default function NextManutenzioniPage() {
       return;
     }
 
+    // Il soggetto "Rabbocchi olio" ha il suo esportatore dedicato
+    // (exportConsumoOlioPdf); qui si genera solo il quadro manutenzioni.
+    if (pdfSubjectType === "olio") return;
+
     const { default: JsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
 
@@ -4283,6 +4287,173 @@ export default function NextManutenzioniPage() {
       doc.output("blob") as Blob,
       fileName,
       "Anteprima PDF quadro manutenzioni",
+    );
+  }
+
+  // PDF "Completo" del Consumo olio: una tabella per mezzo con i rabbocchi
+  // registrati (Data, KM, KM percorsi, Litri, Consumo L/1.000 km, Eseguito da).
+  // Riusa il motore PDF del modulo (font unicode + testata/pié + stile crema).
+  async function exportConsumoOlioPdf(mezzi: NextConsumoOlioMezzo[]) {
+    if (!mezzi.length) {
+      window.alert("Non ci sono rabbocchi olio da esportare.");
+      return;
+    }
+
+    const { default: JsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+
+    const doc = new JsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const docWithTable = doc as typeof doc & PdfDocWithPlugins & { lastAutoTable?: { finalY?: number } };
+    const fontReady = await ensurePdfUnicodeFont(docWithTable);
+    const pdfBodyFont = fontReady ? PDF_UNICODE_FONT_FAMILY : "helvetica";
+    const setPdfFont = (style: "normal" | "bold" = "normal") => {
+      doc.setFont(fontReady ? PDF_UNICODE_FONT_FAMILY : "helvetica", style);
+    };
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const topMargin = 24;
+    const bottomMargin = 14;
+    const title = "Consumo olio motore";
+    const generatedLabel = formatPdfGenerationDate();
+    const fileName = buildPdfFileName("consumo-olio-motore");
+    const fmtKm = (value: number | null) => (value != null ? value.toLocaleString("it-CH") : "—");
+    let y = topMargin;
+
+    const checkPage = (neededHeight: number) => {
+      if (y + neededHeight > pageHeight - bottomMargin) {
+        doc.addPage();
+        y = topMargin;
+      }
+    };
+
+    for (const mezzo of mezzi) {
+      checkPage(20);
+      setPdfFont("bold");
+      doc.setFontSize(13);
+      doc.setTextColor(26, 26, 26);
+      doc.text(toPdfText(mezzo.targa, fontReady), margin, y);
+      y += 6;
+
+      setPdfFont("normal");
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      const consumoMedio =
+        mezzo.consumoMedioL1000 != null ? `${mezzo.consumoMedioL1000} L/1.000 km` : "—";
+      const metaLine = `Consumo medio ${consumoMedio}   -   Olio totale ${mezzo.totaleLitri} L   -   ${mezzo.eventi.length} rabbocchi`;
+      doc.text(toPdfText(metaLine, fontReady), margin, y);
+      y += 4;
+
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { top: topMargin, bottom: bottomMargin, left: margin, right: margin },
+        head: [
+          [
+            toPdfText("Data", fontReady),
+            toPdfText("KM", fontReady),
+            toPdfText("KM percorsi", fontReady),
+            toPdfText("Litri", fontReady),
+            toPdfText("Consumo (L/1.000 km)", fontReady),
+            toPdfText("Eseguito da", fontReady),
+          ],
+        ],
+        body: mezzo.eventi.map((evento) => [
+          toPdfText(evento.data ? formatDateShort(evento.data) : "—", fontReady),
+          toPdfText(fmtKm(evento.km), fontReady),
+          toPdfText(fmtKm(evento.kmPercorsi), fontReady),
+          toPdfText(evento.litri != null ? `${evento.litri} L` : "—", fontReady),
+          toPdfText(evento.consumoL1000 != null ? `${evento.consumoL1000}` : "—", fontReady),
+          toPdfText(evento.eseguitoDa || "—", fontReady),
+        ]),
+        styles: {
+          font: pdfBodyFont,
+          fontSize: 8,
+          cellPadding: 2.4,
+          lineColor: [229, 231, 235],
+          lineWidth: 0.1,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: {
+          font: pdfBodyFont,
+          fillColor: [55, 65, 81],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [249, 245, 238],
+        },
+        bodyStyles: {
+          font: pdfBodyFont,
+          textColor: [37, 35, 32],
+        },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 34, halign: "right" },
+          2: { cellWidth: 34, halign: "right" },
+          3: { cellWidth: 26, halign: "right" },
+          4: { cellWidth: 46, halign: "right" },
+          5: { cellWidth: 99 },
+        },
+        didParseCell: (hookData) => {
+          if (hookData.section === "body" && hookData.column.index === 4) {
+            hookData.cell.styles.textColor = [22, 101, 52];
+            hookData.cell.styles.fontStyle = "bold";
+          }
+        },
+        rowPageBreak: "avoid",
+      });
+
+      y = (docWithTable.lastAutoTable?.finalY ?? y) + 6;
+
+      if (mezzo.rabbocchiSenzaKm > 0) {
+        checkPage(8);
+        setPdfFont("normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text(
+          toPdfText(
+            `${mezzo.rabbocchiSenzaKm} rabbocco/i senza KM: esclusi dal calcolo del consumo.`,
+            fontReady,
+          ),
+          margin,
+          y,
+        );
+        y += 6;
+      }
+
+      y += 6;
+    }
+
+    const totalPages = doc.getNumberOfPages();
+    for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 1) {
+      doc.setPage(pageIndex);
+      setPdfFont("bold");
+      doc.setFontSize(11);
+      doc.setTextColor(26, 26, 26);
+      doc.text(toPdfText(title, fontReady), margin, 10);
+
+      setPdfFont("normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text(toPdfText(`Generato il ${generatedLabel}`, fontReady), pageWidth - margin, 10, {
+        align: "right",
+      });
+      doc.setDrawColor(26, 26, 26);
+      doc.setLineWidth(0.35);
+      doc.line(margin, 14, pageWidth - margin, 14);
+      doc.text(
+        toPdfText(`Pagina ${pageIndex} di ${totalPages}`, fontReady),
+        pageWidth - margin,
+        pageHeight - 6,
+        { align: "right" },
+      );
+    }
+
+    await openManutenzioniPdfPreview(
+      doc.output("blob") as Blob,
+      fileName,
+      "Anteprima PDF consumo olio",
     );
   }
 
@@ -6651,6 +6822,10 @@ export default function NextManutenzioniPage() {
     );
   }
   function renderPdfPanel() {
+    // Soggetto "Rabbocchi olio": esporta il consumo olio (tabella per mezzo)
+    // invece del quadro manutenzioni. I filtri Periodo/Stato non si applicano.
+    const isOlioPdf = pdfSubjectType === "olio";
+
     const renderPdfResultRow = (result: (typeof pdfVisibleResults)[number]) => {
       const previewItems = result.items.slice(0, 3);
       const metricColumnLabel = resolvePdfMetricColumnLabel(result.items);
@@ -6855,27 +7030,40 @@ export default function NextManutenzioniPage() {
         <div className="man2-pdf-shell">
           <div className="man2-pdf-head">
             <div>
-              <div className="man2-panel-kicker">Quadro manutenzioni PDF</div>
-              <h2 className="man2-screen-title">Quadro manutenzioni PDF</h2>
+              <div className="man2-panel-kicker">Esporta PDF</div>
+              <h2 className="man2-screen-title">Esporta PDF</h2>
             </div>
-            <button
-              type="button"
-              className="man2-btn"
-              title="Esporta il quadro corrente. Se il filtro riguarda una sola targa, il PDF usa la foto reale del mezzo."
-              aria-label="Esporta il quadro manutenzioni"
-              onClick={() =>
-                void exportPdfForItems(
-                  pdfVisibleItems,
-                  pdfStatusScope === "solo-da-fare"
-                    ? "Manutenzioni da fare"
-                    : pdfStatusScope === "solo-eseguite"
-                    ? `Manutenzioni eseguite ${formatMonthFilterLabel(pdfPeriodFilter)}`
-                    : `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
-                )
-              }
-            >
-              PDF quadro generale
-            </button>
+            {isOlioPdf ? (
+              <button
+                type="button"
+                className="man2-btn"
+                title="Esporta in PDF il consumo olio di tutti i mezzi con rabbocchi (Data, KM, KM percorsi, Litri, Consumo, Eseguito da)."
+                aria-label="Esporta PDF consumo olio di tutti i mezzi"
+                disabled={consumoOlioPerMezzo.length === 0}
+                onClick={() => void exportConsumoOlioPdf(consumoOlioPerMezzo)}
+              >
+                PDF consumo olio
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="man2-btn"
+                title="Esporta il quadro corrente. Se il filtro riguarda una sola targa, il PDF usa la foto reale del mezzo."
+                aria-label="Esporta il quadro manutenzioni"
+                onClick={() =>
+                  void exportPdfForItems(
+                    pdfVisibleItems,
+                    pdfStatusScope === "solo-da-fare"
+                      ? "Manutenzioni da fare"
+                      : pdfStatusScope === "solo-eseguite"
+                      ? `Manutenzioni eseguite ${formatMonthFilterLabel(pdfPeriodFilter)}`
+                      : `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
+                  )
+                }
+              >
+                PDF quadro generale
+              </button>
+            )}
           </div>
 
           <div className="man2-pdf-steps">
@@ -6887,56 +7075,136 @@ export default function NextManutenzioniPage() {
                 <select
                   value={pdfSubjectType}
                   onChange={(event) => setPdfSubjectType(event.target.value as PdfSubjectSelection)}
-                  title="Scegli se leggere il quadro per mezzo, compressore, attrezzature o tutti i soggetti."
-                  aria-label="Filtro soggetto quadro manutenzioni"
+                  title="Scegli cosa esportare: il quadro manutenzioni per mezzo, compressore, attrezzature o tutti i soggetti, oppure il consumo olio (rabbocchi)."
+                  aria-label="Filtro soggetto esporta PDF"
                 >
                   <option value="mezzo">Mezzo</option>
                   <option value="compressore">Compressore</option>
                   <option value="attrezzature">Attrezzature</option>
                   <option value="tutti">Tutti</option>
+                  <option value="olio">Rabbocchi olio</option>
                 </select>
               </div>
             </div>
-            <div className="man2-pdf-step">
-              <span className="man2-pdf-step__index">Step 2</span>
-              <div className="man2-form-title">Periodo</div>
-              <div className="man2-field">
-                <label className="man2-field__label">Filtro periodo</label>
-                <select
-                  value={pdfPeriodFilter}
-                  onChange={(event) => setPdfPeriodFilter(event.target.value as PdfPeriodFilter)}
-                  title="Limita il quadro al periodo desiderato."
-                  aria-label="Filtro periodo quadro manutenzioni"
-                >
-                  <option value="tutto">Tutto</option>
-                  <option value="ultimo-mese">Ultimo mese</option>
-                  {monthOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {formatMonthFilterLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                <label className="man2-field__label" style={{ marginTop: 10 }}>
-                  Manutenzioni da mostrare
-                </label>
-                <select
-                  value={pdfStatusScope}
-                  onChange={(event) => setPdfStatusScope(event.target.value as PdfStatusScope)}
-                  title="Scegli se includere tutte le manutenzioni, solo quelle da fare/programmate o solo quelle eseguite. Le da fare non risentono del filtro periodo."
-                  aria-label="Filtro stato manutenzioni quadro"
-                >
-                  <option value="tutte">Tutte (da fare + storico)</option>
-                  <option value="solo-da-fare">Solo da fare / programmate</option>
-                  <option value="solo-eseguite">Solo eseguite (storico)</option>
-                </select>
+            {isOlioPdf ? (
+              <div className="man2-pdf-step">
+                <span className="man2-pdf-step__index">Info</span>
+                <div className="man2-form-title">Consumo olio</div>
+                <p className="man2-form-copy">
+                  Il PDF elenca, per ogni mezzo con rabbocchi, tutti gli eventi
+                  registrati (litri ogni 1.000 km). I filtri di periodo e stato non si
+                  applicano. Usa il bottone qui sopra per esportare tutti i mezzi, o il
+                  bottone su ciascuna riga per il singolo mezzo.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="man2-pdf-step">
+                <span className="man2-pdf-step__index">Step 2</span>
+                <div className="man2-form-title">Periodo</div>
+                <div className="man2-field">
+                  <label className="man2-field__label">Filtro periodo</label>
+                  <select
+                    value={pdfPeriodFilter}
+                    onChange={(event) => setPdfPeriodFilter(event.target.value as PdfPeriodFilter)}
+                    title="Limita il quadro al periodo desiderato."
+                    aria-label="Filtro periodo quadro manutenzioni"
+                  >
+                    <option value="tutto">Tutto</option>
+                    <option value="ultimo-mese">Ultimo mese</option>
+                    {monthOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {formatMonthFilterLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="man2-field__label" style={{ marginTop: 10 }}>
+                    Manutenzioni da mostrare
+                  </label>
+                  <select
+                    value={pdfStatusScope}
+                    onChange={(event) => setPdfStatusScope(event.target.value as PdfStatusScope)}
+                    title="Scegli se includere tutte le manutenzioni, solo quelle da fare/programmate o solo quelle eseguite. Le da fare non risentono del filtro periodo."
+                    aria-label="Filtro stato manutenzioni quadro"
+                  >
+                    <option value="tutte">Tutte (da fare + storico)</option>
+                    <option value="solo-da-fare">Solo da fare / programmate</option>
+                    <option value="solo-eseguite">Solo eseguite (storico)</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="man2-section-title">Risultati esportabili</div>
         <div className="man2-pdf-results">
-          {pdfVisibleResults.length > 0 ? (
+          {isOlioPdf ? (
+            consumoOlioPerMezzo.length > 0 ? (
+              consumoOlioPerMezzo.map((mezzo) => {
+                const preview = mezzoPreviewByTarga.get(normalizeText(mezzo.targa));
+                return (
+                  <article key={mezzo.targa} className="man2-pdf-row">
+                    <div className="man2-pdf-row__media">
+                      {preview?.fotoUrl ? (
+                        <img
+                          src={preview.fotoUrl}
+                          alt={`Mezzo ${mezzo.targa}`}
+                          className="man2-pdf-thumb"
+                        />
+                      ) : (
+                        <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">
+                          {mezzo.targa}
+                        </div>
+                      )}
+                    </div>
+                    <div className="man2-pdf-row__content">
+                      <div className="man2-pdf-row__meta">
+                        <div>
+                          <span className="man2-pdf-row__label">Targa</span>
+                          <strong>{mezzo.targa}</strong>
+                        </div>
+                        <div>
+                          <span className="man2-pdf-row__label">Mezzo / modello</span>
+                          <strong>{preview?.marcaModello ?? preview?.label ?? "—"}</strong>
+                        </div>
+                        <div>
+                          <span className="man2-pdf-row__label">Consumo medio</span>
+                          <strong>
+                            {mezzo.consumoMedioL1000 != null
+                              ? `${mezzo.consumoMedioL1000} L/1.000 km`
+                              : "—"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="man2-pdf-row__label">Rabbocchi</span>
+                          <strong>{mezzo.eventi.length}</strong>
+                        </div>
+                        <div>
+                          <span className="man2-pdf-row__label">Olio totale</span>
+                          <strong>{mezzo.totaleLitri} L</strong>
+                        </div>
+                      </div>
+                      <div className="man2-pdf-row__actions">
+                        <button
+                          type="button"
+                          className="man2-btn"
+                          title={`Esporta in PDF il consumo olio del mezzo ${mezzo.targa}.`}
+                          aria-label={`Esporta PDF consumo olio ${mezzo.targa}`}
+                          onClick={() => void exportConsumoOlioPdf([mezzo])}
+                        >
+                          PDF
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="man-empty">
+                Nessun rabbocco olio registrato. Aggiungi un rabbocco dal tab "Consumo olio".
+              </div>
+            )
+          ) : pdfVisibleResults.length > 0 ? (
             pdfSubjectType === "tutti" ? (
               pdfVisibleSections.map((section) => (
                 <Fragment key={section.subjectType}>

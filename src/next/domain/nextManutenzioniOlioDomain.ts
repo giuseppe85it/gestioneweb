@@ -23,6 +23,9 @@ export type NextRabboccoOlioEvento = {
   kmPercorsi: number | null;
   /** Consumo dell'intervallo in litri ogni 1.000 km (null se non calcolabile). */
   consumoL1000: number | null;
+  /** Officina che ha eseguito il rabbocco, dal campo `fornitore` (alimentato
+   * dall'anagrafica @officine); null se non indicata. */
+  eseguitoDa: string | null;
 };
 
 export type NextConsumoOlioMezzo = {
@@ -108,6 +111,12 @@ export function buildConsumoOlioPerMezzo(
         }
       }
 
+      // "Eseguito da" = l'officina (campo `fornitore`, alimentato dall'autocomplete
+      // dell'anagrafica @officine). NON usiamo `eseguitoDa`/`eseguito`: sono uno
+      // snapshot congelato al completamento e restano indietro se l'officina viene
+      // poi rinominata (es. refuso "Augustoni" corretto poi in "Agustoni").
+      const eseguitoRaw = (record.fornitore ?? "").trim();
+
       eventi.push({
         id: record.id,
         targa: record.targa,
@@ -116,6 +125,7 @@ export function buildConsumoOlioPerMezzo(
         litri,
         kmPercorsi,
         consumoL1000,
+        eseguitoDa: eseguitoRaw ? eseguitoRaw : null,
       });
 
       if (km !== null) prevKm = km;
