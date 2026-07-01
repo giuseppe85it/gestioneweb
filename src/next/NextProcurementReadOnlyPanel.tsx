@@ -6,6 +6,9 @@ import { db, storage } from "../firebase";
 import { setDoc } from "../utils/firestoreWriteOps";
 import { uploadBytes, deleteObject } from "../utils/storageWriteOps";
 import PdfPreviewModal from "../components/PdfPreviewModal";
+import NextAbbinaPrezziModal, {
+  type AbbinaAssignment,
+} from "./NextAbbinaPrezziModal";
 import { generateSmartPDFBlob } from "../utils/pdfEngine";
 import {
   buildPdfShareText as buildPdfShareMessage,
@@ -108,6 +111,35 @@ function normalizeCanonicalText(value: string | null | undefined) {
 
 function normalizeUnit(value: string | null | undefined) {
   return String(value ?? "").trim().toUpperCase();
+}
+
+// Confronto fornitore tollerante: l'ordine Euromec usa un idFornitore fisso ("euromecc")
+// che NON coincide con l'id del fornitore in anagrafica usato dal listino, e il nome può
+// differire per maiuscole/spazi o una lettera (es. "EUROMEC" vs "Euromecc"). Quindi:
+// combaciano se stesso id, stesso nome normalizzato, oppure stessa parola iniziale a prefisso.
+function supplierMatches(
+  orderSupplierId: string | null | undefined,
+  orderSupplierName: string | null | undefined,
+  entrySupplierId: string | null | undefined,
+  entrySupplierName: string | null | undefined,
+): boolean {
+  const orderId = String(orderSupplierId ?? "").trim().toLowerCase();
+  const entryId = String(entrySupplierId ?? "").trim().toLowerCase();
+  if (orderId && entryId && orderId === entryId) return true;
+
+  const orderName = normalizeCanonicalText(orderSupplierName);
+  const entryName = normalizeCanonicalText(entrySupplierName);
+  if (!orderName || !entryName) return false;
+  if (orderName === entryName) return true;
+
+  const orderFirst = orderName.split(" ")[0] ?? "";
+  const entryFirst = entryName.split(" ")[0] ?? "";
+  if (orderFirst.length >= 5 && entryFirst.length >= 5) {
+    const shorter = orderFirst.length <= entryFirst.length ? orderFirst : entryFirst;
+    const longer = orderFirst.length <= entryFirst.length ? entryFirst : orderFirst;
+    if (longer.startsWith(shorter)) return true;
+  }
+  return false;
 }
 
 function formatTodayLabel() {
@@ -492,6 +524,97 @@ function OrderDetailPanel(props: {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("ordine.pdf");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
   const [savingDetail, setSavingDetail] = useState(false);
+  const [showAbbinaModal, setShowAbbinaModal] = useState(false);
+  const [savingAbbina, setSavingAbbina] = useState(false);
+
+  const supplierListino = useMemo(
+    () =>
+      snapshot.listino.filter((entry) =>
+        supplierMatches(
+          workingOrder.supplierId,
+          workingOrder.supplierName,
+          entry.supplierId,
+          entry.supplierName,
+        ),
+      ),
+    [snapshot.listino, workingOrder.supplierId, workingOrder.supplierName],
+  );
+
+  const abbinaMaterials = useMemo(
+    () =>
+      workingOrder.materials.map((material) => ({
+        id: material.id,
+        descrizione: material.descrizione,
+        quantita: material.quantita ?? null,
+        unita: material.unita ?? null,
+        hasPrice:
+          typeof material.unitPrice === "number" && Number.isFinite(material.unitPrice),
+      })),
+    [workingOrder.materials],
+  );
+
+  const applyPrezziAbbinati = async (assignments: AbbinaAssignment[]) => {
+    if (assignments.length === 0) {
+      setShowAbbinaModal(false);
+      return;
+    }
+    const byMaterialId = new Map(
+      assignments.map((assignment) => [assignment.materialId, assignment]),
+    );
+    setSavingAbbina(true);
+    try {
+      const refDoc = doc(collection(db, "storage"), "@ordini");
+      const snap = await getDoc(refDoc);
+      const existing: Array<Record<string, unknown>> = snap.exists()
+        ? ((snap.data()?.value as Array<Record<string, unknown>>) || [])
+        : [];
+      const updatedArray = existing.map((entry) => {
+        if (entry.id !== workingOrder.id) return entry;
+        const materiali = Array.isArray(entry.materiali)
+          ? (entry.materiali as Array<Record<string, unknown>>)
+          : [];
+        return {
+          ...entry,
+          materiali: materiali.map((raw) => {
+            const assignment = byMaterialId.get(String(raw.id));
+            if (!assignment) return raw;
+            return {
+              ...raw,
+              prezzoUnitario: assignment.prezzoUnitario,
+              valuta: assignment.valuta,
+              unitaPrezzo: assignment.unita,
+            };
+          }),
+        };
+      });
+      await setDoc(refDoc, { value: updatedArray }, { merge: true });
+
+      setWorkingOrder((current) => ({
+        ...current,
+        materials: current.materials.map((material) => {
+          const assignment = byMaterialId.get(material.id);
+          if (!assignment) return material;
+          return {
+            ...material,
+            unitPrice: assignment.prezzoUnitario,
+            currency: assignment.valuta,
+            unitPriceUnit: assignment.unita,
+            sourceUnitPrice: assignment.prezzoUnitario,
+            sourceCurrency: assignment.valuta,
+            sourceUnitPriceUnit: assignment.unita,
+          };
+        }),
+      }));
+
+      setShowAbbinaModal(false);
+      await onOrderSaved?.();
+    } catch (err) {
+      console.error("Errore scrittura prezzi da preventivo:", err);
+      window.alert("Errore durante il salvataggio dei prezzi. Riprova.");
+    } finally {
+      setSavingAbbina(false);
+    }
+  };
 
   const sortedMaterials = useMemo(
     () =>
@@ -502,6 +625,7 @@ function OrderDetailPanel(props: {
   );
 
   const riepilogoIva = useMemo(() => {
+    if (workingOrder.ivaEsclusa) return [];
     const byValuta: Record<string, number> = {};
     sortedMaterials.forEach((material) => {
       const line = computeLineTotal({
@@ -521,7 +645,7 @@ function OrderDetailPanel(props: {
       iva: (imponibile * 8.1) / 100,
       totale: imponibile * 1.081,
     }));
-  }, [sortedMaterials]);
+  }, [sortedMaterials, workingOrder.ivaEsclusa]);
 
   const detailSuggestList = useMemo(() => {
     const query = normalizeText(newDesc);
@@ -695,6 +819,7 @@ function OrderDetailPanel(props: {
         })),
         arrivato: updatedOrder.materials.every((m) => m.arrived),
         ordineNote: updatedOrder.orderNote ?? null,
+        ivaEsclusa: updatedOrder.ivaEsclusa ?? false,
       };
 
       const updatedArray = existing.map((entry) =>
@@ -1013,6 +1138,16 @@ function OrderDetailPanel(props: {
                 {savingDetail ? "Salvataggio..." : localState.label === "ARRIVATO" ? "Segna NON Arrivato" : "Segna Arrivato"}
               </button>
             ) : null}
+            {!editing && supplierListino.length > 0 ? (
+              <button
+                type="button"
+                className="acq-btn"
+                onClick={() => setShowAbbinaModal(true)}
+                disabled={savingDetail}
+              >
+                Prezzi da preventivo
+              </button>
+            ) : null}
             {!editing ? (
               <button type="button" className="acq-btn acq-btn--primary" onClick={() => setEditing(true)}>
                 Modifica
@@ -1037,6 +1172,23 @@ function OrderDetailPanel(props: {
             <span className="acq-pill">
               Arrivati: {workingOrder.materials.filter((material) => material.arrived).length}
             </span>
+            {editing ? (
+              <label className="acq-check-inline">
+                <input
+                  type="checkbox"
+                  checked={workingOrder.ivaEsclusa}
+                  onChange={(event) =>
+                    setWorkingOrder((current) => ({
+                      ...current,
+                      ivaEsclusa: event.target.checked,
+                    }))
+                  }
+                />
+                Escludi IVA (fornitore non imponibile)
+              </label>
+            ) : workingOrder.ivaEsclusa ? (
+              <span className="acq-pill is-warn">Senza IVA</span>
+            ) : null}
           </div>
           <div className="acq-detail-totals">
             <div className="acq-detail-pdf-actions">
@@ -1073,7 +1225,7 @@ function OrderDetailPanel(props: {
           </div>
         </div>
 
-        {!editing && !addingMaterial ? (
+        {!addingMaterial ? (
           <button type="button" className="acq-btn" onClick={() => setAddingMaterial(true)}>
             + Aggiungi materiale
           </button>
@@ -1397,6 +1549,16 @@ function OrderDetailPanel(props: {
           onShare={handleSharePDF}
           onCopyLink={handleCopyPdfLink}
           onWhatsApp={handleOpenWhatsApp}
+        />
+
+        <NextAbbinaPrezziModal
+          open={showAbbinaModal}
+          supplierName={workingOrder.supplierName}
+          materials={abbinaMaterials}
+          listino={supplierListino}
+          busy={savingAbbina}
+          onClose={() => setShowAbbinaModal(false)}
+          onConfirm={applyPrezziAbbinati}
         />
       </div>
     </div>

@@ -607,12 +607,35 @@ function normalizePreventivoPriceExtractOutput(parsed) {
           entry.unit_price ??
           entry.prezzo,
       );
-      const unitPrice =
+      const unitPriceGross =
         typeof unitPriceValue === "number" &&
         Number.isFinite(unitPriceValue) &&
         unitPriceValue > 0
           ? unitPriceValue
           : null;
+      // Sconto di riga (colonna "% Sc." dei preventivi/fatture fornitore). Se presente,
+      // il prezzo unitario esposto diventa il NETTO (quello effettivamente pagato) e
+      // conservo anche il LORDO di listino e la percentuale. Additivo: senza sconto
+      // il comportamento resta identico a prima.
+      const scontoValue = parseLocalizedNumber(
+        entry.scontoPercentuale ??
+          entry.discountPercent ??
+          entry.scontoPerc ??
+          entry.percentualeSconto ??
+          entry.sconto ??
+          entry.discount,
+      );
+      const hasSconto =
+        unitPriceGross !== null &&
+        typeof scontoValue === "number" &&
+        Number.isFinite(scontoValue) &&
+        scontoValue > 0 &&
+        scontoValue < 100;
+      const unitPrice = hasSconto
+        ? Math.round(unitPriceGross * (1 - scontoValue / 100) * 100) / 100
+        : unitPriceGross;
+      const prezzoLordoUnitario = hasSconto ? unitPriceGross : null;
+      const scontoPercentuale = hasSconto ? scontoValue : null;
       const itemCurrency = normalizeCurrency(entry.currency ?? entry.valuta);
       const confidence = clampConfidence(entry.confidence, 0);
 
@@ -644,6 +667,8 @@ function normalizePreventivoPriceExtractOutput(parsed) {
         articleCode,
         uom,
         unitPrice,
+        prezzoLordoUnitario,
+        scontoPercentuale,
         currency: itemCurrency,
         confidence,
       };
@@ -914,6 +939,28 @@ function normalizeRow(entry, index, fallbackCurrency = null) {
     source.categoria ?? source.category ?? source.tipo ?? source.kind ?? source.family,
   );
   const valuta = normalizeCurrency(source.valuta ?? source.currency) || fallbackCurrency;
+  // Sconto di riga (colonna "% Sc." dei preventivi/fatture fornitore). Additivo: se
+  // presente, il prezzo unitario esposto diventa il NETTO (quello effettivamente pagato)
+  // e conservo anche il LORDO e la percentuale. Se assente, nulla cambia (altri profili
+  // come manutenzione non ricevono questo campo dal prompt, quindi restano invariati).
+  const scontoPercentuale = parseLocalizedNumber(
+    source.scontoPercentuale ??
+      source.discountPercent ??
+      source.scontoPerc ??
+      source.percentualeSconto ??
+      source.sconto ??
+      source.discount ??
+      null,
+  );
+  const hasSconto =
+    prezzoUnitario !== null &&
+    scontoPercentuale !== null &&
+    scontoPercentuale > 0 &&
+    scontoPercentuale < 100;
+  const prezzoLordoUnitario = prezzoUnitario;
+  const prezzoNettoUnitario = hasSconto
+    ? Math.round(prezzoUnitario * (1 - scontoPercentuale / 100) * 100) / 100
+    : prezzoUnitario;
   const warnings = Array.isArray(source.warnings)
     ? uniqueStrings(
         source.warnings.map((warning) =>
@@ -932,7 +979,10 @@ function normalizeRow(entry, index, fallbackCurrency = null) {
     categoria,
     quantita,
     unita,
-    prezzoUnitario,
+    // Il prezzo unitario "ufficiale" della riga è il netto scontato quando c'è uno sconto.
+    prezzoUnitario: prezzoNettoUnitario,
+    prezzoLordoUnitario: hasSconto ? prezzoLordoUnitario : null,
+    scontoPercentuale: hasSconto ? scontoPercentuale : null,
     totaleRiga,
     codiceArticolo,
     valuta,
@@ -2241,6 +2291,7 @@ function buildProviderUserInstructions(args) {
               quantity: "number|null",
               uom: "string|null",
               unitPrice: "number|null",
+              scontoPercentuale: "number|null",
               lineTotal: "number|null",
               currency: "EUR|CHF|null",
               confidence: "number|null",
@@ -2260,6 +2311,10 @@ function buildProviderUserInstructions(args) {
           "Non aggiungere testo fuori dal JSON.",
           "Se il documento non e un preventivo mantieni type coerente ma non inventare.",
           "Le righe devono restare numeri e descrizioni utili alla review.",
+          "unitPrice = prezzo unitario LORDO di listino (colonna 'Prezzo'), PRIMA dello sconto.",
+          "scontoPercentuale = percentuale di sconto della riga (colonna '% Sc.', 'Sconto', 'Sc.%'); se la riga non ha sconto usa null, NON 0.",
+          "lineTotal = importo NETTO della riga (colonna 'Importo'/'Totale'), gia scontato: di norma quantita x unitPrice x (1 - scontoPercentuale/100).",
+          "Riconosci la colonna sconto anche se intestata '% Sc.', 'Sc %', 'Sconto', 'Disc.' o simili, e associala alla riga giusta.",
         ],
       },
       null,
@@ -2291,6 +2346,7 @@ function buildProviderUserInstructions(args) {
               articleCode: "string|null",
               uom: "string|null",
               unitPrice: "number|null",
+              scontoPercentuale: "number|null",
               currency: "CHF|EUR|null",
               confidence: "number(0..1)",
             },
@@ -2310,6 +2366,9 @@ function buildProviderUserInstructions(args) {
           "Date sempre in formato dd/mm/yyyy.",
           "Le valute ammesse sono solo CHF o EUR.",
           "unitPrice deve essere il prezzo unitario della riga, non il totale documento.",
+          "unitPrice = prezzo unitario LORDO di listino (colonna 'Prezzo'), PRIMA dello sconto.",
+          "scontoPercentuale = percentuale di sconto della riga (colonna '% Sc.', 'Sc. %', 'Sconto', 'Disc.'); se la riga non ha sconto usa null, NON 0.",
+          "Riconosci la colonna sconto anche se intestata in modo abbreviato e associala alla riga giusta; l'importo netto di riga di norma e quantita x unitPrice x (1 - scontoPercentuale/100).",
           "Non introdurre codici warning diversi da quelli richiesti.",
         ],
       },

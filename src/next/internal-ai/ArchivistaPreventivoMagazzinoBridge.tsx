@@ -748,7 +748,17 @@ export default function ArchivistaPreventivoMagazzinoBridge({
                   <div className="ia-archivista-bridge__row-meta">
                     <span>Qta: {formatValue(row.quantita, "-")}</span>
                     <span>Unita: {formatValue(row.unita, "-")}</span>
-                    <span>Prezzo: {formatValue(row.prezzoUnitario, "-")}</span>
+                    {row.scontoPercentuale != null && row.prezzoLordoUnitario != null ? (
+                      <span>
+                        Prezzo: {formatValue(row.prezzoUnitario, "-")}{" "}
+                        <span className="ia-archivista-bridge__row-sconto">
+                          (listino {formatValue(row.prezzoLordoUnitario, "-")} −
+                          {formatValue(row.scontoPercentuale, "-")}%)
+                        </span>
+                      </span>
+                    ) : (
+                      <span>Prezzo: {formatValue(row.prezzoUnitario, "-")}</span>
+                    )}
                     <span>Totale: {formatValue(row.importo ?? row.totale, "-")}</span>
                   </div>
                 </article>

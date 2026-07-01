@@ -367,6 +367,22 @@ export default function NextPreventivoIaModal({
     setSubmitError(null);
 
     if (hasValidationErrors(nextValidationState)) {
+      const mancanti: string[] = [];
+      if (nextValidationState.fornitoreId) mancanti.push("Fornitore");
+      if (nextValidationState.numeroPreventivo) mancanti.push("Numero preventivo");
+      if (nextValidationState.dataPreventivo) mancanti.push("Data preventivo");
+      if (nextValidationState.righe) mancanti.push("almeno una riga articolo");
+      const righeConErrori = nextValidationState.rows.filter(
+        (row) => row.descrizione || row.unita || row.prezzoUnitario,
+      ).length;
+      if (righeConErrori > 0) {
+        mancanti.push(
+          `${righeConErrori} ${righeConErrori === 1 ? "riga" : "righe"} con dati mancanti (descrizione, unità o prezzo)`,
+        );
+      }
+      setSubmitError(
+        `Impossibile salvare: controlla i campi evidenziati in rosso — ${mancanti.join("; ")}.`,
+      );
       return;
     }
 
@@ -376,6 +392,7 @@ export default function NextPreventivoIaModal({
         ...current,
         fornitoreId: "Seleziona un fornitore.",
       }));
+      setSubmitError("Impossibile salvare: seleziona un fornitore dall'elenco.");
       return;
     }
 
@@ -793,9 +810,23 @@ export default function NextPreventivoIaModal({
                                       {validationState.rows[index]?.prezzoUnitario}
                                     </small>
                                   ) : null}
+                                  {row.scontoPercentuale != null && row.prezzoLordoUnitario != null ? (
+                                    <small style={{ color: "#667085", display: "block", marginTop: 4 }}>
+                                      listino {row.prezzoLordoUnitario.toFixed(2)} −
+                                      {row.scontoPercentuale}%
+                                    </small>
+                                  ) : null}
                                 </>
                               ) : (
-                                row.prezzoUnitario || "-"
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <span>{row.prezzoUnitario || "-"}</span>
+                                  {row.scontoPercentuale != null && row.prezzoLordoUnitario != null ? (
+                                    <small style={{ color: "#667085" }}>
+                                      listino {row.prezzoLordoUnitario.toFixed(2)} −
+                                      {row.scontoPercentuale}%
+                                    </small>
+                                  ) : null}
+                                </div>
                               )}
                             </td>
                             <td>

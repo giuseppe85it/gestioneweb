@@ -2625,3 +2625,21 @@
     justify-content: flex-start;
   }
 }
+
+/* Modale "Compila prezzi da preventivo" (Materiali da ordinare) */
+.acq-abbina-card {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.acq-abbina-table th:first-child,
+.acq-abbina-table td:first-child {
+  width: 64px;
+  text-align: center;
+}
+
+.acq-abbina-table td {
+  vertical-align: top;
+}

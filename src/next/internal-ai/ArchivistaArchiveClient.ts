@@ -39,6 +39,8 @@ export type ArchivistaReviewRow = {
   quantita?: string | number | null;
   unita?: string | null;
   prezzoUnitario?: string | number | null;
+  prezzoLordoUnitario?: string | number | null;
+  scontoPercentuale?: string | number | null;
   importo?: string | number | null;
   totale?: string | number | null;
   codice?: string | null;
@@ -518,13 +520,19 @@ export async function archiveArchivistaDocumentRecord(
 }
 
 function sanitizePreventivoRows(rows: ArchivistaReviewRow[]): Array<Record<string, unknown>> {
-  return rows.map((row, index) => ({
-    id: `riga-${index + 1}`,
-    descrizione: normalizeText(row.descrizione).toUpperCase() || `RIGA ${index + 1}`,
-    unita: normalizeText(row.unita) || "pz",
-    prezzoUnitario: Number(normalizeNumberKey(row.prezzoUnitario || row.importo || row.totale)) || 0,
-    note: normalizeText(row.categoria) || undefined,
-  }));
+  return rows.map((row, index) => {
+    const prezzoLordo = Number(normalizeNumberKey(row.prezzoLordoUnitario)) || null;
+    const sconto = Number(normalizeNumberKey(row.scontoPercentuale)) || null;
+    return {
+      id: `riga-${index + 1}`,
+      descrizione: normalizeText(row.descrizione).toUpperCase() || `RIGA ${index + 1}`,
+      unita: normalizeText(row.unita) || "pz",
+      prezzoUnitario: Number(normalizeNumberKey(row.prezzoUnitario || row.importo || row.totale)) || 0,
+      ...(prezzoLordo ? { prezzoLordoUnitario: prezzoLordo } : {}),
+      ...(sconto ? { scontoPercentuale: sconto } : {}),
+      note: normalizeText(row.categoria) || undefined,
+    };
+  });
 }
 
 export async function archiveArchivistaPreventivoRecord(

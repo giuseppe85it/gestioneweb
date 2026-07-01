@@ -96,6 +96,8 @@ export type NextProcurementOrderItem = {
   materialPreview: string[];
   materials: NextProcurementMaterialItem[];
   orderNote: string | null;
+  // true quando il fornitore è non imponibile (es. export): l'ordine non conteggia l'IVA.
+  ivaEsclusa: boolean;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof ORDINI_KEY;
   quality: NextReadQuality;
@@ -642,6 +644,7 @@ function mapOrderRecord(raw: RawOrderRecord, index: number): NextProcurementOrde
     materialPreview: materials.map((entry) => entry.descrizione).slice(0, 3),
     materials,
     orderNote: normalizeOptionalText(raw.ordineNote),
+    ivaEsclusa: raw.ivaEsclusa === true,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: ORDINI_KEY,
     quality: deriveQuality(flags, materials.length === 0),

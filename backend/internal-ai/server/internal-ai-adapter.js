@@ -162,6 +162,8 @@ function mapMaintenanceReviewRows(rows) {
     quantita: row?.quantita ?? null,
     unita: typeof row?.unita === "string" ? row.unita : null,
     prezzoUnitario: row?.prezzoUnitario ?? null,
+    prezzoLordoUnitario: row?.prezzoLordoUnitario ?? null,
+    scontoPercentuale: row?.scontoPercentuale ?? null,
     importo: row?.totaleRiga ?? null,
     totale: row?.totaleRiga ?? null,
     codiceArticolo: typeof row?.codiceArticolo === "string" ? row.codiceArticolo : null,

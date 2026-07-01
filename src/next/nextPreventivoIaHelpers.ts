@@ -20,6 +20,8 @@ export type PreventivoPriceExtractItem = {
   articleCode: string | null;
   uom: string | null;
   unitPrice: number | null;
+  prezzoLordoUnitario?: number | null;
+  scontoPercentuale?: number | null;
   currency: string | null;
   confidence: number | null;
 };
@@ -50,6 +52,10 @@ export type ReviewRow = {
   unita: string;
   prezzoUnitario: string;
   note: string;
+  // Informativi: valorizzati solo quando la riga estratta ha uno sconto.
+  // prezzoUnitario resta il NETTO (quello effettivamente pagato).
+  prezzoLordoUnitario?: number | null;
+  scontoPercentuale?: number | null;
 };
 
 export type ReviewRowAnalysisStatus =
@@ -155,6 +161,15 @@ export function mapExtractedRowsToReviewItems(
       if (item.articleCode) noteParts.push(`code:${String(item.articleCode).trim().toUpperCase()}`);
       if (item.currency) noteParts.push(`valuta:${String(item.currency).trim().toUpperCase()}`);
 
+      const prezzoLordo =
+        typeof item.prezzoLordoUnitario === "number" && Number.isFinite(item.prezzoLordoUnitario)
+          ? item.prezzoLordoUnitario
+          : null;
+      const sconto =
+        typeof item.scontoPercentuale === "number" && Number.isFinite(item.scontoPercentuale)
+          ? item.scontoPercentuale
+          : null;
+
       return {
         id: buildLocalId("preventivo-ia-row"),
         descrizione: String(item.description || "").trim().toUpperCase(),
@@ -162,6 +177,8 @@ export function mapExtractedRowsToReviewItems(
         unita: normalizeUnita(String(item.uom || "")),
         prezzoUnitario: Number(item.unitPrice).toFixed(2),
         note: noteParts.join(" | "),
+        prezzoLordoUnitario: prezzoLordo,
+        scontoPercentuale: sconto,
       };
     });
 }
