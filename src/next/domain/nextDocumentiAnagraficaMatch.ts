@@ -204,3 +204,15 @@ export function resolveNomeOfficinaVivo(
   const match = matchFornitoreText(raw, index);
   return match.kind === "officina" ? match.nome : raw;
 }
+
+/**
+ * Variante "alla fonte": applica `resolveNomeOfficinaVivo` a un'etichetta officina
+ * già composta SOLO se è disponibile l'indice anagrafica; se `index` è null ritorna
+ * l'etichetta invariata (retrocompatibilità per i chiamanti senza anagrafica). Sola lettura.
+ */
+export function resolveOfficinaLabelVivo(
+  label: string | null,
+  index: AnagraficaMatchIndex | null,
+): string | null {
+  return index ? resolveNomeOfficinaVivo(label, index) : label;
+}

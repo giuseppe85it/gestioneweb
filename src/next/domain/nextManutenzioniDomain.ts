@@ -17,6 +17,12 @@ import {
   type LegameOrigineRef,
 } from "../helpers/cicloLegame";
 import { readCollegamenti, writeCollegamenti } from "../helpers/legamiUniversali";
+import { readNextOfficineSnapshot } from "./nextOfficineDomain";
+import {
+  buildAnagraficaMatchIndex,
+  resolveOfficinaLabelVivo,
+  type AnagraficaMatchIndex,
+} from "./nextDocumentiAnagraficaMatch";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -907,7 +913,10 @@ function toMezzoOption(raw: RawRecord, index: number): NextManutenzioniMezzoOpti
 
 function toHistoryItem(
   raw: RawRecord,
-  index: number
+  index: number,
+  // Indice anagrafica @officine per il nome officina "vivo" (solo VISUALIZZAZIONE:
+  // `fornitoreLabel` non entra in alcuna scrittura). Assente = nessuna risoluzione.
+  officineIndex: AnagraficaMatchIndex | null = null
 ): NextMaintenanceHistoryItem | null {
   const mezzoTarga = buildHistoryTargaKey(normalizeText(raw.targa));
   if (!mezzoTarga) return null;
@@ -952,11 +961,17 @@ function toHistoryItem(
     km,
     ...(kmSegnalazione !== null ? { kmSegnalazione } : {}),
     ore: normalizeNumber(raw.ore),
+    // `eseguitoLabel` = chi ha eseguito (persona): NON si risolve verso officine.
     eseguitoLabel: normalizeOptionalText(raw.eseguito),
-    fornitoreLabel:
+    // `fornitoreLabel` = officina che ha eseguito: nome "vivo" dall'anagrafica se
+    // disponibile (tiene il testo se è un fornitore-merce o non c'è match). Sola
+    // lettura: il dato salvato resta invariato.
+    fornitoreLabel: resolveOfficinaLabelVivo(
       normalizeOptionalText(raw.fornitore) ??
-      normalizeOptionalText(raw.fornitoreLabel) ??
-      normalizeOptionalText(raw.eseguito),
+        normalizeOptionalText(raw.fornitoreLabel) ??
+        normalizeOptionalText(raw.eseguito),
+      officineIndex
+    ),
     materialiCount: materiali.length,
     assiCoinvolti: gommeInterventoTipo === "ordinario" ? assiCoinvolti : [],
     gommePerAsse,
@@ -1029,10 +1044,14 @@ export async function readNextMezzoManutenzioniSnapshot(
   const mezzoTarga = normalizeNextMezzoTarga(targa);
   const now = Date.now();
 
-  const [manutenzioniRaw, mezziRaw] = await Promise.all([
+  const [manutenzioniRaw, mezziRaw, officineSnapshot] = await Promise.all([
     readStorageDataset(MANUTENZIONI_KEY),
     readStorageDataset(MEZZI_KEY),
+    readNextOfficineSnapshot({ includeCloneOverlays: false }),
   ]);
+  // Nome officina "vivo" risolto UNA VOLTA alla fonte: dossier/scheda/mappa/gomme
+  // che derivano da questi history item lo ereditano senza doppie risoluzioni.
+  const officineIndex = buildAnagraficaMatchIndex(officineSnapshot.items, []);
 
   const mezzoRecord =
     mezziRaw.find((entry) => {
@@ -1044,7 +1063,7 @@ export async function readNextMezzoManutenzioniSnapshot(
     manutenzioniRaw
       .map((entry, index) => {
         if (!entry || typeof entry !== "object") return null;
-        return toHistoryItem(entry as RawRecord, index);
+        return toHistoryItem(entry as RawRecord, index, officineIndex);
       })
       .filter((entry): entry is NextMaintenanceHistoryItem => Boolean(entry))
       .filter((entry) => entry.mezzoTarga === mezzoTarga)
