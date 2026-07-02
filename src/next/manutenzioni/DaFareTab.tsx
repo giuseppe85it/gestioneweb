@@ -76,6 +76,7 @@ export type DaFareTabProps = {
   handleDeleteSegnalazione: (item: NextAutistiSegnalazioneSectionItem) => Promise<void>;
   handleOpenCreaManutenzioneSegnalazione: (item: NextAutistiSegnalazioneSectionItem) => Promise<void>;
   handleCreaGruppoSegnalazioni: (targaValue: string, segnalazioneIds: string[]) => Promise<void>;
+  handleTrasformaSegnalazioniInLavoro: (targaValue: string, segnalazioneIds: string[]) => Promise<void>;
   handleAggiungiAGruppo: (
     gruppoId: string | null,
     targaValue: string,
@@ -136,6 +137,7 @@ export function DaFareTab(props: DaFareTabProps) {
     handleDeleteSegnalazione,
     handleOpenCreaManutenzioneSegnalazione,
     handleCreaGruppoSegnalazioni,
+    handleTrasformaSegnalazioniInLavoro,
     handleAggiungiAGruppo,
     handleCreaManutenzioneDaControllo,
     handleOpenAgganciaControllo,
@@ -705,7 +707,22 @@ export function DaFareTab(props: DaFareTabProps) {
                             <button
                               type="button"
                               className="man2-grp-btn man2-grp-btn--ghost"
+                              disabled={saving || selectedFreeIdsForTarga.length < 2}
+                              title="Unisce le segnalazioni selezionate in UN unico lavoro Da fare (es. due autisti che segnalano lo stesso problema). Le segnalazioni restano tutte collegate al lavoro."
+                              onClick={() =>
+                                void handleTrasformaSegnalazioniInLavoro(
+                                  targaGroup.targa,
+                                  selectedFreeIdsForTarga,
+                                )
+                              }
+                            >
+                              Unisci in un lavoro
+                            </button>
+                            <button
+                              type="button"
+                              className="man2-grp-btn man2-grp-btn--ghost"
                               disabled={saving || selectedFreeIdsForTarga.length === 0}
+                              title="Tiene insieme le segnalazioni selezionate come gruppo, ma restano voci distinte ancora da lavorare."
                               onClick={() =>
                                 void handleCreaGruppoSegnalazioni(
                                   targaGroup.targa,

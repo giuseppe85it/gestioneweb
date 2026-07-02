@@ -4632,6 +4632,84 @@ export default function NextManutenzioniPage() {
     }
   }
 
+  // Tappa 2 flusso "due mondi": trasforma PIÙ segnalazioni libere selezionate in
+  // UN unico lavoro Da fare (caso "due autisti segnalano la stessa cosa"), senza
+  // il passaggio intermedio del gruppo. Rispecchia 1:1 handleCreaLavoroDaGruppo:
+  // stessi writer, data ereditata dalla segnalazione più vecchia (mai dal click).
+  async function handleTrasformaSegnalazioniInLavoro(targaValue: string, segnalazioneIds: string[]) {
+    const targaGroup = segnalazioniDaFareByTarga.find((group) => group.targa === targaValue);
+    const targetItems = (targaGroup?.libere ?? []).filter((item) => segnalazioneIds.includes(item.id));
+    const targetIds = targetItems.map((item) => item.id);
+    const descrizioneLavoro = buildLavoroDaGruppoDescrizione(targetItems);
+    if (targetItems.length < 2 || !descrizioneLavoro) {
+      setError("Seleziona almeno due segnalazioni dello stesso mezzo da unire in un lavoro.");
+      return;
+    }
+    const conferma = window.confirm(
+      `Unire ${targetItems.length} segnalazioni di ${targaValue} in UN unico lavoro Da fare?\n\n` +
+        `${targetItems.map((item) => `- ${item.tipo} - ${item.descrizione}`).join("\n")}\n\n` +
+        `Descrizione lavoro:\n${descrizioneLavoro}`,
+    );
+    if (!conferma) return;
+
+    try {
+      const oldestSegnalazioneTimestamp = targetItems.reduce<number | null>((oldest, item) => {
+        if (item.timestamp == null) return oldest;
+        if (oldest == null) return item.timestamp;
+        return item.timestamp < oldest ? item.timestamp : oldest;
+      }, null);
+      const dataInserimentoLavoro = toISO(oldestSegnalazioneTimestamp) ?? todayLabel();
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      setLavoroGruppoRetryState(null);
+      const savedRecord = await saveNextManutenzioneBusinessRecord({
+        targa: targaValue,
+        tipo: "mezzo",
+        fornitore: null,
+        km: null,
+        ore: null,
+        sottotipo: null,
+        descrizione: descrizioneLavoro,
+        eseguito: null,
+        data: dataInserimentoLavoro,
+        dataEsecuzione: null,
+        dataProgrammata: null,
+        stato: "daFare",
+        importo: null,
+        materiali: [],
+        assiCoinvolti: [],
+        gommePerAsse: [],
+        gommeInterventoTipo: null,
+        gommeStraordinario: null,
+        origineTipo: "manuale",
+        origineRefId: null,
+        origineRefKey: null,
+        segnalatoDa: buildSegnalatoDaGruppo(targetItems),
+        eseguitoDa: null,
+        urgenza: "media",
+      });
+      const aggancio = await agganciaSegnalazioniALavoroDaGruppo(savedRecord.id, targetIds);
+      await refreshData();
+      clearSegnalazioniLibereSelection(targetIds);
+      setSelectedDetailRecordId(savedRecord.id);
+      if (aggancio.failures.length > 0) {
+        setLavoroGruppoRetryState({
+          manutenzioneId: savedRecord.id,
+          failedIds: aggancio.failures.map((failure) => failure.sorgenteId),
+        });
+        setNotice(null);
+      } else {
+        setNotice(`Lavoro Da fare creato: ${targetItems.length} segnalazioni unite.`);
+      }
+    } catch (createError) {
+      console.error("Errore unione segnalazioni in lavoro:", createError);
+      setError("Unione delle segnalazioni in un lavoro non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleRetryAggancioLavoroGruppo() {
     if (!lavoroGruppoRetryState) return;
     const retry = lavoroGruppoRetryState;
@@ -7166,6 +7244,7 @@ export default function NextManutenzioniPage() {
           handleDeleteSegnalazione={handleDeleteSegnalazione}
           handleOpenCreaManutenzioneSegnalazione={handleOpenCreaManutenzioneSegnalazione}
           handleCreaGruppoSegnalazioni={handleCreaGruppoSegnalazioni}
+          handleTrasformaSegnalazioniInLavoro={handleTrasformaSegnalazioniInLavoro}
           handleAggiungiAGruppo={handleAggiungiAGruppo}
           handleCreaManutenzioneDaControllo={handleCreaManutenzioneDaControllo}
           handleOpenAgganciaControllo={handleOpenAgganciaControllo}
