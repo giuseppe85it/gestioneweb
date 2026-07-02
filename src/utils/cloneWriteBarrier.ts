@@ -203,6 +203,11 @@ const GRUPPO_SEGNALAZIONI_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@segnalazioni_autisti_tmp",
 ]);
 const GRUPPO_SEGNALAZIONI_WRITE_SCOPE = "next_gruppo_segnalazioni_write_scope";
+// Motore "spezza lavoro" (Dividi / Fatto solo in parte) del modulo Manutenzioni:
+// crea il lavoro-resto daFare e aggiorna la descrizione dell'originale.
+const SPEZZA_LAVORO_ALLOWED_WRITE_PATH = "/next/manutenzioni";
+const SPEZZA_LAVORO_ALLOWED_STORAGE_KEYS = new Set<string>(["@manutenzioni"]);
+const SPEZZA_LAVORO_WRITE_SCOPE = "manutenzioni_spezza_lavoro_write";
 const NEXT_SEGNALAZIONE_DELETE_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
 const NEXT_SEGNALAZIONE_DELETE_ALLOWED_STORAGE_KEYS = new Set<string>([
   "@segnalazioni_autisti_tmp",
@@ -557,6 +562,7 @@ export async function runWithCloneWriteScopedAllowance<T>(
     | typeof MANUTENZIONE_DAFARE_CREATE_WRITE_SCOPE
     | typeof CHIUSURA_DA_EVENTO_WRITE_SCOPE
     | typeof GRUPPO_SEGNALAZIONI_WRITE_SCOPE
+    | typeof SPEZZA_LAVORO_WRITE_SCOPE
     | typeof NEXT_SEGNALAZIONE_DELETE_WRITE_SCOPE
     | typeof NEXT_CONTROLLO_DELETE_WRITE_SCOPE
     | typeof ARCHIVIO_HIDE_WRITE_SCOPE
@@ -659,6 +665,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "storageSync.setItemSync"
   ) {
     return GRUPPO_SEGNALAZIONI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (
+    pathname === SPEZZA_LAVORO_ALLOWED_WRITE_PATH &&
+    hasCloneWriteScopedAllowance(SPEZZA_LAVORO_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return SPEZZA_LAVORO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (

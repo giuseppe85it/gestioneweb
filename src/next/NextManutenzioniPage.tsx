@@ -117,6 +117,7 @@ import {
   type ManutenzioneDaFareGommeSelezione,
 } from "./writers/nextManutenzioneDaFareCreateWriter";
 import { deleteSegnalazioneAutista } from "./writers/nextSegnalazioneDeleteWriter";
+import { spezzaManutenzione } from "./writers/spezzaManutenzioneWriter";
 import { deleteControlloAutista } from "./writers/nextControlloDeleteWriter";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
@@ -175,6 +176,15 @@ type CompletionSaveOverrides = {
   completionData?: string;
   completionKm?: string;
   completionOlioLitri?: string;
+  /** "Fatto solo in parte": descrizione del lavoro-resto da creare come nuovo daFare. */
+  completionResto?: string;
+};
+
+type SpezzaLavoroModalState = {
+  record: NextManutenzioniLegacyDatasetRecord;
+  descrizioneOriginale: string;
+  descrizioneResto: string;
+  busy: boolean;
 };
 
 const COMPLETION_KM_REQUIRED_CATEGORIES = new Set([
@@ -1622,6 +1632,9 @@ export default function NextManutenzioniPage() {
   const [completionDraftKm, setCompletionDraftKm] = useState("");
   // Litri olio rabboccato indicati in fase di completamento rapido (modale "Eseguita").
   const [completionDraftOlioLitri, setCompletionDraftOlioLitri] = useState("");
+  const [completionDraftParziale, setCompletionDraftParziale] = useState(false);
+  const [completionDraftResto, setCompletionDraftResto] = useState("");
+  const [spezzaLavoroModal, setSpezzaLavoroModal] = useState<SpezzaLavoroModalState | null>(null);
   // PROMPT 42 — T2: officine dell'anagrafica per i suggerimenti dell'autocomplete.
   const [officine, setOfficine] = useState<NextOfficinaReadOnlyItem[]>([]);
   const [autisti, setAutisti] = useState<NextCollegaReadOnlyItem[]>([]);
@@ -2784,6 +2797,8 @@ export default function NextManutenzioniPage() {
     setCompletionDraftOlioLitri(
       item.rabboccoOlio === true && item.olioLitri != null ? String(item.olioLitri) : "",
     );
+    setCompletionDraftParziale(false);
+    setCompletionDraftResto("");
     setEseguito(item.eseguitoDa ?? item.eseguito ?? "");
     setNotice(null);
   }
@@ -2792,15 +2807,22 @@ export default function NextManutenzioniPage() {
     const nextTarga = completionModalRecord?.targa ?? activeTarga;
     resetForm(nextTarga);
     setCompletionModalRecord(null);
+    setCompletionDraftParziale(false);
+    setCompletionDraftResto("");
   }
 
   async function handleConfirmCompletionModal() {
     if (!completionModalRecord) return;
+    if (completionDraftParziale && !completionDraftResto.trim()) {
+      setError("Hai spuntato «Fatto solo in parte»: scrivi cosa resta da fare (diventerà un nuovo lavoro).");
+      return;
+    }
     await handleSave({
       completionFornitore: completionDraftFornitore,
       completionData: completionDraftData,
       completionKm: completionDraftKm,
       completionOlioLitri: completionDraftOlioLitri,
+      ...(completionDraftParziale ? { completionResto: completionDraftResto } : {}),
     });
   }
 
@@ -3320,6 +3342,27 @@ export default function NextManutenzioniPage() {
             }
           : {}),
       });
+
+      // Tappa 3 "Fatto solo in parte": il lavoro-resto nasce PRIMA del refresh,
+      // così compare subito nei Da fare. La chiusura dell'originale è già salvata:
+      // se il resto fallisce, avvisa senza annullare il completamento.
+      let restoCreato = false;
+      let restoErrore: string | null = null;
+      const descrizioneResto = isCompletionSave ? normalizeFreeText(overrides.completionResto ?? "") : "";
+      if (descrizioneResto && savedRecord?.id) {
+        const spezzaResult = await spezzaManutenzione({
+          manutenzioneId: savedRecord.id,
+          descrizioneResto,
+          // Il resto eredita la data PRE-completamento dell'originale (quando il
+          // problema fu registrato), non la data di esecuzione appena salvata.
+          dataResto: sourceRecord?.data ?? null,
+        });
+        if (spezzaResult.ok) {
+          restoCreato = true;
+        } else {
+          restoErrore = spezzaResult.error;
+        }
+      }
       const freshData = await refreshData();
 
       // Fase B: se richiesto, registra questa esecuzione sulla scadenza collegata
@@ -3367,6 +3410,8 @@ export default function NextManutenzioniPage() {
       setCompletionDraftFornitore("");
       setCompletionDraftData(todayLabel());
       setCompletionDraftKm("");
+      setCompletionDraftParziale(false);
+      setCompletionDraftResto("");
       setView(isCompletionSave ? "mappa" : createAsDaFare ? "dafare" : "dashboard");
       const baseNotice = isCompletionSave
         ? "Manutenzione completata e marcata come eseguita."
@@ -3375,7 +3420,17 @@ export default function NextManutenzioniPage() {
           : wasEditing
             ? "Manutenzione aggiornata in modo compatibile con il legacy."
             : "Manutenzione salvata in modo compatibile con il legacy.";
-      setNotice(scadenzaAggiornata ? `${baseNotice} Scadenza del mezzo aggiornata.` : baseNotice);
+      const noticeParts = [baseNotice];
+      if (restoCreato) {
+        noticeParts.push("La parte non eseguita è ora un NUOVO lavoro nei Da fare.");
+      }
+      if (scadenzaAggiornata) {
+        noticeParts.push("Scadenza del mezzo aggiornata.");
+      }
+      setNotice(noticeParts.join(" "));
+      if (restoErrore) {
+        setError(`Completamento riuscito, ma il lavoro-resto NON è stato creato: ${restoErrore}`);
+      }
 
       // Proposta collegamento segnali aperti: dopo una creazione manuale o un
       // completamento -> eseguita, se sulla targa ci sono segnali aperti non
@@ -5059,6 +5114,47 @@ export default function NextManutenzioniPage() {
       console.error("Errore aggancio universale:", attachError);
       setError(attachError instanceof Error ? attachError.message : "Aggancio non riuscito.");
       setAgganciaUniversaleModal({ ...modal, busy: false });
+    }
+  }
+
+  // Tappa 3 "Dividi il lavoro": apre il modale con le due descrizioni (quella che
+  // resta sull'originale e quella del nuovo lavoro). Entrambi restano Da fare.
+  function handleOpenSpezzaLavoro(item: NextManutenzioniLegacyDatasetRecord) {
+    setSpezzaLavoroModal({
+      record: item,
+      descrizioneOriginale: item.descrizione ?? "",
+      descrizioneResto: "",
+      busy: false,
+    });
+    setError(null);
+    setNotice(null);
+  }
+
+  async function handleSubmitSpezzaLavoro(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const modal = spezzaLavoroModal;
+    if (!modal || modal.busy) return;
+    setSpezzaLavoroModal({ ...modal, busy: true });
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await spezzaManutenzione({
+        manutenzioneId: modal.record.id,
+        descrizioneResto: modal.descrizioneResto,
+        descrizioneOriginale: modal.descrizioneOriginale,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        setSpezzaLavoroModal({ ...modal, busy: false });
+        return;
+      }
+      await refreshData();
+      setNotice("Lavoro diviso in due: entrambi sono nei Da fare.");
+      setSpezzaLavoroModal(null);
+    } catch (splitError) {
+      console.error("Errore divisione lavoro:", splitError);
+      setError("Divisione del lavoro non riuscita.");
+      setSpezzaLavoroModal({ ...modal, busy: false });
     }
   }
 
@@ -7277,6 +7373,7 @@ export default function NextManutenzioniPage() {
           handleCreaGruppoManutenzioni={handleCreaGruppoManutenzioni}
           handleRimuoviDaGruppoManutenzioni={handleRimuoviDaGruppoManutenzioni}
           handleEdit={handleEdit}
+          handleOpenSpezzaLavoro={handleOpenSpezzaLavoro}
           handleOpenAgganciaUniversale={handleOpenAgganciaUniversale}
           openDetailForRecord={openDetailForRecord}
         />
@@ -7287,6 +7384,86 @@ export default function NextManutenzioniPage() {
     if (view === "form") return renderForm();
     if (view === "pdf") return renderPdfPanel();
     return null;
+  }
+
+  function renderSpezzaLavoroModal() {
+    const modal = spezzaLavoroModal;
+    if (!modal) return null;
+    const close = () => {
+      if (!modal.busy) setSpezzaLavoroModal(null);
+    };
+    return (
+      <div
+        className="man2-pdf-modal__overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dividi il lavoro"
+      >
+        <form className="man2-pdf-modal man2-pdf-modal--confirm" onSubmit={handleSubmitSpezzaLavoro}>
+          <div className="man2-pdf-modal__head">
+            <div>
+              <h3 className="man2-pdf-modal__title">Dividi il lavoro</h3>
+            </div>
+            <button
+              type="button"
+              className="man2-pdf-modal__close"
+              aria-label="Chiudi"
+              onClick={close}
+              disabled={modal.busy}
+            >
+              x
+            </button>
+          </div>
+          <div className="man2-pdf-modal__content">
+            <div className="man2-field">
+              <label className="man2-field__label">Targa</label>
+              <input value={modal.record.targa ?? ""} readOnly />
+            </div>
+            <div className="man2-field">
+              <label className="man2-field__label">Cosa resta su QUESTO lavoro</label>
+              <textarea
+                value={modal.descrizioneOriginale}
+                rows={3}
+                required
+                disabled={modal.busy}
+                onChange={(event) =>
+                  setSpezzaLavoroModal((current) =>
+                    current ? { ...current, descrizioneOriginale: event.target.value } : current,
+                  )
+                }
+              />
+            </div>
+            <div className="man2-field">
+              <label className="man2-field__label">Cosa va nel NUOVO lavoro</label>
+              <textarea
+                value={modal.descrizioneResto}
+                rows={3}
+                required
+                disabled={modal.busy}
+                placeholder="Es. Sostituzione fanale posteriore"
+                onChange={(event) =>
+                  setSpezzaLavoroModal((current) =>
+                    current ? { ...current, descrizioneResto: event.target.value } : current,
+                  )
+                }
+              />
+            </div>
+            <div className="man2-form-actions">
+              <button type="button" className="man2-btn" onClick={close} disabled={modal.busy}>
+                Annulla
+              </button>
+              <button
+                type="submit"
+                className="man2-btn man2-btn--primary"
+                disabled={modal.busy || !modal.descrizioneResto.trim() || !modal.descrizioneOriginale.trim()}
+              >
+                {modal.busy ? "Salvataggio..." : "Dividi in due lavori"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    );
   }
 
   function renderCompletionModal() {
@@ -7425,6 +7602,38 @@ export default function NextManutenzioniPage() {
                       : "Richiesta per confermare l'esecuzione gomme."}
                   </small>
                 </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="man2-form-block">
+            <div className="man2-field">
+              <label
+                className="man2-field__label"
+                style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={completionDraftParziale}
+                  disabled={saving}
+                  onChange={(event) => setCompletionDraftParziale(event.target.checked)}
+                  style={{ width: "auto", flex: "none", margin: 0 }}
+                />
+                Fatto solo in parte
+              </label>
+              <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+                Spunta se l'officina ha eseguito solo una parte: questo lavoro viene chiuso
+                e la parte rimanente diventa un NUOVO lavoro nei Da fare.
+              </small>
+              {completionDraftParziale ? (
+                <textarea
+                  value={completionDraftResto}
+                  rows={3}
+                  disabled={saving}
+                  placeholder="Cosa resta da fare (es. Sostituzione fanale posteriore)"
+                  onChange={(event) => setCompletionDraftResto(event.target.value)}
+                  style={{ marginTop: 8 }}
+                />
               ) : null}
             </div>
           </section>
@@ -7605,6 +7814,7 @@ export default function NextManutenzioniPage() {
         />
       ) : null}
       {renderCreaManutenzioneSegnalazioneModal()}
+      {renderSpezzaLavoroModal()}
       {renderCompletionModal()}
       <PdfPreviewModal
         open={pdfPreviewOpen}

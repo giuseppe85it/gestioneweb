@@ -94,6 +94,7 @@ export type DaFareTabProps = {
   handleCreaGruppoManutenzioni: (targaValue: string, manutenzioneIds: string[]) => Promise<void>;
   handleRimuoviDaGruppoManutenzioni: (groupKey: string, manutenzioneId: string) => Promise<void>;
   handleEdit: (item: NextManutenzioniLegacyDatasetRecord) => void;
+  handleOpenSpezzaLavoro: (item: NextManutenzioniLegacyDatasetRecord) => void;
   handleOpenAgganciaUniversale: (item: NextManutenzioniLegacyDatasetRecord) => Promise<void>;
   openDetailForRecord: (item: NextManutenzioniLegacyDatasetRecord) => void;
 };
@@ -147,6 +148,7 @@ export function DaFareTab(props: DaFareTabProps) {
     handleCreaGruppoManutenzioni,
     handleRimuoviDaGruppoManutenzioni,
     handleEdit,
+    handleOpenSpezzaLavoro,
     handleOpenAgganciaUniversale,
     openDetailForRecord,
   } = props;
@@ -501,6 +503,20 @@ export function DaFareTab(props: DaFareTabProps) {
                 >
                   Modifica
                 </button>
+                {isDaFare ? (
+                  <button
+                    type="button"
+                    className="man2-row-menu__item"
+                    role="menuitem"
+                    title="Divide questo lavoro in DUE lavori Da fare: scegli tu cosa resta qui e cosa va nel nuovo. Utile quando una segnalazione contiene più lavori distinti."
+                    onClick={() => {
+                      setDaFareMenuId(null);
+                      handleOpenSpezzaLavoro(item);
+                    }}
+                  >
+                    Dividi il lavoro…
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="man2-row-menu__item"
