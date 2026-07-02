@@ -2,7 +2,7 @@
 // controlli KO aperti, manutenzioni operative). Vista spostata 1:1 da
 // NextManutenzioniPage.tsx (regola "moduli a satelliti"): la logica (handler,
 // stati, memo) resta nella madre e arriva qui come proprietà.
-import type { Dispatch, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, SetStateAction } from "react";
 import type { NextManutenzioniLegacyDatasetRecord } from "../domain/nextManutenzioniDomain";
 import type {
   NextAutistiControlloSectionItem,
@@ -37,6 +37,14 @@ import {
   type SegnalazioniDaFareGroup,
   type SegnalazioniDaFareTargaGroup,
 } from "./manutenzioniCondivisi";
+import { trovaPossibiliDoppioniSegnalazioni } from "./possibiliDoppioniSegnalazioni";
+
+// Badge "Possibile doppione": ambra pastello, come il badge urgenza media.
+const DOPPIONE_BADGE_STYLE: CSSProperties = {
+  background: "#fef3c7",
+  color: "#92400e",
+  borderColor: "#fde68a",
+};
 
 export type DaFareTabProps = {
   saving: boolean;
@@ -242,6 +250,7 @@ export function DaFareTab(props: DaFareTabProps) {
     opts?: {
       checkbox?: { checked: boolean; onToggle: () => void };
       menuItems?: { label: string; onClick: () => void; danger?: boolean }[];
+      possibileDoppione?: boolean;
     },
   ) {
     const title =
@@ -292,6 +301,15 @@ export function DaFareTab(props: DaFareTabProps) {
               <span className="man2-badge man2-dafare-badge--origin">Segnalazione</span>
               {item.tipo && item.tipo !== "-" ? (
                 <span className="man2-badge">{item.tipo}</span>
+              ) : null}
+              {opts?.possibileDoppione ? (
+                <span
+                  className="man2-badge"
+                  style={DOPPIONE_BADGE_STYLE}
+                  title="Sembra lo stesso problema di un'altra segnalazione aperta di questo mezzo. Se è così: spuntale entrambe e usa «Unisci in un lavoro», oppure scarta quella di troppo."
+                >
+                  Possibile doppione
+                </span>
               ) : null}
             </div>
           </div>
@@ -643,6 +661,10 @@ export function DaFareTab(props: DaFareTabProps) {
                   .filter((item) => selectedSegnalazioneIds.includes(item.id))
                   .map((item) => item.id);
                 const targetGroupForLibere = targaGroup.gruppi[0] ?? null;
+                const doppioniTarga = trovaPossibiliDoppioniSegnalazioni([
+                  ...targaGroup.gruppi.flatMap((gruppo) => gruppo.segnalazioni),
+                  ...targaGroup.libere,
+                ]);
                 return (
                   <section key={targaGroup.targa} className="man2-grp-targa">
                     <div className="man2-grp-targa__head">
@@ -681,6 +703,7 @@ export function DaFareTab(props: DaFareTabProps) {
                           <div className="man2-last-list man2-dafare-maintenance-list">
                             {gruppo.segnalazioni.map((item) =>
                               renderSegnalazioneCard(item, {
+                                possibileDoppione: doppioniTarga.has(item.id),
                                 checkbox: {
                                   checked: selectedIds.includes(item.id),
                                   onToggle: () =>
@@ -769,6 +792,7 @@ export function DaFareTab(props: DaFareTabProps) {
                         <div className="man2-last-list man2-dafare-maintenance-list">
                           {targaGroup.libere.map((item) =>
                             renderSegnalazioneCard(item, {
+                              possibileDoppione: doppioniTarga.has(item.id),
                               checkbox: {
                                 checked: selectedSegnalazioneIds.includes(item.id),
                                 onToggle: () => toggleSegnalazioneLiberaSelection(item.id),
