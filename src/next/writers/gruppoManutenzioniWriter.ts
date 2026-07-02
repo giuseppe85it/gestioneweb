@@ -121,7 +121,7 @@ function assertSelectedRecords(args: {
       return {
         ok: false,
         error:
-          "Questa manutenzione non è «Da fare» e non si può raggruppare. Per legarla allo stesso problema (anche se è già chiusa) usa il comando «Collega…».",
+          "Questa manutenzione non è «Da fare» e non si può raggruppare. Per legarla allo stesso problema (anche se è già chiusa) usa il comando «Problema ricorrente…».",
       };
     }
     const recordTargaValue = recordTarga(record);
@@ -154,7 +154,7 @@ function assertGroupTarget(
       return {
         ok: false,
         error:
-          "Il gruppo contiene una manutenzione già chiusa: il raggruppamento vale solo per i lavori «Da fare». Per legare manutenzioni di stati diversi usa il comando «Collega…».",
+          "Il gruppo contiene una manutenzione già chiusa: il raggruppamento vale solo per i lavori «Da fare». Per legare manutenzioni di stati diversi usa il comando «Problema ricorrente…».",
       };
     }
     const targa = recordTarga(record);

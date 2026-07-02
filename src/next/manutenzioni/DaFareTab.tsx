@@ -187,7 +187,7 @@ export function DaFareTab(props: DaFareTabProps) {
             disabled={saving}
             onClick={() => void handleCreaManutenzioneDaControllo(item)}
           >
-            Crea manutenzione (Da fare)
+            Trasforma in lavoro (Da fare)
           </button>
           <div className="man2-row-menu man2-row-menu--side">
             <button
@@ -212,7 +212,7 @@ export function DaFareTab(props: DaFareTabProps) {
                     void handleOpenAgganciaControllo(item);
                   }}
                 >
-                  Collega a manutenzione…
+                  Aggiungi a un lavoro esistente…
                 </button>
                 <button
                   type="button"
@@ -223,7 +223,7 @@ export function DaFareTab(props: DaFareTabProps) {
                     void handleDeleteControllo(item);
                   }}
                 >
-                  Elimina controllo
+                  Scarta controllo
                 </button>
               </div>
             ) : null}
@@ -248,11 +248,11 @@ export function DaFareTab(props: DaFareTabProps) {
     const checkbox = opts?.checkbox;
     const menuItems = opts?.menuItems ?? [
       {
-        label: "Collega a manutenzione…",
+        label: "Aggiungi a un lavoro esistente…",
         onClick: () => void handleOpenAgganciaSegnalazione(item),
       },
       {
-        label: "Elimina segnalazione",
+        label: "Scarta segnalazione",
         danger: true,
         onClick: () => void handleDeleteSegnalazione(item),
       },
@@ -299,7 +299,7 @@ export function DaFareTab(props: DaFareTabProps) {
             disabled={saving}
             onClick={() => void handleOpenCreaManutenzioneSegnalazione(item)}
           >
-            Crea manutenzione (Da fare)
+            Trasforma in lavoro (Da fare)
           </button>
           <div className="man2-row-menu man2-row-menu--side">
             <button
@@ -430,7 +430,7 @@ export function DaFareTab(props: DaFareTabProps) {
         </div>
         <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
           <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
-            Eseguita
+            Segna fatto
           </button>
           <div className="man2-row-menu">
             <button
@@ -466,7 +466,7 @@ export function DaFareTab(props: DaFareTabProps) {
                     type="button"
                     className="man2-row-menu__item"
                     role="menuitem"
-                    title="Unisce in un'unica scheda più lavori ANCORA DA FARE dello stesso mezzo. Le manutenzioni già chiuse non si possono raggruppare: per quelle usa «Collega…». Seleziona almeno due voci con le caselle."
+                    title="Unisce in un'unica scheda più lavori ANCORA DA FARE dello stesso mezzo. Le manutenzioni già chiuse non si possono raggruppare: per quelle usa «Problema ricorrente…». Seleziona almeno due voci con le caselle."
                     onClick={() => {
                       setDaFareMenuId(null);
                       void handleCreaGruppoManutenzioni(item.targa, selectedIds);
@@ -503,13 +503,13 @@ export function DaFareTab(props: DaFareTabProps) {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
-                  title="Lega questa manutenzione a un'altra, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo)."
+                  title="Lega questo lavoro a un altro, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo). Se colleghi un lavoro da fare a uno già chiuso, ti verrà chiesta conferma prima di chiuderlo."
                   onClick={() => {
                     setDaFareMenuId(null);
                     void handleOpenAgganciaUniversale(item);
                   }}
                 >
-                  Collega…
+                  Problema ricorrente…
                 </button>
                 <button
                   type="button"
@@ -656,7 +656,7 @@ export function DaFareTab(props: DaFareTabProps) {
                                 disabled={saving}
                                 onClick={() => void handleCreaLavoroDaGruppo(gruppo)}
                               >
-                                Crea lavoro (Da fare)
+                                Trasforma il gruppo in un lavoro
                               </button>
                             </div>
                           </div>
@@ -674,11 +674,11 @@ export function DaFareTab(props: DaFareTabProps) {
                                     onClick: () => void handleRimuoviDaGruppo(gruppo.key, item.id),
                                   },
                                   {
-                                    label: "Collega a manutenzione…",
+                                    label: "Aggiungi a un lavoro esistente…",
                                     onClick: () => void handleOpenAgganciaSegnalazione(item),
                                   },
                                   {
-                                    label: "Elimina segnalazione",
+                                    label: "Scarta segnalazione",
                                     danger: true,
                                     onClick: () => void handleDeleteSegnalazione(item),
                                   },
@@ -742,11 +742,11 @@ export function DaFareTab(props: DaFareTabProps) {
                               },
                               menuItems: [
                                 {
-                                  label: "Collega a manutenzione…",
+                                  label: "Aggiungi a un lavoro esistente…",
                                   onClick: () => void handleOpenAgganciaSegnalazione(item),
                                 },
                                 {
-                                  label: "Elimina segnalazione",
+                                  label: "Scarta segnalazione",
                                   danger: true,
                                   onClick: () => void handleDeleteSegnalazione(item),
                                 },

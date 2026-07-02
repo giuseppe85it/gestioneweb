@@ -4825,6 +4825,18 @@ export default function NextManutenzioniPage() {
   async function handleConfirmAgganciaSegnalazione(manutenzioneTargetId: string) {
     const modal = agganciaSegnalazioneModal;
     if (!modal) return;
+    // Niente chiusure a sorpresa: se il lavoro scelto è già chiuso, il writer
+    // chiuderà anche il segnale. Avvisa e chiedi conferma PRIMA di procedere.
+    const candidatoTarget = modal.candidati.find((c) => c.id === manutenzioneTargetId);
+    const statoTarget = (candidatoTarget?.stato ?? "").trim().toLowerCase();
+    if (statoTarget === "eseguita" || statoTarget === "chiusa" || statoTarget === "chiusa_da_evento") {
+      const confermaChiusura = window.confirm(
+        modal.sorgente.tipo === "controllo"
+          ? "Il lavoro scelto è già chiuso: anche il controllo verrà chiuso e sparirà dai Da fare. Continuare?"
+          : "Il lavoro scelto è già chiuso: anche la segnalazione verrà chiusa e sparirà dai Da fare. Continuare?",
+      );
+      if (!confermaChiusura) return;
+    }
     setAgganciaSegnalazioneModal({ ...modal, busy: true });
     setError(null);
     setNotice(null);
@@ -4860,8 +4872,8 @@ export default function NextManutenzioniPage() {
         }
         setNotice(
           sorgenteTipo === "controllo"
-            ? "Controllo agganciato alla manutenzione."
-            : "Segnalazione agganciata alla manutenzione.",
+            ? "Controllo aggiunto al lavoro esistente."
+            : "Segnalazione aggiunta al lavoro esistente.",
         );
       }
       setAgganciaSegnalazioneModal(null);
@@ -4902,6 +4914,28 @@ export default function NextManutenzioniPage() {
   async function handleConfirmAgganciaUniversale(scelta: AgganciaUniversaleScelta) {
     const modal = agganciaUniversaleModal;
     if (!modal) return;
+    // Niente chiusure a sorpresa: collegando manutenzione operativa <-> chiusa,
+    // il writer chiude in automatico quella operativa (resolveAutoChiusura).
+    // Avvisa e chiedi conferma PRIMA di procedere.
+    if (scelta.tipo === "manutenzione") {
+      const sorgenteRecord = storico.find((record) => record.id === modal.manutenzione.id);
+      const candidato = modal.candidati.find(
+        (c) => c.tipo === "manutenzione" && c.id === scelta.refId,
+      );
+      const statoSorgente = sorgenteRecord ? resolveMaintenanceStato(sorgenteRecord) : null;
+      const statoCandidato = (candidato?.stato ?? "").trim().toLowerCase();
+      const sorgenteOperativa = statoSorgente === "daFare" || statoSorgente === "programmata";
+      const sorgenteChiusa = statoSorgente === "eseguita" || statoSorgente === "chiusa_da_evento";
+      const candidatoOperativo = statoCandidato === "dafare" || statoCandidato === "programmata";
+      const candidatoChiuso =
+        statoCandidato === "eseguita" || statoCandidato === "chiusa" || statoCandidato === "chiusa_da_evento";
+      if ((sorgenteOperativa && candidatoChiuso) || (candidatoOperativo && sorgenteChiusa)) {
+        const confermaChiusura = window.confirm(
+          "Stai collegando un lavoro ancora da fare a uno già chiuso: il lavoro da fare verrà chiuso automaticamente e sparirà dai Da fare. Continuare?",
+        );
+        if (!confermaChiusura) return;
+      }
+    }
     setAgganciaUniversaleModal({ ...modal, busy: true });
     setError(null);
     setNotice(null);
@@ -6916,12 +6950,12 @@ export default function NextManutenzioniPage() {
         className="man2-pdf-modal__overlay"
         role="dialog"
         aria-modal="true"
-        aria-label="Crea manutenzione da segnalazione"
+        aria-label="Trasforma la segnalazione in lavoro"
       >
         <form className="man2-pdf-modal man2-pdf-modal--confirm" onSubmit={handleSubmitCreaManutenzioneSegnalazione}>
           <div className="man2-pdf-modal__head">
             <div>
-              <h3 className="man2-pdf-modal__title">Crea manutenzione da segnalazione</h3>
+              <h3 className="man2-pdf-modal__title">Trasforma la segnalazione in lavoro</h3>
             </div>
             <button
               type="button"
@@ -6979,7 +7013,7 @@ export default function NextManutenzioniPage() {
                 Annulla
               </button>
               <button type="submit" className="man2-btn man2-btn--primary" disabled={modal.busy || !modal.descrizione.trim()}>
-                {modal.busy ? "Salvataggio..." : "Crea manutenzione"}
+                {modal.busy ? "Salvataggio..." : "Trasforma in lavoro"}
               </button>
             </div>
           </div>
@@ -7006,7 +7040,7 @@ export default function NextManutenzioniPage() {
               rabbocco e il successivo). Servono almeno due rabbocchi con i KM per avere
               il consumo. Hai fatto un rabbocco durante un altro intervento (anche già
               chiuso)? Registralo qui come evento a sé con la data di quel giorno; se
-              vuoi, poi collegalo all'intervento con il comando «Collega…».
+              vuoi, poi collegalo all'intervento con il comando «Problema ricorrente…».
               {activeKey ? " Mostro solo il mezzo selezionato." : " Mostro tutti i mezzi con rabbocchi."}
             </p>
           </div>
