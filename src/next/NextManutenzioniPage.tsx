@@ -2814,7 +2814,9 @@ export default function NextManutenzioniPage() {
   async function handleConfirmCompletionModal() {
     if (!completionModalRecord) return;
     if (completionDraftParziale && !completionDraftResto.trim()) {
-      setError("Hai spuntato «Fatto solo in parte»: scrivi cosa resta da fare (diventerà un nuovo lavoro).");
+      // Come le validazioni sorelle di questo modale: alert, non il banner di
+      // pagina (resterebbe nascosto dietro l'overlay del modale).
+      window.alert("Hai spuntato «Fatto solo in parte»: scrivi cosa resta da fare (diventerà un nuovo lavoro).");
       return;
     }
     await handleSave({

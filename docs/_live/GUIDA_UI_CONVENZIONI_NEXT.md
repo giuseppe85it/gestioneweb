@@ -57,6 +57,7 @@ Riferimenti: `src/next/next-mappa-storico.css` (sistema `man2-*`) e `src/next/Ne
 
 ## 5. Modale: convenzioni obbligatorie
 Titolo visibile + chiudi; azioni "Annulla" + conferma affiancate ed equilibrate; `busy` che disabilita durante il salvataggio; chiusura su click del backdrop; testi in italiano; larghezza compatta (`--confirm`) per conferme/form brevi; niente ID/UUID grezzi nel sottotitolo.
+**Errori di validazione di un modale:** si mostrano DENTRO il modale (riga errore inline) o via `window.alert` — MAI solo nel banner errori di pagina (`setError`), che resta nascosto dietro l'overlay e l'utente non capisce perché il bottone "non funziona".
 
 ## 6. Divergenze storiche da allineare (progressivo, non subito)
 Oggi coesistono ~6 "mondi" grafici. Vanno convogliati sullo standard sopra **man mano** che si toccano i moduli:

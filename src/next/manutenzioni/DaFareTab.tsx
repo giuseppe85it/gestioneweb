@@ -448,6 +448,43 @@ export function DaFareTab(props: DaFareTabProps) {
             </button>
             {daFareMenuId === menuId ? (
               <div className="man2-row-menu__panel" role="menu">
+                <button
+                  type="button"
+                  className="man2-row-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setDaFareMenuId(null);
+                    handleEdit(item);
+                  }}
+                >
+                  Modifica
+                </button>
+                {isDaFare ? (
+                  <button
+                    type="button"
+                    className="man2-row-menu__item"
+                    role="menuitem"
+                    title="Divide questo lavoro in DUE lavori Da fare: scegli tu cosa resta qui e cosa va nel nuovo. Utile quando una segnalazione contiene più lavori distinti."
+                    onClick={() => {
+                      setDaFareMenuId(null);
+                      handleOpenSpezzaLavoro(item);
+                    }}
+                  >
+                    Dividi il lavoro…
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="man2-row-menu__item"
+                  role="menuitem"
+                  title="Lega questo lavoro a un altro, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo). Se colleghi un lavoro da fare a uno già chiuso, ti verrà chiesta conferma prima di chiuderlo."
+                  onClick={() => {
+                    setDaFareMenuId(null);
+                    void handleOpenAgganciaUniversale(item);
+                  }}
+                >
+                  Problema ricorrente…
+                </button>
                 {checkbox && isDaFare
                   ? targetGroups.map((gruppo) => (
                       <button
@@ -492,43 +529,6 @@ export function DaFareTab(props: DaFareTabProps) {
                     Rimuovi dal gruppo
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setDaFareMenuId(null);
-                    handleEdit(item);
-                  }}
-                >
-                  Modifica
-                </button>
-                {isDaFare ? (
-                  <button
-                    type="button"
-                    className="man2-row-menu__item"
-                    role="menuitem"
-                    title="Divide questo lavoro in DUE lavori Da fare: scegli tu cosa resta qui e cosa va nel nuovo. Utile quando una segnalazione contiene più lavori distinti."
-                    onClick={() => {
-                      setDaFareMenuId(null);
-                      handleOpenSpezzaLavoro(item);
-                    }}
-                  >
-                    Dividi il lavoro…
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  title="Lega questo lavoro a un altro, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo). Se colleghi un lavoro da fare a uno già chiuso, ti verrà chiesta conferma prima di chiuderlo."
-                  onClick={() => {
-                    setDaFareMenuId(null);
-                    void handleOpenAgganciaUniversale(item);
-                  }}
-                >
-                  Problema ricorrente…
-                </button>
                 <button
                   type="button"
                   className="man2-row-menu__item"
