@@ -2620,6 +2620,78 @@ async function runProviderCisternaSchedaCellExtraction(args) {
   };
 }
 
+export async function composeEmailFromContext(args) {
+  if (!args?.providerClient || !args?.providerTarget) {
+    throw new Error("Provider IA non disponibile per la composizione email.");
+  }
+
+  const contesto = typeof args.contesto === "string" ? args.contesto.trim() : "";
+  if (!contesto) {
+    throw new Error("Contesto messaggio mancante per la composizione email.");
+  }
+
+  const tono = args.tono === "informale" ? "informale" : "formale";
+  const istruzione = typeof args.istruzione === "string" ? args.istruzione.trim() : "";
+  const firma = typeof args.firma === "string" ? args.firma.trim() : "";
+
+  const systemPrompt = [
+    "Sei un assistente che scrive email professionali in ITALIANO per un'azienda di trasporti/officina.",
+    "Ricevi degli appunti (contesto) e un tono, e li trasformi in un'email pronta da inviare.",
+    "REGOLA PRINCIPALE (FEDELTA'): attieniti ESCLUSIVAMENTE al significato degli appunti dell'utente. Puoi riformulare, correggere la forma, cambiare o aggiungere PAROLE per renderla scorrevole e professionale, ma il SIGNIFICATO e i CONTENUTI devono restare ESATTAMENTE quelli forniti. Non ampliare, non interpretare oltre.",
+    "NON aggiungere informazioni, impegni, promesse, scuse, offerte, richieste o iniziative che l'utente NON ha scritto. In particolare NON aggiungere frasi come 'restiamo a disposizione', 'vi ricontatteremo', 'provvederemo a...', 'la terremo aggiornata', 'in attesa di un vostro riscontro' se non sono negli appunti.",
+    "NON prendere iniziativa e NON promettere azioni future solo per 'chiudere' bene la mail: la chiusura deve essere unicamente una formula di saluto.",
+    "Gli UNICI elementi che puoi aggiungere di tua iniziativa sono: il saluto di apertura, la formula di chiusura e la firma. Nient'altro.",
+    'Il tono "formale" usa il Lei, cortese e professionale. Il tono "informale" usa il tu, cordiale ma corretto.',
+    'Rispondi SOLTANTO con un JSON valido nella forma {"oggetto": "...", "corpo": "..."}, senza testo prima o dopo e senza blocchi di codice.',
+    "L'oggetto deve essere breve e coerente col contenuto degli appunti. Il corpo: saluto di apertura, il messaggio (fedele agli appunti), formula di chiusura, firma con il NOME DEL MITTENTE fornito (campo firma).",
+    "Tono formale: apertura tipo 'Gentile [nome destinatario]' oppure 'Buongiorno,'; chiusura tipo 'Cordiali saluti' o 'Distinti saluti', seguita a capo dal nome del mittente.",
+    "Tono informale: apertura tipo 'Ciao [nome],' oppure 'Ciao,'; chiusura tipo 'Un saluto' o 'A presto', seguita a capo dal nome del mittente.",
+    "NON usare firme generiche come 'Il team', 'Lo staff' o 'L'officina': firma sempre con il nome del mittente fornito. Se il nome del mittente non e fornito, non aggiungere alcuna firma generica.",
+    "Non inventare dati non forniti (nomi propri, importi, date, numeri di targa). Un documento PDF verra allegato manualmente alla mail: puoi accennare che il documento e in allegato solo se pertinente, ma non descriverne contenuti non indicati nel contesto.",
+    "Scrivi tutto in italiano.",
+  ].join(" ");
+
+  const userText = [
+    `Tono richiesto: ${tono}.`,
+    firma ? `Nome del mittente da usare nella firma: ${firma}.` : "",
+    istruzione ? `Istruzione aggiuntiva dell'utente: ${istruzione}.` : "",
+    "Appunti/contesto da trasformare in email:",
+    contesto,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const response = await args.providerClient.responses.create({
+    model: args.providerTarget.model,
+    input: [
+      {
+        role: "system",
+        content: [{ type: "input_text", text: systemPrompt }],
+      },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: userText }],
+      },
+    ],
+  });
+
+  const parsed = parseProviderJson(response.output_text);
+  const oggetto =
+    parsed && typeof parsed.oggetto === "string" ? parsed.oggetto.trim() : "";
+  const corpo = parsed && typeof parsed.corpo === "string" ? parsed.corpo.trim() : "";
+
+  if (!oggetto && !corpo) {
+    throw new Error("Risposta IA non valida per la composizione email.");
+  }
+
+  return {
+    schemaVersion: "email_compose_v1",
+    tono,
+    oggetto,
+    corpo,
+  };
+}
+
 export async function extractPreventivoPriceFromDocument(args) {
   const normalizedPages =
     Array.isArray(args.pages) && args.pages.length > 0

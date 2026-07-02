@@ -34,6 +34,7 @@ import {
   writeInternalAiChatAttachmentFile,
 } from "./internal-ai-chat-attachments.js";
 import {
+  composeEmailFromContext,
   extractInternalAiDocumentAnalysis,
   extractPreventivoPriceFromDocument,
   LIBRETTO_CANONICAL_FIELDS,
@@ -3842,6 +3843,100 @@ app.post("/internal-ai-backend/documents/preventivo-extract", async (req, res) =
         error instanceof Error
           ? `Estrazione preventivo non completata: ${error.message}`
           : "Estrazione preventivo non completata.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/documents/compose-email", async (req, res) => {
+  const contesto = typeof req.body?.contesto === "string" ? req.body.contesto.trim() : "";
+  const tono = req.body?.tono === "informale" ? "informale" : "formale";
+  const istruzione =
+    typeof req.body?.istruzione === "string" && req.body.istruzione.trim()
+      ? req.body.istruzione.trim()
+      : "";
+  const firma =
+    typeof req.body?.firma === "string" && req.body.firma.trim()
+      ? req.body.firma.trim()
+      : "";
+
+  if (!contesto) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "documents.compose-email",
+      status: "validation_error",
+      message:
+        "Payload non valido per compose-email: fornire il testo di contesto del messaggio.",
+      data: {},
+    });
+    return;
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "documents.compose-email",
+      status: "provider_not_configured",
+      message:
+        "Backend OpenAI non configurato. Imposta OPENAI_API_KEY lato server per comporre le email.",
+      data: {
+        providerConfigured: false,
+        providerTarget: getProviderTarget(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+    const result = await composeEmailFromContext({
+      contesto,
+      tono,
+      istruzione,
+      firma,
+      providerClient,
+      providerTarget,
+    });
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "documents.compose-email",
+        operation: "compose_email",
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Composizione email IA (tono ${result.tono}).`,
+        entityCount: 1,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "documents.compose-email",
+      status: "ok",
+      message: "Composizione email completata.",
+      data: {
+        result,
+        providerTarget,
+        traceEntryId: traceEntry.id,
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "documents.compose-email",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Composizione email non completata: ${error.message}`
+          : "Composizione email non completata.",
       data: {
         providerConfigured: isProviderConfigured(),
         providerTarget: getProviderTarget(),

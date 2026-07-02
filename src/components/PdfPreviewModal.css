@@ -105,29 +105,49 @@
   flex: 0 1 auto;
 }
 
+/* Normalizzato per rendere IDENTICI <a class="pdf-preview-btn"> e <button ...>:
+   altezza FISSA, font ereditato, bordo e box-sizing uniformi, line-height 1.
+   Cosi "Annulla" (button) e "Apri email" (anchor) risultano allineati. */
 .pdf-preview-btn {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  padding: 0 12px;
+  height: 34px;
+  margin: 0;
+  padding: 0 14px;
   border-radius: 999px;
-  border: none;
+  border: 1px solid transparent;
   background: #f1e7d6;
   color: #3a352b;
+  font: inherit;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   text-decoration: none;
+  vertical-align: middle;
   white-space: nowrap;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 
+.pdf-preview-btn:disabled,
+.pdf-preview-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .pdf-preview-btn--primary {
-  background: #2d6a4f;
+  background: #166534;
   color: #fdfaf4;
+}
+
+.pdf-preview-btn--block {
+  width: 100%;
 }
 
 @media (max-width: 960px) {
@@ -149,5 +169,142 @@
   .pdf-preview-actions {
     padding: 6px 8px;
   }
+}
+
+/* ===== Vista "Componi email" (compose) ===== */
+
+/* In compose il modale e' stretto e alto quanto serve: niente riquadrone vuoto.
+   Definito DOPO i media query per vincere sull'override di larghezza. */
+.pdf-preview-modal--compose {
+  width: min(640px, 96vw);
+  height: auto;
+  max-height: 90vh;
+}
+
+/* Corpo del form: unica fascia scrollabile; header e footer restano fissi. */
+.pdf-preview-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fbf8f3;
+}
+
+.pdf-preview-actions--compose {
+  justify-content: flex-end;
+  gap: 10px;
+  overflow-x: visible;
+}
+
+.pdf-preview-actions--compose .pdf-preview-btn {
+  min-width: 120px;
+}
+
+.pdf-preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pdf-preview-field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.pdf-preview-field-row > .pdf-preview-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.pdf-preview-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #5f564b;
+}
+
+.pdf-preview-input,
+.pdf-preview-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #e0dccf;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1a1a;
+  font: inherit;
+  font-size: 13px;
+}
+
+.pdf-preview-textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.4;
+}
+
+.pdf-preview-input:focus,
+.pdf-preview-textarea:focus {
+  outline: none;
+  border-color: #166534;
+  box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.14);
+}
+
+.pdf-preview-input::placeholder,
+.pdf-preview-textarea::placeholder {
+  color: #98917f;
+}
+
+.pdf-preview-note {
+  margin: 0;
+  font-size: 12px;
+  color: #5f564b;
+}
+
+.pdf-preview-error {
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+/* Interruttore a due opzioni per il tono (attivo in verde canonico). */
+.pdf-preview-segment {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 999px;
+  border: 1px solid #e0dccf;
+  background: #f1e7d6;
+}
+
+.pdf-preview-segment__opt {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5f564b;
+  cursor: pointer;
+}
+
+.pdf-preview-segment__opt.is-active {
+  background: #166534;
+  color: #fdfaf4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.pdf-preview-segment__opt:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
