@@ -13,7 +13,9 @@ import type {
   NextAutistiSegnalazioneSectionItem,
 } from "../domain/nextAutistiDomain";
 import { formatDateTimeUI } from "../nextDateFormat";
-import { toDisplay } from "../helpers/dateUnica";
+import { parseAnyDate, toDisplay } from "../helpers/dateUnica";
+
+export type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 
 export type DaFareUrgenzaFilter = "tutte" | NextManutenzioneUrgenza;
 export type DaFareOrigineFilter = "tutte" | NextManutenzioneOrigineTipo;
@@ -174,6 +176,68 @@ export function resolveSegnalazioneAutoreReale(
 
 export function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {
   return resolveSegnalazioneAutoreReale(item) || "Autista";
+}
+
+export function getLegacyDateTimestamp(value: string | null | undefined) {
+  return parseAnyDate(value)?.getTime() ?? 0;
+}
+
+export function formatDateShort(value: string | null | undefined) {
+  return toDisplay(value) || value || "Nessuna";
+}
+
+export function formatDateFull(value: string | null | undefined) {
+  return toDisplay(value) || value || "DA VERIFICARE";
+}
+
+export function formatNumberIt(value: number | null | undefined) {
+  if (value == null) return "DA VERIFICARE";
+  return new Intl.NumberFormat("it-IT").format(value);
+}
+
+export function readOrigineText(data: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return null;
+}
+
+export function readOrigineDateText(data: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = data[key];
+    if (value == null || value === "") continue;
+    const formatted = formatDateTimeUI(value as Parameters<typeof formatDateTimeUI>[0]);
+    if (formatted !== "-") return formatted;
+  }
+  return null;
+}
+
+export function readOrigineFotoUrls(data: Record<string, unknown>): string[] {
+  const urls = new Set<string>();
+  const push = (value: unknown) => {
+    if (typeof value === "string" && /^(blob:|data:|https?:)/i.test(value.trim())) {
+      urls.add(value.trim());
+    }
+  };
+  push(data.fotoUrl);
+  push(data.fotoDataUrl);
+  [data.fotoUrls, data.images, data.foto].forEach((value) => {
+    if (!Array.isArray(value)) return;
+    value.forEach((entry) => {
+      if (typeof entry === "string") {
+        push(entry);
+        return;
+      }
+      if (entry && typeof entry === "object") {
+        const record = entry as Record<string, unknown>;
+        push(record.url);
+        push(record.dataUrl);
+      }
+    });
+  });
+  return [...urls];
 }
 
 export function formatGruppoManutenzioneLabel(gruppo: ManutenzioniDaFareGroup): string {
