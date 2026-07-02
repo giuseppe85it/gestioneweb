@@ -17,7 +17,6 @@ import {
   type NextManutenzioneGommePerAsseRecord,
   type NextManutenzioneGommeSelezioneRecord,
   type NextManutenzioneGommeStraordinarioRecord,
-  type NextManutenzioneOrigineTipo,
   type NextManutenzioneOrigineRecord,
   type NextManutenzioneStato,
   type NextManutenzioneUrgenza,
@@ -129,6 +128,27 @@ import { saveScadenzaManutenzione } from "./nextManutenzioniScadenzeWriter";
 import NextModalGomme, {
   type NextCambioGommeData,
 } from "./components/NextModalGomme";
+import { DaFareTab } from "./manutenzioni/DaFareTab";
+import {
+  buildChiusuraDaEventoTitle,
+  buildDescrizioneSnippet,
+  controlloKoDisplayTarga,
+  getMaintenanceStatoBadgeStyle,
+  normalizeFreeText,
+  normalizeText,
+  resolveMaintenanceOrigine,
+  resolveMaintenanceStato,
+  resolveMaintenanceUrgenza,
+  resolveSegnalazioneAutoreReale,
+  type ControlliKoDaFareTargaGroup,
+  type DaFareOrigineFilter,
+  type DaFareUrgenzaFilter,
+  type LavoroGruppoRetryState,
+  type ManutenzioniDaFareGroup,
+  type ManutenzioniOperativeGrouped,
+  type SegnalazioniDaFareGroup,
+  type SegnalazioniDaFareTargaGroup,
+} from "./manutenzioni/manutenzioniCondivisi";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
@@ -138,8 +158,6 @@ type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dafare" | "dashboard" | "consumo-olio" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
 type PdfStatusScope = "tutte" | "solo-da-fare" | "solo-eseguite";
-type DaFareUrgenzaFilter = "tutte" | NextManutenzioneUrgenza;
-type DaFareOrigineFilter = "tutte" | NextManutenzioneOrigineTipo;
 type InterventoUiSubtype =
   | "tagliando"
   | "tagliando completo"
@@ -245,42 +263,6 @@ type PageLoadData = {
   origineRawById: Map<string, Record<string, unknown>>;
 };
 
-type SegnalazioniDaFareGroup = {
-  key: string;
-  gruppoId: string | null;
-  targa: string;
-  segnalazioni: NextAutistiSegnalazioneSectionItem[];
-};
-
-type ManutenzioniDaFareGroup = {
-  key: string;
-  gruppoId: string;
-  targa: string;
-  manutenzioni: NextManutenzioniLegacyDatasetRecord[];
-};
-
-type ManutenzioniOperativeGrouped = {
-  gruppi: ManutenzioniDaFareGroup[];
-  libere: NextManutenzioniLegacyDatasetRecord[];
-  altre: NextManutenzioniLegacyDatasetRecord[];
-};
-
-type SegnalazioniDaFareTargaGroup = {
-  targa: string;
-  gruppi: SegnalazioniDaFareGroup[];
-  libere: NextAutistiSegnalazioneSectionItem[];
-};
-
-type ControlliKoDaFareTargaGroup = {
-  targa: string;
-  controlli: NextAutistiControlloSectionItem[];
-};
-
-type LavoroGruppoRetryState = {
-  manutenzioneId: string;
-  failedIds: string[];
-};
-
 type AgganciaSegnalazioneModalState = {
   sorgente: AgganciaLegameSorgente;
   candidati: ManutenzioneCandidataAggancio[];
@@ -383,23 +365,6 @@ function todayLabel() {
   return toISO(new Date()) ?? "";
 }
 
-function normalizeText(value: string) {
-  return value.trim().toUpperCase().replace(/\s+/g, "");
-}
-
-/** Targa mostrata per un controllo KO: motrice se valida, altrimenti rimorchio. */
-function controlloKoDisplayTarga(item: NextAutistiControlloSectionItem): string {
-  const motrice = normalizeText(item.targaMotrice ?? "");
-  if (motrice && motrice !== "-") return motrice;
-  const rimorchio = normalizeText(item.targaRimorchio ?? "");
-  if (rimorchio && rimorchio !== "-") return rimorchio;
-  return "";
-}
-
-function normalizeFreeText(value: string) {
-  return value.trim();
-}
-
 function getLegacyDateTimestamp(value: string | null | undefined) {
   return parseAnyDate(value)?.getTime() ?? 0;
 }
@@ -470,12 +435,6 @@ function buildPdfPeriodRangeLabel(items: NextManutenzioniLegacyDatasetRecord[]) 
   return `${formatMaintenancePdfDateLabel(sorted[0])} – ${formatMaintenancePdfDateLabel(sorted[sorted.length - 1])}`;
 }
 
-function buildDescrizioneSnippet(value: string, limit = 140) {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= limit) return normalized;
-  return `${normalized.slice(0, limit - 3)}...`;
-}
-
 function formatMaintenanceImporto(
   item: Pick<
     NextManutenzioniLegacyDatasetRecord,
@@ -509,42 +468,6 @@ const URGENZA_PRIORITY: Record<NextManutenzioneUrgenza, number> = {
   bassa: 1,
 };
 
-const URGENZA_BADGE_STYLE: Record<NextManutenzioneUrgenza, CSSProperties> = {
-  alta: {
-    background: "#fee2e2",
-    color: "#991b1b",
-    borderColor: "#fecaca",
-  },
-  media: {
-    background: "#fef3c7",
-    color: "#92400e",
-    borderColor: "#fde68a",
-  },
-  bassa: {
-    background: "#f3f4f6",
-    color: "#374151",
-    borderColor: "#e5e7eb",
-  },
-};
-
-// Badge "Collegata (N)": indigo tenue, in linea con la tavolozza pastello degli
-// altri badge della card; tenuto come costante come gli altri stili badge.
-const COLLEGATA_BADGE_STYLE: CSSProperties = {
-  background: "#e0e7ff",
-  color: "#3730a3",
-};
-
-function resolveMaintenanceStato(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneStato {
-  if (
-    item.stato === "programmata" ||
-    item.stato === "eseguita" ||
-    item.stato === "chiusa_da_evento"
-  ) {
-    return item.stato;
-  }
-  return "daFare";
-}
-
 function normalizeCompletionCategory(value: string | null | undefined): string {
   return normalizeFreeText(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -555,13 +478,6 @@ function requiresKmForCompletionCategory(value: string | null | undefined): bool
 
 function isStructuredGommeInterventoTipo(value: NextManutenzioneGommeInterventoTipo | null | undefined): boolean {
   return value === "ordinario" || value === "straordinario";
-}
-
-function formatMaintenanceStatoLabel(stato: NextManutenzioneStato): string {
-  if (stato === "programmata") return "PROGRAMMATA";
-  if (stato === "eseguita") return "ESEGUITA";
-  if (stato === "chiusa_da_evento") return "CHIUSA DA EVENTO";
-  return "DA FARE";
 }
 
 // PROMPT 44 — D6: etichetta che distingue il "vero daFare" (esplicito) dai
@@ -575,40 +491,6 @@ function formatMaintenanceStatoLabelDisplay(item: NextManutenzioniLegacyDatasetR
   if (raw === "chiusa_da_evento") return "CHIUSA DA EVENTO";
   if (raw === "daFare") return "DA FARE";
   return "STORICO";
-}
-
-function formatChiusuraEventoTipo(value: string | null | undefined): string {
-  if (value === "gomme_evento") return "cambio gomme";
-  if (value === "manutenzione_eseguita") return "manutenzione eseguita";
-  return value ? value.replace(/_/g, " ") : "evento";
-}
-
-function buildChiusuraDaEventoTitle(item: NextManutenzioniLegacyDatasetRecord): string | undefined {
-  if (resolveMaintenanceStato(item) !== "chiusa_da_evento") return undefined;
-  const evento = formatChiusuraEventoTipo(item.chiusuraDi);
-  const data = item.chiusuraData ? formatDateTimeUI(item.chiusuraData) : "-";
-  return data && data !== "-"
-    ? `Chiusa dal ${evento} del ${data}`
-    : `Chiusa dal ${evento}`;
-}
-
-function getMaintenanceStatoBadgeStyle(stato: NextManutenzioneStato): CSSProperties | undefined {
-  if (stato !== "chiusa_da_evento") return undefined;
-  return { background: "#f3f4f6", color: "#374151", borderColor: "#d1d5db" };
-}
-
-function resolveMaintenanceUrgenza(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneUrgenza {
-  return item.urgenza ?? "bassa";
-}
-
-function resolveMaintenanceOrigine(item: NextManutenzioniLegacyDatasetRecord): NextManutenzioneOrigineTipo {
-  return item.origineTipo ?? "manuale";
-}
-
-function formatMaintenanceOrigineLabel(value: NextManutenzioneOrigineTipo): string {
-  if (value === "controllo") return "Controllo KO";
-  if (value === "segnalazione") return "Segnalazione";
-  return "Manuale";
 }
 
 function readOrigineText(data: Record<string, unknown>, keys: string[]): string | null {
@@ -719,11 +601,6 @@ function buildPdfDescrizioneWithOrigin(
   const withOrigin = originNote ? `${base}\n${originNote}` : base;
   const noteEsecuzione = item.noteEsecuzione?.trim();
   return noteEsecuzione ? `${withOrigin}\nCosa è stato fatto: ${noteEsecuzione}` : withOrigin;
-}
-
-function formatDaFareDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
-  const value = item.dataProgrammata || item.data || item.dataEsecuzione || null;
-  return toDisplay(value) || value || "-";
 }
 
 function formatMaintenancePdfDateLabel(item: NextManutenzioniLegacyDatasetRecord): string {
@@ -4497,21 +4374,6 @@ export default function NextManutenzioniPage() {
     );
   }
 
-  function formatSegnalazioneDateLabel(item: NextAutistiSegnalazioneSectionItem): string {
-    if (!item.timestamp) return "-";
-    return formatDateTimeUI(item.timestamp);
-  }
-
-  function resolveSegnalazioneAutoreReale(
-    item: NextAutistiSegnalazioneSectionItem,
-  ): string | null {
-    return normalizeFreeText(item.autistaNome ?? "") || normalizeFreeText(item.badgeAutista ?? "") || null;
-  }
-
-  function formatSegnalazioneAutore(item: NextAutistiSegnalazioneSectionItem): string {
-    return resolveSegnalazioneAutoreReale(item) || "Autista";
-  }
-
   function buildSegnalazioneManutenzioneDescrizione(item: NextAutistiSegnalazioneSectionItem): string {
     const tipoProblema = normalizeFreeText(item.tipo || "-") || "-";
     const descrizioneSegnalazione = normalizeFreeText(item.descrizione || "-") || "-";
@@ -4805,15 +4667,6 @@ export default function NextManutenzioniPage() {
   function clearManutenzioniLibereSelection(ids: readonly string[]) {
     const removed = new Set(ids);
     setSelectedManutenzioneLiberaIds((current) => current.filter((id) => !removed.has(id)));
-  }
-
-  function formatGruppoManutenzioneLabel(gruppo: ManutenzioniDaFareGroup): string {
-    const snippets = gruppo.manutenzioni
-      .slice(0, 2)
-      .map((item) => buildDescrizioneSnippet(item.descrizione, 34))
-      .filter(Boolean);
-    const content = snippets.length > 0 ? snippets.join(" / ") : "senza descrizione";
-    return `${gruppo.targa} - ${content} (${gruppo.manutenzioni.length})`;
   }
 
   async function handleCreaGruppoManutenzioni(targaValue: string, manutenzioneIds: string[]) {
@@ -5321,721 +5174,6 @@ export default function NextManutenzioniPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function renderControlloKoCard(item: NextAutistiControlloSectionItem) {
-    const koLabel = item.koList.length > 0 ? `KO: ${item.koList.join(", ")}` : "Controllo KO";
-    const title = item.note ? `${koLabel} - ${item.note}` : koLabel;
-    const menuId = `controllo-ko:${item.id}`;
-    const dateLabel = item.timestamp ? toDisplay(item.timestamp) : "";
-    return (
-      <article key={item.id} className="man2-last-item man2-dafare-item">
-        <div className="man2-dafare-item__main">
-          <span className="man2-dafare-item__check-spacer" aria-hidden="true" />
-          <div className="man2-dafare-item__content">
-            <div className="man2-dafare-item__title-row">
-              <span className="man2-dafare-item__title">{buildDescrizioneSnippet(title, 96)}</span>
-              {dateLabel ? (
-                <span className="man2-dafare-date-chip">Controllo {dateLabel}</span>
-              ) : null}
-            </div>
-            <div className="man2-dafare-item__meta">
-              <span>{controlloKoDisplayTarga(item)}</span>
-              {item.autistaNome ? <span>Autista {item.autistaNome}</span> : null}
-              {item.badgeAutista ? <span>Badge {item.badgeAutista}</span> : null}
-            </div>
-            <div className="man2-dafare-item__badges">
-              <span className="man2-badge man2-dafare-badge--origin">Controllo KO</span>
-              {item.koList.map((ko) => (
-                <span key={ko} className="man2-badge">
-                  {ko}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
-          <button
-            type="button"
-            className="man2-btn-full"
-            disabled={saving}
-            onClick={() => void handleCreaManutenzioneDaControllo(item)}
-          >
-            Crea manutenzione (Da fare)
-          </button>
-          <div className="man2-row-menu man2-row-menu--side">
-            <button
-              type="button"
-              className="man2-row-menu__trigger"
-              aria-label={`Altre azioni controllo ${title}`}
-              aria-expanded={controlloKoMenuId === menuId}
-              onClick={() =>
-                setControlloKoMenuId((current) => (current === menuId ? null : menuId))
-              }
-            >
-              ⋮
-            </button>
-            {controlloKoMenuId === menuId ? (
-              <div className="man2-row-menu__panel" role="menu">
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setControlloKoMenuId(null);
-                    void handleOpenAgganciaControllo(item);
-                  }}
-                >
-                  Collega a manutenzione…
-                </button>
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setControlloKoMenuId(null);
-                    void handleDeleteControllo(item);
-                  }}
-                >
-                  Elimina controllo
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  function renderSegnalazioneCard(
-    item: NextAutistiSegnalazioneSectionItem,
-    opts?: {
-      checkbox?: { checked: boolean; onToggle: () => void };
-      menuItems?: { label: string; onClick: () => void; danger?: boolean }[];
-    },
-  ) {
-    const title =
-      item.descrizione && item.descrizione !== "-"
-        ? item.descrizione
-        : "(senza descrizione)";
-    const menuId = `segnalazione-card:${item.id}`;
-    const checkbox = opts?.checkbox;
-    const menuItems = opts?.menuItems ?? [
-      {
-        label: "Collega a manutenzione…",
-        onClick: () => void handleOpenAgganciaSegnalazione(item),
-      },
-      {
-        label: "Elimina segnalazione",
-        danger: true,
-        onClick: () => void handleDeleteSegnalazione(item),
-      },
-    ];
-    return (
-      <article
-        key={item.id}
-        className={`man2-last-item man2-dafare-item${checkbox?.checked ? " is-selected" : ""}`}
-      >
-        <div className="man2-dafare-item__main">
-          {checkbox ? (
-            <input
-              type="checkbox"
-              className="man2-dafare-item__check"
-              checked={checkbox.checked}
-              disabled={saving}
-              onChange={checkbox.onToggle}
-              aria-label={`Seleziona segnalazione ${title}`}
-            />
-          ) : (
-            <span className="man2-dafare-item__check-spacer" aria-hidden="true" />
-          )}
-          <div className="man2-dafare-item__content">
-            <div className="man2-dafare-item__title-row">
-              <span className="man2-dafare-item__targa">{normalizeText(item.targa ?? "") || "—"}</span>
-              <span className="man2-dafare-item__title">{buildDescrizioneSnippet(title, 96)}</span>
-            </div>
-            <div className="man2-dafare-item__info">
-              Segnalato da <strong>{formatSegnalazioneAutore(item)}</strong>
-              {item.timestamp ? <span className="man2-dafare-item__info-when"> · {formatSegnalazioneDateLabel(item)}</span> : null}
-            </div>
-            <div className="man2-dafare-item__badges">
-              <span className="man2-badge man2-dafare-badge--origin">Segnalazione</span>
-              {item.tipo && item.tipo !== "-" ? (
-                <span className="man2-badge">{item.tipo}</span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
-          <button
-            type="button"
-            className="man2-btn-full"
-            disabled={saving}
-            onClick={() => void handleOpenCreaManutenzioneSegnalazione(item)}
-          >
-            Crea manutenzione (Da fare)
-          </button>
-          <div className="man2-row-menu man2-row-menu--side">
-            <button
-              type="button"
-              className="man2-row-menu__trigger"
-              aria-label={`Altre azioni segnalazione ${title}`}
-              aria-expanded={segnalazioneMenuId === menuId}
-              onClick={() =>
-                setSegnalazioneMenuId((current) => (current === menuId ? null : menuId))
-              }
-            >
-              ⋮
-            </button>
-            {segnalazioneMenuId === menuId ? (
-              <div className="man2-row-menu__panel" role="menu">
-                {menuItems.map((azione) => (
-                  <button
-                    key={azione.label}
-                    type="button"
-                    className="man2-row-menu__item"
-                    role="menuitem"
-                    disabled={saving}
-                    style={azione.danger ? { color: "#b91c1c" } : undefined}
-                    onClick={() => {
-                      setSegnalazioneMenuId(null);
-                      azione.onClick();
-                    }}
-                  >
-                    {azione.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  function renderManutenzioneOperativaCard(args: {
-    item: NextManutenzioniLegacyDatasetRecord;
-    checkbox?: {
-      checked: boolean;
-      onToggle: () => void;
-    };
-    targetGroups?: ManutenzioniDaFareGroup[];
-    selectedFreeIdsForTarga?: string[];
-    groupKey?: string;
-  }) {
-    const { item, checkbox, targetGroups = [], selectedFreeIdsForTarga = [], groupKey } = args;
-    const urgenza = resolveMaintenanceUrgenza(item);
-    const origine = resolveMaintenanceOrigine(item);
-    const stato = resolveMaintenanceStato(item);
-    const menuId = `manutenzione-operativa:${item.id}`;
-    const isDaFare = stato === "daFare";
-    const groupActionBusy = Boolean(gruppoManutenzioneBusyKey);
-    const selectedIds = selectedFreeIdsForTarga.length > 0 ? selectedFreeIdsForTarga : [item.id];
-
-    return (
-      <article
-        key={item.id}
-        className={`man2-last-item man2-dafare-item${checkbox?.checked ? " is-selected" : ""}`}
-      >
-        <div className="man2-dafare-item__main">
-          {checkbox ? (
-            <input
-              type="checkbox"
-              className="man2-dafare-item__check"
-              checked={checkbox.checked}
-              disabled={groupActionBusy}
-              onChange={checkbox.onToggle}
-              aria-label={`Seleziona manutenzione ${item.descrizione}`}
-            />
-          ) : (
-            <span className="man2-dafare-item__check-spacer" aria-hidden="true" />
-          )}
-          <div className="man2-dafare-item__content">
-            <div className="man2-dafare-item__title-row">
-              <span className="man2-dafare-item__title">{buildDescrizioneSnippet(item.descrizione, 96)}</span>
-              <span className="man2-dafare-date-chip">
-                {stato === "programmata" ? "Programmata" : "Inserimento"} {formatDaFareDateLabel(item)}
-              </span>
-            </div>
-            <div className="man2-dafare-item__meta">
-              <span>{item.targa}</span>
-              <span>Origine {formatMaintenanceOrigineLabel(origine)}</span>
-              {item.segnalatoDa ? <span>Segnalato da {item.segnalatoDa}</span> : null}
-              {groupKey ? (
-                <span>In gruppo</span>
-              ) : isDaFare ? (
-                <span>Non in gruppo</span>
-              ) : (
-                <span>Non raggruppabile</span>
-              )}
-            </div>
-            <div className="man2-dafare-item__badges">
-              <span className="man2-badge man2-dafare-badge--urgency" style={URGENZA_BADGE_STYLE[urgenza]}>
-                {urgenza.toUpperCase()}
-              </span>
-              <span
-                className={`man2-badge man2-badge--${item.tipo}`}
-                style={getMaintenanceStatoBadgeStyle(stato)}
-                title={buildChiusuraDaEventoTitle(item)}
-              >
-                {formatMaintenanceStatoLabel(stato)}
-              </span>
-              <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
-              <span className="man2-badge man2-dafare-badge--origin">{formatMaintenanceOrigineLabel(origine)}</span>
-              {item.collegamenti && item.collegamenti.length > 0 ? (
-                <span
-                  className="man2-badge"
-                  style={COLLEGATA_BADGE_STYLE}
-                  title="Questa manutenzione è collegata ad altre voci (es. lo stesso problema ricorrente, o un documento). Aprila per vederne i collegamenti."
-                >
-                  Collegata ({item.collegamenti.length})
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="man2-dafare-story">
-          <FraseStoriaRecord
-            {...recordChiusoFromRaw(item as unknown as Record<string, unknown>, undefined, {
-              sourceRecords: resolveSourceRecordsForItem(item as unknown as Record<string, unknown>),
-            })}
-            compact
-          />
-        </div>
-        <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
-          <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
-            Eseguita
-          </button>
-          <div className="man2-row-menu">
-            <button
-              type="button"
-              className="man2-row-menu__trigger"
-              aria-label={`Altre azioni per manutenzione ${item.descrizione}`}
-              aria-expanded={daFareMenuId === menuId}
-              onClick={() => setDaFareMenuId((current) => (current === menuId ? null : menuId))}
-            >
-              ⋮
-            </button>
-            {daFareMenuId === menuId ? (
-              <div className="man2-row-menu__panel" role="menu">
-                {checkbox && isDaFare
-                  ? targetGroups.map((gruppo) => (
-                      <button
-                        key={gruppo.key}
-                        type="button"
-                        className="man2-row-menu__item"
-                        role="menuitem"
-                        title="Aggiunge le manutenzioni selezionate (solo quelle «Da fare») a questo gruppo già esistente dello stesso mezzo."
-                        onClick={() => {
-                          setDaFareMenuId(null);
-                          void handleAggiungiAGruppoManutenzioni(gruppo.gruppoId, gruppo.targa, selectedIds);
-                        }}
-                      >
-                        Aggiungi a gruppo: {formatGruppoManutenzioneLabel(gruppo)}
-                      </button>
-                    ))
-                  : null}
-                {checkbox && isDaFare ? (
-                  <button
-                    type="button"
-                    className="man2-row-menu__item"
-                    role="menuitem"
-                    title="Unisce in un'unica scheda più lavori ANCORA DA FARE dello stesso mezzo. Le manutenzioni già chiuse non si possono raggruppare: per quelle usa «Collega…». Seleziona almeno due voci con le caselle."
-                    onClick={() => {
-                      setDaFareMenuId(null);
-                      void handleCreaGruppoManutenzioni(item.targa, selectedIds);
-                    }}
-                  >
-                    Crea gruppo
-                  </button>
-                ) : null}
-                {groupKey && isDaFare ? (
-                  <button
-                    type="button"
-                    className="man2-row-menu__item"
-                    role="menuitem"
-                    onClick={() => {
-                      setDaFareMenuId(null);
-                      void handleRimuoviDaGruppoManutenzioni(groupKey, item.id);
-                    }}
-                  >
-                    Rimuovi dal gruppo
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setDaFareMenuId(null);
-                    handleEdit(item);
-                  }}
-                >
-                  Modifica
-                </button>
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  title="Lega questa manutenzione a un'altra, a una segnalazione o a un documento — anche se sono già chiusi. Usalo per i problemi che tornano (es. la stessa aria condizionata segnalata di nuovo)."
-                  onClick={() => {
-                    setDaFareMenuId(null);
-                    void handleOpenAgganciaUniversale(item);
-                  }}
-                >
-                  Collega…
-                </button>
-                <button
-                  type="button"
-                  className="man2-row-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setDaFareMenuId(null);
-                    openDetailForRecord(item);
-                  }}
-                >
-                  Apri
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  function renderDaFare() {
-    return (
-      <section className="man2-screen man2-screen--dafare">
-        <div className="man2-dafare-head">
-          <div className="man2-dafare-title-block">
-            <h2 className="man2-screen-title">Da fare</h2>
-            <p className="man2-dafare-subtitle">
-              Filtri, segnalazioni aperte e manutenzioni operative nello stesso contenitore.
-            </p>
-          </div>
-        </div>
-
-        <div className="man2-dafare-controls">
-          <div className="man2-field">
-            <label className="man2-field__label">Urgenza</label>
-            <select
-              value={daFareUrgenzaFilter}
-              onChange={(event) => setDaFareUrgenzaFilter(event.target.value as DaFareUrgenzaFilter)}
-              aria-label="Filtra manutenzioni da fare per urgenza"
-            >
-              <option value="tutte">Tutte</option>
-              <option value="alta">Alta</option>
-              <option value="media">Media</option>
-              <option value="bassa">Bassa</option>
-            </select>
-          </div>
-          <div className="man2-field">
-            <label className="man2-field__label">Origine</label>
-            <select
-              value={daFareOrigineFilter}
-              onChange={(event) => setDaFareOrigineFilter(event.target.value as DaFareOrigineFilter)}
-              aria-label="Filtra manutenzioni da fare per origine"
-            >
-              <option value="tutte">Tutte</option>
-              <option value="controllo">Controllo</option>
-              <option value="segnalazione">Segnalazione</option>
-              <option value="manuale">Manuale</option>
-            </select>
-          </div>
-          <button
-            type="button"
-            className="man2-btn man2-dafare-reset"
-            onClick={() => {
-              setDaFareUrgenzaFilter("tutte");
-              setDaFareOrigineFilter("tutte");
-            }}
-          >
-            Azzera filtri
-          </button>
-        </div>
-
-        <section className={`man2-dafare-reports${segnalazioniDaFareExpanded ? " is-open" : ""}`}>
-          <div className="man2-dafare-reports__head">
-            <div>
-              <div className="man2-dafare-reports__title">Segnalazioni aperte</div>
-              <div className="man2-dafare-reports__meta">
-                {segnalazioniEleggibili.length} non collegate
-                {segnalazioniDaFareByTarga.length > 0
-                  ? ` - ${segnalazioniDaFareByTarga.length} targhe`
-                  : ""}
-                {" - spunta per selezionare e raggruppare"}
-              </div>
-            </div>
-            <button
-              type="button"
-              className={`man2-btn man2-dafare-toggle${segnalazioniDaFareExpanded ? " is-expanded" : ""}`}
-              aria-expanded={segnalazioniDaFareExpanded}
-              onClick={() => setSegnalazioniDaFareExpanded((current) => !current)}
-            >
-              {segnalazioniDaFareExpanded ? "Comprimi ▾" : "Espandi ▸"}
-            </button>
-          </div>
-        {segnalazioniDaFareExpanded ? (
-          <div className="man2-dafare-reports__body">
-            {lavoroGruppoRetryState ? (
-              <div className="man2-grp-alert">
-                <span>
-                  Lavoro creato, {lavoroGruppoRetryState.failedIds.length} segnalazioni non agganciate.
-                </span>
-                <button
-                  type="button"
-                  className="man2-grp-btn"
-                  disabled={saving}
-                  onClick={() => void handleRetryAggancioLavoroGruppo()}
-                >
-                  Riprova
-                </button>
-              </div>
-            ) : null}
-            <div className="man2-grp-list">
-              {segnalazioniDaFareByTarga.length > 0 ? (
-                segnalazioniDaFareByTarga.map((targaGroup) => {
-                  const selectedFreeIdsForTarga = targaGroup.libere
-                    .filter((item) => selectedSegnalazioneIds.includes(item.id))
-                    .map((item) => item.id);
-                  const targetGroupForLibere = targaGroup.gruppi[0] ?? null;
-                  return (
-                    <section key={targaGroup.targa} className="man2-grp-targa">
-                      <div className="man2-grp-targa__head">
-                        <span>{targaGroup.targa}</span>
-                        <span>
-                          {targaGroup.gruppi.reduce(
-                            (sum, gruppo) => sum + gruppo.segnalazioni.length,
-                            0,
-                          ) + targaGroup.libere.length}{" "}
-                          segnalazioni
-                        </span>
-                      </div>
-                      {targaGroup.gruppi.map((gruppo) => {
-                        const selectedIds = selectedGruppoSegnalazioneIds[gruppo.key] ?? [];
-                        return (
-                          <article key={gruppo.key} className="man2-grp-card">
-                            <div className="man2-grp-card__head">
-                              <div>
-                                <div className="man2-grp-card__title">Gruppo segnalazioni</div>
-                                <div className="man2-grp-card__meta">
-                                  {gruppo.segnalazioni.length} aperte su {gruppo.targa}
-                                  {selectedIds.length > 0 ? ` - ${selectedIds.length} selezionate` : ""}
-                                </div>
-                              </div>
-                              <div className="man2-grp-card__actions">
-                                <button
-                                  type="button"
-                                  className="man2-grp-btn man2-grp-btn--ghost"
-                                  disabled={saving}
-                                  onClick={() => void handleCreaLavoroDaGruppo(gruppo)}
-                                >
-                                  Crea lavoro (Da fare)
-                                </button>
-                              </div>
-                            </div>
-                            <div className="man2-last-list man2-dafare-maintenance-list">
-                              {gruppo.segnalazioni.map((item) =>
-                                renderSegnalazioneCard(item, {
-                                  checkbox: {
-                                    checked: selectedIds.includes(item.id),
-                                    onToggle: () =>
-                                      toggleGruppoSegnalazioneSelection(gruppo.key, item.id),
-                                  },
-                                  menuItems: [
-                                    {
-                                      label: "Rimuovi dal gruppo",
-                                      onClick: () => void handleRimuoviDaGruppo(gruppo.key, item.id),
-                                    },
-                                    {
-                                      label: "Collega a manutenzione…",
-                                      onClick: () => void handleOpenAgganciaSegnalazione(item),
-                                    },
-                                    {
-                                      label: "Elimina segnalazione",
-                                      danger: true,
-                                      onClick: () => void handleDeleteSegnalazione(item),
-                                    },
-                                  ],
-                                }),
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                      {targaGroup.libere.length > 0 ? (
-                        <article className="man2-grp-card man2-grp-card--free">
-                          <div className="man2-grp-card__head">
-                            <div>
-                              <div className="man2-grp-card__title">Non raggruppate</div>
-                              <div className="man2-grp-card__meta">
-                                {targaGroup.libere.length} segnalazioni disponibili
-                                {selectedFreeIdsForTarga.length > 0
-                                  ? ` - ${selectedFreeIdsForTarga.length} selezionate`
-                                  : ""}
-                              </div>
-                            </div>
-                            <div className="man2-grp-card__actions">
-                              <button
-                                type="button"
-                                className="man2-grp-btn man2-grp-btn--ghost"
-                                disabled={saving || selectedFreeIdsForTarga.length === 0}
-                                onClick={() =>
-                                  void handleCreaGruppoSegnalazioni(
-                                    targaGroup.targa,
-                                    selectedFreeIdsForTarga,
-                                  )
-                                }
-                              >
-                                Crea gruppo dai selezionati
-                              </button>
-                              {targetGroupForLibere ? (
-                                <button
-                                  type="button"
-                                  className="man2-grp-btn man2-grp-btn--ghost"
-                                  disabled={saving || selectedFreeIdsForTarga.length === 0}
-                                  onClick={() =>
-                                    void handleAggiungiAGruppo(
-                                      targetGroupForLibere.gruppoId,
-                                      targetGroupForLibere.targa,
-                                      selectedFreeIdsForTarga,
-                                    )
-                                  }
-                                >
-                                  Aggiungi al gruppo
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="man2-last-list man2-dafare-maintenance-list">
-                            {targaGroup.libere.map((item) =>
-                              renderSegnalazioneCard(item, {
-                                checkbox: {
-                                  checked: selectedSegnalazioneIds.includes(item.id),
-                                  onToggle: () => toggleSegnalazioneLiberaSelection(item.id),
-                                },
-                                menuItems: [
-                                  {
-                                    label: "Collega a manutenzione…",
-                                    onClick: () => void handleOpenAgganciaSegnalazione(item),
-                                  },
-                                  {
-                                    label: "Elimina segnalazione",
-                                    danger: true,
-                                    onClick: () => void handleDeleteSegnalazione(item),
-                                  },
-                                ],
-                              }),
-                            )}
-                          </div>
-                        </article>
-                      ) : null}
-                    </section>
-                  );
-                })
-              ) : (
-                <div className="man-empty">Nessuna segnalazione aperta non collegata con i filtri correnti.</div>
-              )}
-            </div>
-          </div>
-        ) : null}
-        </section>
-
-        <section className={`man2-dafare-reports${controlliKoDaFareExpanded ? " is-open" : ""}`}>
-          <div className="man2-dafare-reports__head">
-            <div>
-              <div className="man2-dafare-reports__title">Controlli KO aperti</div>
-              <div className="man2-dafare-reports__meta">
-                {controlliKoEleggibili.length} non collegati
-                {controlliKoDaFareByTarga.length > 0 ? ` - ${controlliKoDaFareByTarga.length} targhe` : ""}
-              </div>
-            </div>
-            <button
-              type="button"
-              className={`man2-btn man2-dafare-toggle${controlliKoDaFareExpanded ? " is-expanded" : ""}`}
-              aria-expanded={controlliKoDaFareExpanded}
-              onClick={() => setControlliKoDaFareExpanded((current) => !current)}
-            >
-              {controlliKoDaFareExpanded ? "Comprimi ▾" : "Espandi ▸"}
-            </button>
-          </div>
-        {controlliKoDaFareExpanded ? (
-          <div className="man2-dafare-reports__body">
-            <div className="man2-grp-list">
-              {controlliKoDaFareByTarga.length > 0 ? (
-                controlliKoDaFareByTarga.map((targaGroup) => (
-                  <section key={targaGroup.targa} className="man2-grp-targa">
-                    <div className="man2-grp-targa__head">
-                      <span>{targaGroup.targa}</span>
-                      <span>{targaGroup.controlli.length} controlli KO</span>
-                    </div>
-                    <div className="man2-last-list man2-dafare-maintenance-list">
-                      {targaGroup.controlli.map((item) => renderControlloKoCard(item))}
-                    </div>
-                  </section>
-                ))
-              ) : (
-                <div className="man-empty">
-                  Nessun controllo KO aperto non collegato con i filtri correnti.
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
-        </section>
-
-        <div className="man2-section-title man2-dafare-section-title">
-          Manutenzioni operative ({manutenzioniOperativeFiltrate.length})
-        </div>
-        <div className="man2-last-list man2-dafare-maintenance-list">
-          {manutenzioniOperativeFiltrate.length > 0 ? (
-            <>
-              {manutenzioniOperativeGrouped.gruppi.map((gruppo) => (
-                <article key={gruppo.key} className="man2-grp-card">
-                  <div className="man2-grp-card__head">
-                    <div>
-                      <div className="man2-grp-card__title">Gruppo manutenzioni</div>
-                      <div className="man2-grp-card__meta">
-                        {gruppo.manutenzioni.length} da fare su {gruppo.targa}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="man2-last-list">
-                    {gruppo.manutenzioni.map((item) =>
-                      renderManutenzioneOperativaCard({
-                        item,
-                        groupKey: gruppo.key,
-                      }),
-                    )}
-                  </div>
-                </article>
-              ))}
-              {manutenzioniOperativeGrouped.libere.map((item) => {
-                const selectedFreeIdsForTarga = manutenzioniOperativeGrouped.libere
-                  .filter((entry) => entry.targa === item.targa && selectedManutenzioneLiberaIds.includes(entry.id))
-                  .map((entry) => entry.id);
-                const targetGroups = manutenzioniOperativeGrouped.gruppi.filter((gruppo) => gruppo.targa === item.targa);
-                return renderManutenzioneOperativaCard({
-                  item,
-                  checkbox: {
-                    checked: selectedManutenzioneLiberaIds.includes(item.id),
-                    onToggle: () => toggleManutenzioneLiberaSelection(item.id),
-                  },
-                  selectedFreeIdsForTarga,
-                  targetGroups,
-                });
-              })}
-              {manutenzioniOperativeGrouped.altre.map((item) =>
-                renderManutenzioneOperativaCard({ item }),
-              )}
-            </>
-          ) : (
-            <div className="man-empty">Nessuna manutenzione da fare o programmata con i filtri correnti.</div>
-          )}
-        </div>
-      </section>
-    );
   }
 
   function renderDashboard() {
@@ -7954,7 +7092,60 @@ export default function NextManutenzioniPage() {
     if (loading) {
       return <div className="man-empty">Caricamento manutenzioni in corso...</div>;
     }
-    if (view === "dafare") return renderDaFare();
+    if (view === "dafare") {
+      return (
+        <DaFareTab
+          saving={saving}
+          gruppoManutenzioneBusyKey={gruppoManutenzioneBusyKey}
+          controlloKoMenuId={controlloKoMenuId}
+          setControlloKoMenuId={setControlloKoMenuId}
+          segnalazioneMenuId={segnalazioneMenuId}
+          setSegnalazioneMenuId={setSegnalazioneMenuId}
+          daFareMenuId={daFareMenuId}
+          setDaFareMenuId={setDaFareMenuId}
+          daFareUrgenzaFilter={daFareUrgenzaFilter}
+          setDaFareUrgenzaFilter={setDaFareUrgenzaFilter}
+          daFareOrigineFilter={daFareOrigineFilter}
+          setDaFareOrigineFilter={setDaFareOrigineFilter}
+          segnalazioniDaFareExpanded={segnalazioniDaFareExpanded}
+          setSegnalazioniDaFareExpanded={setSegnalazioniDaFareExpanded}
+          controlliKoDaFareExpanded={controlliKoDaFareExpanded}
+          setControlliKoDaFareExpanded={setControlliKoDaFareExpanded}
+          lavoroGruppoRetryState={lavoroGruppoRetryState}
+          selectedSegnalazioneIds={selectedSegnalazioneIds}
+          selectedGruppoSegnalazioneIds={selectedGruppoSegnalazioneIds}
+          selectedManutenzioneLiberaIds={selectedManutenzioneLiberaIds}
+          segnalazioniEleggibili={segnalazioniEleggibili}
+          segnalazioniDaFareByTarga={segnalazioniDaFareByTarga}
+          controlliKoEleggibili={controlliKoEleggibili}
+          controlliKoDaFareByTarga={controlliKoDaFareByTarga}
+          manutenzioniOperativeFiltrate={manutenzioniOperativeFiltrate}
+          manutenzioniOperativeGrouped={manutenzioniOperativeGrouped}
+          resolveSourceRecordsForItem={resolveSourceRecordsForItem}
+          handleRetryAggancioLavoroGruppo={handleRetryAggancioLavoroGruppo}
+          handleCreaLavoroDaGruppo={handleCreaLavoroDaGruppo}
+          toggleGruppoSegnalazioneSelection={toggleGruppoSegnalazioneSelection}
+          toggleSegnalazioneLiberaSelection={toggleSegnalazioneLiberaSelection}
+          toggleManutenzioneLiberaSelection={toggleManutenzioneLiberaSelection}
+          handleRimuoviDaGruppo={handleRimuoviDaGruppo}
+          handleOpenAgganciaSegnalazione={handleOpenAgganciaSegnalazione}
+          handleDeleteSegnalazione={handleDeleteSegnalazione}
+          handleOpenCreaManutenzioneSegnalazione={handleOpenCreaManutenzioneSegnalazione}
+          handleCreaGruppoSegnalazioni={handleCreaGruppoSegnalazioni}
+          handleAggiungiAGruppo={handleAggiungiAGruppo}
+          handleCreaManutenzioneDaControllo={handleCreaManutenzioneDaControllo}
+          handleOpenAgganciaControllo={handleOpenAgganciaControllo}
+          handleDeleteControllo={handleDeleteControllo}
+          handleCompleteDaFare={handleCompleteDaFare}
+          handleAggiungiAGruppoManutenzioni={handleAggiungiAGruppoManutenzioni}
+          handleCreaGruppoManutenzioni={handleCreaGruppoManutenzioni}
+          handleRimuoviDaGruppoManutenzioni={handleRimuoviDaGruppoManutenzioni}
+          handleEdit={handleEdit}
+          handleOpenAgganciaUniversale={handleOpenAgganciaUniversale}
+          openDetailForRecord={openDetailForRecord}
+        />
+      );
+    }
     if (view === "dashboard") return renderDashboard();
     if (view === "consumo-olio") return renderConsumoOlio();
     if (view === "form") return renderForm();
