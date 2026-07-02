@@ -2539,7 +2539,6 @@ export default function NextManutenzioniPage() {
       items,
     }));
   }, [pdfModalResult]);
-  const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
   useEffect(() => {
     if (manualTargaSelectionRef.current) {
@@ -4482,22 +4481,6 @@ export default function NextManutenzioniPage() {
         value: activeTarga ? (latestRecord ? formatDateShort(latestRecord.data) : "Nessuna") : "-",
       },
     ];
-
-    if (contextPlaceholder) {
-      return (
-        <div className="man2-context-bar">
-          {contextBlocks.map((item, index) => (
-            <Fragment key={item.label}>
-              <div className="man2-ctx-item">
-                <span className="man2-ctx-label">{item.label}</span>
-                <span className="man2-ctx-value">{item.value}</span>
-              </div>
-              {index < contextBlocks.length - 1 ? <div className="man2-ctx-divider" /> : null}
-            </Fragment>
-          ))}
-        </div>
-      );
-    }
 
     return (
       <div className="man2-context-bar">

@@ -1860,9 +1860,7 @@
   color: #171717;
 }
 
-/* Bottoni colorati dei modali (primario verde / danger rosso). Gli stessi valori
-   stavano in next-manutenzioni.css, che però non è importato: qui sono nel foglio
-   attivo, così i bottoni dei modali ricevono davvero il colore. */
+/* Bottoni colorati dei modali (primario verde / danger rosso). */
 .man2-btn--primary {
   background: #166534;
   border-color: #166534;
