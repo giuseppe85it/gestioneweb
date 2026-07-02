@@ -24,6 +24,7 @@ export type ManutenzioneCandidataAggancio = {
   targa: string;
   descrizione: string;
   stato: string;
+  chiusuraDi: string | null;
   dataIso: string | null;
   fornitore: string | null;
   origineTipo: string | null;
@@ -106,6 +107,7 @@ export async function getManutenzioniPerAggancio(
         targa: targaNorm,
         descrizione: normalizeText(record.descrizione) || "(senza descrizione)",
         stato: normalizeText(record.stato) || "(senza stato)",
+        chiusuraDi: normalizeText(record.chiusuraDi) || null,
         dataIso: dataApertura ? toISO(dataApertura) : null,
         fornitore: normalizeText(record.fornitore) || null,
         origineTipo: normalizeText(record.origineTipo) || null,

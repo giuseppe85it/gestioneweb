@@ -4904,10 +4904,16 @@ export default function NextManutenzioniPage() {
     const modal = agganciaSegnalazioneModal;
     if (!modal) return;
     // Niente chiusure a sorpresa: se il lavoro scelto è già chiuso, il writer
-    // chiuderà anche il segnale. Avvisa e chiedi conferma PRIMA di procedere.
+    // chiuderà anche il segnale. Stessa condizione di isTargetEseguitaOChiusa
+    // (agganciaSegnalazioneAManutenzioneEsistenteWriter): stato chiuso O timbro
+    // chiusuraDi presente. Avvisa e chiedi conferma PRIMA di procedere.
     const candidatoTarget = modal.candidati.find((c) => c.id === manutenzioneTargetId);
     const statoTarget = (candidatoTarget?.stato ?? "").trim().toLowerCase();
-    if (statoTarget === "eseguita" || statoTarget === "chiusa" || statoTarget === "chiusa_da_evento") {
+    if (
+      statoTarget === "eseguita" ||
+      statoTarget === "chiusa_da_evento" ||
+      Boolean(candidatoTarget?.chiusuraDi)
+    ) {
       const confermaChiusura = window.confirm(
         modal.sorgente.tipo === "controllo"
           ? "Il lavoro scelto è già chiuso: anche il controllo verrà chiuso e sparirà dai Da fare. Continuare?"
@@ -4992,24 +4998,41 @@ export default function NextManutenzioniPage() {
   async function handleConfirmAgganciaUniversale(scelta: AgganciaUniversaleScelta) {
     const modal = agganciaUniversaleModal;
     if (!modal) return;
-    // Niente chiusure a sorpresa: collegando manutenzione operativa <-> chiusa,
-    // il writer chiude in automatico quella operativa (resolveAutoChiusura).
-    // Avvisa e chiedi conferma PRIMA di procedere.
+    // Niente chiusure a sorpresa. Due percorsi del writer universale:
+    // 1) manutenzione <-> manutenzione: resolveAutoChiusura chiude l'operativa se
+    //    l'altra è chiusa (stessi stati raw di statoOf, agganciaUniversaleWriter:43-48);
+    // 2) lavoro chiuso -> segnalazione/controllo: la delega al writer di aggancio
+    //    chiude il segnale (isTargetEseguitaOChiusa: stato chiuso O timbro chiusuraDi).
+    // In entrambi i casi: avvisa e chiedi conferma PRIMA di procedere.
+    const sorgenteRecord = storico.find((record) => record.id === modal.manutenzione.id);
+    const statoSorgente = String(sorgenteRecord?.stato ?? "").trim().toLowerCase();
+    const sorgenteOperativa = statoSorgente === "dafare" || statoSorgente === "programmata";
+    const sorgenteChiusa =
+      statoSorgente === "eseguita" || statoSorgente === "chiusa" || statoSorgente === "chiusa_da_evento";
     if (scelta.tipo === "manutenzione") {
-      const sorgenteRecord = storico.find((record) => record.id === modal.manutenzione.id);
       const candidato = modal.candidati.find(
         (c) => c.tipo === "manutenzione" && c.id === scelta.refId,
       );
-      const statoSorgente = sorgenteRecord ? resolveMaintenanceStato(sorgenteRecord) : null;
       const statoCandidato = (candidato?.stato ?? "").trim().toLowerCase();
-      const sorgenteOperativa = statoSorgente === "daFare" || statoSorgente === "programmata";
-      const sorgenteChiusa = statoSorgente === "eseguita" || statoSorgente === "chiusa_da_evento";
       const candidatoOperativo = statoCandidato === "dafare" || statoCandidato === "programmata";
       const candidatoChiuso =
         statoCandidato === "eseguita" || statoCandidato === "chiusa" || statoCandidato === "chiusa_da_evento";
       if ((sorgenteOperativa && candidatoChiuso) || (candidatoOperativo && sorgenteChiusa)) {
         const confermaChiusura = window.confirm(
           "Stai collegando un lavoro ancora da fare a uno già chiuso: il lavoro da fare verrà chiuso automaticamente e sparirà dai Da fare. Continuare?",
+        );
+        if (!confermaChiusura) return;
+      }
+    } else if (scelta.tipo === "segnalazione" || scelta.tipo === "controllo") {
+      const sorgenteChiudeSegnale =
+        statoSorgente === "eseguita" ||
+        statoSorgente === "chiusa_da_evento" ||
+        Boolean(String(sorgenteRecord?.chiusuraDi ?? "").trim());
+      if (sorgenteChiudeSegnale) {
+        const confermaChiusura = window.confirm(
+          scelta.tipo === "controllo"
+            ? "Questo lavoro è già chiuso: collegandolo, anche il controllo verrà chiuso e sparirà dai Da fare. Continuare?"
+            : "Questo lavoro è già chiuso: collegandola, anche la segnalazione verrà chiusa e sparirà dai Da fare. Continuare?",
         );
         if (!confermaChiusura) return;
       }
