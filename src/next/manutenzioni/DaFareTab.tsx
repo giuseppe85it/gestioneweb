@@ -46,6 +46,35 @@ const DOPPIONE_BADGE_STYLE: CSSProperties = {
   borderColor: "#fde68a",
 };
 
+// Testi di aiuto mostrati al passaggio del mouse su ogni azione (title HTML).
+// Scritti per l'owner: dicono in parole semplici cosa fa il comando.
+const AZIONE_TOOLTIP = {
+  trasformaSegnalazione:
+    "Crea un nuovo lavoro Da fare da questa segnalazione: verrà portato in officina. La segnalazione resta collegata al lavoro.",
+  trasformaControllo:
+    "Crea un nuovo lavoro Da fare da questo controllo KO: verrà portato in officina. Il controllo resta collegato al lavoro.",
+  aggiungiSegnalazione:
+    "Invece di creare un lavoro nuovo, collega questa segnalazione a un lavoro già aperto dello stesso mezzo.",
+  aggiungiControllo:
+    "Invece di creare un lavoro nuovo, collega questo controllo a un lavoro già aperto dello stesso mezzo.",
+  scartaSegnalazione:
+    "Cancella questa segnalazione (usala se è sbagliata o un doppione). Non cancella i lavori eventualmente collegati.",
+  scartaControllo:
+    "Cancella questo controllo KO (usalo se è sbagliato o un doppione). Non cancella i lavori eventualmente collegati.",
+  rimuoviDaGruppoSegnalazione:
+    "Toglie questa segnalazione dal gruppo: torna a essere una segnalazione singola, ancora aperta.",
+  segnaFatto:
+    "Segna il lavoro come eseguito (chiede officina e data). Se l'officina ne ha fatto solo una parte, dentro puoi spuntare «Fatto solo in parte».",
+  modifica: "Apri il lavoro per correggerne i dati (descrizione, urgenza, materiali…).",
+  rimuoviDaGruppoManutenzione:
+    "Toglie questo lavoro dal gruppo di lavori dello stesso mezzo. Resta un lavoro a sé.",
+  apri: "Apri la scheda completa del lavoro, con tutta la sua storia.",
+  trasformaGruppo:
+    "Crea UN unico lavoro Da fare che raccoglie tutte le segnalazioni di questo gruppo.",
+  aggiungiAlGruppo:
+    "Aggiunge le segnalazioni selezionate a questo gruppo già esistente dello stesso mezzo.",
+} as const;
+
 export type DaFareTabProps = {
   saving: boolean;
   gruppoManutenzioneBusyKey: string | null;
@@ -197,6 +226,7 @@ export function DaFareTab(props: DaFareTabProps) {
             type="button"
             className="man2-btn-full"
             disabled={saving}
+            title={AZIONE_TOOLTIP.trasformaControllo}
             onClick={() => void handleCreaManutenzioneDaControllo(item)}
           >
             Trasforma in lavoro (Da fare)
@@ -219,6 +249,7 @@ export function DaFareTab(props: DaFareTabProps) {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
+                  title={AZIONE_TOOLTIP.aggiungiControllo}
                   onClick={() => {
                     setControlloKoMenuId(null);
                     void handleOpenAgganciaControllo(item);
@@ -230,6 +261,7 @@ export function DaFareTab(props: DaFareTabProps) {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
+                  title={AZIONE_TOOLTIP.scartaControllo}
                   onClick={() => {
                     setControlloKoMenuId(null);
                     void handleDeleteControllo(item);
@@ -249,7 +281,7 @@ export function DaFareTab(props: DaFareTabProps) {
     item: NextAutistiSegnalazioneSectionItem,
     opts?: {
       checkbox?: { checked: boolean; onToggle: () => void };
-      menuItems?: { label: string; onClick: () => void; danger?: boolean }[];
+      menuItems?: { label: string; onClick: () => void; danger?: boolean; title?: string }[];
       possibileDoppione?: boolean;
     },
   ) {
@@ -262,11 +294,13 @@ export function DaFareTab(props: DaFareTabProps) {
     const menuItems = opts?.menuItems ?? [
       {
         label: "Aggiungi a un lavoro esistente…",
+        title: AZIONE_TOOLTIP.aggiungiSegnalazione,
         onClick: () => void handleOpenAgganciaSegnalazione(item),
       },
       {
         label: "Scarta segnalazione",
         danger: true,
+        title: AZIONE_TOOLTIP.scartaSegnalazione,
         onClick: () => void handleDeleteSegnalazione(item),
       },
     ];
@@ -319,6 +353,7 @@ export function DaFareTab(props: DaFareTabProps) {
             type="button"
             className="man2-btn-full"
             disabled={saving}
+            title={AZIONE_TOOLTIP.trasformaSegnalazione}
             onClick={() => void handleOpenCreaManutenzioneSegnalazione(item)}
           >
             Trasforma in lavoro (Da fare)
@@ -344,6 +379,7 @@ export function DaFareTab(props: DaFareTabProps) {
                     className="man2-row-menu__item"
                     role="menuitem"
                     disabled={saving}
+                    title={azione.title}
                     style={azione.danger ? { color: "#b91c1c" } : undefined}
                     onClick={() => {
                       setSegnalazioneMenuId(null);
@@ -451,7 +487,12 @@ export function DaFareTab(props: DaFareTabProps) {
           />
         </div>
         <div className="man2-form-actions man2-form-actions--row man2-dafare-item__actions">
-          <button type="button" className="man2-btn-full" onClick={() => handleCompleteDaFare(item)}>
+          <button
+            type="button"
+            className="man2-btn-full"
+            title={AZIONE_TOOLTIP.segnaFatto}
+            onClick={() => handleCompleteDaFare(item)}
+          >
             Segna fatto
           </button>
           <div className="man2-row-menu">
@@ -470,6 +511,7 @@ export function DaFareTab(props: DaFareTabProps) {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
+                  title={AZIONE_TOOLTIP.modifica}
                   onClick={() => {
                     setDaFareMenuId(null);
                     handleEdit(item);
@@ -539,6 +581,7 @@ export function DaFareTab(props: DaFareTabProps) {
                     type="button"
                     className="man2-row-menu__item"
                     role="menuitem"
+                    title={AZIONE_TOOLTIP.rimuoviDaGruppoManutenzione}
                     onClick={() => {
                       setDaFareMenuId(null);
                       void handleRimuoviDaGruppoManutenzioni(groupKey, item.id);
@@ -551,6 +594,7 @@ export function DaFareTab(props: DaFareTabProps) {
                   type="button"
                   className="man2-row-menu__item"
                   role="menuitem"
+                  title={AZIONE_TOOLTIP.apri}
                   onClick={() => {
                     setDaFareMenuId(null);
                     openDetailForRecord(item);
@@ -694,6 +738,7 @@ export function DaFareTab(props: DaFareTabProps) {
                                 type="button"
                                 className="man2-grp-btn man2-grp-btn--ghost"
                                 disabled={saving}
+                                title={AZIONE_TOOLTIP.trasformaGruppo}
                                 onClick={() => void handleCreaLavoroDaGruppo(gruppo)}
                               >
                                 Trasforma il gruppo in un lavoro
@@ -712,15 +757,18 @@ export function DaFareTab(props: DaFareTabProps) {
                                 menuItems: [
                                   {
                                     label: "Rimuovi dal gruppo",
+                                    title: AZIONE_TOOLTIP.rimuoviDaGruppoSegnalazione,
                                     onClick: () => void handleRimuoviDaGruppo(gruppo.key, item.id),
                                   },
                                   {
                                     label: "Aggiungi a un lavoro esistente…",
+                                    title: AZIONE_TOOLTIP.aggiungiSegnalazione,
                                     onClick: () => void handleOpenAgganciaSegnalazione(item),
                                   },
                                   {
                                     label: "Scarta segnalazione",
                                     danger: true,
+                                    title: AZIONE_TOOLTIP.scartaSegnalazione,
                                     onClick: () => void handleDeleteSegnalazione(item),
                                   },
                                 ],
@@ -776,6 +824,7 @@ export function DaFareTab(props: DaFareTabProps) {
                                 type="button"
                                 className="man2-grp-btn man2-grp-btn--ghost"
                                 disabled={saving || selectedFreeIdsForTarga.length === 0}
+                                title={AZIONE_TOOLTIP.aggiungiAlGruppo}
                                 onClick={() =>
                                   void handleAggiungiAGruppo(
                                     targetGroupForLibere.gruppoId,
