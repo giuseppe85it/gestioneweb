@@ -6969,6 +6969,19 @@ export default function NextManutenzioniPage() {
                   </small>
                 </div>
               ) : null}
+              <div className="man2-field">
+                <label className="man2-field__label">Cosa è stato fatto — facoltativo</label>
+                <textarea
+                  value={noteEsecuzione}
+                  rows={3}
+                  disabled={saving}
+                  placeholder="Es. Sostituita la valvola di espansione e ricaricato il gas del climatizzatore"
+                  onChange={(event) => setNoteEsecuzione(event.target.value)}
+                />
+                <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+                  Il lavoro eseguito dall'officina. Compare nella scheda del mezzo e nel PDF.
+                </small>
+              </div>
             </div>
           </section>
 
